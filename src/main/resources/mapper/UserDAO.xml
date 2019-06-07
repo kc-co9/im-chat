@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kim.omgchat.dao.UserDAO">
+
+    <select id="listFriends" resultType="com.kim.omgchat.domain.UserDO">
+        (
+        SELECT
+        user.*
+        FROM
+        user,
+        user_relationship
+        WHERE
+        user_relationship.user_sec_id = user.id
+        AND
+        user_relationship.user_fir_id = #{userId}
+        )
+        UNION ALL
+        (
+        SELECT
+        user.*
+        FROM
+        user,
+        user_relationship
+        WHERE
+        user_relationship.user_fir_id = user.id
+        AND
+        user_relationship.user_sec_id = #{userId}
+        )
+    </select>
+</mapper>

@@ -1,0 +1,38 @@
+spring:
+  datasource:
+    driverClassName: com.mysql.cj.jdbc.Driver
+    url:  jdbc:mysql://localhost:3306/omgchat?characterEncoding=utf-8&serverTimezone=GMT%2B8
+    username: root
+    password: root
+    type: com.alibaba.druid.pool.DruidDataSource
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    password:
+    database: 0
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML5
+    encoding: UTF-8
+    #热部署文件，页面不产生缓存，及时更新
+    cache: false
+  resources:
+    chain:
+      strategy:
+        content:
+          enabled: true
+          paths: /**
+
+##mybatis-plus mapper xml �ļ���ַ
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.kim.omgchat.domain
+##mybatis-plus type-aliases �ļ���ַ
+
+# swagger.enableΪtrue-������ false-����
+swagger:
+  enable: true
+#thymelea模板配置
+
+

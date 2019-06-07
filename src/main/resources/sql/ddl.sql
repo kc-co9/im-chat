@@ -1,0 +1,63 @@
+DROP TABLE IF EXISTS `user`;
+CREATE TABLE `user`(
+  `id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '主键ID',
+  `nickname` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '用户昵称',
+  `email` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '邮箱',
+  `password` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '密码',
+  `gender` TINYINT NOT NULL DEFAULT '0' COMMENT '性别',
+  `birthday` DATE COMMENT '生日',
+  `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB COMMENT = '用户表';
+
+DROP TABLE IF EXISTS `user_relationship`;
+CREATE TABLE `user_relationship`(
+  `id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '主键ID',
+  `user_fir_id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '用户1ID',
+  `user_sec_id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '用户2ID',
+  `user_fir_group` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '用户1分组名字',
+  `user_sec_group` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '用户2分组名字',
+  `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+   PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB COMMENT = '用户之间关系表';
+
+DROP TABLE IF EXISTS `chat_group`;
+CREATE TABLE `chat_group`(
+  `id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '主键ID',
+  `name` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '组名',
+  `group_number` INT NOT NULL DEFAULT '0' COMMENT '成员数量',
+  `introduction` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '群介绍',
+  `notification` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '群公告',
+  `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB COMMENT = '群表';
+
+DROP TABLE IF EXISTS `group_user_relationship`;
+CREATE TABLE `group_user_relationship`(
+  `id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '主键ID',
+  `group_id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '组ID',
+  `user_id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '用户ID',
+  `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB COMMENT = '群用户关系表';
+
+DROP TABLE IF EXISTS `user_message`;
+CREATE TABLE `user_message`(
+  `id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '主键ID',
+  `from_uid` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '发送的用户ID',
+  `to_uid` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '接收的用户ID',
+  `content` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '消息内容',
+  `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB COMMENT = '私聊消息表';
+
+DROP TABLE IF EXISTS `group_message`;
+CREATE TABLE `group_message`(
+  `id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '主键ID',
+  `from_uid` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '发送的用户ID',
+  `to_group_id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '群ID',
+  `content` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '消息内容',
+  `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB COMMENT = '群聊消息表';
+
