@@ -9,8 +9,10 @@ import com.kim.omgchat.dto.UserMessageReceiveDTO;
 import com.kim.omgchat.dto.UserMessageSendDTO;
 import com.kim.omgchat.dto.UserOnlineDTO;
 import com.kim.omgchat.service.UserService;
- import org.dozer.DozerBeanMapper;
+import org.dozer.DozerBeanMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -28,18 +30,18 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * <p>
  * TODO
  * </p>
- *
+ * https://segmentfault.com/q/1010000010103973/a-1020000016388363
  * @author kim
  * @since 2019/6/5 12:26
  */
 @Component
-@ServerEndpoint(value = "/chatServer/{uid}", configurator = HttpSessionConfig.class)
+@ServerEndpoint(value = "/chatServer/{uid}", configurator = HttpSessionConfig.class , encoders = {ServerEncoder.class})
 public class WebSocketServer {
 
-    @Autowired
-    private UserService userService;
-    @Autowired
-    private StringRedisTemplate redisTemplate;
+
+    public static UserService userService;
+
+    public static StringRedisTemplate redisTemplate;
 
     /**
      * 用来给用户主动发送消息
@@ -55,6 +57,14 @@ public class WebSocketServer {
     private static Map<Long, Session> routeTable = new HashMap<>();
 
     private Long userId;
+
+
+    //此处是解决无法注入的关键
+    private static ApplicationContext applicationContext;
+
+    public static void setApplicationContext(ApplicationContext applicationContext) {
+        WebSocketServer.applicationContext = applicationContext;
+    }
 
 
     /**
@@ -142,14 +152,18 @@ public class WebSocketServer {
     public void notifyOnline(List<UserOnlineDTO> onlineUserList) {
         for (UserOnlineDTO userOnlineDTO : onlineUserList) {
             Session session = routeTable.get(userOnlineDTO.getUserId());
+            if (session==null){
+                continue;
+            }
             try {
                 Map<String, Object> map = new HashMap<>();
                 map.put("uid", userOnlineDTO.getUserId());
                 map.put("type", "online");
-                session.getBasicRemote().sendObject(map);
-            } catch (IOException | EncodeException e) {
+                ObjectMapper mapper = new ObjectMapper();
+                String text = mapper.writeValueAsString(map);
+                session.getBasicRemote().sendText(text);
+            } catch (IOException e) {
                 e.printStackTrace();
-                continue;
             }
         }
     }

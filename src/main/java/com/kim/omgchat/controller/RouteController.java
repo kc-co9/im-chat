@@ -11,13 +11,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 
 import static com.kim.omgchat.constant.RedisKeyConstant.generateOnlineUserKey;
+import static com.kim.omgchat.constant.RedisKeyConstant.generateUserTokenKey;
 
 /**
  * <p>
@@ -59,16 +58,28 @@ public class RouteController {
 //    }
 
     @GetMapping("/user/chat/{userId}")
-    public String userChatPage(@PathVariable("userId") Long userId, ModelMap modelMap) throws IOException {
+    public String userChatPage(@RequestParam("token") String token, @PathVariable("userId") Long userId, ModelMap modelMap) throws IOException {
+        //获取当前用户
+        String key = generateUserTokenKey(token);
+        String userJson = redisTemplate.opsForValue().get(key);
+        ObjectMapper objectMapper = new ObjectMapper();
+        UserDO userDO = objectMapper.readValue(userJson, UserDO.class);
 
+        //获取聊天用户
         UserQueryDTO userQueryDTO = new UserQueryDTO();
         userQueryDTO.setUserId(userId);
-        UserDO userDO = userService.getUser(userQueryDTO);
+        UserDO friend = userService.getUser(userQueryDTO);
 
+        //类型转换
         DozerBeanMapper mapper = new DozerBeanMapper();
-        UserOnlineDTO userOnlineDTO = mapper.map(userDO, UserOnlineDTO.class);
+        UserOnlineDTO friendOnlineDTO = mapper.map(friend, UserOnlineDTO.class);
+        friendOnlineDTO.setUserId(friend.getId());
 
-        modelMap.addAttribute("friend", userOnlineDTO);
+        UserOnlineDTO userOnlineDTO = mapper.map(userDO, UserOnlineDTO.class);
+        userOnlineDTO.setUserId(userDO.getId());
+
+        modelMap.addAttribute("user", userOnlineDTO);
+        modelMap.addAttribute("friend", friendOnlineDTO);
 
         return "userChat";
     }

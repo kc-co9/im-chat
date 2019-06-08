@@ -306,9 +306,10 @@
 
 
             var html = "";
+            var token = getToken();
             for (var i = 0; i < friends.length; i++) {
                 var baseUrl = /*[[@{/route/user/chat}]]*/;
-                var url = baseUrl + "/" + friends[i].userId;
+                var  url = baseUrl + "/" + friends[i].userId + "?token=" + token;
                 html += "<li><a href=" + url + " class='am-cf'>" + friends[i].nickname + "</a></li>"
             }
             $("#collapse-nav1").html(html);
