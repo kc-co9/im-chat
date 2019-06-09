@@ -31,11 +31,12 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * TODO
  * </p>
  * https://segmentfault.com/q/1010000010103973/a-1020000016388363
+ *
  * @author kim
  * @since 2019/6/5 12:26
  */
 @Component
-@ServerEndpoint(value = "/chatServer/{uid}", configurator = HttpSessionConfig.class , encoders = {ServerEncoder.class})
+@ServerEndpoint(value = "/chatServer/{uid}", configurator = HttpSessionConfig.class, encoders = {ServerEncoder.class})
 public class WebSocketServer {
 
 
@@ -124,12 +125,17 @@ public class WebSocketServer {
         DozerBeanMapper dozerBeanMapper = new DozerBeanMapper();
         UserMessageSendDTO userMessageSendDTO = dozerBeanMapper.map(userMessageReceiveDTO, UserMessageSendDTO.class);
 
+        userMessageSendDTO.setFromUid(userId);
+
         //获取对应的好友session
-        Session session = routeTable.get(userMessageSendDTO.getToUid());
+        Session friendSession = routeTable.get(userMessageSendDTO.getToUid());
+        //自己的session
+        Session userSession = routeTable.get(userId);
 
         try {
             //发送给目标
-            session.getBasicRemote().sendObject(userMessageSendDTO);
+            friendSession.getBasicRemote().sendObject(userMessageSendDTO);
+            userSession.getBasicRemote().sendObject(userMessageSendDTO);
         } catch (IOException | EncodeException e) {
             e.printStackTrace();
         }
@@ -152,7 +158,7 @@ public class WebSocketServer {
     public void notifyOnline(List<UserOnlineDTO> onlineUserList) {
         for (UserOnlineDTO userOnlineDTO : onlineUserList) {
             Session session = routeTable.get(userOnlineDTO.getUserId());
-            if (session==null){
+            if (session == null) {
                 continue;
             }
             try {
