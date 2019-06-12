@@ -86,9 +86,15 @@ public class AccountController {
     }
 
     @PostMapping("/logout")
-    public ResultVO<Boolean> logout(@RequestBody UserLogoutVO userLogoutVO) {
-        //通知好友和群该用户下线了
+    public ResultVO<Boolean> logout(@RequestHeader("token") String token, @RequestBody UserLogoutVO userLogoutVO) {
+        //删除在线信息
+        String onlineKey = generateOnlineUserKey(String.valueOf(userLogoutVO.getUserId()));
+        redisTemplate.delete(onlineKey);
 
-        return null;
+        //删除token
+        String tokenKey = generateUserTokenKey(token);
+        redisTemplate.delete(tokenKey);
+
+        return ResultVO.success();
     }
 }

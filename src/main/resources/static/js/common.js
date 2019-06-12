@@ -63,3 +63,7 @@ function saveToken(token) {
 function getToken() {
     return sessionStorage.getItem("token");
 }
+
+function removeToken() {
+    sessionStorage.removeItem("token");
+}

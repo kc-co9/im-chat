@@ -23,11 +23,21 @@
     <script type="text/javascript" th:src="@{/js/handlebars-v4.1.1.js}"></script>
 
     <script type="text/javascript" th:src="@{/js/common.js}"></script>
-
-    <script id="friend-item-template" type="text/x-handlebars-template">
-        {{#each friends}}
-        <li><a href="#">{{nickname}}</a></li>
+    <!--https://www.jianshu.com/p/c1d6c299dc80-->
+    <!--https://segmentfault.com/q/1010000003111420-->
+    <script id="friend-list-template" type="text/x-handlebars-template">
+        {{#each data}}
+        <li>
+            <a id="{{userId}}" th:href="@{/route/user/chat}+'/'+'{{userId}}'+'?token='+'{{../token}}'">{{nickname}}
+                <span>{{status}}</span></a>
+        </li>
         {{/each}}
+    </script>
+    <script id="friend-item-template" type="text/x-handlebars-template">
+        <li>
+            <a id="{{userId}}" th:href="@{/route/user/chat}+'/'+'{{userId}}'+'?token='+'{{../token}}'">{{nickname}}
+                <span>{{status}}</span></a>
+        </li>
     </script>
 </head>
 <body>
@@ -115,6 +125,7 @@
 
                 <li><a href="#"><span class="am-icon-home"></span> 系统设置</a></li>
 
+                <li><a onclick="logout();"><span class="am-icon-home"></span> 退出</a></li>
             </ul>
         </div>
     </div>
@@ -284,6 +295,27 @@
    data-am-offcanvas="{target: '#admin-offcanvas'}"><!--<i class="fa fa-bars" aria-hidden="true"></i>--></a>
 
 <script type="text/javascript" th:inline="javascript">
+    var websocket = null;
+
+    window.onload = function () {
+        // 初始化内容
+        init();
+
+        initWebSocket();
+    };
+
+
+    //打印系统消息
+    function setSystemMessage(data) {
+        console.log(data);
+    }
+
+    //关闭WebSocket连接
+    function closeWebSocket() {
+        websocket.close();
+    }
+
+    //初始化用户信息
     function init() {
         var url = /*[[@{/user/listFriends}]]*/;
         var token = getToken();
@@ -295,29 +327,107 @@
             //解析JSON
             console.log(data);
             var result = eval("(" + data + ")");
-            var friends = result.data;
-            console.log(friends)
+            result.token = getToken();
+            console.log(result);
 
-            // //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
-            // //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
-            // var template = Handlebars.compile($("#friend-item-template").html());
-            // //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
-            // $('#collapse-nav1').html(template(friends));
+            //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
+            //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
+            var template = Handlebars.compile($("#friend-list-template").html());
+            //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
+            $('#collapse-nav1').html(template(result));
 
 
-            var html = "";
+            // var html = "";
             var token = getToken();
-            for (var i = 0; i < friends.length; i++) {
-                var baseUrl = /*[[@{/route/user/chat}]]*/;
-                var  url = baseUrl + "/" + friends[i].userId + "?token=" + token;
-                html += "<li><a href=" + url + " class='am-cf'>" + friends[i].nickname + "</a></li>"
-            }
-            $("#collapse-nav1").html(html);
+            // for (var i = 0; i < friends.length; i++) {
+            //     var baseUrl = /*[[@{/route/user/chat}]]*/;
+            //     var url = baseUrl + "/" + friends[i].userId + "?token=" + token;
+            //     html += "<li id='" + friends[i]. + "'><a href=" + url + " class='am-cf'>" + friends[i].nickname + "</a></li>"
+            // }
+            // $("#collapse-nav1").html(html);
         })
     }
 
-    init();
+    //初始化websocket
+    function initWebSocket() {
+        var userId = /*[[${user.userId}]]*/;
+        var url = "ws://" + window.location.host + "/onlineServer/" + userId;
+        //判断当前浏览器是否支持WebSocket
+        if ('WebSocket' in window) {
+            // 不带参数的写法
+            // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer");
+            // 通过路径传递参数的方法（服务端采用第一种方法"@ServerEndpoint"实现）
+            websocket = new WebSocket(url);
+            // 通过类似GET请求方式传递参数的方法（服务端采用第二种方法"WebSocketHandler"实现）
+            // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer?id=23&name=Lebron");
+        } else {
+            alert('当前浏览器 Not support websocket');
+        }
+        //连接发生错误的回调方法
+        websocket.onerror = function () {
+            setSystemMessage("WebSocket连接发生错误");
+        };
+
+        //连接成功建立的回调方法
+        websocket.onopen = function () {
+            setSystemMessage("WebSocket连接成功");
+        };
+
+        //接收到消息的回调方法
+        websocket.onmessage = function (event) {
+            console.log(event.data);
+            //通知用户有其他用户登录了。
+            var data = eval("(" + event.data + ")");
+
+            var html = data.nickname + ' <span>' + data.status + '</span>';
+            $("#"+data.userId).html(html);
+        };
+
+        //连接关闭的回调方法
+        websocket.onclose = function () {
+            setSystemMessage("WebSocket连接关闭");
+        };
+
+        //监听窗口关闭事件，当窗口关闭时，主动去关闭websocket连接，防止连接还没断开就关闭窗口，server端会抛异常。
+        window.onbeforeunload = function () {
+            closeWebSocket();
+        };
+    }
+
+    //登出
+    function logout() {
+        var url = /*[[@{/account/logout}]]*/;
+        var userId = /*[[${user.userId}]]*/;
+        var token = getToken();
+        var header = {
+            "token": token
+        };
+        var data = {
+            "userId": userId
+        };
+        post(url, header, data, function (data) {
+            //成功
+            console.log(data);
+            //删除token
+            removeToken();
+
+            //关闭websocket
+            // closeWebSocket();
+            websocket.close();
+
+            //跳转链接
+            window.location.href = /*[[@{/route/login}]]*/;
+
+        }, function (data) {
+            //失败
+            console.log(data);
+            console.log("失败");
+        });
+    }
+
+
 </script>
+
 
 </body>
 

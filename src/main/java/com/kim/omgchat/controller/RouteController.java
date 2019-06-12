@@ -47,8 +47,20 @@ public class RouteController {
     }
 
     @GetMapping("/index")
-    public String indexPage() {
+    public String indexPage(@RequestParam("token") String token, ModelMap modelMap) throws IOException {
+        //获取当前用户
+        String key = generateUserTokenKey(token);
+        String userJson = redisTemplate.opsForValue().get(key);
+        ObjectMapper objectMapper = new ObjectMapper();
+        UserDO userDO = objectMapper.readValue(userJson, UserDO.class);
 
+        //类型转换
+        DozerBeanMapper mapper = new DozerBeanMapper();
+
+        UserOnlineDTO userOnlineDTO = mapper.map(userDO, UserOnlineDTO.class);
+        userOnlineDTO.setUserId(userDO.getId());
+
+        modelMap.addAttribute("user", userOnlineDTO);
         return "index";
     }
 

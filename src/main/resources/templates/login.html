@@ -60,10 +60,9 @@
                                         //存token
                                         saveToken(result.data);
 
-                                        //websocket连接
-
+                                        var baseUrl =  /*[[@{/route/index}]]*/;
                                         //跳转
-                                        window.location.href = /*[[@{/route/index}]]*/;
+                                        window.location.href = baseUrl + "?token=" + result.data;
 
                                     }, function () {
                                         //重新登录

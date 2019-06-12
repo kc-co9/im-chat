@@ -1,6 +1,7 @@
 package com.kim.omgchat.config;
 
-import com.kim.omgchat.component.WebSocketServer;
+import com.kim.omgchat.component.WebSocketNotificationServer;
+import com.kim.omgchat.component.WebSocketChatServer;
 import com.kim.omgchat.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -36,7 +37,10 @@ public class WebSocketConfig {
      */
     @Autowired
     public void setMessageService(UserService userService, StringRedisTemplate redisTemplate) {
-        WebSocketServer.userService = userService;
-        WebSocketServer.redisTemplate = redisTemplate;
+        WebSocketChatServer.userService = userService;
+        WebSocketChatServer.redisTemplate = redisTemplate;
+
+        WebSocketNotificationServer.userService = userService;
+        WebSocketNotificationServer.redisTemplate = redisTemplate;
     }
 }

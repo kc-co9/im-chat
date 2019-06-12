@@ -12,4 +12,5 @@ import lombok.Data;
  */
 @Data
 public class UserLogoutVO {
+    private Long userId;
 }
