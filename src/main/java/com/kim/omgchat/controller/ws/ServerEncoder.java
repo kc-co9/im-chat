@@ -1,7 +1,8 @@
-package com.kim.omgchat.component;
+package com.kim.omgchat.controller.ws;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kim.omgchat.dto.UserMessageSendDTO;
+import com.kim.omgchat.message.Message;
 
 import javax.websocket.EncodeException;
 import javax.websocket.Encoder;
@@ -16,7 +17,7 @@ import javax.websocket.EndpointConfig;
  * @author kim
  * @since 2019/6/8 23:04
  */
-public class ServerEncoder  implements Encoder.Text<UserMessageSendDTO>{
+public class ServerEncoder implements Encoder.Text<Message> {
 
     @Override
     public void destroy() {
@@ -30,11 +31,12 @@ public class ServerEncoder  implements Encoder.Text<UserMessageSendDTO>{
 
     }
 
+
     @Override
-    public String encode(UserMessageSendDTO messageSendDTO) throws EncodeException {
+    public String encode(Message message) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
-            return objectMapper.writeValueAsString(messageSendDTO);
+            return objectMapper.writeValueAsString(message);
         } catch (Exception e) {
             // TODO Auto-generated catch block
             e.printStackTrace();

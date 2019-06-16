@@ -1,8 +1,7 @@
-package com.kim.omgchat.component;
+package com.kim.omgchat.controller.ws;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kim.omgchat.dto.UserMessageReceiveDTO;
-import com.sun.corba.se.spi.ior.ObjectKey;
 
 import javax.websocket.DecodeException;
 import javax.websocket.Decoder;

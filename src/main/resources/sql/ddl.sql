@@ -47,6 +47,7 @@ CREATE TABLE `user_message`(
   `from_uid` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '发送的用户ID',
   `to_uid` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '接收的用户ID',
   `content` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '消息内容',
+  `status` TINYINT NOT NULL DEFAULT '0' COMMENT '消息是否已读(0未读，1已读)',
   `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '私聊消息表';

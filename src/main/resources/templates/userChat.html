@@ -208,7 +208,8 @@
 <script th:inline="javascript">
     var websocket = null;
     var userId = /*[[${user.userId}]]*/;
-    var url = "ws://" + window.location.host + "/chatServer/" + userId;
+    var friendId = /*[[${friend.userId}]]*/
+    var url = "ws://" + window.location.host + "/chatServer/" + userId + "/" + friendId;
     // var url = "ws://127.0.0.1:8080/chatServer/" + userId;
     //判断当前浏览器是否支持WebSocket
     if ('WebSocket' in window) {
@@ -258,7 +259,7 @@
         } else {
             //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
             //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
-              template = Handlebars.compile($("#friend-message-template").html());
+            template = Handlebars.compile($("#friend-message-template").html());
             //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
         }
         $('#messageList').append(template(data));

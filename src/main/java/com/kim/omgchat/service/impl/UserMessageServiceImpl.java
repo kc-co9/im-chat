@@ -1,0 +1,38 @@
+package com.kim.omgchat.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.kim.omgchat.dao.UserMessageDAO;
+import com.kim.omgchat.domain.UserMessageDO;
+import com.kim.omgchat.dto.UserMessageAddDTO;
+import com.kim.omgchat.dto.UserMessageQueryDTO;
+import com.kim.omgchat.service.UserMessageService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+/**
+ * <p>
+ * TODO
+ * </p>
+ *
+ * @author kim
+ * @since 2019/6/16 16:06
+ */
+@Service
+public class UserMessageServiceImpl implements UserMessageService {
+
+    @Autowired
+    private UserMessageDAO userMessageDAO;
+
+    @Override
+    public boolean saveUserMessage(UserMessageAddDTO userMessageAddDTO) {
+        return userMessageDAO.insert(userMessageAddDTO) > 0;
+    }
+
+    @Override
+    public Integer countUserMessage(UserMessageQueryDTO userMessageQueryDTO) {
+        QueryWrapper<UserMessageDO> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("status" , userMessageQueryDTO.getStatus());
+        queryWrapper.eq("to_uid" , userMessageQueryDTO.getToUserId());
+        return userMessageDAO.selectCount(queryWrapper);
+    }
+}

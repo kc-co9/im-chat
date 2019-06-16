@@ -2,6 +2,7 @@ package com.kim.omgchat.domain;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.kim.omgchat.enums.MessageStatusEnum;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
@@ -36,7 +37,15 @@ public class UserMessageDO {
     @TableField("content")
     private String content;
 
+    @ApiModelProperty("消息状态")
+    @TableField("status")
+    private Integer status;
+
     @ApiModelProperty("创建的时间")
     @TableField("create_time")
     private Date createTime;
+
+    public void setStatus(MessageStatusEnum messageStatusEnum) {
+        this.status = messageStatusEnum.getValue();
+    }
 }

@@ -8,6 +8,10 @@ import com.kim.omgchat.constant.RedisKeyPrefixConstant;
 import com.kim.omgchat.domain.UserDO;
 import com.kim.omgchat.dto.UserAddDTO;
 import com.kim.omgchat.dto.UserOnlineDTO;
+import com.kim.omgchat.holder.WebOnlineUser;
+import com.kim.omgchat.holder.WebToken;
+import com.kim.omgchat.holder.WebUser;
+import com.kim.omgchat.holder.WsSessionHolder;
 import com.kim.omgchat.service.UserService;
 import com.kim.omgchat.vo.ResultVO;
 import com.kim.omgchat.vo.user.UserLoginVO;
@@ -18,6 +22,8 @@ import jdk.nashorn.internal.parser.JSONParser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Date;
 
 import static com.kim.omgchat.constant.RedisKeyConstant.generateOnlineUserKey;
 import static com.kim.omgchat.constant.RedisKeyConstant.generateUserTokenKey;
@@ -63,35 +69,37 @@ public class AccountController {
         if (!userDO.getPassword().equals(userLoginVO.getPassword())) {
             return ResultVO.failure("密码错误", 10001, "");
         }
-        //通知好友和群该用户上线了
-
-        //存储登录信息
-        UserOnlineDTO userOnlineDTO = new UserOnlineDTO();
-        userOnlineDTO.setUserId(userDO.getId());
-        userOnlineDTO.setNickname(userDO.getNickname());
-
-        String onlineKey = generateOnlineUserKey(Long.toString(userDO.getId()));
-        redisTemplate.opsForValue().set(onlineKey, userOnlineDTO.toString());
 
         //生成token返回
-        String token = userComponent.generateToken(userDO);
+        WebToken webToken = new WebToken();
+        webToken.setUserId(userDO.getId());
+        webToken.setEmail(userDO.getEmail());
+        webToken.setCreateTime(new Date());
+        String token = webToken.generate();
+
+        //存储登录信息
+        WebOnlineUser webOnlineUser = new WebOnlineUser();
+        webOnlineUser.setUserId(userDO.getId());
+        webOnlineUser.setEmail(userDO.getEmail());
+        webOnlineUser.setNickname(userDO.getNickname());
+
+        String onlineKey = generateOnlineUserKey(Long.toString(userDO.getId()));
+        redisTemplate.opsForValue().set(onlineKey, webOnlineUser.toString());
 
         //存储用户信息
-        ObjectMapper mapper = new ObjectMapper();
-        String userInfoJson = mapper.writeValueAsString(userDO);
         String tokenKey = generateUserTokenKey(token);
-        redisTemplate.opsForValue().set(tokenKey, userInfoJson);
+        redisTemplate.opsForValue().set(tokenKey, userDO.toString());
 
         return ResultVO.success(token);
     }
 
     @PostMapping("/logout")
     public ResultVO<Boolean> logout(@RequestHeader("token") String token, @RequestBody UserLogoutVO userLogoutVO) {
-        //删除在线信息
+        //删除在线记录
         String onlineKey = generateOnlineUserKey(String.valueOf(userLogoutVO.getUserId()));
         redisTemplate.delete(onlineKey);
 
-        //删除token
+        //删除用户信息
         String tokenKey = generateUserTokenKey(token);
         redisTemplate.delete(tokenKey);
 
