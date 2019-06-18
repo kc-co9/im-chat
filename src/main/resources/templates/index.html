@@ -33,11 +33,35 @@
         </li>
         {{/each}}
     </script>
+
     <script id="friend-item-template" type="text/x-handlebars-template">
         <li>
             <a id="{{userId}}" th:href="@{/route/user/chat}+'/'+'{{userId}}'+'?token='+'{{../token}}'">{{nickname}}
                 <span>{{status}}</span></a>
         </li>
+    </script>
+
+    <script id="friend-notify-item-template" type="text/x-handlebars-template">
+        <div id="{{fromUid}}" class="am-panel am-panel-default">
+            <div class="am-container">
+                <!--左边头像-->
+                <div class="am-u-sm-4 am-margin-vertical">
+                    <img class="am-circle am-center"
+                         src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80"
+                         width="80" height="80"/>
+                </div>
+                <!--右边-->
+                <div class="am-u-sm-8">
+                    <!--名称-->
+                    <div class="am-text-lg am-margin-top">KIM</div>
+                    <!--最新一条消息-->
+                    <div class="am-text-bottom am-padding-top am-text-truncate">
+                        {{content}}
+                    </div>
+                </div>
+            </div>
+
+        </div>
     </script>
 </head>
 <body>
@@ -143,145 +167,10 @@
     <div class="content-page">
         <!-- Start content -->
         <div class="content">
-            <div class="am-panel-group">
-
-                <div class="am-panel am-panel-default">
-                    <div class="am-container">
-                        <!--左边头像-->
-                        <div class="am-u-sm-4 am-margin-vertical">
-                            <img class="am-circle am-center"
-                                 src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80"
-                                 width="80" height="80"/>
-                        </div>
-                        <!--右边-->
-                        <div class="am-u-sm-8">
-                            <!--名称-->
-                            <div class="am-text-lg am-margin-top">KIM</div>
-                            <!--最新一条消息-->
-                            <div class="am-text-bottom am-padding-top am-text-truncate">最新一条消息最新一条消息最新一条消息最新一条消息最新一条消息
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-                <div class="am-panel am-panel-default">
-                    <div class="am-container">
-                        <!--左边头像-->
-                        <div class="am-u-sm-4 am-margin-vertical">
-                            <img class="am-circle am-center"
-                                 src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80"
-                                 width="80" height="80"/>
-                        </div>
-                        <!--右边-->
-                        <div class="am-u-sm-8">
-                            <!--名称-->
-                            <div class="am-text-lg am-margin-top">KIM</div>
-                            <!--最新一条消息-->
-                            <div class="am-text-bottom am-padding-top am-text-truncate">最新一条消息最新一条消息最新一条消息最新一条消息最新一条消息
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-                <div class="am-panel am-panel-default">
-                    <div class="am-container">
-                        <!--左边头像-->
-                        <div class="am-u-sm-4 am-margin-vertical">
-                            <img class="am-circle am-center"
-                                 src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80"
-                                 width="80" height="80"/>
-                        </div>
-                        <!--右边-->
-                        <div class="am-u-sm-8">
-                            <!--名称-->
-                            <div class="am-text-lg am-margin-top">KIM</div>
-                            <!--最新一条消息-->
-                            <div class="am-text-bottom am-padding-top am-text-truncate">最新一条消息最新一条消息最新一条消息最新一条消息最新一条消息
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-                <div class="am-panel am-panel-default">
-                    <div class="am-container">
-                        <!--左边头像-->
-                        <div class="am-u-sm-4 am-margin-vertical">
-                            <img class="am-circle am-center"
-                                 src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80"
-                                 width="80" height="80"/>
-                        </div>
-                        <!--右边-->
-                        <div class="am-u-sm-8">
-                            <!--名称-->
-                            <div class="am-text-lg am-margin-top">KIM</div>
-                            <!--最新一条消息-->
-                            <div class="am-text-bottom am-padding-top am-text-truncate">最新一条消息最新一条消息最新一条消息最新一条消息最新一条消息
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-                <div class="am-panel am-panel-default">
-                    <div class="am-container">
-                        <!--左边头像-->
-                        <div class="am-u-sm-4 am-margin-vertical">
-                            <img class="am-circle am-center"
-                                 src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80"
-                                 width="80" height="80"/>
-                        </div>
-                        <!--右边-->
-                        <div class="am-u-sm-8">
-                            <!--名称-->
-                            <div class="am-text-lg am-margin-top">KIM</div>
-                            <!--最新一条消息-->
-                            <div class="am-text-bottom am-padding-top am-text-truncate">最新一条消息最新一条消息最新一条消息最新一条消息最新一条消息
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-                <div class="am-panel am-panel-default">
-                    <div class="am-container">
-                        <!--左边头像-->
-                        <div class="am-u-sm-4 am-margin-vertical">
-                            <img class="am-circle am-center"
-                                 src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80"
-                                 width="80" height="80"/>
-                        </div>
-                        <!--右边-->
-                        <div class="am-u-sm-8">
-                            <!--名称-->
-                            <div class="am-text-lg am-margin-top">KIM</div>
-                            <!--最新一条消息-->
-                            <div class="am-text-bottom am-padding-top am-text-truncate">最新一条消息最新一条消息最新一条消息最新一条消息最新一条消息
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-                <div class="am-panel am-panel-default">
-                    <div class="am-container">
-                        <!--左边头像-->
-                        <div class="am-u-sm-4 am-margin-vertical">
-                            <img class="am-circle am-center"
-                                 src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80"
-                                 width="80" height="80"/>
-                        </div>
-                        <!--右边-->
-                        <div class="am-u-sm-8">
-                            <!--名称-->
-                            <div class="am-text-lg am-margin-top">KIM</div>
-                            <!--最新一条消息-->
-                            <div class="am-text-bottom am-padding-top am-text-truncate">最新一条消息最新一条消息最新一条消息最新一条消息最新一条消息
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
+            <div id="friend-chat-container" class="am-panel-group">
+                <!--朋友消息列表-->
 
             </div>
-
-
         </div>
         <!-- end content -->
     </div>
@@ -378,9 +267,22 @@
             console.log(event.data);
             //通知用户有其他用户登录了。
             var data = eval("(" + event.data + ")");
+            var type = data.type;
+            var msgBody = data.msgBody;
+            if (type === 0){
+                var html = msgBody.nickname + ' <span>' + msgBody.status + '</span>';
+                $("#"+data.userId).html(html);
+            } else if (type === 2){
+                var template = Handlebars.compile($("#friend-notify-item-template").html());
 
-            var html = data.nickname + ' <span>' + data.status + '</span>';
-            $("#"+data.userId).html(html);
+                //先删除再插入
+                if($("#"+msgBody.fromUid).length > 0){
+                    $("#"+msgBody.fromUid).remove();
+                }
+
+
+                $('#friend-chat-container').prepend(template(msgBody));
+            }
         };
 
         //连接关闭的回调方法

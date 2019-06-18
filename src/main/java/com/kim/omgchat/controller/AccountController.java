@@ -1,24 +1,17 @@
 package com.kim.omgchat.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.util.JSONPObject;
 import com.kim.omgchat.component.UserComponent;
-import com.kim.omgchat.constant.RedisKeyPrefixConstant;
 import com.kim.omgchat.domain.UserDO;
 import com.kim.omgchat.dto.UserAddDTO;
-import com.kim.omgchat.dto.UserOnlineDTO;
 import com.kim.omgchat.holder.WebOnlineUser;
 import com.kim.omgchat.holder.WebToken;
-import com.kim.omgchat.holder.WebUser;
-import com.kim.omgchat.holder.WsSessionHolder;
 import com.kim.omgchat.service.UserService;
 import com.kim.omgchat.vo.ResultVO;
 import com.kim.omgchat.vo.user.UserLoginVO;
 import com.kim.omgchat.vo.user.UserLogoutVO;
 import com.kim.omgchat.vo.user.UserQueryDTO;
 import com.kim.omgchat.vo.user.UserRegisterVO;
-import jdk.nashorn.internal.parser.JSONParser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;

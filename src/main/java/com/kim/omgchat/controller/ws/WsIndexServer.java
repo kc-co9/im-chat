@@ -17,16 +17,13 @@ import com.kim.omgchat.service.UserService;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-import sun.rmi.runtime.Log;
 
 import javax.websocket.*;
 import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static com.kim.omgchat.constant.RedisKeyConstant.generateOnlineUserKey;
 

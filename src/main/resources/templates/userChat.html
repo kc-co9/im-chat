@@ -251,18 +251,24 @@
     function setMessageInnerHTML(data) {
         console.log(data);
         data = eval("(" + data + ")");
-        var fromUid = data.fromUid;
-        var template;
-        //自己发送的
-        if (fromUid === userId) {
-            template = Handlebars.compile($("#user-message-template").html());
-        } else {
-            //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
-            //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
-            template = Handlebars.compile($("#friend-message-template").html());
-            //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
+        var type = data.type;
+        var msgBody = data.msgBody;
+        if (2 === type) {
+            var fromUid = msgBody.fromUid;
+            var template;
+            //自己发送的
+            if (fromUid === userId) {
+                template = Handlebars.compile($("#user-message-template").html());
+            } else {
+                //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
+                //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
+                template = Handlebars.compile($("#friend-message-template").html());
+                //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
+            }
+            $('#messageList').append(template(msgBody));
+        } else if (type === 3) {
+            console.log(msgBody);
         }
-        $('#messageList').append(template(data));
     }
 
     function setSystemMessage(data) {
