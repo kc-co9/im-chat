@@ -9,6 +9,8 @@ import com.kim.omgchat.service.UserMessageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 /**
  * <p>
  * TODO
@@ -31,8 +33,14 @@ public class UserMessageServiceImpl implements UserMessageService {
     @Override
     public Integer countUserMessage(UserMessageQueryDTO userMessageQueryDTO) {
         QueryWrapper<UserMessageDO> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("status" , userMessageQueryDTO.getStatus());
-        queryWrapper.eq("to_uid" , userMessageQueryDTO.getToUserId());
+        queryWrapper.eq("status", userMessageQueryDTO.getStatus());
+        queryWrapper.eq("to_uid", userMessageQueryDTO.getToUserId());
         return userMessageDAO.selectCount(queryWrapper);
+    }
+
+    @Override
+    public List<UserMessageDO> listFriendsMessageFor3d(UserMessageQueryDTO userMessageQueryDTO) {
+        userMessageQueryDTO.setInnerDay(3);
+        return userMessageDAO.listFriendsMessageForXd(userMessageQueryDTO);
     }
 }

@@ -2,5 +2,26 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.kim.omgchat.dao.UserMessageDAO">
 
+    <select id="listFriendsMessageForXd" parameterType="com.kim.omgchat.dto.UserMessageQueryDTO" resultType="com.kim.omgchat.domain.UserMessageDO">
+        SELECT
+        msg.id,
+        msg.from_uid,
+        msg.to_uid,
+        msg.content,
+        msg.status,
+        msg.create_time
+        FROM user_message msg, (SELECT from_uid , MAX(create_time) AS max_time FROM user_message GROUP BY from_uid) AS max_msg
+        WHERE
+        msg.from_uid = max_msg.from_uid
+        AND
+        msg.create_time = max_msg.max_time
+        AND
+        DATEDIFF(NOW(),msg.`create_time`) <![CDATA[ <= ]]> #{innerDay}
+        AND
+        DATEDIFF(NOW(),msg.`create_time`) <![CDATA[ >= ]]> 0
+        AND
+        msg.`to_uid` =  #{userId}
+        ORDER BY msg.`create_time` DESC
+    </select>
 
 </mapper>

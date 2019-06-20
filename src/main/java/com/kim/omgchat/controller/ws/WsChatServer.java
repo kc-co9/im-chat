@@ -8,6 +8,8 @@ import com.kim.omgchat.dto.UserMessageQueryDTO;
 import com.kim.omgchat.dto.UserMessageReceiveDTO;
 import com.kim.omgchat.enums.MessageStatusEnum;
 import com.kim.omgchat.enums.MessageTypeEnum;
+import com.kim.omgchat.holder.WebOnlineUser;
+import com.kim.omgchat.holder.WebUser;
 import com.kim.omgchat.holder.WsChatSession;
 import com.kim.omgchat.holder.WsSessionHolder;
 import com.kim.omgchat.message.Message;
@@ -15,6 +17,7 @@ import com.kim.omgchat.message.body.ChatMsg;
 import com.kim.omgchat.message.body.CountMsg;
 import com.kim.omgchat.service.UserMessageService;
 import com.kim.omgchat.service.UserService;
+import com.kim.omgchat.utils.JsonUtil;
 import org.dozer.DozerBeanMapper;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -24,6 +27,8 @@ import javax.websocket.*;
 import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
+
+import static com.kim.omgchat.constant.RedisKeyConstant.generateOnlineUserKey;
 
 /**
  * <p>
@@ -35,7 +40,8 @@ import java.io.IOException;
  * @since 2019/6/5 12:26
  */
 @Component
-@ServerEndpoint(value = "/chatServer/{fromUserId}/{toUserId}", configurator = HttpSessionConfig.class, encoders = {ServerEncoder.class})
+@ServerEndpoint(value = "/chatServer/{fromUserId}/{toUserId}",
+        configurator = HttpSessionConfig.class, encoders = {ServerEncoder.class})
 public class WsChatServer {
 
     public static UserService userService;
@@ -48,6 +54,8 @@ public class WsChatServer {
      * 当前用户userId
      */
     private Long userId;
+
+    private WebUser webUser;
     /**
      * 当前用户session
      */
@@ -79,6 +87,9 @@ public class WsChatServer {
         this.userId = fromUserId;
 
         this.userSession = session;
+
+        //保存session,锁定聊天用户
+        WsSessionHolder.saveChatSession(fromUserId, toUserId, session);
     }
 
     /**
@@ -118,13 +129,12 @@ public class WsChatServer {
         WsChatSession wsChatSession = WsSessionHolder.getChatSession(toUserId);
 
         if (friendSession == null && wsChatSession == null) {
-            /** 对方还没有登录 **/
+            /* 对方还没有登录 */
             //存进数据库
             userMessageAddDTO.setStatus(MessageStatusEnum.NOT_READ);
             userMessageService.saveUserMessage(userMessageAddDTO);
         } else {
             /* 对方已经登录了 */
-
             if (wsChatSession == null) {
                 /* 对方没有在聊天，在主页上 **/
 
@@ -140,8 +150,19 @@ public class WsChatServer {
                 Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
 
                 //构建最新信息
+
+                //存储登录信息
+                String onlineKey = generateOnlineUserKey(Long.toString(userId));
+                String json = redisTemplate.opsForValue().get(onlineKey);
+                WebOnlineUser webOnlineUser = JsonUtil.json2Obj(json, WebOnlineUser.class);
+                if (webOnlineUser == null) {
+                    webOnlineUser = new WebOnlineUser();
+                    webOnlineUser.setNickname("甲");
+                }
+
                 ChatMsg chatMsg = new ChatMsg();
                 chatMsg.setFromUid(userId);
+                chatMsg.setFromUserNickname(webOnlineUser.getNickname());
                 chatMsg.setToUid(userMessageReceiveDTO.getToUid());
                 chatMsg.setContent(userMessageReceiveDTO.getContent());
                 chatMsg.setStatus(MessageStatusEnum.NOT_READ);
@@ -153,7 +174,7 @@ public class WsChatServer {
 
                 friendSession.getBasicRemote().sendObject(message);
             } else {
-                /** 对方在和我聊天 **/
+                /* 对方在和我聊天 */
                 if (Objects.equal(userId, wsChatSession.getToChatUserId())) {
                     //存进数据库
                     userMessageAddDTO.setStatus(MessageStatusEnum.READ);
@@ -172,7 +193,7 @@ public class WsChatServer {
 
                     wsChatSession.getSession().getBasicRemote().sendObject(message);
                 } else {
-                    /** 对方在和别人聊天 **/
+                    /* 对方在和别人聊天 */
                     //存进数据库
                     userMessageAddDTO.setStatus(MessageStatusEnum.NOT_READ);
                     userMessageService.saveUserMessage(userMessageAddDTO);

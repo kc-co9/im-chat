@@ -1,7 +1,10 @@
 package com.kim.omgchat.service;
 
+import com.kim.omgchat.domain.UserMessageDO;
 import com.kim.omgchat.dto.UserMessageAddDTO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
+
+import java.util.List;
 
 /**
  * <p>
@@ -15,4 +18,6 @@ public interface UserMessageService {
     boolean saveUserMessage(UserMessageAddDTO userMessageAddDTO);
 
     Integer countUserMessage(UserMessageQueryDTO userMessageQueryDTO);
+
+    List<UserMessageDO> listFriendsMessageFor3d(UserMessageQueryDTO userMessageQueryDTO);
 }

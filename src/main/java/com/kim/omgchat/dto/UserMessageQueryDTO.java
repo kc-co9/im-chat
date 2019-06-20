@@ -19,6 +19,15 @@ public class UserMessageQueryDTO {
 
     private Integer status;
 
+
+    /**
+     * 查询朋友对我最新消息列表
+     */
+    private Long userId;
+    private Integer innerDay;
+
+
+
     public void setStatus(MessageStatusEnum messageStatusEnum) {
         this.status = messageStatusEnum.getValue();
     }
