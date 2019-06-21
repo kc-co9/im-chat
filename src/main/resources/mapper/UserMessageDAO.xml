@@ -24,4 +24,17 @@
         ORDER BY msg.`create_time` DESC
     </select>
 
+
+    <select id="listChatMsgWithFriend" resultType="com.kim.omgchat.domain.UserMessageDO">
+      SELECT
+      msg.*
+      FROM
+      user_message AS msg
+      WHERE
+      (msg.from_uid = #{userFirId} AND msg.to_uid = #{userSecId})
+      OR
+      (msg.from_uid = #{userSecId} AND msg.to_uid = #{userFirId})
+      ORDER BY msg.create_time
+    </select>
+
 </mapper>

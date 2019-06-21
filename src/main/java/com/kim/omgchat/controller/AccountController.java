@@ -6,6 +6,7 @@ import com.kim.omgchat.domain.UserDO;
 import com.kim.omgchat.dto.UserAddDTO;
 import com.kim.omgchat.holder.WebOnlineUser;
 import com.kim.omgchat.holder.WebToken;
+import com.kim.omgchat.holder.WebUser;
 import com.kim.omgchat.service.UserService;
 import com.kim.omgchat.vo.ResultVO;
 import com.kim.omgchat.vo.user.UserLoginVO;

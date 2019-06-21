@@ -27,6 +27,12 @@ public class UserMessageQueryDTO {
     private Integer innerDay;
 
 
+    /**
+     * 分页
+     */
+    private Integer pageIndex;
+    private Integer pageSize;
+
 
     public void setStatus(MessageStatusEnum messageStatusEnum) {
         this.status = messageStatusEnum.getValue();

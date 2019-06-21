@@ -3,6 +3,7 @@ package com.kim.omgchat.dao;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.kim.omgchat.domain.UserMessageDO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
@@ -17,4 +18,6 @@ import java.util.List;
 public interface UserMessageDAO extends BaseMapper<UserMessageDO> {
 
     List<UserMessageDO> listFriendsMessageForXd(UserMessageQueryDTO userMessageQueryDTO);
+
+    List<UserMessageDO> listChatMsgWithFriend(@Param("userFirId") Long userFirId ,@Param("userSecId") Long userSecId);
 }

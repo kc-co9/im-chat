@@ -1,6 +1,8 @@
 package com.kim.omgchat.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.github.pagehelper.PageHelper;
+import com.github.pagehelper.PageInfo;
 import com.kim.omgchat.dao.UserMessageDAO;
 import com.kim.omgchat.domain.UserMessageDO;
 import com.kim.omgchat.dto.UserMessageAddDTO;
@@ -42,5 +44,13 @@ public class UserMessageServiceImpl implements UserMessageService {
     public List<UserMessageDO> listFriendsMessageFor3d(UserMessageQueryDTO userMessageQueryDTO) {
         userMessageQueryDTO.setInnerDay(3);
         return userMessageDAO.listFriendsMessageForXd(userMessageQueryDTO);
+    }
+
+    @Override
+    public PageInfo<UserMessageDO> pageChatMsgWithFriend(UserMessageQueryDTO userMessageQueryDTO) {
+        PageHelper.startPage(userMessageQueryDTO.getPageIndex(), userMessageQueryDTO.getPageSize());
+        List<UserMessageDO> list = userMessageDAO.listChatMsgWithFriend(userMessageQueryDTO.getFromUserId(), userMessageQueryDTO.getToUserId());
+
+        return new PageInfo<>(list);
     }
 }
