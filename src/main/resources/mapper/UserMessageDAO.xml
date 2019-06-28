@@ -2,6 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.kim.omgchat.dao.UserMessageDAO">
 
+
     <select id="listFriendsMessageForXd" parameterType="com.kim.omgchat.dto.UserMessageQueryDTO" resultType="com.kim.omgchat.domain.UserMessageDO">
         SELECT
         msg.id,
@@ -34,7 +35,19 @@
       (msg.from_uid = #{userFirId} AND msg.to_uid = #{userSecId})
       OR
       (msg.from_uid = #{userSecId} AND msg.to_uid = #{userFirId})
-      ORDER BY msg.create_time
+      ORDER BY msg.create_time ASC
     </select>
 
+
+    <update id="updateStatus">
+        UPDATE user_message AS msg SET msg.status = #{status}
+        WHERE
+        (
+        (msg.from_uid = #{userFirId} AND msg.to_uid = #{userSecId})
+        OR
+        (msg.from_uid = #{userSecId} AND msg.to_uid = #{userFirId})
+        )
+        AND
+        msg.status = 0
+    </update>
 </mapper>

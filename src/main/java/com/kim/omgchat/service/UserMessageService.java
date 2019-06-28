@@ -4,8 +4,7 @@ import com.github.pagehelper.PageInfo;
 import com.kim.omgchat.domain.UserMessageDO;
 import com.kim.omgchat.dto.UserMessageAddDTO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
-import sun.jvm.hotspot.debugger.Page;
-
+import com.kim.omgchat.enums.MessageStatusEnum;
 import java.util.List;
 
 /**
@@ -36,4 +35,6 @@ public interface UserMessageService {
      * 查询与某位好有的聊天记录(分页)
      */
     PageInfo<UserMessageDO> pageChatMsgWithFriend(UserMessageQueryDTO userMessageQueryDTO);
+
+    boolean updateUserMessageStatus(UserMessageQueryDTO userMessageQueryDTO, MessageStatusEnum read);
 }

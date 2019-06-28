@@ -7,6 +7,7 @@ import com.kim.omgchat.dao.UserMessageDAO;
 import com.kim.omgchat.domain.UserMessageDO;
 import com.kim.omgchat.dto.UserMessageAddDTO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
+import com.kim.omgchat.enums.MessageStatusEnum;
 import com.kim.omgchat.service.UserMessageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -52,5 +53,10 @@ public class UserMessageServiceImpl implements UserMessageService {
         List<UserMessageDO> list = userMessageDAO.listChatMsgWithFriend(userMessageQueryDTO.getFromUserId(), userMessageQueryDTO.getToUserId());
 
         return new PageInfo<>(list);
+    }
+
+    @Override
+    public boolean updateUserMessageStatus(UserMessageQueryDTO userMessageQueryDTO, MessageStatusEnum read) {
+        return userMessageDAO.updateStatus(userMessageQueryDTO.getFromUserId(), userMessageQueryDTO.getToUserId(), read.getValue()) > 0;
     }
 }

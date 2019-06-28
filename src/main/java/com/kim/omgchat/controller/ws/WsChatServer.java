@@ -17,6 +17,7 @@ import com.kim.omgchat.message.body.ChatMsg;
 import com.kim.omgchat.message.body.CountMsg;
 import com.kim.omgchat.service.UserMessageService;
 import com.kim.omgchat.service.UserService;
+import com.kim.omgchat.utils.IdGenerateUtil;
 import com.kim.omgchat.utils.JsonUtil;
 import org.dozer.DozerBeanMapper;
 import org.springframework.context.ApplicationContext;
@@ -27,6 +28,7 @@ import javax.websocket.*;
 import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
+import java.util.Date;
 
 import static com.kim.omgchat.constant.RedisKeyConstant.generateOnlineUserKey;
 
@@ -118,8 +120,11 @@ public class WsChatServer {
             return;
         }
 
+        // 保存信息.全部保存为未读
         DozerBeanMapper dozerBeanMapper = new DozerBeanMapper();
         UserMessageAddDTO userMessageAddDTO = dozerBeanMapper.map(userMessageReceiveDTO, UserMessageAddDTO.class);
+//        userMessageAddDTO.setStatus(MessageStatusEnum.NOT_READ);
+//        userMessageService.saveUserMessage(userMessageAddDTO);
 
         //获取对方userId
         Long toUserId = userMessageReceiveDTO.getToUid();
@@ -142,37 +147,8 @@ public class WsChatServer {
                 userMessageAddDTO.setStatus(MessageStatusEnum.NOT_READ);
                 userMessageService.saveUserMessage(userMessageAddDTO);
 
-                //查出每个人的未读信息数量
-                UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
-                userMessageQueryDTO.setFromUserId(userId);
-                userMessageQueryDTO.setToUserId(toUserId);
-                userMessageQueryDTO.setStatus(MessageStatusEnum.NOT_READ);
-                Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
 
-                //构建最新信息
-
-                //存储登录信息
-                String onlineKey = generateOnlineUserKey(Long.toString(userId));
-                String json = redisTemplate.opsForValue().get(onlineKey);
-                WebOnlineUser webOnlineUser = JsonUtil.json2Obj(json, WebOnlineUser.class);
-                if (webOnlineUser == null) {
-                    webOnlineUser = new WebOnlineUser();
-                    webOnlineUser.setNickname("甲");
-                }
-
-                ChatMsg chatMsg = new ChatMsg();
-                chatMsg.setFromUid(userId);
-                chatMsg.setFromUserNickname(webOnlineUser.getNickname());
-                chatMsg.setToUid(userMessageReceiveDTO.getToUid());
-                chatMsg.setContent(userMessageReceiveDTO.getContent());
-                chatMsg.setStatus(MessageStatusEnum.NOT_READ);
-                chatMsg.setNotReadCount(count);
-
-                Message<ChatMsg> message = new Message<>();
-                message.setMsgBody(chatMsg);
-                message.setType(MessageTypeEnum.CHAT_MSG);
-
-                friendSession.getBasicRemote().sendObject(message);
+                sendToIndex(friendSession , userMessageReceiveDTO);
             } else {
                 /* 对方在和我聊天 */
                 if (Objects.equal(userId, wsChatSession.getToChatUserId())) {
@@ -180,54 +156,21 @@ public class WsChatServer {
                     userMessageAddDTO.setStatus(MessageStatusEnum.READ);
                     userMessageService.saveUserMessage(userMessageAddDTO);
 
-                    //最新信息
-                    ChatMsg chatMsg = new ChatMsg();
-                    chatMsg.setFromUid(userId);
-                    chatMsg.setToUid(userMessageReceiveDTO.getToUid());
-                    chatMsg.setContent(userMessageReceiveDTO.getContent());
-                    chatMsg.setStatus(MessageStatusEnum.READ);
-
-                    Message<ChatMsg> message = new Message<>();
-                    message.setMsgBody(chatMsg);
-                    message.setType(MessageTypeEnum.CHAT_MSG);
-
-                    wsChatSession.getSession().getBasicRemote().sendObject(message);
+                    sendToChatWithMe(wsChatSession.getSession(), userMessageReceiveDTO);
                 } else {
                     /* 对方在和别人聊天 */
                     //存进数据库
                     userMessageAddDTO.setStatus(MessageStatusEnum.NOT_READ);
                     userMessageService.saveUserMessage(userMessageAddDTO);
 
-                    friendSession = wsChatSession.getSession();
-                    //数量消息
-                    UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
-                    userMessageQueryDTO.setToUserId(toUserId);
-                    userMessageQueryDTO.setStatus(MessageStatusEnum.NOT_READ);
-                    Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
-                    CountMsg countMsg = new CountMsg();
-                    countMsg.setMsgCount(count);
-
-                    Message<CountMsg> message = new Message<>();
-                    message.setMsgBody(countMsg);
-                    message.setType(MessageTypeEnum.COUNT_MSG);
-
-                    friendSession.getBasicRemote().sendObject(message);
+                    sendToChatWithOther(wsChatSession.getSession(), userMessageReceiveDTO);
                 }
             }
         }
 
 
         /** 发送给自己 **/
-        ChatMsg chatMsg = new ChatMsg();
-        chatMsg.setFromUid(userId);
-        chatMsg.setToUid(userMessageReceiveDTO.getToUid());
-        chatMsg.setContent(userMessageReceiveDTO.getContent());
-        chatMsg.setStatus(MessageStatusEnum.READ);
-
-        Message<ChatMsg> message = new Message<>();
-        message.setMsgBody(chatMsg);
-        message.setType(MessageTypeEnum.CHAT_MSG);
-        userSession.getBasicRemote().sendObject(message);
+        sendToMyself(userSession, userMessageReceiveDTO);
     }
 
 
@@ -239,6 +182,100 @@ public class WsChatServer {
     @OnError
     public void onError(Throwable error) {
         error.printStackTrace();
+    }
+
+
+    private void sendToIndex(Session session, UserMessageReceiveDTO userMessageReceiveDTO) throws IOException, EncodeException {
+        UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
+        userMessageQueryDTO.setFromUserId(userMessageReceiveDTO.getFromUid());
+        userMessageQueryDTO.setToUserId(userMessageReceiveDTO.getToUid());
+        userMessageQueryDTO.setStatus(MessageStatusEnum.NOT_READ);
+        Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
+
+        //构建最新信息
+
+        //存储登录信息
+        String onlineKey = generateOnlineUserKey(Long.toString(userMessageReceiveDTO.getFromUid()));
+        String json = redisTemplate.opsForValue().get(onlineKey);
+        WebOnlineUser webOnlineUser = JsonUtil.json2Obj(json, WebOnlineUser.class);
+        if (webOnlineUser == null) {
+            webOnlineUser = new WebOnlineUser();
+            webOnlineUser.setNickname("XXX");
+        }
+
+        ChatMsg chatMsg = new ChatMsg();
+        chatMsg.setFromUid(userId);
+        chatMsg.setFromUserNickname(webOnlineUser.getNickname());
+
+        chatMsg.setToUid(userMessageReceiveDTO.getToUid());
+        chatMsg.setContent(userMessageReceiveDTO.getContent());
+        chatMsg.setStatus(MessageStatusEnum.NOT_READ);
+        chatMsg.setNotReadCount(count);
+
+        Message<ChatMsg> message = new Message<>();
+        message.setMsgBody(chatMsg);
+        message.setType(MessageTypeEnum.CHAT_MSG);
+
+        session.getBasicRemote().sendObject(message);
+    }
+
+    private void sendToChatWithMe(Session session, UserMessageReceiveDTO userMessageReceiveDTO) throws IOException, EncodeException {
+        //数量消息
+        UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
+        userMessageQueryDTO.setToUserId(userMessageReceiveDTO.getToUid());
+        userMessageQueryDTO.setStatus(MessageStatusEnum.NOT_READ);
+        Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
+
+        //最新信息
+        ChatMsg chatMsg = new ChatMsg();
+        chatMsg.setFromUid(userMessageReceiveDTO.getFromUid());
+        chatMsg.setToUid(userMessageReceiveDTO.getToUid());
+        chatMsg.setContent(userMessageReceiveDTO.getContent());
+        chatMsg.setStatus(MessageStatusEnum.READ);
+        chatMsg.setNotReadCount(count);
+
+        Message<ChatMsg> message = new Message<>();
+        message.setMsgBody(chatMsg);
+        message.setType(MessageTypeEnum.CHAT_MSG);
+
+        session.getBasicRemote().sendObject(message);
+    }
+
+    private void sendToChatWithOther(Session session, UserMessageReceiveDTO userMessageReceiveDTO) throws IOException, EncodeException {
+        //数量消息
+        UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
+        userMessageQueryDTO.setToUserId(userMessageReceiveDTO.getToUid());
+        userMessageQueryDTO.setStatus(MessageStatusEnum.NOT_READ);
+        Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
+
+        CountMsg countMsg = new CountMsg();
+        countMsg.setMsgCount(count);
+
+        Message<CountMsg> message = new Message<>();
+        message.setMsgBody(countMsg);
+        message.setType(MessageTypeEnum.COUNT_MSG);
+
+        session.getBasicRemote().sendObject(message);
+    }
+
+    private void sendToMyself(Session session, UserMessageReceiveDTO userMessageReceiveDTO) throws IOException, EncodeException {
+        UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
+        userMessageQueryDTO.setToUserId(userMessageReceiveDTO.getToUid());
+        userMessageQueryDTO.setStatus(MessageStatusEnum.NOT_READ);
+        Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
+
+        ChatMsg chatMsg = new ChatMsg();
+        chatMsg.setFromUid(userMessageReceiveDTO.getFromUid());
+        chatMsg.setToUid(userMessageReceiveDTO.getToUid());
+        chatMsg.setContent(userMessageReceiveDTO.getContent());
+        chatMsg.setStatus(MessageStatusEnum.READ);
+        chatMsg.setNotReadCount(count);
+
+        Message<ChatMsg> message = new Message<>();
+        message.setMsgBody(chatMsg);
+        message.setType(MessageTypeEnum.CHAT_MSG);
+
+        session.getBasicRemote().sendObject(message);
     }
 
 

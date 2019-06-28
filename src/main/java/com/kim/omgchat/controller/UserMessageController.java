@@ -3,6 +3,7 @@ package com.kim.omgchat.controller;
 import com.github.pagehelper.PageInfo;
 import com.kim.omgchat.domain.UserMessageDO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
+import com.kim.omgchat.enums.MessageStatusEnum;
 import com.kim.omgchat.holder.WebUser;
 import com.kim.omgchat.holder.WebUserHolder;
 import com.kim.omgchat.service.UserMessageService;
@@ -45,11 +46,11 @@ public class UserMessageController {
 
         PageInfo<UserMessageDO> pageInfo = userMessageService.pageChatMsgWithFriend(userMessageQueryDTO);
 
+        // 修改消息状态
+        userMessageService.updateUserMessageStatus(userMessageQueryDTO , MessageStatusEnum.READ);
+
         //构造用户信息
-
-
-
-        return null;
+        return ResultVO.success(pageInfo);
     }
 
 }

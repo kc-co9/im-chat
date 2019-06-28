@@ -45,6 +45,11 @@ public class UserMessageDO {
     @TableField("create_time")
     private Date createTime;
 
+
+    public void setStatus(Integer status){
+        this.status = status;
+    }
+
     public void setStatus(MessageStatusEnum messageStatusEnum) {
         this.status = messageStatusEnum.getValue();
     }
