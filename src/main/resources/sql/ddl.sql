@@ -1,12 +1,14 @@
 DROP TABLE IF EXISTS `user`;
 CREATE TABLE `user`(
   `id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '主键ID',
+  `avatar` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '用户头像',
   `nickname` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '用户昵称',
   `email` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '邮箱',
   `password` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '密码',
   `gender` TINYINT NOT NULL DEFAULT '0' COMMENT '性别',
   `birthday` DATE COMMENT '生日',
   `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT '0' COMMENT '是否删除 1-删除,0-不删除',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '用户表';
 
@@ -18,6 +20,7 @@ CREATE TABLE `user_relationship`(
   `user_fir_group` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '用户1分组名字',
   `user_sec_group` VARCHAR(45) NOT NULL DEFAULT '' COMMENT '用户2分组名字',
   `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT '0' COMMENT '是否删除 1-删除,0-不删除',
    PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '用户之间关系表';
 
@@ -29,6 +32,7 @@ CREATE TABLE `chat_group`(
   `introduction` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '群介绍',
   `notification` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '群公告',
   `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT '0' COMMENT '是否删除 1-删除,0-不删除',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '群表';
 
@@ -38,6 +42,7 @@ CREATE TABLE `group_user_relationship`(
   `group_id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '组ID',
   `user_id` BIGINT(20) NOT NULL DEFAULT '0' COMMENT '用户ID',
   `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT '0' COMMENT '是否删除 1-删除,0-不删除',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '群用户关系表';
 
@@ -49,6 +54,7 @@ CREATE TABLE `user_message`(
   `content` VARCHAR(512) NOT NULL DEFAULT '' COMMENT '消息内容',
   `status` TINYINT NOT NULL DEFAULT '0' COMMENT '消息是否已读(0未读，1已读)',
   `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `is_deleted` TINYINT NOT NULL DEFAULT '0' COMMENT '是否删除 1-删除,0-不删除',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '私聊消息表';
 

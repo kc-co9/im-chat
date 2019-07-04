@@ -11,7 +11,9 @@
         msg.content,
         msg.status,
         msg.create_time
-        FROM user_message msg, (SELECT from_uid , MAX(create_time) AS max_time FROM user_message GROUP BY from_uid) AS max_msg
+        FROM
+        user_message msg,
+        (SELECT from_uid , MAX(create_time) AS max_time FROM user_message GROUP BY from_uid) AS max_msg,
         WHERE
         msg.from_uid = max_msg.from_uid
         AND
@@ -36,6 +38,38 @@
       OR
       (msg.from_uid = #{userSecId} AND msg.to_uid = #{userFirId})
       ORDER BY msg.create_time ASC
+    </select>
+
+    <select id="listFriendsLatestMessage" resultType="com.kim.omgchat.dto.UserMessageDTO">
+        SELECT
+        msg.id,
+        msg.from_uid,
+        f_u.avatar,
+        f_u.nickname,
+        msg.to_uid,
+        t_u.avatar,
+        t_u.nickname,
+        msg.content,
+        msg.status,
+        msg.create_time
+        FROM
+        user_message msg,
+        (SELECT from_uid , MAX(create_time) AS max_time FROM user_message GROUP BY from_uid) AS max_msg,
+        user f_u,
+        user t_u
+        WHERE
+        msg.from_uid = f_u.id
+        AND
+        msg.to_uid = t_u.id
+        AND
+        msg.is_deleted = 0
+        AND
+        msg.from_uid = max_msg.from_uid
+        AND
+        msg.create_time = max_msg.max_time
+        AND
+        msg.`to_uid` =  #{userId}
+        ORDER BY msg.`create_time` DESC
     </select>
 
 

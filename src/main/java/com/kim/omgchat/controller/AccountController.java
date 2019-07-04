@@ -13,6 +13,8 @@ import com.kim.omgchat.vo.user.UserLoginVO;
 import com.kim.omgchat.vo.user.UserLogoutVO;
 import com.kim.omgchat.vo.user.UserQueryDTO;
 import com.kim.omgchat.vo.user.UserRegisterVO;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -42,6 +44,7 @@ public class AccountController {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @ApiOperation("注册接口")
     @PostMapping("/register")
     public ResultVO<Boolean> register(@RequestBody UserRegisterVO userRegisterVO) {
         UserAddDTO userAddDTO = new UserAddDTO();
@@ -55,6 +58,7 @@ public class AccountController {
         return ResultVO.success();
     }
 
+    @ApiOperation("登录接口")
     @PostMapping("/login")
     public ResultVO<String> login(@RequestBody UserLoginVO userLoginVO) throws JsonProcessingException {
         UserQueryDTO userQueryDTO = new UserQueryDTO();
@@ -87,6 +91,7 @@ public class AccountController {
         return ResultVO.success(token);
     }
 
+    @ApiOperation("退出登录接口")
     @PostMapping("/logout")
     public ResultVO<Boolean> logout(@RequestHeader("token") String token, @RequestBody UserLogoutVO userLogoutVO) {
         //删除在线记录

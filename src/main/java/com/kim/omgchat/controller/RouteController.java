@@ -6,6 +6,8 @@ import com.kim.omgchat.domain.UserDO;
 import com.kim.omgchat.dto.UserOnlineDTO;
 import com.kim.omgchat.service.UserService;
 import com.kim.omgchat.vo.user.UserQueryDTO;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
 import org.dozer.DozerBeanMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -26,6 +28,7 @@ import static com.kim.omgchat.constant.RedisKeyConstant.generateUserTokenKey;
  * @author kim
  * @since 2019/6/5 11:56
  */
+@Api("路由")
 @Controller
 @RequestMapping("/route")
 public class RouteController {
@@ -36,16 +39,19 @@ public class RouteController {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @ApiOperation("登录页面")
     @GetMapping("/login")
     public String loginPage() {
         return "login";
     }
 
+    @ApiOperation("注册页面")
     @GetMapping("/register")
     public String registerPage() {
         return "register";
     }
 
+    @ApiOperation("首页")
     @GetMapping("/index")
     public String indexPage(@RequestParam("token") String token, ModelMap modelMap) throws IOException {
         //获取当前用户

@@ -5,9 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kim.omgchat.constant.RedisKeyConstant;
 import com.kim.omgchat.domain.UserDO;
 import com.kim.omgchat.dto.UserFriendListDTO;
+import com.kim.omgchat.dto.UserGuestInfoDTO;
+import com.kim.omgchat.dto.UserOwnInfoDTO;
+import com.kim.omgchat.holder.WebUser;
+import com.kim.omgchat.holder.WebUserHolder;
 import com.kim.omgchat.service.UserService;
 import com.kim.omgchat.vo.ResultVO;
 import com.kim.omgchat.vo.user.UserQueryDTO;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
 import org.dozer.DozerBeanMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -25,6 +31,7 @@ import java.util.List;
  * @author kim
  * @since 2019/6/5 16:28
  */
+@Api("用户接口")
 @RestController
 @RequestMapping(value = "/user")
 public class UserController {
@@ -35,9 +42,20 @@ public class UserController {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @ApiOperation("获取主态用户信息")
     @GetMapping("/getUser")
-    public ResultVO getUser() {
-        return null;
+    public ResultVO<UserOwnInfoDTO> getUser() {
+        WebUser webUser = WebUserHolder.get();
+
+        UserQueryDTO userQueryDTO = new UserQueryDTO();
+        userQueryDTO.setUserId(webUser.getUserId());
+
+        UserDO userDO = userService.getUser(userQueryDTO);
+
+        DozerBeanMapper mapper = new DozerBeanMapper();
+        UserOwnInfoDTO userOwnInfoDTO = mapper.map(userDO, UserOwnInfoDTO.class);
+
+        return ResultVO.success(userOwnInfoDTO);
     }
 
     @PostMapping("/updateUser")
@@ -50,11 +68,21 @@ public class UserController {
         return null;
     }
 
+    @ApiOperation("获取客态用户信息")
     @GetMapping("/getGuestUser/{userId}")
-    public ResultVO getGuestUser(@PathVariable("userId") Long userId) {
-        return null;
+    public ResultVO<UserGuestInfoDTO> getGuestUser(@PathVariable("userId") Long userId) {
+        UserQueryDTO userQueryDTO = new UserQueryDTO();
+        userQueryDTO.setUserId(userId);
+
+        UserDO userDO = userService.getUser(userQueryDTO);
+
+        DozerBeanMapper mapper = new DozerBeanMapper();
+        UserGuestInfoDTO userGuestInfoDTO = mapper.map(userDO, UserGuestInfoDTO.class);
+
+        return ResultVO.success(userGuestInfoDTO);
     }
 
+    @ApiOperation("获取好友列表")
     @GetMapping("/listFriends")
     public ResultVO<List<UserFriendListDTO>> listFriends(@RequestHeader String token) {
         //获取对应的值

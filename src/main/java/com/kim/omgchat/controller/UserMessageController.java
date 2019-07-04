@@ -2,17 +2,21 @@ package com.kim.omgchat.controller;
 
 import com.github.pagehelper.PageInfo;
 import com.kim.omgchat.domain.UserMessageDO;
+import com.kim.omgchat.dto.UserMessageDTO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
 import com.kim.omgchat.enums.MessageStatusEnum;
 import com.kim.omgchat.holder.WebUser;
 import com.kim.omgchat.holder.WebUserHolder;
 import com.kim.omgchat.service.UserMessageService;
 import com.kim.omgchat.vo.ResultVO;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Api("用户消息接口")
 @RestController
 @RequestMapping("/user/message")
 public class UserMessageController {
@@ -20,22 +24,24 @@ public class UserMessageController {
     @Autowired
     private UserMessageService userMessageService;
 
+    @ApiOperation("获取与每个其他用户的最新消息列表")
     @GetMapping("/listFriendsLatestMsg")
-    public ResultVO<List<UserMessageDO>> listFriendsLatestMsg() {
+    public ResultVO<List<UserMessageDTO>> listFriendsLatestMsg() {
         WebUser webUser = WebUserHolder.get();
 
         UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
         userMessageQueryDTO.setUserId(webUser.getUserId());
-        List<UserMessageDO> list = userMessageService.listFriendsMessageFor3d(userMessageQueryDTO);
+        List<UserMessageDTO> list = userMessageService.listFriendsMessage(userMessageQueryDTO);
 
         return ResultVO.success(list);
     }
 
+    @ApiOperation("查看本用户与其他用户的聊天记录")
     @GetMapping("/listChatMsgWithFriend/{toUid}")
     public ResultVO<PageInfo<UserMessageDO>> listChatMsgWithFriend(@PathVariable("toUid") Long toUid,
                                                                    @RequestParam("pageIndex") Integer pageIndex,
                                                                    @RequestParam("pageSize") Integer pageSize) {
-
+        //获取用户hold
         WebUser webUser = WebUserHolder.get();
 
         UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
@@ -52,5 +58,6 @@ public class UserMessageController {
         //构造用户信息
         return ResultVO.success(pageInfo);
     }
+
 
 }

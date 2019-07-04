@@ -6,6 +6,7 @@ import com.github.pagehelper.PageInfo;
 import com.kim.omgchat.dao.UserMessageDAO;
 import com.kim.omgchat.domain.UserMessageDO;
 import com.kim.omgchat.dto.UserMessageAddDTO;
+import com.kim.omgchat.dto.UserMessageDTO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
 import com.kim.omgchat.enums.MessageStatusEnum;
 import com.kim.omgchat.service.UserMessageService;
@@ -45,6 +46,11 @@ public class UserMessageServiceImpl implements UserMessageService {
     public List<UserMessageDO> listFriendsMessageFor3d(UserMessageQueryDTO userMessageQueryDTO) {
         userMessageQueryDTO.setInnerDay(3);
         return userMessageDAO.listFriendsMessageForXd(userMessageQueryDTO);
+    }
+
+    @Override
+    public List<UserMessageDTO> listFriendsMessage(UserMessageQueryDTO userMessageQueryDTO) {
+        return userMessageDAO.listFriendsLatestMessage(userMessageQueryDTO);
     }
 
     @Override
