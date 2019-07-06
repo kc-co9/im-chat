@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 
-import static com.kim.omgchat.constant.RedisKeyConstant.generateOnlineUserKey;
 import static com.kim.omgchat.constant.RedisKeyConstant.generateUserTokenKey;
 
 /**

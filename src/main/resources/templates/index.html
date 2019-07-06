@@ -42,26 +42,193 @@
     </script>
 
     <script id="friend-notify-item-template" type="text/x-handlebars-template">
+        {{#each data}}
         <div id="{{fromUid}}" class="am-panel am-panel-default">
             <div class="am-container">
                 <!--左边头像-->
                 <div class="am-u-sm-4 am-margin-vertical">
                     <img class="am-circle am-center"
-                         src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/1000/h/1000/q/80"
+                         src="{{fromUserAvatar}}"
                          width="80" height="80"/>
                 </div>
                 <!--右边-->
                 <div class="am-u-sm-8">
                     <!--名称-->
-                    <div class="am-text-lg am-margin-top">KIM</div>
+                    <div class="am-text-lg am-margin-top">{{fromUserNickname}}</div>
                     <!--最新一条消息-->
                     <div class="am-text-bottom am-padding-top am-text-truncate">
                         {{content}}
                     </div>
                 </div>
             </div>
-
         </div>
+        {{/each}}
+    </script>
+
+
+    <script type="text/javascript" th:inline="javascript">
+        var websocket = null;
+
+        window.onload = function () {
+            // 初始化内容
+            init();
+
+            initWebSocket();
+        };
+
+
+        //打印系统消息
+        function setSystemMessage(data) {
+            console.log(data);
+        }
+
+        //关闭WebSocket连接
+        function closeWebSocket() {
+            websocket.close();
+        }
+
+        //初始化用户信息
+        function init() {
+            getFriendList();
+
+            getLatestFriendsMsg();
+        }
+
+        function getFriendList() {
+            var url = /*[[@{/user/listFriends}]]*/;
+            var token = getToken();
+            var header = {
+                "token": token
+            };
+
+            get(url, header, function (data) {
+                //解析JSON
+                console.log(data);
+                var result = eval("(" + data + ")");
+                result.token = getToken();
+                console.log(result);
+
+                //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
+                //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
+                var template = Handlebars.compile($("#friend-list-template").html());
+                //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
+                $('#collapse-nav1').html(template(result));
+            });
+        }
+
+        function getLatestFriendsMsg() {
+            var url = /*[[@{/user/message/listFriendsLatestMsg}]]*/;
+            var token = getToken();
+            var header = {
+                "token": token
+            };
+
+            get(url, header, function (data) {
+                //解析JSON
+                console.log(data);
+                var result = eval("(" + data + ")");
+                result.token = getToken();
+                console.log(result);
+
+                //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
+                //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
+                var template = Handlebars.compile($("#friend-notify-item-template").html());
+                //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
+                $('#friend-chat-container').html(template(result));
+            });
+        }
+
+        //初始化websocket
+        function initWebSocket() {
+            var userId = /*[[${user.userId}]]*/;
+            var url = "ws://" + window.location.host + "/onlineServer/" + userId;
+            //判断当前浏览器是否支持WebSocket
+            if ('WebSocket' in window) {
+                // 不带参数的写法
+                // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer");
+                // 通过路径传递参数的方法（服务端采用第一种方法"@ServerEndpoint"实现）
+                websocket = new WebSocket(url);
+                // 通过类似GET请求方式传递参数的方法（服务端采用第二种方法"WebSocketHandler"实现）
+                // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer?id=23&name=Lebron");
+            } else {
+                alert('当前浏览器 Not support websocket');
+            }
+            //连接发生错误的回调方法
+            websocket.onerror = function () {
+                setSystemMessage("WebSocket连接发生错误");
+            };
+
+            //连接成功建立的回调方法
+            websocket.onopen = function () {
+                setSystemMessage("WebSocket连接成功");
+            };
+
+            //接收到消息的回调方法
+            websocket.onmessage = function (event) {
+                console.log(event.data);
+                //通知用户有其他用户登录了。
+                var data = eval("(" + event.data + ")");
+                var type = data.type;
+                var msgBody = data.msgBody;
+                if (type === 0){
+                    var html = msgBody.nickname + ' <span>' + msgBody.status + '</span>';
+                    $("#"+data.userId).html(html);
+                } else if (type === 2){
+                    var template = Handlebars.compile($("#friend-notify-item-template").html());
+
+                    //先删除再插入
+                    if($("#"+msgBody.fromUid).length > 0){
+                        $("#"+msgBody.fromUid).remove();
+                    }
+
+
+                    $('#friend-chat-container').prepend(template(msgBody));
+                }
+            };
+
+            //连接关闭的回调方法
+            websocket.onclose = function () {
+                setSystemMessage("WebSocket连接关闭");
+            };
+
+            //监听窗口关闭事件，当窗口关闭时，主动去关闭websocket连接，防止连接还没断开就关闭窗口，server端会抛异常。
+            window.onbeforeunload = function () {
+                closeWebSocket();
+            };
+        }
+
+        //登出
+        function logout() {
+            var url = /*[[@{/account/logout}]]*/;
+            var userId = /*[[${user.userId}]]*/;
+            var token = getToken();
+            var header = {
+                "token": token
+            };
+            var data = {
+                "userId": userId
+            };
+            post(url, header, data, function (data) {
+                //成功
+                console.log(data);
+                //删除token
+                removeToken();
+
+                //关闭websocket
+                // closeWebSocket();
+                websocket.close();
+
+                //跳转链接
+                window.location.href = /*[[@{/route/login}]]*/;
+
+            }, function (data) {
+                //失败
+                console.log(data);
+                console.log("失败");
+            });
+        }
+
+
     </script>
 </head>
 <body>
@@ -183,152 +350,6 @@
 <a href="admin-offcanvas" class="am-icon-btn am-icon-th-list am-show-sm-only admin-menu"
    data-am-offcanvas="{target: '#admin-offcanvas'}"><!--<i class="fa fa-bars" aria-hidden="true"></i>--></a>
 
-<script type="text/javascript" th:inline="javascript">
-    var websocket = null;
-
-    window.onload = function () {
-        // 初始化内容
-        init();
-
-        initWebSocket();
-    };
-
-
-    //打印系统消息
-    function setSystemMessage(data) {
-        console.log(data);
-    }
-
-    //关闭WebSocket连接
-    function closeWebSocket() {
-        websocket.close();
-    }
-
-    //初始化用户信息
-    function init() {
-        var url = /*[[@{/user/listFriends}]]*/;
-        var token = getToken();
-        var header = {
-            "token": token
-        };
-
-        get(url, header, function (data) {
-            //解析JSON
-            console.log(data);
-            var result = eval("(" + data + ")");
-            result.token = getToken();
-            console.log(result);
-
-            //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
-            //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
-            var template = Handlebars.compile($("#friend-list-template").html());
-            //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
-            $('#collapse-nav1').html(template(result));
-
-
-            // var html = "";
-            var token = getToken();
-            // for (var i = 0; i < friends.length; i++) {
-            //     var baseUrl = /*[[@{/route/user/chat}]]*/;
-            //     var url = baseUrl + "/" + friends[i].userId + "?token=" + token;
-            //     html += "<li id='" + friends[i]. + "'><a href=" + url + " class='am-cf'>" + friends[i].nickname + "</a></li>"
-            // }
-            // $("#collapse-nav1").html(html);
-        })
-    }
-
-    //初始化websocket
-    function initWebSocket() {
-        var userId = /*[[${user.userId}]]*/;
-        var url = "ws://" + window.location.host + "/onlineServer/" + userId;
-        //判断当前浏览器是否支持WebSocket
-        if ('WebSocket' in window) {
-            // 不带参数的写法
-            // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer");
-            // 通过路径传递参数的方法（服务端采用第一种方法"@ServerEndpoint"实现）
-            websocket = new WebSocket(url);
-            // 通过类似GET请求方式传递参数的方法（服务端采用第二种方法"WebSocketHandler"实现）
-            // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer?id=23&name=Lebron");
-        } else {
-            alert('当前浏览器 Not support websocket');
-        }
-        //连接发生错误的回调方法
-        websocket.onerror = function () {
-            setSystemMessage("WebSocket连接发生错误");
-        };
-
-        //连接成功建立的回调方法
-        websocket.onopen = function () {
-            setSystemMessage("WebSocket连接成功");
-        };
-
-        //接收到消息的回调方法
-        websocket.onmessage = function (event) {
-            console.log(event.data);
-            //通知用户有其他用户登录了。
-            var data = eval("(" + event.data + ")");
-            var type = data.type;
-            var msgBody = data.msgBody;
-            if (type === 0){
-                var html = msgBody.nickname + ' <span>' + msgBody.status + '</span>';
-                $("#"+data.userId).html(html);
-            } else if (type === 2){
-                var template = Handlebars.compile($("#friend-notify-item-template").html());
-
-                //先删除再插入
-                if($("#"+msgBody.fromUid).length > 0){
-                    $("#"+msgBody.fromUid).remove();
-                }
-
-
-                $('#friend-chat-container').prepend(template(msgBody));
-            }
-        };
-
-        //连接关闭的回调方法
-        websocket.onclose = function () {
-            setSystemMessage("WebSocket连接关闭");
-        };
-
-        //监听窗口关闭事件，当窗口关闭时，主动去关闭websocket连接，防止连接还没断开就关闭窗口，server端会抛异常。
-        window.onbeforeunload = function () {
-            closeWebSocket();
-        };
-    }
-
-    //登出
-    function logout() {
-        var url = /*[[@{/account/logout}]]*/;
-        var userId = /*[[${user.userId}]]*/;
-        var token = getToken();
-        var header = {
-            "token": token
-        };
-        var data = {
-            "userId": userId
-        };
-        post(url, header, data, function (data) {
-            //成功
-            console.log(data);
-            //删除token
-            removeToken();
-
-            //关闭websocket
-            // closeWebSocket();
-            websocket.close();
-
-            //跳转链接
-            window.location.href = /*[[@{/route/login}]]*/;
-
-        }, function (data) {
-            //失败
-            console.log(data);
-            console.log("失败");
-        });
-    }
-
-
-</script>
 
 
 </body>

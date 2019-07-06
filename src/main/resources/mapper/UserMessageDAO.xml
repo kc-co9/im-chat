@@ -44,11 +44,11 @@
         SELECT
         msg.id,
         msg.from_uid,
-        f_u.avatar,
-        f_u.nickname,
+        f_u.avatar AS fromUserAvatar,
+        f_u.nickname AS fromUserNickname,
         msg.to_uid,
-        t_u.avatar,
-        t_u.nickname,
+        t_u.avatar AS toUserAvatar,
+        t_u.nickname AS toUserNickname,
         msg.content,
         msg.status,
         msg.create_time

@@ -17,6 +17,8 @@ spring:
     encoding: UTF-8
     #热部署文件，页面不产生缓存，及时更新
     cache: false
+    servlet:
+      content-type: text/html
   resources:
     chain:
       strategy:
