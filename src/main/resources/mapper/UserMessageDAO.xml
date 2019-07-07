@@ -3,7 +3,8 @@
 <mapper namespace="com.kim.omgchat.dao.UserMessageDAO">
 
 
-    <select id="listFriendsMessageForXd" parameterType="com.kim.omgchat.dto.UserMessageQueryDTO" resultType="com.kim.omgchat.domain.UserMessageDO">
+    <select id="listFriendsMessageForXd" parameterType="com.kim.omgchat.dto.UserMessageQueryDTO"
+            resultType="com.kim.omgchat.domain.UserMessageDO">
         SELECT
         msg.id,
         msg.from_uid,
@@ -28,16 +29,30 @@
     </select>
 
 
-    <select id="listChatMsgWithFriend" resultType="com.kim.omgchat.domain.UserMessageDO">
+    <select id="listChatMsgWithFriend" resultType="com.kim.omgchat.dto.UserMessageDTO">
       SELECT
-      msg.*
+      msg.*,
+      f_u.avatar AS fromUserAvatar,
+      f_u.nickname AS fromUserNickname,
+      t_u.avatar AS toUserAvatar,
+      t_u.nickname AS toUserNickname
       FROM
-      user_message AS msg
+      user_message AS msg,
+      user AS f_u,
+      user AS t_u
       WHERE
-      (msg.from_uid = #{userFirId} AND msg.to_uid = #{userSecId})
-      OR
-      (msg.from_uid = #{userSecId} AND msg.to_uid = #{userFirId})
-      ORDER BY msg.create_time ASC
+      msg.from_uid = f_u.id
+      AND
+      msg.to_uid = t_u.id
+      AND
+      msg.is_deleted = 0
+      AND
+      (
+          (msg.from_uid = #{userFirId} AND msg.to_uid = #{userSecId})
+          OR
+          (msg.from_uid = #{userSecId} AND msg.to_uid = #{userFirId})
+      )
+      ORDER BY msg.create_time DESC
     </select>
 
     <select id="listFriendsLatestMessage" resultType="com.kim.omgchat.dto.UserMessageDTO">

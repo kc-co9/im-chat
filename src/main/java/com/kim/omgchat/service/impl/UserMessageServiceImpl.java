@@ -8,8 +8,10 @@ import com.kim.omgchat.domain.UserMessageDO;
 import com.kim.omgchat.dto.UserMessageAddDTO;
 import com.kim.omgchat.dto.UserMessageDTO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
+import com.kim.omgchat.dto.UserMessageReceiveDTO;
 import com.kim.omgchat.enums.MessageStatusEnum;
 import com.kim.omgchat.service.UserMessageService;
+import org.dozer.DozerBeanMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +37,15 @@ public class UserMessageServiceImpl implements UserMessageService {
     }
 
     @Override
+    public boolean saveUserMessage(UserMessageReceiveDTO userMessageReceiveDTO, MessageStatusEnum messageStatusEnum) {
+        DozerBeanMapper dozerBeanMapper = new DozerBeanMapper();
+        UserMessageAddDTO userMessageAddDTO = dozerBeanMapper.map(userMessageReceiveDTO, UserMessageAddDTO.class);
+        userMessageAddDTO.setStatus(messageStatusEnum);
+
+        return saveUserMessage(userMessageAddDTO);
+    }
+
+    @Override
     public Integer countUserMessage(UserMessageQueryDTO userMessageQueryDTO) {
         QueryWrapper<UserMessageDO> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("status", userMessageQueryDTO.getStatus());
@@ -54,9 +65,9 @@ public class UserMessageServiceImpl implements UserMessageService {
     }
 
     @Override
-    public PageInfo<UserMessageDO> pageChatMsgWithFriend(UserMessageQueryDTO userMessageQueryDTO) {
+    public PageInfo<UserMessageDTO> pageChatMsgWithFriend(UserMessageQueryDTO userMessageQueryDTO) {
         PageHelper.startPage(userMessageQueryDTO.getPageIndex(), userMessageQueryDTO.getPageSize());
-        List<UserMessageDO> list = userMessageDAO.listChatMsgWithFriend(userMessageQueryDTO.getFromUserId(), userMessageQueryDTO.getToUserId());
+        List<UserMessageDTO> list = userMessageDAO.listChatMsgWithFriend(userMessageQueryDTO.getFromUserId(), userMessageQueryDTO.getToUserId());
 
         return new PageInfo<>(list);
     }

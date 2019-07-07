@@ -37,7 +37,6 @@ public class WsSessionHolder {
     }
 
 
-
     public static void saveChatSession(Long fromUserId, Long toUserId, Session session) {
         WsChatSession wsChatSession = new WsChatSession();
         wsChatSession.setToChatUserId(toUserId);
@@ -49,10 +48,11 @@ public class WsSessionHolder {
 
 
     public static void removeChatSession(Long userId) {
-        WsChatSession wsChatSession = CHAT_ROUTE_TABLE.get(userId);
-        wsChatSession.setSession(null);
-        wsChatSession.setToChatUserId(null);
-
-        CHAT_ROUTE_TABLE.put(userId, wsChatSession);
+        CHAT_ROUTE_TABLE.remove(userId);
+//        WsChatSession wsChatSession = CHAT_ROUTE_TABLE.get(userId);
+//        wsChatSession.setSession(null);
+//        wsChatSession.setToChatUserId(null);
+//
+//        CHAT_ROUTE_TABLE.put(userId, wsChatSession);
     }
 }

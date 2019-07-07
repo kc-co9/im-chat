@@ -28,22 +28,46 @@
     <script id="friend-list-template" type="text/x-handlebars-template">
         {{#each data}}
         <li>
-            <a id="{{userId}}" th:href="@{/route/user/chat}+'/'+'{{userId}}'+'?token='+'{{../token}}'">{{nickname}}
-                <span>{{status}}</span></a>
+            <a id="friend-{{userId}}" th:href="@{/route/user/chat}+'/'+'{{userId}}'+'?token='+'{{../token}}'">{{nickname}}
+                <span>{{status}}</span>
+            </a>
         </li>
         {{/each}}
     </script>
 
     <script id="friend-item-template" type="text/x-handlebars-template">
         <li>
-            <a id="{{userId}}" th:href="@{/route/user/chat}+'/'+'{{userId}}'+'?token='+'{{../token}}'">{{nickname}}
+            <a id="friend-{{userId}}" th:href="@{/route/user/chat}+'/'+'{{userId}}'+'?token='+'{{../token}}'">{{nickname}}
                 <span>{{status}}</span></a>
         </li>
     </script>
 
-    <script id="friend-notify-item-template" type="text/x-handlebars-template">
+    <script id="friend-notify-list-template" type="text/x-handlebars-template">
         {{#each data}}
-        <div id="{{fromUid}}" class="am-panel am-panel-default">
+        <div onclick="gotoChatRoom({{toUid}})" id="chat-{{toUid}}" class="am-panel am-panel-default">
+            <div class="am-container">
+                <!--左边头像-->
+                <div class="am-u-sm-4 am-margin-vertical">
+                    <img class="am-circle am-center"
+                         src="{{toUserAvatar}}"
+                         width="80" height="80"/>
+                </div>
+                <!--右边-->
+                <div class="am-u-sm-8">
+                    <!--名称-->
+                    <div class="am-text-lg am-margin-top">{{toUserNickname}}</div>
+                    <!--最新一条消息-->
+                    <div class="am-text-bottom am-padding-top am-text-truncate">
+                        {{content}}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{/each}}
+    </script>
+
+    <script id="friend-notify-item-template" type="text/x-handlebars-template">
+        <div onclick="gotoChatRoom({{fromUid}})" id="chat-{{fromUid}}" class="am-panel am-panel-default">
             <div class="am-container">
                 <!--左边头像-->
                 <div class="am-u-sm-4 am-margin-vertical">
@@ -62,7 +86,6 @@
                 </div>
             </div>
         </div>
-        {{/each}}
     </script>
 
 
@@ -132,7 +155,7 @@
 
                 //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
                 //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
-                var template = Handlebars.compile($("#friend-notify-item-template").html());
+                var template = Handlebars.compile($("#friend-notify-list-template").html());
                 //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
                 $('#friend-chat-container').html(template(result));
             });
@@ -168,17 +191,17 @@
                 console.log(event.data);
                 //通知用户有其他用户登录了。
                 var data = eval("(" + event.data + ")");
-                var type = data.type;
+                 var type = data.type;
                 var msgBody = data.msgBody;
                 if (type === 0){
                     var html = msgBody.nickname + ' <span>' + msgBody.status + '</span>';
-                    $("#"+data.userId).html(html);
+                    $("#friend-"+data.userId).html(html);
                 } else if (type === 2){
                     var template = Handlebars.compile($("#friend-notify-item-template").html());
 
                     //先删除再插入
-                    if($("#"+msgBody.fromUid).length > 0){
-                        $("#"+msgBody.fromUid).remove();
+                    if($("#chat-"+msgBody.fromUid).length > 0){
+                        $("#chat-"+msgBody.fromUid).remove();
                     }
 
 
@@ -228,6 +251,16 @@
             });
         }
 
+        function gotoChatRoom(toUid) {
+            var baseUrl = /*[[@{/route/user/chat}]]*/;
+
+            var token = getToken();
+            var url = baseUrl + "/" + toUid + "?token=" + token;
+
+            websocket.close();
+            closeWebSocket();
+            window.location.href = url;
+        }
 
     </script>
 </head>

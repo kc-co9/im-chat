@@ -80,6 +80,7 @@ public class AccountController {
         webOnlineUser.setUserId(userDO.getId());
         webOnlineUser.setEmail(userDO.getEmail());
         webOnlineUser.setNickname(userDO.getNickname());
+        webOnlineUser.setAvatar(userDO.getAvatar());
 
         String onlineKey = generateOnlineUserKey(Long.toString(userDO.getId()));
         redisTemplate.opsForValue().set(onlineKey, webOnlineUser.toString());

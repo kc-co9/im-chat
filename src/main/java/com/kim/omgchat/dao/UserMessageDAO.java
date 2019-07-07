@@ -23,7 +23,7 @@ public interface UserMessageDAO extends BaseMapper<UserMessageDO> {
 
     List<UserMessageDTO> listFriendsLatestMessage(UserMessageQueryDTO userMessageQueryDTO);
 
-    List<UserMessageDO> listChatMsgWithFriend(@Param("userFirId") Long userFirId ,@Param("userSecId") Long userSecId);
+    List<UserMessageDTO> listChatMsgWithFriend(@Param("userFirId") Long userFirId ,@Param("userSecId") Long userSecId);
 
     Integer updateStatus(@Param("userFirId") Long fromUserId,@Param("userSecId") Long toUserId,@Param("status") int status);
 }

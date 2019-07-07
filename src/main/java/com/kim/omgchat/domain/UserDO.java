@@ -26,6 +26,10 @@ public class UserDO {
     @TableField("id")
     private Long id;
 
+    @ApiModelProperty("用户头像")
+    @TableField("avatar")
+    private String avatar;
+
     @ApiModelProperty("用户昵称")
     @TableField("nickname")
     private String nickname;

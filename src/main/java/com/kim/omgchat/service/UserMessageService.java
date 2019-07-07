@@ -5,6 +5,7 @@ import com.kim.omgchat.domain.UserMessageDO;
 import com.kim.omgchat.dto.UserMessageAddDTO;
 import com.kim.omgchat.dto.UserMessageDTO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
+import com.kim.omgchat.dto.UserMessageReceiveDTO;
 import com.kim.omgchat.enums.MessageStatusEnum;
 import java.util.List;
 
@@ -21,6 +22,10 @@ public interface UserMessageService {
      * 保存信息
      */
     boolean saveUserMessage(UserMessageAddDTO userMessageAddDTO);
+    /**
+     * 保存信息
+     */
+    boolean saveUserMessage(UserMessageReceiveDTO userMessageReceiveDTO , MessageStatusEnum messageStatusEnum);
 
     /**
      * 查询信息数量
@@ -37,7 +42,7 @@ public interface UserMessageService {
     /**
      * 查询与某位好有的聊天记录(分页)
      */
-    PageInfo<UserMessageDO> pageChatMsgWithFriend(UserMessageQueryDTO userMessageQueryDTO);
+    PageInfo<UserMessageDTO> pageChatMsgWithFriend(UserMessageQueryDTO userMessageQueryDTO);
 
     boolean updateUserMessageStatus(UserMessageQueryDTO userMessageQueryDTO, MessageStatusEnum read);
 }

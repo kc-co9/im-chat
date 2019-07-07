@@ -1,15 +1,12 @@
 package com.kim.omgchat.controller.ws;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Objects;
 import com.kim.omgchat.config.HttpSessionConfig;
-import com.kim.omgchat.dto.UserMessageAddDTO;
 import com.kim.omgchat.dto.UserMessageQueryDTO;
 import com.kim.omgchat.dto.UserMessageReceiveDTO;
 import com.kim.omgchat.enums.MessageStatusEnum;
 import com.kim.omgchat.enums.MessageTypeEnum;
 import com.kim.omgchat.holder.WebOnlineUser;
-import com.kim.omgchat.holder.WebUser;
 import com.kim.omgchat.holder.WsChatSession;
 import com.kim.omgchat.holder.WsSessionHolder;
 import com.kim.omgchat.message.Message;
@@ -17,9 +14,7 @@ import com.kim.omgchat.message.body.ChatMsg;
 import com.kim.omgchat.message.body.CountMsg;
 import com.kim.omgchat.service.UserMessageService;
 import com.kim.omgchat.service.UserService;
-import com.kim.omgchat.utils.IdGenerateUtil;
 import com.kim.omgchat.utils.JsonUtil;
-import org.dozer.DozerBeanMapper;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -28,9 +23,7 @@ import javax.websocket.*;
 import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
-import java.util.Date;
 
-import static com.kim.omgchat.constant.RedisKeyConstant.generateOnlineUserKey;
 
 /**
  * <p>
@@ -52,12 +45,11 @@ public class WsChatServer {
 
     public static StringRedisTemplate redisTemplate;
 
-    /**
-     * 当前用户userId
-     */
-    private Long userId;
 
-    private WebUser webUser;
+    /**
+     * 当前用户信息
+     */
+    private WebOnlineUser myUserInfo;
     /**
      * 当前用户session
      */
@@ -82,11 +74,11 @@ public class WsChatServer {
     @OnOpen
     public void onOpen(Session session, EndpointConfig config,
                        @PathParam("fromUserId") Long fromUserId,
-                       @PathParam("toUserId") Long toUserId) {
+                       @PathParam("toUserId") Long toUserId) throws IOException {
         WsSessionHolder.saveChatSession(fromUserId, toUserId, session);
 
-        //记录当前用户ID
-        this.userId = fromUserId;
+        //获取用户信息
+        myUserInfo = WebOnlineUser.generateWebOnlineUser(redisTemplate, fromUserId);
 
         this.userSession = session;
 
@@ -99,7 +91,7 @@ public class WsChatServer {
      */
     @OnClose
     public void onClose() {
-        WsSessionHolder.removeChatSession(userId);
+        WsSessionHolder.removeChatSession(myUserInfo.getUserId());
     }
 
 
@@ -111,20 +103,12 @@ public class WsChatServer {
     @OnMessage
     public void onMessage(String messageJson) throws IOException, EncodeException {
         //解析对象
-        ObjectMapper mapper = new ObjectMapper();
-        UserMessageReceiveDTO userMessageReceiveDTO = null;
-        try {
-            userMessageReceiveDTO = mapper.readValue(messageJson, UserMessageReceiveDTO.class);
-        } catch (IOException e) {
-            e.printStackTrace();
+        UserMessageReceiveDTO userMessageReceiveDTO = JsonUtil.json2Obj(messageJson, UserMessageReceiveDTO.class);
+        if (userMessageReceiveDTO == null) {
             return;
         }
 
-        // 保存信息.全部保存为未读
-        DozerBeanMapper dozerBeanMapper = new DozerBeanMapper();
-        UserMessageAddDTO userMessageAddDTO = dozerBeanMapper.map(userMessageReceiveDTO, UserMessageAddDTO.class);
-//        userMessageAddDTO.setStatus(MessageStatusEnum.NOT_READ);
-//        userMessageService.saveUserMessage(userMessageAddDTO);
+        MessageStatusEnum messageStatusEnum = MessageStatusEnum.NOT_READ;
 
         //获取对方userId
         Long toUserId = userMessageReceiveDTO.getToUid();
@@ -133,41 +117,26 @@ public class WsChatServer {
         //获取对方chat session
         WsChatSession wsChatSession = WsSessionHolder.getChatSession(toUserId);
 
-        if (friendSession == null && wsChatSession == null) {
-            /* 对方还没有登录 */
-            //存进数据库
-            userMessageAddDTO.setStatus(MessageStatusEnum.NOT_READ);
-            userMessageService.saveUserMessage(userMessageAddDTO);
-        } else {
-            /* 对方已经登录了 */
-            if (wsChatSession == null) {
-                /* 对方没有在聊天，在主页上 **/
 
-                //存进数据库
-                userMessageAddDTO.setStatus(MessageStatusEnum.NOT_READ);
-                userMessageService.saveUserMessage(userMessageAddDTO);
+        /* 对方已经登录了 */
+        if (wsChatSession == null && friendSession != null) {
+            /* 对方没有在聊天，在主页上 **/
+            sendToIndex(friendSession, userMessageReceiveDTO);
+        } else if (friendSession == null && wsChatSession != null) {
+            /* 对方在和我聊天 */
+            if (Objects.equal(myUserInfo.getUserId(), wsChatSession.getToChatUserId())) {
+                messageStatusEnum = MessageStatusEnum.READ;
 
-
-                sendToIndex(friendSession , userMessageReceiveDTO);
+                sendToChatWithMe(wsChatSession.getSession(), userMessageReceiveDTO);
             } else {
-                /* 对方在和我聊天 */
-                if (Objects.equal(userId, wsChatSession.getToChatUserId())) {
-                    //存进数据库
-                    userMessageAddDTO.setStatus(MessageStatusEnum.READ);
-                    userMessageService.saveUserMessage(userMessageAddDTO);
-
-                    sendToChatWithMe(wsChatSession.getSession(), userMessageReceiveDTO);
-                } else {
-                    /* 对方在和别人聊天 */
-                    //存进数据库
-                    userMessageAddDTO.setStatus(MessageStatusEnum.NOT_READ);
-                    userMessageService.saveUserMessage(userMessageAddDTO);
-
-                    sendToChatWithOther(wsChatSession.getSession(), userMessageReceiveDTO);
-                }
+                /* 对方在和别人聊天 */
+                sendToChatWithOther(wsChatSession.getSession(), userMessageReceiveDTO);
             }
-        }
+        } else {/* 对方还没有登录或者出错 */}
 
+
+        //存进数据库
+        userMessageService.saveUserMessage(userMessageReceiveDTO, messageStatusEnum);
 
         /** 发送给自己 **/
         sendToMyself(userSession, userMessageReceiveDTO);
@@ -185,27 +154,29 @@ public class WsChatServer {
     }
 
 
+    /**
+     * 发送给对方,对方在index页上
+     *
+     * @param session               发送的session
+     * @param userMessageReceiveDTO 接受的短信
+     */
     private void sendToIndex(Session session, UserMessageReceiveDTO userMessageReceiveDTO) throws IOException, EncodeException {
         UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
         userMessageQueryDTO.setFromUserId(userMessageReceiveDTO.getFromUid());
         userMessageQueryDTO.setToUserId(userMessageReceiveDTO.getToUid());
         userMessageQueryDTO.setStatus(MessageStatusEnum.NOT_READ);
+        //查找用户未读数量
         Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
 
         //构建最新信息
 
         //存储登录信息
-        String onlineKey = generateOnlineUserKey(Long.toString(userMessageReceiveDTO.getFromUid()));
-        String json = redisTemplate.opsForValue().get(onlineKey);
-        WebOnlineUser webOnlineUser = JsonUtil.json2Obj(json, WebOnlineUser.class);
-        if (webOnlineUser == null) {
-            webOnlineUser = new WebOnlineUser();
-            webOnlineUser.setNickname("XXX");
-        }
+        WebOnlineUser friendUserInfo = WebOnlineUser.generateWebOnlineUser(redisTemplate, userMessageReceiveDTO.getFromUid());
 
         ChatMsg chatMsg = new ChatMsg();
-        chatMsg.setFromUid(userId);
-        chatMsg.setFromUserNickname(webOnlineUser.getNickname());
+        chatMsg.setFromUid(myUserInfo.getUserId());
+        chatMsg.setFromUserNickname(friendUserInfo.getNickname());
+        chatMsg.setFromUserAvatar(friendUserInfo.getAvatar());
 
         chatMsg.setToUid(userMessageReceiveDTO.getToUid());
         chatMsg.setContent(userMessageReceiveDTO.getContent());
@@ -219,6 +190,12 @@ public class WsChatServer {
         session.getBasicRemote().sendObject(message);
     }
 
+    /**
+     * 发送给对方,对方正在和我聊天
+     *
+     * @param session               发送的session
+     * @param userMessageReceiveDTO 接受的短信
+     */
     private void sendToChatWithMe(Session session, UserMessageReceiveDTO userMessageReceiveDTO) throws IOException, EncodeException {
         //数量消息
         UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
@@ -226,10 +203,19 @@ public class WsChatServer {
         userMessageQueryDTO.setStatus(MessageStatusEnum.NOT_READ);
         Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
 
+        WebOnlineUser friendUserInfo = WebOnlineUser.generateWebOnlineUser(redisTemplate, userMessageReceiveDTO.getFromUid());
+
+
         //最新信息
         ChatMsg chatMsg = new ChatMsg();
         chatMsg.setFromUid(userMessageReceiveDTO.getFromUid());
+        chatMsg.setFromUserNickname(friendUserInfo.getNickname());
+        chatMsg.setFromUserAvatar(friendUserInfo.getAvatar());
+
         chatMsg.setToUid(userMessageReceiveDTO.getToUid());
+        chatMsg.setToUserNickname(myUserInfo.getNickname());
+        chatMsg.setToUserAvatar(myUserInfo.getAvatar());
+
         chatMsg.setContent(userMessageReceiveDTO.getContent());
         chatMsg.setStatus(MessageStatusEnum.READ);
         chatMsg.setNotReadCount(count);
@@ -241,6 +227,12 @@ public class WsChatServer {
         session.getBasicRemote().sendObject(message);
     }
 
+    /**
+     * 发送给对方,对方和别人在聊天
+     *
+     * @param session               发送的session
+     * @param userMessageReceiveDTO 接受的短信
+     */
     private void sendToChatWithOther(Session session, UserMessageReceiveDTO userMessageReceiveDTO) throws IOException, EncodeException {
         //数量消息
         UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
@@ -258,14 +250,23 @@ public class WsChatServer {
         session.getBasicRemote().sendObject(message);
     }
 
+    /**
+     * 发送给我自己
+     *
+     * @param session               发送的session
+     * @param userMessageReceiveDTO 接受的短信
+     */
     private void sendToMyself(Session session, UserMessageReceiveDTO userMessageReceiveDTO) throws IOException, EncodeException {
         UserMessageQueryDTO userMessageQueryDTO = new UserMessageQueryDTO();
         userMessageQueryDTO.setToUserId(userMessageReceiveDTO.getToUid());
         userMessageQueryDTO.setStatus(MessageStatusEnum.NOT_READ);
         Integer count = userMessageService.countUserMessage(userMessageQueryDTO);
 
+        // 查找用户信息
         ChatMsg chatMsg = new ChatMsg();
         chatMsg.setFromUid(userMessageReceiveDTO.getFromUid());
+        chatMsg.setFromUserNickname(myUserInfo.getNickname());
+        chatMsg.setFromUserAvatar(myUserInfo.getAvatar());
         chatMsg.setToUid(userMessageReceiveDTO.getToUid());
         chatMsg.setContent(userMessageReceiveDTO.getContent());
         chatMsg.setStatus(MessageStatusEnum.READ);

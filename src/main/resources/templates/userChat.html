@@ -23,11 +23,27 @@
 
     <script type="text/javascript" th:src="@{/js/common.js}"></script>
 
+    <script id="friend-list-template" type="text/x-handlebars-template">
+        {{#each data}}
+        <li>
+            <a id="friend-{{userId}}" th:href="@{/route/user/chat}+'/'+'{{userId}}'+'?token='+'{{../token}}'">{{nickname}}
+                <span>{{status}}</span></a>
+        </li>
+        {{/each}}
+    </script>
+
+    <script id="friend-item-template" type="text/x-handlebars-template">
+        <li>
+            <a id="friend-{{userId}}" th:href="@{/route/user/chat}+'/'+'{{userId}}'+'?token='+'{{../token}}'">{{nickname}}
+                <span>{{status}}</span></a>
+        </li>
+    </script>
+
     <script id="friend-message-template" type="text/x-handlebars-template">
         <li class="am-comment">
             <p>{{data}}</p>
             <a href="#link-to-user-home">
-                <img src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt=""
+                <img src="{{toUserAvatar}}" alt=""
                      class="am-comment-avatar" width="60px" height="60px"/>
             </a>
             <div class="am-comment-main">
@@ -40,7 +56,7 @@
     <script id="user-message-template" type="text/x-handlebars-template">
         <li class="am-comment am-comment-flip">
             <a href="#link-to-user-home">
-                <img src="http://s.amazeui.org/media/i/demos/bw-2014-06-19.jpg?imageView/1/w/96/h/96" alt=""
+                <img src="{{fromUserAvatar}}" alt=""
                      class="am-comment-avatar" width="60px" height="60px"/>
             </a>
             <div class="am-comment-main">
@@ -49,7 +65,186 @@
         </li>
     </script>
 
+    <script th:inline="javascript">
+        var websocket = null;
+        var friendId = null;
+        var userId = null;
+        window.onload = function () {
+            // 初始化内容
+            initWebSocket();
 
+            init();
+
+
+        };
+
+        function init() {
+            getFriendList();
+
+
+            listMessage();
+        }
+
+
+
+        function initWebSocket() {
+            userId = /*[[${user.userId}]]*/;
+            friendId = /*[[${friend.userId}]]*/
+            var url = "ws://" + window.location.host + "/chatServer/" + userId + "/" + friendId;
+            // var url = "ws://127.0.0.1:8080/chatServer/" + userId;
+            //判断当前浏览器是否支持WebSocket
+            if ('WebSocket' in window) {
+                // 不带参数的写法
+                // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer");
+                // 通过路径传递参数的方法（服务端采用第一种方法"@ServerEndpoint"实现）
+                websocket = new WebSocket(url);
+                // 通过类似GET请求方式传递参数的方法（服务端采用第二种方法"WebSocketHandler"实现）
+                // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer?id=23&name=Lebron");
+            } else {
+                alert('当前浏览器 Not support websocket')
+            }
+            //连接发生错误的回调方法
+            websocket.onerror = function () {
+                setSystemMessage("WebSocket连接发生错误");
+            };
+
+            //连接成功建立的回调方法
+            websocket.onopen = function () {
+                setSystemMessage("WebSocket连接成功");
+            };
+
+            //接收到消息的回调方法
+            websocket.onmessage = function (event) {
+                setMessageInnerHTML(event.data);
+            };
+
+            //连接关闭的回调方法
+            websocket.onclose = function () {
+                setSystemMessage("WebSocket连接关闭");
+            };
+
+            //监听窗口关闭事件，当窗口关闭时，主动去关闭websocket连接，防止连接还没断开就关闭窗口，server端会抛异常。
+            window.onbeforeunload = function () {
+                closeWebSocket();
+            };
+        }
+
+
+        //将消息显示在网页上
+        function setMessageInnerHTML(data) {
+            console.log(data);
+            data = eval("(" + data + ")");
+            var type = data.type;
+            var msgBody = data.msgBody;
+            if (2 === type) {
+                var fromUid = msgBody.fromUid;
+                var template;
+                //自己发送的
+                if (fromUid === userId) {
+                    template = Handlebars.compile($("#user-message-template").html());
+                } else {
+                    //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
+                    //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
+                    template = Handlebars.compile($("#friend-message-template").html());
+                    //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
+                }
+                $('#messageList').append(template(msgBody));
+
+                moveToBottom();
+            } else if (type === 3) {
+                console.log(msgBody);
+            } else if(type === 0){
+                // var html = msgBody.nickname + ' <span>' + msgBody.status + '</span>';
+                // $("#friend-"+msgBody.userId).html(html);
+            }
+        }
+
+        function setSystemMessage(data) {
+            console.log(data);
+        }
+
+        //关闭WebSocket连接
+        function closeWebSocket() {
+            websocket.close();
+        }
+
+        //发送消息
+        function send() {
+            var toUid = /*[[${friend.userId}]]*/;
+            var content = $("#doc-ta-1").val();
+
+            var data = {
+                "fromUid": userId,
+                "toUid": toUid,
+                "content": content,
+                "status": 0
+            };
+            var jsonStr = JSON.stringify(data);
+            websocket.send(jsonStr);
+
+            //清空输入框
+            $("#doc-ta-1").val('');
+        }
+
+        function listMessage() {
+            var url = /*[[@{/user/message/listChatMsgWithFriend}]]*/;
+            url = url + '/' + friendId;
+            url = url + "?pageIndex=" + 0 + "&pageSize=" + 50;
+            var token = getToken();
+            var header = {
+                "token": token
+            };
+            get(url, header, function (data) {
+                //解析数据
+                data = eval("(" + data + ")");
+                data = data.data.list;
+
+                for (var i = 0; i < data.length; i++) {
+                    var fromUid = data[i].fromUid;
+                    var template;
+                    //自己发送的
+                    if (fromUid === userId) {
+                        template = Handlebars.compile($("#user-message-template").html());
+                    } else {
+                        //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
+                        //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
+                        template = Handlebars.compile($("#friend-message-template").html());
+                        //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
+                    }
+
+                    $('#messageList').append(template(data[i]));
+
+                    moveToBottom();
+                }
+            });
+        }
+
+        function getFriendList() {
+            var url = /*[[@{/user/listFriends}]]*/;
+            var token = getToken();
+            var header = {
+                "token": token
+            };
+
+            get(url, header, function (data) {
+                //解析JSON
+                console.log(data);
+                var result = eval("(" + data + ")");
+                result.token = getToken();
+                console.log(result);
+
+                //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
+                //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
+                var template = Handlebars.compile($("#friend-list-template").html());
+                //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
+                $('#collapse-nav1').html(template(result));
+            });
+        }
+
+        function moveToBottom() {
+            $("#messageListDiv")[0].scrollTop = $("#messageListDiv")[0].scrollHeight;
+        }
+    </script>
 </head>
 <body>
 <!-- Begin page -->
@@ -67,10 +262,12 @@
                 </h4>
                 <script th:inline="javascript">
                     function back2Index() {
+                        var url = /*[[@{/route/index}]]*/;
+                        var token = getToken();
                         //结束会话
 
                         //跳转地址
-                        window.location.href = /*[[@{/route/index}]]*/;
+                        window.location.href = url + "?token=" + token;
                     }
                 </script>
             </li>
@@ -100,66 +297,8 @@
         <div class="slimScrollDiv" style="position: relative; overflow: hidden; width: auto; height: 548px;">
             <div class="sidebar-inner slimscrollleft" style="overflow: hidden; width: auto; height: 548px;">-->
     <!-- sidebar start -->
-    <div class="admin-sidebar am-offcanvas  am-padding-0" id="admin-offcanvas">
-        <div class="am-offcanvas-bar admin-offcanvas-bar">
-            <!-- User -->
-            <div class="user-box am-hide-sm-only">
-                <div class="user-img">
-                    <img src="../static/img/avatar-1.jpg" alt="user-img" title="Mat Helme"
-                         class="img-circle img-thumbnail img-responsive">
-                    <div class="user-status offline"><i class="am-icon-dot-circle-o" aria-hidden="true"></i></div>
-                </div>
-                <h5><a href="#">Mat Helme</a></h5>
-                <ul class="list-inline">
-                    <li>
-                        <a href="#">
-                            <i class="fa fa-cog" aria-hidden="true"></i>
-                        </a>
-                    </li>
-
-                    <li>
-                        <a href="#" class="text-custom">
-                            <i class="fa fa-cog" aria-hidden="true"></i>
-                        </a>
-                    </li>
-                </ul>
-            </div>
-            <!-- End User -->
-
-            <ul class="am-list admin-sidebar-list">
-                <li><a href="#"><span class="am-icon-home"></span> 个人信息</a></li>
-                <!--好友-->
-                <li class="admin-parent">
-                    <a class="am-cf" data-am-collapse="{target: '#collapse-nav1'}"><span class="am-icon-table"></span>
-                        好友 <span class="am-icon-angle-right am-fr am-margin-right"></span></a>
-                    <ul class="am-list am-collapse admin-sidebar-sub am-in" id="collapse-nav1">
-                        <li><a href="#" class="am-cf">好友1</a></li>
-                        <li><a href="#">好友1</a></li>
-                        <li><a href="#">好友1</a></li>
-                        <li><a href="#">好友1</a></li>
-                        <li><a href="#">好友1</a></li>
-                        <li><a href="#">好友1</a></li>
-                    </ul>
-                </li>
-                <!--群-->
-                <li class="admin-parent">
-                    <a class="am-cf" data-am-collapse="{target: '#collapse-nav2'}"><i class="am-icon-line-chart"
-                                                                                      aria-hidden="true"></i> 群 <span
-                            class="am-icon-angle-right am-fr am-margin-right"></span></a>
-                    <ul class="am-list am-collapse admin-sidebar-sub am-in" id="collapse-nav2">
-                        <li><a href="#" class="am-cf"> 群1</span></a></li>
-                        <li><a href="#" class="am-cf"> 群1</span></a></li>
-                        <li><a href="#" class="am-cf"> 群1</span></a></li>
-                        <li><a href="#" class="am-cf"> 群1</span></a></li>
-                        <li><a href="#" class="am-cf"> 群1</span></a></li>
-                    </ul>
-                </li>
-
-                <li><a href="#"><span class="am-icon-home"></span> 系统设置</a></li>
-
-            </ul>
-        </div>
-    </div>
+    <!--顶部菜单-->
+    <div th:replace="common :: sidebar"></div>
     <!-- sidebar end -->
 
     <!--</div>
@@ -175,7 +314,7 @@
         <!-- Start content -->
         <div class="content" style="height: 100%">
             <!--显示消息框-->
-            <div class="am-cf  am-padding-sm am-scrollable-vertical" style="height: 90%">
+            <div id="messageListDiv" class="am-cf am-padding-sm am-scrollable-vertical" style="height: 90%">
                 <ul id="messageList" class="am-comments-list">
 
 
@@ -205,143 +344,5 @@
 
 
 </body>
-<script th:inline="javascript">
-    var websocket = null;
-    var friendId = null;
-    var userId = null;
-    window.onload = function () {
-        // 初始化内容
-        initWebSocket();
 
-        init();
-
-    };
-
-    function init() {
-        listMessage();
-    }
-
-    function initWebSocket() {
-        userId = /*[[${user.userId}]]*/;
-        friendId = /*[[${friend.userId}]]*/
-        var url = "ws://" + window.location.host + "/chatServer/" + userId + "/" + friendId;
-        // var url = "ws://127.0.0.1:8080/chatServer/" + userId;
-        //判断当前浏览器是否支持WebSocket
-        if ('WebSocket' in window) {
-            // 不带参数的写法
-            // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer");
-            // 通过路径传递参数的方法（服务端采用第一种方法"@ServerEndpoint"实现）
-            websocket = new WebSocket(url);
-            // 通过类似GET请求方式传递参数的方法（服务端采用第二种方法"WebSocketHandler"实现）
-            // websocket = new WebSocket("ws://127.0.0.1:8080/chatServer?id=23&name=Lebron");
-        } else {
-            alert('当前浏览器 Not support websocket')
-        }
-        //连接发生错误的回调方法
-        websocket.onerror = function () {
-            setSystemMessage("WebSocket连接发生错误");
-        };
-
-        //连接成功建立的回调方法
-        websocket.onopen = function () {
-            setSystemMessage("WebSocket连接成功");
-        };
-
-        //接收到消息的回调方法
-        websocket.onmessage = function (event) {
-            setMessageInnerHTML(event.data);
-        };
-
-        //连接关闭的回调方法
-        websocket.onclose = function () {
-            setSystemMessage("WebSocket连接关闭");
-        };
-
-        //监听窗口关闭事件，当窗口关闭时，主动去关闭websocket连接，防止连接还没断开就关闭窗口，server端会抛异常。
-        window.onbeforeunload = function () {
-            closeWebSocket();
-        };
-    }
-
-
-    //将消息显示在网页上
-    function setMessageInnerHTML(data) {
-        console.log(data);
-        data = eval("(" + data + ")");
-        var type = data.type;
-        var msgBody = data.msgBody;
-        if (2 === type) {
-            var fromUid = msgBody.fromUid;
-            var template;
-            //自己发送的
-            if (fromUid === userId) {
-                template = Handlebars.compile($("#user-message-template").html());
-            } else {
-                //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
-                //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
-                template = Handlebars.compile($("#friend-message-template").html());
-                //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
-            }
-            $('#messageList').append(template(msgBody));
-        } else if (type === 3) {
-            console.log(msgBody);
-        }
-    }
-
-    function setSystemMessage(data) {
-        console.log(data);
-    }
-
-    //关闭WebSocket连接
-    function closeWebSocket() {
-        websocket.close();
-    }
-
-    //发送消息
-    function send() {
-        var toUid = /*[[${friend.userId}]]*/;
-        var content = $("#doc-ta-1").val();
-
-        var data = {
-            "toUid": toUid,
-            "content": content
-        };
-        var jsonStr = JSON.stringify(data);
-        websocket.send(jsonStr);
-
-        //清空输入框
-        $("#doc-ta-1").val('');
-    }
-
-    function listMessage() {
-        var url = /*[[@{/user/message/listChatMsgWithFriend}]]*/;
-        url = url + '/' + friendId;
-        url = url + "?pageIndex=" + 0 + "&pageSize=" + 50;
-        var token = getToken();
-        var header = {
-            "token": token
-        };
-        get(url, header, function (data) {
-            //解析数据
-            data = eval("(" + data + ")");
-            data = data.data.list;
-
-            for (var i = 0; i < data.length; i++) {
-                var fromUid = data[i].fromUid;
-                var template;
-                //自己发送的
-                if (fromUid === userId) {
-                    template = Handlebars.compile($("#user-message-template").html());
-                } else {
-                    //注册一个Handlebars模版，通过id找到某一个模版，获取模版的html框架
-                    //$("#table-template").html()是jquery的语法，不懂的童鞋请恶补。。。
-                    template = Handlebars.compile($("#friend-message-template").html());
-                    //将json对象用刚刚注册的Handlebars模版封装，得到最终的html，插入到基础table中。
-                }
-                $('#messageList').append(template(data[i]));
-            }
-        });
-    }
-
-</script>
 </html>

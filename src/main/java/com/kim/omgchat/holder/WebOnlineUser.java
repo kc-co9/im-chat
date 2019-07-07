@@ -3,6 +3,11 @@ package com.kim.omgchat.holder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
+import org.springframework.data.redis.core.StringRedisTemplate;
+
+import java.io.IOException;
+
+import static com.kim.omgchat.constant.RedisKeyConstant.generateOnlineUserKey;
 
 /**
  * <p>
@@ -20,6 +25,8 @@ public class WebOnlineUser {
 
     private String nickname;
 
+    private String avatar;
+
 
     @Override
     public String toString() {
@@ -30,5 +37,15 @@ public class WebOnlineUser {
             e.printStackTrace();
             return "";
         }
+    }
+
+    public static WebOnlineUser generateWebOnlineUser(StringRedisTemplate redisTemplate, Long uid) throws IOException {
+        String onlineKey = generateOnlineUserKey(Long.toString(uid));
+        String userOnlineJson = redisTemplate.opsForValue().get(onlineKey);
+
+        ObjectMapper mapper = new ObjectMapper();
+        WebOnlineUser webOnlineUser = mapper.readValue(userOnlineJson, WebOnlineUser.class);
+
+        return webOnlineUser;
     }
 }

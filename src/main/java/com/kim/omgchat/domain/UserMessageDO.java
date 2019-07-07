@@ -2,6 +2,7 @@ package com.kim.omgchat.domain;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kim.omgchat.enums.MessageStatusEnum;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -50,6 +51,7 @@ public class UserMessageDO {
         this.status = status;
     }
 
+    @JsonIgnore
     public void setStatus(MessageStatusEnum messageStatusEnum) {
         this.status = messageStatusEnum.getValue();
     }

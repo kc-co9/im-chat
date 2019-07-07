@@ -4,6 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import org.dozer.DozerBeanMapper;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+
+import java.io.IOException;
+
+import static com.kim.omgchat.constant.RedisKeyConstant.generateOnlineUserKey;
 
 /**
  * <p>
@@ -21,6 +27,7 @@ public class WebUser {
 
     private String nickname;
 
+    private String avatar;
 
     @Override
     public String toString() {
@@ -32,4 +39,6 @@ public class WebUser {
             return "";
         }
     }
+
+
 }

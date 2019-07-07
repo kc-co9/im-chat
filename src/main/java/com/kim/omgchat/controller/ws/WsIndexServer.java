@@ -47,10 +47,7 @@ public class WsIndexServer {
     /**
      * 当前用户ID
      */
-    private WebUser webUser;
-
-    private Long userId;
-    private String nickname;
+    private WebOnlineUser myUserInfo;
 
 
     //此处是解决无法注入的关键
@@ -79,10 +76,11 @@ public class WsIndexServer {
         ObjectMapper mapper = new ObjectMapper();
         WebOnlineUser webOnlineUser = mapper.readValue(userOnlineJson, WebOnlineUser.class);
 
-        webUser = new WebUser();
-        webUser.setUserId(webOnlineUser.getUserId());
-        webUser.setEmail(webOnlineUser.getEmail());
-        webUser.setNickname(webOnlineUser.getNickname());
+        myUserInfo = new WebOnlineUser();
+        myUserInfo.setUserId(webOnlineUser.getUserId());
+        myUserInfo.setEmail(webOnlineUser.getEmail());
+        myUserInfo.setNickname(webOnlineUser.getNickname());
+        myUserInfo.setAvatar(webOnlineUser.getAvatar());
 
         //提醒用户上线
         List<WebOnlineUser> list = listUserOnlineFriends(userId);
@@ -94,10 +92,10 @@ public class WsIndexServer {
      */
     @OnClose
     public void onClose() {
-        WsSessionHolder.removeIndexSession(webUser.getUserId());
+        WsSessionHolder.removeIndexSession(myUserInfo.getUserId());
 
         //查找用户在线的好友
-        List<WebOnlineUser> onlineUserList = listUserOnlineFriends(webUser.getUserId());
+        List<WebOnlineUser> onlineUserList = listUserOnlineFriends(myUserInfo.getUserId());
 
         //通知用户下线
         notifyOffline(onlineUserList);
@@ -120,12 +118,15 @@ public class WsIndexServer {
         for (WebOnlineUser webOnlineUser : onlineUserList) {
             Session session = WsSessionHolder.getIndexSession(webOnlineUser.getUserId());
             if (session == null) {
-                continue;
+                session = WsSessionHolder.getChatSession(webOnlineUser.getUserId()).getSession();
+                if (session == null) {
+                    continue;
+                }
             }
             try {
                 LoginMsg msg = new LoginMsg();
-                msg.setUserId(webUser.getUserId());
-                msg.setNickname(webUser.getNickname());
+                msg.setUserId(myUserInfo.getUserId());
+                msg.setNickname(myUserInfo.getNickname());
                 msg.setStatus(UserStatusEnum.ONLINE);
 
                 Message<LoginMsg> msgMessage = new Message<>();
@@ -150,8 +151,8 @@ public class WsIndexServer {
             Session session = WsSessionHolder.getIndexSession(webOnlineUser.getUserId());
             try {
                 LoginMsg msg = new LoginMsg();
-                msg.setUserId(webUser.getUserId());
-                msg.setNickname(webUser.getNickname());
+                msg.setUserId(myUserInfo.getUserId());
+                msg.setNickname(myUserInfo.getNickname());
                 msg.setStatus(UserStatusEnum.OFFLINE);
 
                 Message<LoginMsg> msgMessage = new Message<>();
