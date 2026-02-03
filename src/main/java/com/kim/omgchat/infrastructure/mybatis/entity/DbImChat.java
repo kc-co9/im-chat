@@ -1,5 +1,6 @@
 package com.kim.omgchat.infrastructure.mybatis.entity;
 
+import com.kim.omgchat.infrastructure.mybatis.enums.DbImChatType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -17,6 +18,6 @@ public class DbImChat extends BaseEntity {
     //聊天名称
     private String name;
     //聊天类型 0-未知, 1-单聊,2-群聊
-    private Integer type;
+    private DbImChatType type;
 }
 

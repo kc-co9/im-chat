@@ -6,6 +6,10 @@ import com.kim.omgchat.domain.chat.ImChat;
 import com.kim.omgchat.domain.chat.ImChatId;
 import com.kim.omgchat.domain.chat.ImChatRepository;
 import com.kim.omgchat.domain.chat.ImChatService;
+import com.kim.omgchat.domain.message.ImMessageReadEvent;
+import com.kim.omgchat.domain.message.ImMessageRevokedEvent;
+import com.kim.omgchat.domain.message.ImMessageSentEvent;
+import com.kim.omgchat.domain.message.ImMessageService;
 import com.kim.omgchat.domain.message.ImMessageStatus;
 import com.kim.omgchat.domain.message.ImPrivateMessage;
 import com.kim.omgchat.domain.message.ImMessageContent;
@@ -17,10 +21,11 @@ import com.kim.omgchat.domain.user.UserService;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageSendCmd;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
-import com.kim.omgchat.model.cqrs.dto.im.ImPrivateMessageNotifyDTO;
-import com.kim.omgchat.model.cqrs.dto.im.ImPrivateMessageReadNotifyDTO;
-import com.kim.omgchat.model.cqrs.dto.im.ImPrivateMessageRevokeNotifyDTO;
+import com.kim.omgchat.model.cqrs.command.notify.ImPrivateRevokedNotifyCmd;
+import com.kim.omgchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
+import com.kim.omgchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
 import com.kim.omgchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
+import com.kim.omgchat.support.event.DomainEventPublisher;
 import com.kim.omgchat.support.ImMessageNotifier;
 import com.kim.omgchat.transformer.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
@@ -32,12 +37,14 @@ public class PrivateAppService {
 
     private final SnowflakeId snowflakeId;
     private final ImChatRepository imChatRepository;
-    private final ImPrivateMessageRepository imMessageRepository;
+    private final ImPrivateMessageRepository imPrivateMessageRepository;
 
     private final UserService userService;
     private final ImChatService imChatService;
+    private final ImMessageService imMessageService;
 
     private final ImMessageNotifier imMessageNotifier;
+    private final DomainEventPublisher imMessageEventPublisher;
 
     public void sendMessage(ImPrivateMessageSendCmd command) {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
@@ -49,7 +56,7 @@ public class PrivateAppService {
 
         ImChat imChat = imChatRepository.find(chatId);
         if (imChat == null) {
-            throw new NotFoundException("chat is not exist");
+            throw new NotFoundException("聊天不存在");
         }
 
         ImPrivateMessage imMessage = new ImPrivateMessage();
@@ -62,13 +69,20 @@ public class PrivateAppService {
         imMessage.setStatus(ImMessageStatus.SENT);
         imMessage.setSendTime(LocalDateTime.now());
         imMessage.validate();
-        imMessageRepository.save(imMessage);
+        imPrivateMessageRepository.save(imMessage);
+
+        ImMessageSentEvent imMessageSentEvent = imMessageService.newImMessageSentEvent(imMessage);
+        imMessageEventPublisher.publish(imMessageSentEvent);
+    }
+
+    public void onMessageSent(ImMessageSentEvent event) {
+        ImChatId chatId = new ImChatId(event.getChatId());
+        UserId receiverId = new UserId(event.getReceiverId());
 
         boolean isChatting = userService.isChatting(chatId, receiverId);
         if (isChatting) {
-            ImPrivateMessageNotifyDTO notifyDTO =
-                    ImMessageAppTransformer.INSTANCE.imPrivateMessageNotifyDtoFrom(imMessage);
-            imMessageNotifier.notify(notifyDTO);
+            ImPrivateSentNotifyCmd notifyCmd = ImMessageAppTransformer.INSTANCE.imPrivateSentNotifyCmdFrom(event);
+            imMessageNotifier.notify(notifyCmd);
         } else {
             imChatService.increaseUnreadCount(chatId, receiverId);
         }
@@ -79,17 +93,21 @@ public class PrivateAppService {
         ImChatId chatId = new ImChatId(command.getChatId());
         ImMessageId messageId = new ImMessageId(command.getMessageId());
 
-        ImPrivateMessage imMessage = imMessageRepository.find(chatId, messageId);
+        ImPrivateMessage imMessage = imPrivateMessageRepository.find(chatId, messageId);
         if (imMessage == null) {
             throw new NotFoundException("消息不存在");
         }
 
         imMessage.revoke(userId);
-        imMessageRepository.save(imMessage);
+        imPrivateMessageRepository.save(imMessage);
 
-        ImPrivateMessageRevokeNotifyDTO notifyDTO =
-                ImMessageAppTransformer.INSTANCE.imPrivateMessageRevokeNotifyDtoFrom(imMessage);
-        imMessageNotifier.notify(notifyDTO);
+        ImMessageRevokedEvent imMessageRevokedEvent = imMessageService.newImMessageRevokedEvent(imMessage);
+        imMessageEventPublisher.publish(imMessageRevokedEvent);
+    }
+
+    public void onMessageRevoked(ImMessageRevokedEvent event) {
+        ImPrivateRevokedNotifyCmd notifyCmd = ImMessageAppTransformer.INSTANCE.imPrivateRevokedNotifyCmdFrom(event);
+        imMessageNotifier.notify(notifyCmd);
     }
 
     public void readMessage(ImPrivateMessageReadCmd command) {
@@ -97,20 +115,28 @@ public class PrivateAppService {
         ImChatId chatId = new ImChatId(command.getChatId());
         ImMessageId messageId = new ImMessageId(command.getMessageId());
 
-        ImPrivateMessage imMessage = imMessageRepository.find(chatId, messageId);
+        ImPrivateMessage imMessage = imPrivateMessageRepository.find(chatId, messageId);
         if (imMessage == null) {
             throw new NotFoundException("消息不存在");
         }
 
         imMessage.read(userId);
-        imMessageRepository.save(imMessage);
+        imPrivateMessageRepository.save(imMessage);
+
+        ImMessageReadEvent imMessageReadEvent = imMessageService.newImMessageReadEvent(imMessage);
+        imMessageEventPublisher.publish(imMessageReadEvent);
 
         // 更新用户未读数量
         imChatService.decreaseUnreadCount(chatId, userId, messageId);
 
-        ImPrivateMessageReadNotifyDTO notifyDTO =
+        ImPrivateReadNotifyCmd notifyDTO =
                 ImMessageAppTransformer.INSTANCE.imPrivateMessageReadNotifyDtoFrom(imMessage);
         imMessageNotifier.notify(notifyDTO);
+    }
+
+    public void onMessageRead(ImMessageReadEvent event) {
+        ImPrivateReadNotifyCmd notifyCmd = ImMessageAppTransformer.INSTANCE.imPrivateMessageReadNotifyCmdFrom(event);
+        imMessageNotifier.notify(notifyCmd);
     }
 
     public void queryHistoryMessage(ImPrivateMessageHistoryQuery query) {

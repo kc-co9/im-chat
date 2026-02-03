@@ -1,7 +1,7 @@
 package com.kim.omgchat.domain.user;
 
 import com.kim.omgchat.domain.shared.Identification;
-import com.kim.omgchat.support.PasswordService;
+import com.kim.omgchat.support.user.PasswordService;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 

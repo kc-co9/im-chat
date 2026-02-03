@@ -3,6 +3,7 @@ package com.kim.omgchat.infrastructure.advice;
 
 import com.kim.omgchat.common.constant.ErrorCode;
 import com.kim.omgchat.common.exception.BaseException;
+import com.kim.omgchat.model.enums.PushQueue;
 import com.kim.omgchat.model.io.Result;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -53,7 +54,7 @@ public class ErrorAdvice {
     }
 
     @MessageExceptionHandler(BaseException.class)
-    @SendToUser("/queue/result")
+    @SendToUser(PushQueue.QUEUE_RESULT)
     public Result<?> messageExceptionHandler(BaseException ex) {
         log.error("BaseException", ex);
         return Result.error(ex);

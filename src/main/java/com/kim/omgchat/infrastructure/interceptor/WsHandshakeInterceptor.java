@@ -3,7 +3,7 @@ package com.kim.omgchat.infrastructure.interceptor;
 import com.kim.omgchat.application.UserAppService;
 import com.kim.omgchat.model.cqrs.dto.user.TokenDTO;
 import com.kim.omgchat.model.cqrs.query.user.UserAuthQuery;
-import com.kim.omgchat.support.TokenService;
+import com.kim.omgchat.support.user.TokenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -22,14 +22,14 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
     private final UserAppService userAppService;
 
     @Override
-    public boolean beforeHandshake(ServerHttpRequest serverHttpRequest,
-                                   ServerHttpResponse serverHttpResponse,
+    public boolean beforeHandshake(ServerHttpRequest serverRequest,
+                                   ServerHttpResponse serverResponse,
                                    WebSocketHandler webSocketHandler,
                                    Map<String, Object> attributes) {
         try {
             // 1. 从请求参数或 Header 中获取 Token
             // 例如：ws://localhost:8080/ws?token=xxxxx
-            String token = serverHttpResponse.getHeaders().getFirst("token");
+            String token = serverResponse.getHeaders().getFirst("token");
             if (StringUtils.isBlank(token)) {
                 log.info("WebSocket认证失败，缺少token参数");
                 return false;

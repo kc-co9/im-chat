@@ -2,7 +2,7 @@ package com.kim.omgchat.infrastructure.support;
 
 import com.kim.omgchat.common.utils.JsonUtils;
 import com.kim.omgchat.model.cqrs.dto.user.TokenDTO;
-import com.kim.omgchat.support.TokenService;
+import com.kim.omgchat.support.user.TokenService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;

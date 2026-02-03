@@ -1,7 +1,7 @@
 package com.kim.omgchat.endpoint.http;
 
 import com.kim.omgchat.application.FriendAppService;
-import com.kim.omgchat.infrastructure.context.UserContextUtils;
+import com.kim.omgchat.support.context.UserContextUtils;
 import com.kim.omgchat.model.cqrs.dto.friend.FriendDetailDTO;
 import com.kim.omgchat.model.cqrs.query.friend.FriendDetailQuery;
 import com.kim.omgchat.model.io.friend.FriendDetailResponse;

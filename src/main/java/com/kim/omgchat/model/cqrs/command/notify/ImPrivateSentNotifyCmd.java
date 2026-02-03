@@ -1,17 +1,17 @@
-package com.kim.omgchat.model.cqrs.dto.im;
+package com.kim.omgchat.model.cqrs.command.notify;
 
-import com.kim.omgchat.model.enums.ImMessageType;
+import com.kim.omgchat.model.enums.ImMessageTypeEnum;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 @Data
-public class ImPrivateMessageNotifyDTO {
+public class ImPrivateSentNotifyCmd {
     private Long messageId;
     private Long chatId;
     private Long senderId;
     private Long receiverId;
-    private ImMessageType messageType;
+    private ImMessageTypeEnum messageType;
     private String messageContent;
     private LocalDateTime sendTime;
 }

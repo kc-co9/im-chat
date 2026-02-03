@@ -1,4 +1,4 @@
-package com.kim.omgchat.infrastructure.context;
+package com.kim.omgchat.support.context;
 
 public class UserContextUtils {
     private static final ThreadLocal<UserContext> CONTEXT = new ThreadLocal<>();

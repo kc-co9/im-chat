@@ -1,6 +1,6 @@
 package com.kim.omgchat.model.io.im;
 
-import com.kim.omgchat.model.enums.ImMessageType;
+import com.kim.omgchat.model.enums.ImMessageTypeEnum;
 import com.kim.omgchat.model.io.WsRequest;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -11,6 +11,6 @@ public class ImPrivateMessageSendRequest extends WsRequest {
     private Long chatId;
     private Long receiverId;
     private String messageToken;
-    private ImMessageType messageType;
+    private ImMessageTypeEnum messageType;
     private String messageContent;
 }

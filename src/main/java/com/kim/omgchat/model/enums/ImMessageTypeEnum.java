@@ -1,6 +1,6 @@
 package com.kim.omgchat.model.enums;
 
-public enum ImMessageType {
+public enum ImMessageTypeEnum {
     /**
      * 文本消息
      */

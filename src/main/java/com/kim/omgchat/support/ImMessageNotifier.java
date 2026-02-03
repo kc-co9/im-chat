@@ -1,38 +1,38 @@
 package com.kim.omgchat.support;
 
-import com.kim.omgchat.model.cqrs.dto.im.ImGroupMessageNotifyDTO;
-import com.kim.omgchat.model.cqrs.dto.im.ImPrivateMessageNotifyDTO;
-import com.kim.omgchat.model.cqrs.dto.im.ImPrivateMessageReadNotifyDTO;
-import com.kim.omgchat.model.cqrs.dto.im.ImPrivateMessageRevokeNotifyDTO;
+import com.kim.omgchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
+import com.kim.omgchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
+import com.kim.omgchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
+import com.kim.omgchat.model.cqrs.command.notify.ImPrivateRevokedNotifyCmd;
 
 public interface ImMessageNotifier {
 
     /**
      * 给指定的单个用户发送私聊消息
      *
-     * @param notifyDTO 私聊消息通知DTO
+     * @param command 私聊消息通知命令
      */
-    void notify(ImPrivateMessageNotifyDTO notifyDTO);
+    void notify(ImPrivateSentNotifyCmd command);
 
     /**
      * 给指定的单个用户发送私聊消息撤销通知
      *
-     * @param notifyDTO 私聊消息撤销通知DTO
+     * @param command 私聊消息撤销通知命令
      */
-    void notify(ImPrivateMessageRevokeNotifyDTO notifyDTO);
+    void notify(ImPrivateRevokedNotifyCmd command);
 
     /**
      * 给指定的单个用户发送私聊消息已读通知
      *
-     * @param notifyDTO 私聊消息已读通知DTO
+     * @param command 私聊消息已读通知命令
      */
-    void notify(ImPrivateMessageReadNotifyDTO notifyDTO);
+    void notify(ImPrivateReadNotifyCmd command);
 
     /**
      * 给指定群组的所有成员发送群消息
      *
-     * @param notifyDTO 群聊消息通知DTO
+     * @param command 群聊消息通知命令
      */
-    void notify(ImGroupMessageNotifyDTO notifyDTO);
+    void notify(ImGroupSentNotifyCmd command);
 
 }

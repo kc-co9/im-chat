@@ -1,10 +1,10 @@
 package com.kim.omgchat.infrastructure.config;
 
 import com.kim.omgchat.application.UserAppService;
-import com.kim.omgchat.domain.session.SessionRepository;
 import com.kim.omgchat.infrastructure.interceptor.WsContextInterceptor;
 import com.kim.omgchat.infrastructure.interceptor.WsHandshakeInterceptor;
-import com.kim.omgchat.support.TokenService;
+import com.kim.omgchat.infrastructure.support.WsHandshakeHandler;
+import com.kim.omgchat.support.user.TokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
@@ -26,6 +26,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/web") // 连接地址：ws://localhost:8080/web
                 .addInterceptors(new WsHandshakeInterceptor(tokenService, userAppService))
+                .setHandshakeHandler(new WsHandshakeHandler())
                 .setAllowedOrigins("*"); // 允许跨域
     }
 

@@ -1,4 +1,4 @@
-package com.kim.omgchat.infrastructure.context;
+package com.kim.omgchat.support.context;
 
 import lombok.Data;
 

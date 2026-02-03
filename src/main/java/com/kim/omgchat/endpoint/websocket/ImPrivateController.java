@@ -1,7 +1,8 @@
 package com.kim.omgchat.endpoint.websocket;
 
 import com.kim.omgchat.application.PrivateAppService;
-import com.kim.omgchat.infrastructure.context.UserContextUtils;
+import com.kim.omgchat.model.enums.PushQueue;
+import com.kim.omgchat.support.context.UserContextUtils;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageSendCmd;
@@ -24,7 +25,7 @@ public class ImPrivateController {
     /**
      * 处理客户端消息发送
      */
-    @SendToUser("/queue/result")
+    @SendToUser(PushQueue.QUEUE_RESULT)
     @MessageMapping("/message/private/send")
     public Result<WsResponse> sendPrivateMessage(ImPrivateMessageSendRequest request) {
         Long userId = UserContextUtils.get().getUserId();
@@ -36,7 +37,7 @@ public class ImPrivateController {
     /**
      * 处理客户端消息读取
      */
-    @SendToUser("/queue/result")
+    @SendToUser(PushQueue.QUEUE_RESULT)
     @MessageMapping("/message/private/read")
     public Result<WsResponse> readPrivateMessage(ImPrivateMessageReadRequest request) {
         Long userId = UserContextUtils.get().getUserId();
@@ -48,7 +49,7 @@ public class ImPrivateController {
     /**
      * 处理客户端消息撤回
      */
-    @SendToUser("/queue/result")
+    @SendToUser(PushQueue.QUEUE_RESULT)
     @MessageMapping("/message/private/revoke")
     public Result<WsResponse> revokePrivateMessage(ImPrivateMessageRevokeRequest request) {
         Long userId = UserContextUtils.get().getUserId();

@@ -1,9 +1,9 @@
-package com.kim.omgchat.model.cqrs.dto.im;
+package com.kim.omgchat.model.cqrs.command.notify;
 
 import lombok.Data;
 
 @Data
-public class ImPrivateMessageReadNotifyDTO {
+public class ImPrivateRevokedNotifyCmd {
     private Long chatId;
     private Long receiverId;
     private Long messageId;

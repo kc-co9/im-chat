@@ -1,5 +1,6 @@
 package com.kim.omgchat.infrastructure.mybatis.entity;
 
+import com.kim.omgchat.infrastructure.mybatis.enums.DbFriendStatus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -19,6 +20,6 @@ public class DbFriend extends BaseEntity {
     //好友别名
     private String friendAlias;
     //好友状态 0-未知, 1-正常, 2-拉黑 3-删除
-    private Integer friendStatus;
+    private DbFriendStatus friendStatus;
 }
 

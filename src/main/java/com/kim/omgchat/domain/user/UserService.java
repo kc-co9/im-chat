@@ -2,7 +2,7 @@ package com.kim.omgchat.domain.user;
 
 import com.kim.omgchat.common.exception.AuthException;
 import com.kim.omgchat.domain.chat.ImChatId;
-import com.kim.omgchat.support.PasswordService;
+import com.kim.omgchat.support.user.PasswordService;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor

@@ -8,7 +8,7 @@ import com.kim.omgchat.domain.session.SessionRepository;
 import com.kim.omgchat.domain.user.UserService;
 import com.kim.omgchat.model.cqrs.dto.user.TokenDTO;
 import com.kim.omgchat.model.cqrs.query.user.UserAuthQuery;
-import com.kim.omgchat.support.PasswordService;
+import com.kim.omgchat.support.user.PasswordService;
 import com.kim.omgchat.domain.user.User;
 import com.kim.omgchat.domain.user.UserEmail;
 import com.kim.omgchat.domain.user.UserId;
@@ -21,7 +21,7 @@ import com.kim.omgchat.model.cqrs.command.user.SignUpCommand;
 import com.kim.omgchat.model.cqrs.dto.user.SignInDTO;
 import com.kim.omgchat.model.cqrs.dto.user.UserDetailDTO;
 import com.kim.omgchat.model.cqrs.query.user.UserDetailQuery;
-import com.kim.omgchat.support.TokenService;
+import com.kim.omgchat.support.user.TokenService;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;

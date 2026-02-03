@@ -1,4 +1,4 @@
-package com.kim.omgchat.support;
+package com.kim.omgchat.support.user;
 
 import com.kim.omgchat.model.cqrs.dto.user.TokenDTO;
 

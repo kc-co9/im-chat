@@ -2,6 +2,8 @@ package com.kim.omgchat.infrastructure.mybatis.entity;
 
 import java.time.LocalDateTime;
 
+import com.kim.omgchat.infrastructure.mybatis.enums.DbImMessageStatus;
+import com.kim.omgchat.infrastructure.mybatis.enums.DbImMessageType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -23,11 +25,11 @@ public class DbImGroupMessage extends BaseEntity {
     //发送的用户ID
     private Long senderId;
     //消息类型 0-未知,1-文本消息,2-图片消息,3-语音消息,4-视频消息,5-文件消息,6-表情包消息
-    private Integer type;
+    private DbImMessageType type;
     //消息内容
     private String content;
     //消息状态 0-未知 1-已发送 2-已读 3-已撤回
-    private Integer status;
+    private DbImMessageStatus status;
     //发送时间
     private LocalDateTime sendTime;
     //撤回时间

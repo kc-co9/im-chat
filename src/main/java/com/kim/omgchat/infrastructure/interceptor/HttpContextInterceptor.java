@@ -1,13 +1,13 @@
 package com.kim.omgchat.infrastructure.interceptor;
 
 import com.kim.omgchat.application.UserAppService;
-import com.kim.omgchat.infrastructure.context.UserContext;
-import com.kim.omgchat.infrastructure.context.UserContextUtils;
+import com.kim.omgchat.support.context.UserContext;
+import com.kim.omgchat.support.context.UserContextUtils;
 import com.kim.omgchat.model.cqrs.dto.user.TokenDTO;
 import com.kim.omgchat.model.cqrs.dto.user.UserDetailDTO;
 import com.kim.omgchat.model.cqrs.query.user.UserAuthQuery;
 import com.kim.omgchat.model.cqrs.query.user.UserDetailQuery;
-import com.kim.omgchat.support.TokenService;
+import com.kim.omgchat.support.user.TokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.handler.HandlerInterceptorAdapter;

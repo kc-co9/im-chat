@@ -12,7 +12,7 @@ import com.kim.omgchat.model.io.user.UserSignInResponse;
 import com.kim.omgchat.model.io.Result;
 import com.kim.omgchat.model.io.user.UserSignInRequest;
 import com.kim.omgchat.model.io.user.UserSignUpRequest;
-import com.kim.omgchat.infrastructure.context.UserContextUtils;
+import com.kim.omgchat.support.context.UserContextUtils;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.RequiredArgsConstructor;

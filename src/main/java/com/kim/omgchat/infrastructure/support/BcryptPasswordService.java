@@ -3,7 +3,7 @@ package com.kim.omgchat.infrastructure.support;
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import com.kim.omgchat.domain.user.UserPassword;
 import com.kim.omgchat.domain.user.UserRawPassword;
-import com.kim.omgchat.support.PasswordService;
+import com.kim.omgchat.support.user.PasswordService;
 import org.springframework.stereotype.Service;
 
 /**
