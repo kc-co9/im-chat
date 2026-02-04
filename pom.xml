@@ -9,7 +9,7 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
-    <groupId>com.kim</groupId>
+    <groupId>com.co.kc.im</groupId>
     <artifactId>im-chat</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>ImChat</name>
