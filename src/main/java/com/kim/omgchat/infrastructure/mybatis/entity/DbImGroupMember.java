@@ -1,0 +1,34 @@
+package com.kim.omgchat.infrastructure.mybatis.entity;
+
+import java.io.Serializable;
+
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+/**
+ * 群聊表
+ * db_im_group_member
+ */
+@EqualsAndHashCode(callSuper = true)
+@Data
+public class DbImGroupMember extends BaseEntity implements Serializable {
+    /**
+     * 聊天ID
+     */
+    private Long chatId;
+
+    /**
+     * 用户ID
+     */
+    private Long userId;
+
+    /**
+     * 用户别名
+     */
+    private String userAlias;
+
+    /**
+     * 用户定义的群别名
+     */
+    private String groupAlias;
+}

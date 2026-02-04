@@ -60,12 +60,28 @@ CREATE TABLE `db_im_private_chat`
 DROP TABLE IF EXISTS `db_im_group_chat`;
 CREATE TABLE `db_im_group_chat`
 (
+    `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `chat_id`      BIGINT          NOT NULL DEFAULT 0 COMMENT '聊天ID',
+    `notification` VARCHAR(255)    NOT NULL DEFAULT '' COMMENT '群公告',
+    `settings`     VARCHAR(512)    NOT NULL DEFAULT '' COMMENT '群设置',
+    `create_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_chat_id` (`chat_id`) USING BTREE
+) ENGINE = InnoDB COMMENT = '群聊表';
+
+DROP TABLE IF EXISTS `db_im_group_member`;
+CREATE TABLE `db_im_group_member`
+(
     `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `chat_id`     BIGINT          NOT NULL DEFAULT 0 COMMENT '聊天ID',
+    `user_id`     BIGINT          NOT NULL DEFAULT 0 COMMENT '用户ID',
+    `user_alias`  VARCHAR(20)     NOT NULL DEFAULT '' COMMENT '用户别名',
+    `group_alias` VARCHAR(20)     NOT NULL DEFAULT '' COMMENT '用户定义的群别名',
     `create_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`) USING BTREE,
-    UNIQUE KEY `uk_chat_id` (`chat_id`) USING BTREE
+    UNIQUE KEY `uk_chatId_userId` (`chat_id`, `user_id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '群聊表';
 
 DROP TABLE IF EXISTS `db_im_private_message`;
