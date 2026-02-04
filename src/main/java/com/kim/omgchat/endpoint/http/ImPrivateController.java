@@ -3,7 +3,6 @@ package com.kim.omgchat.endpoint.http;
 import com.kim.omgchat.application.ImPrivateAppService;
 import com.kim.omgchat.model.cqrs.dto.im.ImMessageDTO;
 import com.kim.omgchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
-import com.kim.omgchat.model.io.Result;
 import com.kim.omgchat.model.io.im.ImPrivateMessageQueryResponse;
 import com.kim.omgchat.support.context.UserContextUtils;
 import com.kim.omgchat.transformer.ImMessageHttpIoTransformer;
@@ -22,15 +21,15 @@ public class ImPrivateController {
     private final ImPrivateAppService imPrivateAppService;
 
     @GetMapping("/queryHistoryMessage")
-    public Result<ImPrivateMessageQueryResponse> queryHistoryMessage(@RequestParam("chatId") Long chatId,
-                                                                     @RequestParam("lastMessageId") Long lastMessageId,
-                                                                     @RequestParam("count") Integer count) {
+    public ImPrivateMessageQueryResponse queryHistoryMessage(@RequestParam("chatId") Long chatId,
+                                                             @RequestParam("lastMessageId") Long lastMessageId,
+                                                             @RequestParam("count") Integer count) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageHistoryQuery query = new ImPrivateMessageHistoryQuery(chatId, userId, lastMessageId, count);
         List<ImMessageDTO> messageList = imPrivateAppService.queryHistoryMessage(query);
         List<ImPrivateMessageQueryResponse.MessageItem> messageResponseList =
                 ImMessageHttpIoTransformer.INSTANCE.imPrivateMessageItemListFrom(messageList);
-        return Result.success(new ImPrivateMessageQueryResponse(messageResponseList));
+        return new ImPrivateMessageQueryResponse(messageResponseList);
     }
 
 }

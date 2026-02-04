@@ -6,9 +6,12 @@ import com.kim.omgchat.infrastructure.interceptor.WsHandshakeInterceptor;
 import com.kim.omgchat.infrastructure.support.WsHandshakeHandler;
 import com.kim.omgchat.support.user.TokenService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -20,6 +23,18 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final TokenService tokenService;
     private final UserAppService userAppService;
+    
+    /**
+     * 配置TaskScheduler，用于处理WebSocket心跳任务
+     */
+    @Bean
+    public TaskScheduler taskScheduler() {
+        ThreadPoolTaskScheduler taskScheduler = new ThreadPoolTaskScheduler();
+        taskScheduler.setThreadNamePrefix("websocket-heartbeat-");
+        taskScheduler.setPoolSize(1);
+        taskScheduler.setRemoveOnCancelPolicy(true);
+        return taskScheduler;
+    }
 
     /**
      * 1. 注册STOMP端点：客户端实际连接的入口
@@ -64,6 +79,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.enableSimpleBroker("/topic", "/queue")
                 // ⭐ 设置心跳 ⭐
                 // 参数：[ 服务端发送心跳的间隔(毫秒), 客户端必须在多少毫秒内发送心跳 ]
-                .setHeartbeatValue(new long[]{30000, 30000});
+                .setHeartbeatValue(new long[]{30000, 30000})
+                // 设置TaskScheduler用于处理心跳任务
+                .setTaskScheduler(taskScheduler());
     }
 }

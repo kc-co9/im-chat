@@ -1,10 +1,14 @@
 package com.kim.omgchat.transformer;
 
 import com.kim.omgchat.domain.friend.Friend;
+import com.kim.omgchat.domain.friend.FriendStatus;
 import com.kim.omgchat.infrastructure.mybatis.entity.DbFriend;
+import com.kim.omgchat.infrastructure.mybatis.enums.DbFriendStatus;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Mappings;
+import org.mapstruct.ValueMapping;
+import org.mapstruct.ValueMappings;
 import org.mapstruct.factory.Mappers;
 
 import java.util.List;
@@ -23,4 +27,12 @@ public interface FriendDomainTransformer {
             @Mapping(target = "createTime", source = "createTime")
     })
     Friend friendFrom(DbFriend dbFriend);
+    
+    @ValueMappings({
+            @ValueMapping(source = "NONE", target = "NORMAL"),
+            @ValueMapping(source = "NORMAL", target = "NORMAL"),
+            @ValueMapping(source = "BLOCK", target = "BLOCKED"),
+            @ValueMapping(source = "DELETE", target = "DELETED")
+    })
+    FriendStatus mapFriendStatus(DbFriendStatus status);
 }

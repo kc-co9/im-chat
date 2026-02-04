@@ -1,7 +1,5 @@
 package com.kim.omgchat.infrastructure.mybatis.entity;
 
-import java.io.Serializable;
-
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -11,7 +9,7 @@ import lombok.EqualsAndHashCode;
  */
 @EqualsAndHashCode(callSuper = true)
 @Data
-public class DbImGroupMember extends BaseEntity implements Serializable {
+public class DbImGroupMember extends BaseEntity {
     /**
      * 聊天ID
      */

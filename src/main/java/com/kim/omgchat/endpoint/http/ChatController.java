@@ -6,7 +6,6 @@ import com.kim.omgchat.model.cqrs.command.chat.ImGroupChatCreateCmd;
 import com.kim.omgchat.model.cqrs.command.chat.ImGroupChatEnterCmd;
 import com.kim.omgchat.model.cqrs.command.chat.ImPrivateChatEnterCmd;
 import com.kim.omgchat.model.cqrs.dto.im.ImChatCreateDTO;
-import com.kim.omgchat.model.io.Result;
 import com.kim.omgchat.model.io.chat.ImGroupChatCreateRequest;
 import com.kim.omgchat.model.io.chat.ImGroupChatCreateResponse;
 import com.kim.omgchat.model.io.chat.ImGroupChatEnterRequest;
@@ -29,34 +28,32 @@ public class ChatController {
     private final ChatAppService chatAppService;
 
     @PostMapping(value = "/enterPrivateChat")
-    public Result<ImPrivateChatEnterResponse> enterPrivateChat(@RequestBody @Validated ImPrivateChatEnterRequest request) {
+    public ImPrivateChatEnterResponse enterPrivateChat(@RequestBody @Validated ImPrivateChatEnterRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateChatEnterCmd command = new ImPrivateChatEnterCmd(userId, request.getReceiverId());
         ImChatCreateDTO imChatCreateDTO = chatAppService.enterPrivateChat(command);
-        return Result.success(new ImPrivateChatEnterResponse(imChatCreateDTO.getChatId()));
+        return new ImPrivateChatEnterResponse(imChatCreateDTO.getChatId());
     }
 
     @PostMapping(value = "/createGroupChat")
-    public Result<ImGroupChatCreateResponse> createGroupChat(@RequestBody @Validated ImGroupChatCreateRequest request) {
+    public ImGroupChatCreateResponse createGroupChat(@RequestBody @Validated ImGroupChatCreateRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         ImGroupChatCreateCmd command = new ImGroupChatCreateCmd(userId, request.getMemberIds(), request.getGroupName());
         ImChatCreateDTO imChatCreateDTO = chatAppService.createGroupChat(command);
-        return Result.success(new ImGroupChatCreateResponse(imChatCreateDTO.getChatId()));
+        return new ImGroupChatCreateResponse(imChatCreateDTO.getChatId());
     }
 
     @PostMapping(value = "/enterGroupChat")
-    public Result<?> enterGroupChat(@RequestBody @Validated ImGroupChatEnterRequest request) {
+    public void enterGroupChat(@RequestBody @Validated ImGroupChatEnterRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         ImGroupChatEnterCmd command = new ImGroupChatEnterCmd(request.getChatId(), userId);
         chatAppService.enterGroupChat(command);
-        return Result.success();
     }
 
     @PostMapping(value = "/exitChat")
-    public Result<?> exitChat() {
+    public void exitChat() {
         Long userId = UserContextUtils.get().getUserId();
         chatAppService.exitChat(new ImChatExitCmd(userId));
-        return Result.success();
     }
 
 }

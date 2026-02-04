@@ -26,7 +26,7 @@ public interface FriendAppTransformer {
     FriendItemDTO friendItemDtoFrom(Friend friend);
 
     @Mappings(value = {
-            @Mapping(target = "userId", source = "user.userId.value"),
+            @Mapping(target = "userId", source = "user.id.value"),
             @Mapping(target = "username", source = "user.username.value"),
             @Mapping(target = "alias", source = "friend.alias.value"),
             @Mapping(target = "status", source = "friend.status"),
