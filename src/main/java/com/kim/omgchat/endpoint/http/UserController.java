@@ -1,9 +1,9 @@
 package com.kim.omgchat.endpoint.http;
 
 import com.kim.omgchat.application.UserAppService;
-import com.kim.omgchat.model.cqrs.command.user.SignInCommand;
-import com.kim.omgchat.model.cqrs.command.user.SignOutCommand;
-import com.kim.omgchat.model.cqrs.command.user.SignUpCommand;
+import com.kim.omgchat.model.cqrs.command.user.UserSignInCmd;
+import com.kim.omgchat.model.cqrs.command.user.UserSignOutCmd;
+import com.kim.omgchat.model.cqrs.command.user.UserSignUpCmd;
 import com.kim.omgchat.model.cqrs.dto.user.SignInDTO;
 import com.kim.omgchat.model.cqrs.dto.user.UserDetailDTO;
 import com.kim.omgchat.model.cqrs.query.user.UserDetailQuery;
@@ -29,7 +29,7 @@ public class UserController {
     @ApiOperation("注册接口")
     @PostMapping("/signUp")
     public Result<?> signUp(@RequestBody @Validated UserSignUpRequest request) {
-        SignUpCommand command = new SignUpCommand(
+        UserSignUpCmd command = new UserSignUpCmd(
                 request.getEmail(), request.getUsername(), request.getPassword());
         userAppService.signUp(command);
         return Result.success();
@@ -38,7 +38,7 @@ public class UserController {
     @ApiOperation("登录接口")
     @PostMapping("/signIn")
     public Result<UserSignInResponse> signIn(@RequestBody @Validated UserSignInRequest request) {
-        SignInCommand command = new SignInCommand(request.getEmail(), request.getPassword());
+        UserSignInCmd command = new UserSignInCmd(request.getEmail(), request.getPassword());
         SignInDTO signInDTO = userAppService.signIn(command);
         return Result.success(new UserSignInResponse(signInDTO.getToken()));
     }
@@ -47,7 +47,7 @@ public class UserController {
     @PostMapping("/signOut")
     public Result<?> signOut() {
         Long userId = UserContextUtils.get().getUserId();
-        userAppService.signOut(new SignOutCommand(userId));
+        userAppService.signOut(new UserSignOutCmd(userId));
         return Result.success();
     }
 

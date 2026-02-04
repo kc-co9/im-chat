@@ -5,6 +5,8 @@ import com.kim.omgchat.common.identity.snowflake.SnowflakeId;
 import com.kim.omgchat.domain.chat.ImChat;
 import com.kim.omgchat.domain.chat.ImChatId;
 import com.kim.omgchat.domain.chat.ImChatRepository;
+import com.kim.omgchat.domain.chat.ImGroupChat;
+import com.kim.omgchat.domain.chat.ImGroupMember;
 import com.kim.omgchat.domain.message.ImGroupMessage;
 import com.kim.omgchat.domain.message.ImGroupMessageRepository;
 import com.kim.omgchat.domain.message.ImGroupMessageRevokedEvent;
@@ -68,8 +70,13 @@ public class ImGroupAppService {
     }
 
     public void onMessageSent(ImGroupMessageSentEvent event) {
-        ImGroupSentNotifyCmd notifyCmd = ImMessageAppTransformer.INSTANCE.imGroupSentNotifyCmdFrom(event);
-        imMessageNotifier.notify(notifyCmd);
+        ImChatId chatId = new ImChatId(event.getChatId());
+        ImGroupChat imGroupChat = imChatRepository.findGroupChat(chatId);
+        for (ImGroupMember member : imGroupChat.getMembers()) {
+            ImGroupSentNotifyCmd notifyCmd =
+                    ImMessageAppTransformer.INSTANCE.imGroupSentNotifyCmdFrom(member.getUserId().getValue(), event);
+            imMessageNotifier.notify(notifyCmd);
+        }
     }
 
     public void revokeMessage(ImGroupMessageRevokeCmd command) {
@@ -90,8 +97,14 @@ public class ImGroupAppService {
     }
 
     public void onMessageRevoked(ImGroupMessageRevokedEvent event) {
-        ImGroupRevokedNotifyCmd notifyCmd = ImMessageAppTransformer.INSTANCE.imGroupRevokedNotifyCmdFrom(event);
-        imMessageNotifier.notify(notifyCmd);
+        ImChatId chatId = new ImChatId(event.getChatId());
+        ImGroupChat imGroupChat = imChatRepository.findGroupChat(chatId);
+        for (ImGroupMember member : imGroupChat.getMembers()) {
+            ImGroupRevokedNotifyCmd notifyCmd =
+                    ImMessageAppTransformer.INSTANCE.imGroupRevokedNotifyCmdFrom(member.getUserId().getValue(), event);
+            imMessageNotifier.notify(notifyCmd);
+        }
+
     }
 
 }

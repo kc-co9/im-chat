@@ -51,7 +51,7 @@ public class ChatAppService {
         }
 
         ImPrivatePair pair = new ImPrivatePair(senderId, receiverId);
-        ImPrivateChat imPrivateChat = imChatRepository.find(pair);
+        ImPrivateChat imPrivateChat = imChatRepository.findPrivateChat(pair);
         if (imPrivateChat == null) {
             imPrivateChat = new ImPrivateChat();
             imPrivateChat.setId(new ImChatId(snowflakeId.next()));

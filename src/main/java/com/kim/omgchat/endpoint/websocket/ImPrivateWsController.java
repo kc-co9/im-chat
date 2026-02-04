@@ -1,7 +1,9 @@
 package com.kim.omgchat.endpoint.websocket;
 
 import com.kim.omgchat.application.ImPrivateAppService;
+import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageReceiveCmd;
 import com.kim.omgchat.model.enums.PushQueue;
+import com.kim.omgchat.model.io.im.ImPrivateMessageReceiveRequest;
 import com.kim.omgchat.support.context.UserContextUtils;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
@@ -19,7 +21,7 @@ import org.springframework.stereotype.Controller;
 
 @Controller
 @RequiredArgsConstructor
-public class ImPrivateController {
+public class ImPrivateWsController {
     private final ImPrivateAppService imPrivateAppService;
 
     /**
@@ -31,6 +33,18 @@ public class ImPrivateController {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageSendCmd command = ImMessageAppTransformer.INSTANCE.imPrivateMessageSendCmdFrom(userId, request);
         imPrivateAppService.sendMessage(command);
+        return Result.success(new WsResponse(request.getRequestId()));
+    }
+
+    /**
+     * 处理客户端消息接收
+     */
+    @SendToUser(PushQueue.QUEUE_RESULT)
+    @MessageMapping("/message/private/receive")
+    public Result<WsResponse> receivePrivateMessage(ImPrivateMessageReceiveRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        ImPrivateMessageReceiveCmd command = ImMessageAppTransformer.INSTANCE.imPrivateMessageReceiveCmdFrom(userId, request);
+        imPrivateAppService.receiveMessage(command);
         return Result.success(new WsResponse(request.getRequestId()));
     }
 

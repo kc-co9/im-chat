@@ -8,9 +8,10 @@ public interface ImChatRepository {
     ImChat find(ImChatId chatId);
 
     List<ImChat> find(UserId userId);
+    
+    ImPrivateChat findPrivateChat(ImPrivatePair pair);
 
-    ImPrivateChat find(ImPrivatePair pair);
+    ImGroupChat findGroupChat(ImChatId chatId);
 
     void save(ImChat imChat);
-
 }

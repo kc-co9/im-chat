@@ -11,11 +11,11 @@ import org.apache.commons.lang3.StringUtils;
  */
 @Getter
 @EqualsAndHashCode
-public class SignInCommand {
+public class UserSignInCmd {
     private final String email;
     private final String password;
 
-    public SignInCommand(String email, String password) {
+    public UserSignInCmd(String email, String password) {
         if (StringUtils.isBlank(email)) {
             throw new IllegalArgumentException("帐号为空");
         }

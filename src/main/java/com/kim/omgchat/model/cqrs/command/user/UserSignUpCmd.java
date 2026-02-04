@@ -5,7 +5,7 @@ import lombok.Getter;
 
 @Getter
 @AllArgsConstructor
-public class SignUpCommand {
+public class UserSignUpCmd {
     private String email;
     private String username;
     private String password;

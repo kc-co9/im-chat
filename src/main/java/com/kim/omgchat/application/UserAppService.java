@@ -15,9 +15,9 @@ import com.kim.omgchat.domain.user.UserId;
 import com.kim.omgchat.domain.user.UserName;
 import com.kim.omgchat.domain.user.UserRawPassword;
 import com.kim.omgchat.domain.user.UserRepository;
-import com.kim.omgchat.model.cqrs.command.user.SignInCommand;
-import com.kim.omgchat.model.cqrs.command.user.SignOutCommand;
-import com.kim.omgchat.model.cqrs.command.user.SignUpCommand;
+import com.kim.omgchat.model.cqrs.command.user.UserSignInCmd;
+import com.kim.omgchat.model.cqrs.command.user.UserSignOutCmd;
+import com.kim.omgchat.model.cqrs.command.user.UserSignUpCmd;
 import com.kim.omgchat.model.cqrs.dto.user.SignInDTO;
 import com.kim.omgchat.model.cqrs.dto.user.UserDetailDTO;
 import com.kim.omgchat.model.cqrs.query.user.UserDetailQuery;
@@ -40,7 +40,7 @@ public class UserAppService {
     private final TokenService tokenService;
     private final PasswordService passwordService;
 
-    public void signUp(SignUpCommand command) {
+    public void signUp(UserSignUpCmd command) {
         UserEmail email = new UserEmail(command.getEmail());
         UserName username = new UserName(command.getUsername());
         UserRawPassword rawPassword = new UserRawPassword(command.getPassword());
@@ -56,7 +56,7 @@ public class UserAppService {
     }
 
 
-    public SignInDTO signIn(SignInCommand command) {
+    public SignInDTO signIn(UserSignInCmd command) {
         UserEmail email = new UserEmail(command.getEmail());
         UserRawPassword rawPassword = new UserRawPassword(command.getPassword());
 
@@ -70,7 +70,7 @@ public class UserAppService {
         return new SignInDTO(user.getId().getValue(), token);
     }
 
-    public void signOut(SignOutCommand command) {
+    public void signOut(UserSignOutCmd command) {
         UserId userId = new UserId(command.getUserId());
 
         Session session = sessionRepository.find(userId);

@@ -6,4 +6,5 @@ import lombok.Data;
 public class ImGroupRevokedNotifyCmd {
     private Long chatId;
     private Long messageId;
+    private Long receiverId;
 }

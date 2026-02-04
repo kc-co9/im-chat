@@ -8,10 +8,10 @@ import lombok.Data;
  * @author kc
  */
 @Data
-public class SignOutCommand {
+public class UserSignOutCmd {
     private Long userId;
 
-    public SignOutCommand(Long userId) {
+    public UserSignOutCmd(Long userId) {
         if (userId == null) {
             throw new IllegalArgumentException("userId is null");
         }

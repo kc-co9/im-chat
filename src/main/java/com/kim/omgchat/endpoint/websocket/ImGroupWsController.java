@@ -17,7 +17,7 @@ import org.springframework.stereotype.Controller;
 
 @Controller
 @RequiredArgsConstructor
-public class ImGroupController {
+public class ImGroupWsController {
     private final ImGroupAppService imGroupAppService;
 
     /**
