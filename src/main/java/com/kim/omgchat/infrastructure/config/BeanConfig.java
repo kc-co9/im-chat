@@ -2,6 +2,7 @@ package com.kim.omgchat.infrastructure.config;
 
 import com.kim.omgchat.application.ChatAppService;
 import com.kim.omgchat.application.FriendAppService;
+import com.kim.omgchat.application.ImGroupAppService;
 import com.kim.omgchat.application.ImPrivateAppService;
 import com.kim.omgchat.application.UserAppService;
 import com.kim.omgchat.common.identity.snowflake.SnowflakeId;
@@ -10,6 +11,7 @@ import com.kim.omgchat.domain.chat.ImChatRepository;
 import com.kim.omgchat.domain.chat.ImChatService;
 import com.kim.omgchat.domain.friend.FriendRepository;
 import com.kim.omgchat.domain.friend.FriendService;
+import com.kim.omgchat.domain.message.ImGroupMessageRepository;
 import com.kim.omgchat.domain.message.ImMessageService;
 import com.kim.omgchat.domain.message.ImPrivateMessageRepository;
 import com.kim.omgchat.domain.session.SessionRepository;
@@ -42,8 +44,9 @@ public class BeanConfig {
     }
 
     @Bean
-    public ImChatService imChatService(UserRepository userRepository) {
-        return new ImChatService(userRepository);
+    public ImChatService imChatService(UserRepository userRepository,
+                                       SessionRepository sessionRepository) {
+        return new ImChatService(userRepository, sessionRepository);
     }
 
     @Bean
@@ -72,22 +75,31 @@ public class BeanConfig {
     public ChatAppService chatAppService(SnowflakeId snowflakeId,
                                          ImChatRepository imChatRepository,
                                          FriendRepository friendRepository,
-                                         SessionRepository sessionRepository,
                                          ImChatService imChatService) {
-        return new ChatAppService(snowflakeId, imChatRepository, friendRepository, sessionRepository, imChatService);
+        return new ChatAppService(snowflakeId, imChatRepository, friendRepository, imChatService);
     }
 
     @Bean
-    public ImPrivateAppService privateAppService(SnowflakeId snowflakeId,
-                                                 ImChatRepository imChatRepository,
-                                                 ImPrivateMessageRepository imPrivateMessageRepository,
-                                                 UserService userService,
-                                                 ImChatService imChatService,
-                                                 ImMessageService imMessageService,
-                                                 ImMessageNotifier imMessageNotifier,
-                                                 SpringEventPublisher imMessageEventPublisher) {
+    public ImPrivateAppService imPrivateAppService(SnowflakeId snowflakeId,
+                                                   ImChatRepository imChatRepository,
+                                                   ImPrivateMessageRepository imPrivateMessageRepository,
+                                                   UserService userService,
+                                                   ImChatService imChatService,
+                                                   ImMessageService imMessageService,
+                                                   ImMessageNotifier imMessageNotifier,
+                                                   SpringEventPublisher imMessageEventPublisher) {
         return new ImPrivateAppService(
                 snowflakeId, imChatRepository, imPrivateMessageRepository,
                 userService, imChatService, imMessageService, imMessageNotifier, imMessageEventPublisher);
+    }
+
+    @Bean
+    public ImGroupAppService imGroupAppService(SnowflakeId snowflakeId,
+                                               ImChatRepository imChatRepository,
+                                               ImGroupMessageRepository imGroupMessageRepository,
+                                               ImMessageService imMessageService,
+                                               ImMessageNotifier imMessageNotifier,
+                                               SpringEventPublisher imMessageEventPublisher) {
+        return new ImGroupAppService(snowflakeId, imChatRepository, imGroupMessageRepository, imMessageService, imMessageNotifier, imMessageEventPublisher);
     }
 }

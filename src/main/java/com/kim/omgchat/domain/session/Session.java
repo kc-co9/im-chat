@@ -41,7 +41,7 @@ public class Session {
         this.chatId = chatId;
     }
 
-    public void onLeaveChat() {
+    public void onExitChat() {
         this.chatId = null;
     }
 

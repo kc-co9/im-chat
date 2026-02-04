@@ -6,9 +6,9 @@ import com.kim.omgchat.domain.chat.ImChat;
 import com.kim.omgchat.domain.chat.ImChatId;
 import com.kim.omgchat.domain.chat.ImChatRepository;
 import com.kim.omgchat.domain.chat.ImChatService;
-import com.kim.omgchat.domain.message.ImMessageReadEvent;
-import com.kim.omgchat.domain.message.ImMessageRevokedEvent;
-import com.kim.omgchat.domain.message.ImMessageSentEvent;
+import com.kim.omgchat.domain.message.ImPrivateMessageReadEvent;
+import com.kim.omgchat.domain.message.ImPrivateMessageRevokedEvent;
+import com.kim.omgchat.domain.message.ImPrivateMessageSentEvent;
 import com.kim.omgchat.domain.message.ImMessageService;
 import com.kim.omgchat.domain.message.ImMessageStatus;
 import com.kim.omgchat.domain.message.ImPrivateMessage;
@@ -26,7 +26,7 @@ import com.kim.omgchat.model.cqrs.command.notify.ImPrivateRevokedNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
 import com.kim.omgchat.model.cqrs.dto.im.ImMessageDTO;
-import com.kim.omgchat.domain.message.ImMessageReceivedEvent;
+import com.kim.omgchat.domain.message.ImPrivateMessageReceivedEvent;
 import com.kim.omgchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.kim.omgchat.support.event.DomainEventPublisher;
 import com.kim.omgchat.support.ImMessageNotifier;
@@ -75,11 +75,11 @@ public class ImPrivateAppService {
         imMessage.validate();
         imPrivateMessageRepository.save(imMessage);
 
-        ImMessageSentEvent imMessageSentEvent = imMessageService.newImMessageSentEvent(imMessage);
+        ImPrivateMessageSentEvent imMessageSentEvent = imMessageService.newImMessageSentEvent(imMessage);
         imMessageEventPublisher.publish(imMessageSentEvent);
     }
 
-    public void onMessageSent(ImMessageSentEvent event) {
+    public void onMessageSent(ImPrivateMessageSentEvent event) {
         ImChatId chatId = new ImChatId(event.getChatId());
         UserId receiverId = new UserId(event.getReceiverId());
 
@@ -105,11 +105,11 @@ public class ImPrivateAppService {
         imMessage.receive(userId);
         imPrivateMessageRepository.save(imMessage);
 
-        ImMessageReceivedEvent imMessageReceivedEvent = imMessageService.newImMessageReceivedEvent(imMessage);
+        ImPrivateMessageReceivedEvent imMessageReceivedEvent = imMessageService.newImMessageReceivedEvent(imMessage);
         imMessageEventPublisher.publish(imMessageReceivedEvent);
     }
 
-    public void onMessageReceived(ImMessageReceivedEvent event) {
+    public void onMessageReceived(ImPrivateMessageReceivedEvent event) {
     }
 
 
@@ -126,11 +126,11 @@ public class ImPrivateAppService {
         imMessage.revoke(userId);
         imPrivateMessageRepository.save(imMessage);
 
-        ImMessageRevokedEvent imMessageRevokedEvent = imMessageService.newImMessageRevokedEvent(imMessage);
+        ImPrivateMessageRevokedEvent imMessageRevokedEvent = imMessageService.newImMessageRevokedEvent(imMessage);
         imMessageEventPublisher.publish(imMessageRevokedEvent);
     }
 
-    public void onMessageRevoked(ImMessageRevokedEvent event) {
+    public void onMessageRevoked(ImPrivateMessageRevokedEvent event) {
         ImPrivateRevokedNotifyCmd notifyCmd = ImMessageAppTransformer.INSTANCE.imPrivateRevokedNotifyCmdFrom(event);
         imMessageNotifier.notify(notifyCmd);
     }
@@ -148,7 +148,7 @@ public class ImPrivateAppService {
         imMessage.read(userId);
         imPrivateMessageRepository.save(imMessage);
 
-        ImMessageReadEvent imMessageReadEvent = imMessageService.newImMessageReadEvent(imMessage);
+        ImPrivateMessageReadEvent imMessageReadEvent = imMessageService.newImMessageReadEvent(imMessage);
         imMessageEventPublisher.publish(imMessageReadEvent);
 
         // 更新用户未读数量
@@ -159,7 +159,7 @@ public class ImPrivateAppService {
         imMessageNotifier.notify(notifyDTO);
     }
 
-    public void onMessageRead(ImMessageReadEvent event) {
+    public void onMessageRead(ImPrivateMessageReadEvent event) {
         ImPrivateReadNotifyCmd notifyCmd = ImMessageAppTransformer.INSTANCE.imPrivateMessageReadNotifyCmdFrom(event);
         imMessageNotifier.notify(notifyCmd);
     }

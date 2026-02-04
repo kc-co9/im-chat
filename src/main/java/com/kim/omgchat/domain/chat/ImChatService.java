@@ -1,7 +1,10 @@
 package com.kim.omgchat.domain.chat;
 
+import com.kim.omgchat.common.exception.AuthException;
 import com.kim.omgchat.common.utils.FunctionUtils;
 import com.kim.omgchat.domain.message.ImMessageId;
+import com.kim.omgchat.domain.session.Session;
+import com.kim.omgchat.domain.session.SessionRepository;
 import com.kim.omgchat.domain.shared.NickName;
 import com.kim.omgchat.domain.user.User;
 import com.kim.omgchat.domain.user.UserId;
@@ -16,6 +19,27 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ImChatService {
     private final UserRepository userRepository;
+    private final SessionRepository sessionRepository;
+
+    public void enterChat(ImChatId chatId, UserId userId) {
+        Session session = sessionRepository.find(userId);
+        if (session == null || !session.isSignIn()) {
+            throw new AuthException("用户尚未登陆");
+        }
+
+        session.onEnterChat(chatId);
+        sessionRepository.save(session);
+    }
+
+    public void exitChat(UserId userId) {
+        Session session = sessionRepository.find(userId);
+        if (session == null || !session.isSignIn()) {
+            throw new AuthException("用户尚未登陆");
+        }
+
+        session.onExitChat();
+        sessionRepository.save(session);
+    }
 
     /**
      * 增加未读消息数

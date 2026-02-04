@@ -10,7 +10,8 @@ public enum RedisTopic {
     PRIVATE_MESSAGE_READ("message:private:read"),
     PRIVATE_MESSAGE_REVOKE("message:private:revoke"),
 
-    GROUP_MESSAGE("message:group"),
+    GROUP_MESSAGE_SEND("message:group:send"),
+    GROUP_MESSAGE_REVOKE("message:group:revoke"),
     ;
     private final String value;
 }

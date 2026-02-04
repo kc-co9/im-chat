@@ -1,5 +1,6 @@
 package com.kim.omgchat.infrastructure.support;
 
+import com.kim.omgchat.model.cqrs.command.notify.ImGroupRevokedNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
@@ -33,6 +34,11 @@ public class RedisImMessageNotifier implements ImMessageNotifier {
 
     @Override
     public void notify(ImGroupSentNotifyCmd command) {
+        redisPublisher.publish(RedisTopic.GROUP_MESSAGE_SEND, command);
+    }
 
+    @Override
+    public void notify(ImGroupRevokedNotifyCmd command) {
+        redisPublisher.publish(RedisTopic.GROUP_MESSAGE_REVOKE, command);
     }
 }

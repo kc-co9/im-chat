@@ -53,7 +53,7 @@ public class ImPrivateController {
     @MessageMapping("/message/private/revoke")
     public Result<WsResponse> revokePrivateMessage(ImPrivateMessageRevokeRequest request) {
         Long userId = UserContextUtils.get().getUserId();
-        ImPrivateMessageRevokeCmd command = ImMessageAppTransformer.INSTANCE.imPrivateMessageReadCmdFrom(userId, request);
+        ImPrivateMessageRevokeCmd command = ImMessageAppTransformer.INSTANCE.imPrivateMessageRevokeCmdFrom(userId, request);
         imPrivateAppService.revokeMessage(command);
         return Result.success(new WsResponse(request.getRequestId()));
     }

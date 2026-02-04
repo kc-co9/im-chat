@@ -1,11 +1,13 @@
-package com.kim.omgchat.model.cqrs.command.im;
+package com.kim.omgchat.model.cqrs.command.chat;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 
 @Data
+@NoArgsConstructor
 @AllArgsConstructor
 public class ImGroupChatCreateCmd {
     private Long ownerId;

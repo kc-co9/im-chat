@@ -6,9 +6,8 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-public class ImMessageReadEvent implements DomainEvent {
+public class ImGroupMessageRevokedEvent implements DomainEvent {
     private Long chatId;
-    private Long receiverId;
     private Long messageId;
     private LocalDateTime createTime;
 

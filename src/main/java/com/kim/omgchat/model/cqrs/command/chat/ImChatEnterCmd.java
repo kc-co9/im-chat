@@ -1,4 +1,4 @@
-package com.kim.omgchat.model.cqrs.command.im;
+package com.kim.omgchat.model.cqrs.command.chat;
 
 import lombok.Data;
 

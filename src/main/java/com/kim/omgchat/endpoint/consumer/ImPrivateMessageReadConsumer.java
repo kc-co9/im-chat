@@ -1,6 +1,6 @@
 package com.kim.omgchat.endpoint.consumer;
 
-import com.kim.omgchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
+import com.kim.omgchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
 import com.kim.omgchat.model.enums.RedisTopic;
 import com.kim.omgchat.support.redis.RedisSubscriber;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +11,7 @@ import static com.kim.omgchat.model.enums.PushQueue.QUEUE_PRIVATE_MESSAGE_READ;
 
 @Component
 @RequiredArgsConstructor
-public class ImPrivateMessageReadConsumer implements RedisSubscriber<ImPrivateSentNotifyCmd> {
+public class ImPrivateMessageReadConsumer implements RedisSubscriber<ImPrivateReadNotifyCmd> {
     private final SimpMessagingTemplate messagingTemplate;
 
     @Override
@@ -20,7 +20,7 @@ public class ImPrivateMessageReadConsumer implements RedisSubscriber<ImPrivateSe
     }
 
     @Override
-    public void onMessage(ImPrivateSentNotifyCmd message) {
+    public void onMessage(ImPrivateReadNotifyCmd message) {
         messagingTemplate.convertAndSendToUser(String.valueOf(message.getReceiverId()), QUEUE_PRIVATE_MESSAGE_READ, message);
 
     }

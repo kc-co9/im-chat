@@ -1,5 +1,6 @@
 package com.kim.omgchat.support;
 
+import com.kim.omgchat.model.cqrs.command.notify.ImGroupRevokedNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
@@ -35,4 +36,11 @@ public interface ImMessageNotifier {
      */
     void notify(ImGroupSentNotifyCmd command);
 
+
+    /**
+     * 给指定的单个用户发送私聊消息撤销通知
+     *
+     * @param command 私聊消息撤销通知命令
+     */
+    void notify(ImGroupRevokedNotifyCmd command);
 }
