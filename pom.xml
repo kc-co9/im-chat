@@ -169,6 +169,35 @@
             <artifactId>jjwt</artifactId>
             <version>0.9.1</version> <!-- 升级到稳定版本 -->
         </dependency>
+
+        <!-- Starting with version 2.7.6, we offer the 'mockito-inline' artifact that enables inline mock making without
+     configuring the MockMaker extension file. To use this, add the `mockito-inline` instead of the `mockito-core` artifact
+     -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>3.8.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <version>3.8.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
+            <version>3.8.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- 用于单元测试时数据库的使用 -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <!-- 构建配置 -->
