@@ -33,6 +33,15 @@ public class ImMessageService {
         return imMessageRevokedEvent;
     }
 
+    public ImMessageReceivedEvent newImMessageReceivedEvent(ImPrivateMessage imMessage) {
+        ImMessageReceivedEvent imMessageReceivedEvent = new ImMessageReceivedEvent();
+        imMessageReceivedEvent.setChatId(imMessage.getChatId().getValue());
+        imMessageReceivedEvent.setReceiverId(imMessage.getSenderId().getValue());
+        imMessageReceivedEvent.setMessageId(imMessage.getId().getValue());
+        imMessageReceivedEvent.setCreateTime(LocalDateTime.now());
+        return imMessageReceivedEvent;
+    }
+
     public ImMessageReadEvent newImMessageReadEvent(ImPrivateMessage imMessage) {
         ImMessageReadEvent imMessageReadEvent = new ImMessageReadEvent();
         imMessageReadEvent.setChatId(imMessage.getChatId().getValue());
@@ -41,4 +50,6 @@ public class ImMessageService {
         imMessageReadEvent.setCreateTime(LocalDateTime.now());
         return imMessageReadEvent;
     }
+
+
 }

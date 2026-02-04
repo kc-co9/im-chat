@@ -11,6 +11,7 @@ import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageSendCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateRevokedNotifyCmd;
+import com.kim.omgchat.model.cqrs.dto.im.ImMessageDTO;
 import com.kim.omgchat.model.enums.ImMessageTypeEnum;
 import com.kim.omgchat.model.io.im.ImPrivateMessageReadRequest;
 import com.kim.omgchat.model.io.im.ImPrivateMessageRevokeRequest;
@@ -20,16 +21,28 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Mappings;
 import org.mapstruct.factory.Mappers;
 
+import java.util.List;
+
 @Mapper
 public interface ImMessageAppTransformer {
     ImMessageAppTransformer INSTANCE = Mappers.getMapper(ImMessageAppTransformer.class);
 
+    List<ImMessageDTO> imMessageDtoListFrom(List<ImPrivateMessage> messageList);
+
     @Mappings(value = {
             @Mapping(target = "messageId", source = "id.value"),
+            @Mapping(target = "token", source = "token.value"),
+            @Mapping(target = "type", source = "content.type"),
+            @Mapping(target = "content", source = "content.value"),
+            @Mapping(target = "chatId", source = "chatId.value"),
+            @Mapping(target = "senderId", source = "senderId.value"),
             @Mapping(target = "receiverId", source = "receiverId.value"),
-            @Mapping(target = "chatId", source = "chatId.value")}
+            @Mapping(target = "status", source = "status"),
+            @Mapping(target = "sendTime", source = "sendTime"),
+            @Mapping(target = "readTime", source = "readTime"),
+            @Mapping(target = "revokeTime", source = "revokeTime")}
     )
-    ImPrivateRevokedNotifyCmd imPrivateMessageRevokeNotifyDtoFrom(ImPrivateMessage imMessage);
+    ImMessageDTO imMessageDtoFrom(ImPrivateMessage message);
 
     @Mappings(value = {
             @Mapping(target = "messageId", source = "id.value"),
@@ -85,4 +98,5 @@ public interface ImMessageAppTransformer {
     ImPrivateReadNotifyCmd imPrivateMessageReadNotifyCmdFrom(ImMessageReadEvent event);
 
     ImMessageTypeEnum imMessageTypeEnumFrom(ImMessageType type);
+
 }

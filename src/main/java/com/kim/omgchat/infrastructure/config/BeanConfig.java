@@ -2,7 +2,7 @@ package com.kim.omgchat.infrastructure.config;
 
 import com.kim.omgchat.application.ChatAppService;
 import com.kim.omgchat.application.FriendAppService;
-import com.kim.omgchat.application.PrivateAppService;
+import com.kim.omgchat.application.ImPrivateAppService;
 import com.kim.omgchat.application.UserAppService;
 import com.kim.omgchat.common.identity.snowflake.SnowflakeId;
 import com.kim.omgchat.common.identity.snowflake.impl.StaticSnowflakeMachineId;
@@ -78,15 +78,15 @@ public class BeanConfig {
     }
 
     @Bean
-    public PrivateAppService privateAppService(SnowflakeId snowflakeId,
-                                               ImChatRepository imChatRepository,
-                                               ImPrivateMessageRepository imPrivateMessageRepository,
-                                               UserService userService,
-                                               ImChatService imChatService,
-                                               ImMessageService imMessageService,
-                                               ImMessageNotifier imMessageNotifier,
-                                               SpringEventPublisher imMessageEventPublisher) {
-        return new PrivateAppService(
+    public ImPrivateAppService privateAppService(SnowflakeId snowflakeId,
+                                                 ImChatRepository imChatRepository,
+                                                 ImPrivateMessageRepository imPrivateMessageRepository,
+                                                 UserService userService,
+                                                 ImChatService imChatService,
+                                                 ImMessageService imMessageService,
+                                                 ImMessageNotifier imMessageNotifier,
+                                                 SpringEventPublisher imMessageEventPublisher) {
+        return new ImPrivateAppService(
                 snowflakeId, imChatRepository, imPrivateMessageRepository,
                 userService, imChatService, imMessageService, imMessageNotifier, imMessageEventPublisher);
     }

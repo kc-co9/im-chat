@@ -1,15 +1,15 @@
-package com.kim.omgchat.domain.message;
+package com.kim.omgchat.model.enums;
 
-public enum ImMessageEvent {
+public enum ImMessageStatusEnum {
     /**
      * 已发送
      */
-    SEND,
+    SENT,
 
     /**
-     * 接收
+     * 已接收
      */
-    RECEIVE,
+    RECEIVED,
 
     /**
      * 已读
@@ -19,5 +19,5 @@ public enum ImMessageEvent {
     /**
      * 已撤回
      */
-    REVOKE;
+    REVOKED;
 }

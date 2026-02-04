@@ -1,6 +1,6 @@
 package com.kim.omgchat.endpoint.websocket;
 
-import com.kim.omgchat.application.PrivateAppService;
+import com.kim.omgchat.application.ImPrivateAppService;
 import com.kim.omgchat.model.enums.PushQueue;
 import com.kim.omgchat.support.context.UserContextUtils;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Controller;
 @Controller
 @RequiredArgsConstructor
 public class ImPrivateController {
-    private final PrivateAppService privateAppService;
+    private final ImPrivateAppService imPrivateAppService;
 
     /**
      * 处理客户端消息发送
@@ -30,7 +30,7 @@ public class ImPrivateController {
     public Result<WsResponse> sendPrivateMessage(ImPrivateMessageSendRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageSendCmd command = ImMessageAppTransformer.INSTANCE.imPrivateMessageSendCmdFrom(userId, request);
-        privateAppService.sendMessage(command);
+        imPrivateAppService.sendMessage(command);
         return Result.success(new WsResponse(request.getRequestId()));
     }
 
@@ -42,7 +42,7 @@ public class ImPrivateController {
     public Result<WsResponse> readPrivateMessage(ImPrivateMessageReadRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageReadCmd command = ImMessageAppTransformer.INSTANCE.imPrivateMessageReadCmdFrom(userId, request);
-        privateAppService.readMessage(command);
+        imPrivateAppService.readMessage(command);
         return Result.success(new WsResponse(request.getRequestId()));
     }
 
@@ -54,7 +54,7 @@ public class ImPrivateController {
     public Result<WsResponse> revokePrivateMessage(ImPrivateMessageRevokeRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageRevokeCmd command = ImMessageAppTransformer.INSTANCE.imPrivateMessageReadCmdFrom(userId, request);
-        privateAppService.revokeMessage(command);
+        imPrivateAppService.revokeMessage(command);
         return Result.success(new WsResponse(request.getRequestId()));
     }
 

@@ -18,12 +18,15 @@ import com.kim.omgchat.domain.message.ImPrivateMessageRepository;
 import com.kim.omgchat.domain.message.ImMessageToken;
 import com.kim.omgchat.domain.user.UserId;
 import com.kim.omgchat.domain.user.UserService;
+import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageReceiveCmd;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageSendCmd;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.kim.omgchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateRevokedNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
 import com.kim.omgchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
+import com.kim.omgchat.model.cqrs.dto.im.ImMessageDTO;
+import com.kim.omgchat.domain.message.ImMessageReceivedEvent;
 import com.kim.omgchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.kim.omgchat.support.event.DomainEventPublisher;
 import com.kim.omgchat.support.ImMessageNotifier;
@@ -31,9 +34,10 @@ import com.kim.omgchat.transformer.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @RequiredArgsConstructor
-public class PrivateAppService {
+public class ImPrivateAppService {
 
     private final SnowflakeId snowflakeId;
     private final ImChatRepository imChatRepository;
@@ -88,6 +92,27 @@ public class PrivateAppService {
         }
     }
 
+    public void receiveMessage(ImPrivateMessageReceiveCmd command) {
+        UserId userId = new UserId(command.getUserId());
+        ImChatId chatId = new ImChatId(command.getChatId());
+        ImMessageId messageId = new ImMessageId(command.getMessageId());
+
+        ImPrivateMessage imMessage = imPrivateMessageRepository.find(chatId, messageId);
+        if (imMessage == null) {
+            throw new NotFoundException("消息不存在");
+        }
+
+        imMessage.receive(userId);
+        imPrivateMessageRepository.save(imMessage);
+
+        ImMessageReceivedEvent imMessageReceivedEvent = imMessageService.newImMessageReceivedEvent(imMessage);
+        imMessageEventPublisher.publish(imMessageReceivedEvent);
+    }
+
+    public void onMessageReceived(ImMessageReceivedEvent event) {
+    }
+
+
     public void revokeMessage(ImPrivateMessageRevokeCmd command) {
         UserId userId = new UserId(command.getUserId());
         ImChatId chatId = new ImChatId(command.getChatId());
@@ -139,6 +164,12 @@ public class PrivateAppService {
         imMessageNotifier.notify(notifyCmd);
     }
 
-    public void queryHistoryMessage(ImPrivateMessageHistoryQuery query) {
+    public List<ImMessageDTO> queryHistoryMessage(ImPrivateMessageHistoryQuery query) {
+        UserId userId = new UserId(query.getUserId());
+        ImChatId chatId = new ImChatId(query.getChatId());
+        ImMessageId lastMessageId = new ImMessageId(query.getLastMessageId());
+        Integer count = query.getCount();
+        List<ImPrivateMessage> messageList = imPrivateMessageRepository.queryHistory(chatId, userId, lastMessageId, count);
+        return ImMessageAppTransformer.INSTANCE.imMessageDtoListFrom(messageList);
     }
 }

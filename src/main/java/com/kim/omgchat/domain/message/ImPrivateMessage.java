@@ -15,6 +15,15 @@ import java.time.LocalDateTime;
 public class ImPrivateMessage extends ImMessage {
     private ImChatId chatId;
     private UserId receiverId;
+    private LocalDateTime receivedTime;
+
+    public void receive(UserId receiverId) {
+        if (!this.receiverId.equals(receiverId)) {
+            throw new IllegalArgumentException("用户不能接收别人的消息");
+        }
+        this.status = this.status.transition(ImMessageEvent.RECEIVE);
+        this.receivedTime = LocalDateTime.now();
+    }
 
     public void read(UserId receiverId) {
         if (!this.receiverId.equals(receiverId)) {

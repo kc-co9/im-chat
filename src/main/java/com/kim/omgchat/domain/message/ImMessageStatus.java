@@ -14,6 +14,11 @@ public enum ImMessageStatus {
     SENT,
 
     /**
+     * 已接收
+     */
+    RECEIVED,
+
+    /**
      * 已读
      */
     READ,
@@ -24,17 +29,21 @@ public enum ImMessageStatus {
     REVOKED;
 
 
-    private static final StateMachine<ImMessageStatus, ImMessageEvent> STATE_MACHINE = new TradeOrderStatusMachine();
+    private static final StateMachine<ImMessageStatus, ImMessageEvent> STATE_MACHINE = new ImMessageStatusMachine();
 
     public ImMessageStatus transition(ImMessageEvent event) {
         return STATE_MACHINE.transition(this, event);
     }
 
     @VisibleForTesting
-    static class TradeOrderStatusMachine extends DefaultStateMachine<ImMessageStatus, ImMessageEvent> {
-        public TradeOrderStatusMachine() {
+    static class ImMessageStatusMachine extends DefaultStateMachine<ImMessageStatus, ImMessageEvent> {
+        public ImMessageStatusMachine() {
             putTransition(ImMessageStatus.SENT, ImMessageEvent.READ, ImMessageStatus.READ);
+            putTransition(ImMessageStatus.SENT, ImMessageEvent.RECEIVE, ImMessageStatus.RECEIVED);
             putTransition(ImMessageStatus.SENT, ImMessageEvent.REVOKE, ImMessageStatus.REVOKED);
+
+            putTransition(ImMessageStatus.RECEIVED, ImMessageEvent.READ, ImMessageStatus.READ);
+            putTransition(ImMessageStatus.RECEIVED, ImMessageEvent.REVOKE, ImMessageStatus.REVOKED);
 
             putTransition(ImMessageStatus.READ, ImMessageEvent.READ, ImMessageStatus.READ);
             putTransition(ImMessageStatus.READ, ImMessageEvent.REVOKE, ImMessageStatus.REVOKED);
