@@ -98,6 +98,18 @@
             <artifactId>caffeine</artifactId>
             <version>2.9.3</version> <!-- 兼容版本 -->
         </dependency>
+        <!--    JetCache    -->
+        <dependency>
+            <groupId>com.alicp.jetcache</groupId>
+            <artifactId>jetcache-starter-redisson</artifactId>
+            <version>2.7.5</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
 
         <!-- 工具类 -->
         <dependency>
@@ -117,7 +129,7 @@
             <version>${mapstruct.version}</version>
             <scope>provided</scope>
         </dependency>
-        
+
         <!-- Swagger -->
         <dependency>
             <groupId>io.springfox</groupId>
@@ -129,7 +141,7 @@
             <artifactId>springfox-swagger-ui</artifactId>
             <version>2.9.2</version>
         </dependency>
-        
+
         <!-- JSR 303 Validation -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

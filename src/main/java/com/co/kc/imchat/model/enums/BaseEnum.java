@@ -1,7 +1,7 @@
 package com.co.kc.imchat.model.enums;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.co.kc.imchat.infrastructure.serializer.BaseEnumDeserializer;
+import com.co.kc.imchat.support.web.serializer.BaseEnumDeserializer;
 
 /**
  * 枚举基类

@@ -1,10 +1,10 @@
 package com.co.kc.imchat.infrastructure.config;
 
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
-import com.co.kc.imchat.infrastructure.convert.IntegerCodeToBaseEnumConverterFactory;
-import com.co.kc.imchat.infrastructure.convert.StringCodeToBaseEnumConverterFactory;
-import com.co.kc.imchat.infrastructure.interceptor.HttpContextInterceptor;
-import com.co.kc.imchat.infrastructure.serializer.BaseEnumSerializer;
+import com.co.kc.imchat.support.web.convert.IntegerCodeToBaseEnumConverterFactory;
+import com.co.kc.imchat.support.web.convert.StringCodeToBaseEnumConverterFactory;
+import com.co.kc.imchat.support.web.interceptor.HttpContextInterceptor;
+import com.co.kc.imchat.support.web.serializer.BaseEnumSerializer;
 import com.co.kc.imchat.model.enums.BaseEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;

@@ -17,14 +17,19 @@ public enum DbImMessageStatus {
     SENT(1),
 
     /**
-     * 2-已读
+     * 2-已接收
      */
-    READ(2),
+    RECEIVED(2),
 
     /**
-     * 3-已撤回
+     * 3-已读
      */
-    REVOKED(3);
+    READ(3),
+
+    /**
+     * 4-已撤回
+     */
+    REVOKED(4);
 
     @EnumValue
     private final int code;

@@ -1,8 +1,8 @@
 package com.co.kc.imchat.domain.user;
 
-import com.co.kc.imchat.common.exception.AuthException;
+import com.co.kc.imchat.support.exception.AuthException;
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.support.user.PasswordService;
+import com.co.kc.imchat.support.auth.PasswordService;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor

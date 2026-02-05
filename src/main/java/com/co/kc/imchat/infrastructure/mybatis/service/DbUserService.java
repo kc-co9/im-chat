@@ -32,4 +32,8 @@ public class DbUserService extends BaseMybatisService<DbUserMapper, DbUser> {
     public Optional<DbUser> getByEmail(String email) {
         return getFirst(this.getQueryWrapper().eq(DbUser::getEmail, email));
     }
+
+    public void removeByUserId(Long userId) {
+        this.remove(this.getQueryWrapper().eq(DbUser::getUserId, userId));
+    }
 }

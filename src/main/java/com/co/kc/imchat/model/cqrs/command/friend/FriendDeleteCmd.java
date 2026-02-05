@@ -7,5 +7,5 @@ import lombok.Data;
 @AllArgsConstructor
 public class FriendDeleteCmd {
     private Long userId;
-    private Long friendId;
+    private Long friendUserId;
 }

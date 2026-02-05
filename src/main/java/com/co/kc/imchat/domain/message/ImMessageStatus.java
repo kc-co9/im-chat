@@ -1,8 +1,8 @@
 package com.co.kc.imchat.domain.message;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.co.kc.imchat.common.support.state.DefaultStateMachine;
-import com.co.kc.imchat.common.support.state.StateMachine;
+import com.co.kc.imchat.support.state.DefaultStateMachine;
+import com.co.kc.imchat.support.state.StateMachine;
 
 /**
  * 消息读取状态

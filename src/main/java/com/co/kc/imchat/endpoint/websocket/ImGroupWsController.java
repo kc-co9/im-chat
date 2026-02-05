@@ -9,7 +9,7 @@ import com.co.kc.imchat.model.io.WsResponse;
 import com.co.kc.imchat.model.io.im.ImGroupMessageRevokeRequest;
 import com.co.kc.imchat.model.io.im.ImGroupMessageSendRequest;
 import com.co.kc.imchat.support.context.UserContextUtils;
-import com.co.kc.imchat.transformer.ImMessageAppTransformer;
+import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.annotation.SendToUser;

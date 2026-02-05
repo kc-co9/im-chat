@@ -1,21 +1,29 @@
 package com.co.kc.imchat.domain.friend;
 
+import com.co.kc.imchat.domain.shared.Identification;
+import com.co.kc.imchat.domain.shared.Validator;
 import com.co.kc.imchat.domain.user.UserId;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 
+/**
+ * 朋友
+ */
 @Data
 @AllArgsConstructor
-public class Friend {
+@EqualsAndHashCode(callSuper = true)
+public class Friend extends Identification implements Validator {
+    private FriendId id;
     private UserId userId;
-    private UserId friendId;
+    private UserId friendUserId;
     private FriendAlias alias;
     private FriendStatus status;
     private LocalDateTime createTime;
 
-    public void block(){
+    public void block() {
         status = FriendStatus.BLOCKED;
     }
 

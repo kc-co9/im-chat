@@ -7,5 +7,5 @@ import lombok.Data;
 @AllArgsConstructor
 public class FriendAddCmd {
     private Long userId;
-    private Long friendId;
+    private Long friendUserId;
 }

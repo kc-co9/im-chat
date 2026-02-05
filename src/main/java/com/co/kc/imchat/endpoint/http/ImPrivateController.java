@@ -5,7 +5,7 @@ import com.co.kc.imchat.model.cqrs.dto.im.ImMessageDTO;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.model.io.im.ImPrivateMessageQueryResponse;
 import com.co.kc.imchat.support.context.UserContextUtils;
-import com.co.kc.imchat.transformer.ImMessageHttpIoTransformer;
+import com.co.kc.imchat.transformer.http.ImMessageHttpIoTransformer;
 import io.swagger.annotations.Api;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

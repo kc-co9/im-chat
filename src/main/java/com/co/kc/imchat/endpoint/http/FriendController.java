@@ -8,7 +8,7 @@ import com.co.kc.imchat.model.io.friend.FriendDetailResponse;
 import com.co.kc.imchat.model.io.friend.FriendListResponse;
 import com.co.kc.imchat.model.cqrs.dto.friend.FriendItemDTO;
 import com.co.kc.imchat.model.cqrs.query.friend.FriendListQuery;
-import com.co.kc.imchat.transformer.FriendHttpIoTransformer;
+import com.co.kc.imchat.transformer.http.FriendHttpIoTransformer;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.RequiredArgsConstructor;
@@ -35,9 +35,9 @@ public class FriendController {
 
     @ApiOperation("好友详情")
     @GetMapping("/friendDetail")
-    public FriendDetailResponse friendDetail(@RequestParam("friendId") Long friendId) {
+    public FriendDetailResponse friendDetail(@RequestParam("friendUserId") Long friendUserId) {
         Long userId = UserContextUtils.get().getUserId();
-        FriendDetailQuery query = new FriendDetailQuery(userId, friendId);
+        FriendDetailQuery query = new FriendDetailQuery(userId, friendUserId);
         FriendDetailDTO friendDetailDTO = friendAppService.getFriendDetail(query);
         return FriendHttpIoTransformer.INSTANCE.friendDetailResponseFrom(friendDetailDTO);
     }

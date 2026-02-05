@@ -1,10 +1,10 @@
 package com.co.kc.imchat.infrastructure.config;
 
 import com.co.kc.imchat.application.UserAppService;
-import com.co.kc.imchat.infrastructure.interceptor.WsContextInterceptor;
-import com.co.kc.imchat.infrastructure.interceptor.WsHandshakeInterceptor;
+import com.co.kc.imchat.support.web.interceptor.WsContextInterceptor;
+import com.co.kc.imchat.support.web.interceptor.WsHandshakeInterceptor;
 import com.co.kc.imchat.infrastructure.support.WsHandshakeHandler;
-import com.co.kc.imchat.support.user.TokenService;
+import com.co.kc.imchat.support.auth.TokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

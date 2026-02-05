@@ -1,13 +1,14 @@
 package com.co.kc.imchat.infrastructure.domain;
 
-import com.co.kc.imchat.common.utils.FunctionUtils;
+import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.domain.user.User;
 import com.co.kc.imchat.domain.user.UserEmail;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.user.UserRepository;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbUser;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbUserService;
-import com.co.kc.imchat.transformer.UserDomainTransformer;
+import com.co.kc.imchat.transformer.db.UserDbTransformer;
+import com.co.kc.imchat.transformer.domain.UserDomainTransformer;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Repository;
@@ -45,11 +46,12 @@ public class MysqlUserRepository implements UserRepository {
 
     @Override
     public void save(User user) {
-
+        DbUser dbUser = UserDbTransformer.INSTANCE.dbUserFrom(user);
+        dbUserService.saveOrUpdate(dbUser);
     }
 
     @Override
     public void remove(User user) {
-
+        dbUserService.removeByUserId(user.getId().getValue());
     }
 }

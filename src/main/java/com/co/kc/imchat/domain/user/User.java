@@ -1,7 +1,7 @@
 package com.co.kc.imchat.domain.user;
 
 import com.co.kc.imchat.domain.shared.Identification;
-import com.co.kc.imchat.support.user.PasswordService;
+import com.co.kc.imchat.support.auth.PasswordService;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 

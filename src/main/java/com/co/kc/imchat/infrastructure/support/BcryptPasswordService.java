@@ -3,7 +3,7 @@ package com.co.kc.imchat.infrastructure.support;
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import com.co.kc.imchat.domain.user.UserPassword;
 import com.co.kc.imchat.domain.user.UserRawPassword;
-import com.co.kc.imchat.support.user.PasswordService;
+import com.co.kc.imchat.support.auth.PasswordService;
 import org.springframework.stereotype.Service;
 
 /**

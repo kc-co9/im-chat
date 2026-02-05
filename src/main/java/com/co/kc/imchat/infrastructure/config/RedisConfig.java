@@ -1,6 +1,6 @@
 package com.co.kc.imchat.infrastructure.config;
 
-import com.co.kc.imchat.common.utils.JsonUtils;
+import com.co.kc.imchat.support.utils.JsonUtils;
 import com.co.kc.imchat.support.redis.RedisSubscriber;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

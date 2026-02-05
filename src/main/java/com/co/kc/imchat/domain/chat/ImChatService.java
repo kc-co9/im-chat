@@ -1,11 +1,10 @@
 package com.co.kc.imchat.domain.chat;
 
-import com.co.kc.imchat.common.exception.AuthException;
-import com.co.kc.imchat.common.utils.FunctionUtils;
+import com.co.kc.imchat.support.exception.AuthException;
+import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.session.Session;
 import com.co.kc.imchat.domain.session.SessionRepository;
-import com.co.kc.imchat.domain.shared.NickName;
 import com.co.kc.imchat.domain.user.User;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.user.UserRepository;
@@ -65,7 +64,7 @@ public class ImChatService {
     public List<ImGroupMember> newGroupMembers(List<UserId> memberIds) {
         List<User> users = userRepository.find(memberIds);
         return FunctionUtils.mappingList(users, user ->
-                new ImGroupMember(user.getId(), new NickName(user.getUsername().getValue())));
+                new ImGroupMember(user.getId(), null, null));
     }
 
 

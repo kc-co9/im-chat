@@ -1,7 +1,7 @@
 package com.co.kc.imchat.application;
 
-import com.co.kc.imchat.common.exception.BusinessException;
-import com.co.kc.imchat.common.exception.NotFoundException;
+import com.co.kc.imchat.support.exception.BusinessException;
+import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendRepository;
 import com.co.kc.imchat.domain.friend.FriendService;
@@ -16,7 +16,7 @@ import com.co.kc.imchat.model.cqrs.dto.friend.FriendDetailDTO;
 import com.co.kc.imchat.model.cqrs.dto.friend.FriendItemDTO;
 import com.co.kc.imchat.model.cqrs.query.friend.FriendDetailQuery;
 import com.co.kc.imchat.model.cqrs.query.friend.FriendListQuery;
-import com.co.kc.imchat.transformer.FriendAppTransformer;
+import com.co.kc.imchat.transformer.application.FriendAppTransformer;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
@@ -30,24 +30,24 @@ public class FriendAppService {
 
     public void addFriend(FriendAddCmd command) {
         UserId userId = new UserId(command.getUserId());
-        UserId friendId = new UserId(command.getFriendId());
+        UserId friendUserId = new UserId(command.getFriendUserId());
 
-        Friend friend = friendRepository.find(userId, friendId);
+        Friend friend = friendRepository.find(userId, friendUserId);
         if (friend != null) {
             throw new BusinessException("好友已存在");
         }
 
-        Friend newFriend = friendService.addFriend(userId, friendId);
-        Friend newPeerFriend = friendService.addFriend(friendId, userId);
+        Friend newFriend = friendService.addFriend(userId, friendUserId);
+        Friend newPeerFriend = friendService.addFriend(friendUserId, userId);
         friendRepository.save(newFriend);
         friendRepository.save(newPeerFriend);
     }
 
     public void blockFriend(FriendBlockCmd command) {
         UserId userId = new UserId(command.getUserId());
-        UserId friendId = new UserId(command.getFriendId());
+        UserId friendUserId = new UserId(command.getFriendUserId());
 
-        Friend friend = friendRepository.find(userId, friendId);
+        Friend friend = friendRepository.find(userId, friendUserId);
         if (friend == null) {
             throw new NotFoundException("好友不存在");
         }
@@ -58,9 +58,9 @@ public class FriendAppService {
 
     public void unblockFriend(FriendUnblockCmd command) {
         UserId userId = new UserId(command.getUserId());
-        UserId friendId = new UserId(command.getFriendId());
+        UserId friendUserId = new UserId(command.getFriendUserId());
 
-        Friend friend = friendRepository.find(userId, friendId);
+        Friend friend = friendRepository.find(userId, friendUserId);
         if (friend == null) {
             throw new NotFoundException("好友不存在");
         }
@@ -71,9 +71,9 @@ public class FriendAppService {
 
     public void deleteFriend(FriendDeleteCmd command) {
         UserId userId = new UserId(command.getUserId());
-        UserId friendId = new UserId(command.getFriendId());
+        UserId friendUserId = new UserId(command.getFriendUserId());
 
-        Friend friend = friendRepository.find(userId, friendId);
+        Friend friend = friendRepository.find(userId, friendUserId);
         if (friend == null) {
             throw new NotFoundException("好友不存在");
         }
@@ -89,8 +89,8 @@ public class FriendAppService {
 
     public FriendDetailDTO getFriendDetail(FriendDetailQuery query) {
         UserId userId = new UserId(query.getUserId());
-        UserId friendId = new UserId(query.getFriendId());
-        Friend friend = friendRepository.find(userId, friendId);
+        UserId friendUserId = new UserId(query.getFriendUserId());
+        Friend friend = friendRepository.find(userId, friendUserId);
         if (friend == null) {
             throw new NotFoundException("好友不存在");
         }

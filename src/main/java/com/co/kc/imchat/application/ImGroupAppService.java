@@ -1,7 +1,7 @@
 package com.co.kc.imchat.application;
 
-import com.co.kc.imchat.common.exception.NotFoundException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.support.exception.NotFoundException;
+import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.domain.chat.ImChat;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatRepository;
@@ -23,7 +23,7 @@ import com.co.kc.imchat.model.cqrs.command.notify.ImGroupRevokedNotifyCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
 import com.co.kc.imchat.support.ImMessageNotifier;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
-import com.co.kc.imchat.transformer.ImMessageAppTransformer;
+import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;

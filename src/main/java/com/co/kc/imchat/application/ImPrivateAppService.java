@@ -1,11 +1,13 @@
 package com.co.kc.imchat.application;
 
-import com.co.kc.imchat.common.exception.NotFoundException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.support.exception.BusinessException;
+import com.co.kc.imchat.support.exception.NotFoundException;
+import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.domain.chat.ImChat;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatRepository;
 import com.co.kc.imchat.domain.chat.ImChatService;
+import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.message.ImPrivateMessageReadEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageSentEvent;
@@ -30,7 +32,7 @@ import com.co.kc.imchat.domain.message.ImPrivateMessageReceivedEvent;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.ImMessageNotifier;
-import com.co.kc.imchat.transformer.ImMessageAppTransformer;
+import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
@@ -169,7 +171,16 @@ public class ImPrivateAppService {
         ImChatId chatId = new ImChatId(query.getChatId());
         ImMessageId lastMessageId = new ImMessageId(query.getLastMessageId());
         Integer count = query.getCount();
-        List<ImPrivateMessage> messageList = imPrivateMessageRepository.queryHistory(chatId, userId, lastMessageId, count);
+
+        ImPrivateChat imPrivateChat = imChatRepository.findPrivateChat(chatId);
+        if (imPrivateChat == null) {
+            throw new NotFoundException("聊天不存在");
+        }
+        if (!imPrivateChat.getPair().contain(userId)) {
+            throw new BusinessException("无法查看别人的聊天记录");
+        }
+
+        List<ImPrivateMessage> messageList = imPrivateMessageRepository.queryHistory(chatId, lastMessageId, count);
         return ImMessageAppTransformer.INSTANCE.imMessageDtoListFrom(messageList);
     }
 }

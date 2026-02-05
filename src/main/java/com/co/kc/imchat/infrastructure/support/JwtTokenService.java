@@ -1,8 +1,8 @@
 package com.co.kc.imchat.infrastructure.support;
 
-import com.co.kc.imchat.common.utils.JsonUtils;
+import com.co.kc.imchat.support.utils.JsonUtils;
 import com.co.kc.imchat.model.cqrs.dto.user.TokenDTO;
-import com.co.kc.imchat.support.user.TokenService;
+import com.co.kc.imchat.support.auth.TokenService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;

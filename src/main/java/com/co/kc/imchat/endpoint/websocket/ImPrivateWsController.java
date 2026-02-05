@@ -13,7 +13,7 @@ import com.co.kc.imchat.model.io.WsResponse;
 import com.co.kc.imchat.model.io.im.ImPrivateMessageReadRequest;
 import com.co.kc.imchat.model.io.im.ImPrivateMessageRevokeRequest;
 import com.co.kc.imchat.model.io.im.ImPrivateMessageSendRequest;
-import com.co.kc.imchat.transformer.ImMessageAppTransformer;
+import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.annotation.SendToUser;

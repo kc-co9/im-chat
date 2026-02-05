@@ -7,5 +7,5 @@ import lombok.Getter;
 @AllArgsConstructor
 public class FriendUnblockCmd {
     private Long userId;
-    private Long friendId;
+    private Long friendUserId;
 }

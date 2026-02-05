@@ -13,9 +13,10 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class ImPrivateMessage extends ImMessage {
-    private ImChatId chatId;
     private UserId receiverId;
     private LocalDateTime receivedTime;
+    protected LocalDateTime readTime;
+
 
     public void receive(UserId receiverId) {
         if (!this.receiverId.equals(receiverId)) {

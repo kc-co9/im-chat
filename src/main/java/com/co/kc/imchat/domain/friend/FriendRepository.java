@@ -7,7 +7,7 @@ import java.util.List;
 public interface FriendRepository {
     List<Friend> find(UserId userId);
 
-    Friend find(UserId userId, UserId friendId);
+    Friend find(UserId userId, UserId friendUserId);
 
     void save(Friend friend);
 

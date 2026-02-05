@@ -1,14 +1,14 @@
 package com.co.kc.imchat.application;
 
-import com.co.kc.imchat.common.exception.NotFoundException;
-import com.co.kc.imchat.common.exception.RepeatException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.support.exception.NotFoundException;
+import com.co.kc.imchat.support.exception.RepeatException;
+import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.domain.session.Session;
 import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.UserService;
 import com.co.kc.imchat.model.cqrs.dto.user.TokenDTO;
 import com.co.kc.imchat.model.cqrs.query.user.UserAuthQuery;
-import com.co.kc.imchat.support.user.PasswordService;
+import com.co.kc.imchat.support.auth.PasswordService;
 import com.co.kc.imchat.domain.user.User;
 import com.co.kc.imchat.domain.user.UserEmail;
 import com.co.kc.imchat.domain.user.UserId;
@@ -21,7 +21,7 @@ import com.co.kc.imchat.model.cqrs.command.user.UserSignUpCmd;
 import com.co.kc.imchat.model.cqrs.dto.user.SignInDTO;
 import com.co.kc.imchat.model.cqrs.dto.user.UserDetailDTO;
 import com.co.kc.imchat.model.cqrs.query.user.UserDetailQuery;
-import com.co.kc.imchat.support.user.TokenService;
+import com.co.kc.imchat.support.auth.TokenService;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;

@@ -1,8 +1,12 @@
 package com.co.kc.imchat.support.context;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserContext {
     private Long userId;
 

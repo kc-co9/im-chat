@@ -19,10 +19,16 @@ public class DbFriendService extends BaseMybatisService<DbFriendMapper, DbFriend
         return this.list(this.getQueryWrapper().eq(DbFriend::getUserId, userId));
     }
 
-    public Optional<DbFriend> getByUserIdAndFriendId(Long userId, Long friendId) {
+    public Optional<DbFriend> getByUserIdAndFriendUserId(Long userId, Long friendUserId) {
         return this.getFirst(this.getQueryWrapper()
                 .eq(DbFriend::getUserId, userId)
-                .eq(DbFriend::getFriendId, friendId)
+                .eq(DbFriend::getFriendUserId, friendUserId)
         );
+    }
+
+    public void removeByUserIdAndFriendUserId(Long userId, Long friendUserId) {
+        this.remove(this.getQueryWrapper()
+                .eq(DbFriend::getUserId, userId)
+                .eq(DbFriend::getFriendUserId, friendUserId));
     }
 }

@@ -10,7 +10,7 @@ import lombok.EqualsAndHashCode;
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
-public abstract class ImChat extends Identification implements Validator {
+public class ImChat extends Identification implements Validator {
     private ImChatId id;
     private ImChatName name;
     private ImChatType type;

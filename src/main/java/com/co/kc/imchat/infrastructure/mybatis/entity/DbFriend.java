@@ -16,7 +16,7 @@ public class DbFriend extends BaseEntity {
     //用户ID
     private Long userId;
     //好友ID
-    private Long friendId;
+    private Long friendUserId;
     //好友别名
     private String friendAlias;
     //好友状态 0-未知, 1-正常, 2-拉黑 3-删除

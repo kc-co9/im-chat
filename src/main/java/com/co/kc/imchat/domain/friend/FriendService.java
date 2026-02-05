@@ -5,7 +5,8 @@ import com.co.kc.imchat.domain.user.UserId;
 import java.time.LocalDateTime;
 
 public class FriendService {
-    public Friend addFriend(UserId userId, UserId friendId) {
-        return new Friend(userId, friendId, null, FriendStatus.NORMAL, LocalDateTime.now());
+    public Friend addFriend(UserId userId, UserId friendUserId) {
+        FriendId friendId = new FriendId(userId, friendUserId);
+        return new Friend(friendId, userId, friendUserId, null, FriendStatus.NORMAL, LocalDateTime.now());
     }
 }

@@ -8,8 +8,6 @@ import lombok.EqualsAndHashCode;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class ImGroupMessage extends ImMessage {
-    private ImChatId chatId;
-
     public void revoke(UserId userId) {
 
     }

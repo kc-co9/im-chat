@@ -1,8 +1,8 @@
 package com.co.kc.imchat.application;
 
-import com.co.kc.imchat.common.exception.NotFoundException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
-import com.co.kc.imchat.common.utils.FunctionUtils;
+import com.co.kc.imchat.support.exception.NotFoundException;
+import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.domain.chat.ImChat;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatName;
@@ -23,7 +23,7 @@ import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatEnterCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatCreateDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
 import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
-import com.co.kc.imchat.transformer.ImChatAppTransformer;
+import com.co.kc.imchat.transformer.application.ImChatAppTransformer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

@@ -1,8 +1,8 @@
 package com.co.kc.imchat.infrastructure.advice;
 
 
-import com.co.kc.imchat.common.constant.ErrorCode;
-import com.co.kc.imchat.common.exception.BaseException;
+import com.co.kc.imchat.support.constant.ErrorCode;
+import com.co.kc.imchat.support.exception.BaseException;
 import com.co.kc.imchat.model.enums.PushQueue;
 import com.co.kc.imchat.model.io.Result;
 import lombok.extern.slf4j.Slf4j;

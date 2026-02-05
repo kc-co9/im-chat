@@ -1,7 +1,7 @@
 package com.co.kc.imchat.domain.message;
 
 import com.co.kc.imchat.model.enums.ImMessageTypeEnum;
-import com.co.kc.imchat.transformer.ImMessageAppTransformer;
+import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 
 import java.time.LocalDateTime;
 

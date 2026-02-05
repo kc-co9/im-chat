@@ -1,8 +1,8 @@
 package com.co.kc.imchat.model.io;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
-import com.co.kc.imchat.common.constant.ResultCode;
-import com.co.kc.imchat.common.exception.BaseException;
+import com.co.kc.imchat.support.constant.ErrorCode;
+import com.co.kc.imchat.support.constant.ResultCode;
+import com.co.kc.imchat.support.exception.BaseException;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

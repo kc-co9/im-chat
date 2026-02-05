@@ -12,9 +12,9 @@ public enum DbFriendStatus {
     // 1-正常
     NORMAL(1),
     // 2-拉黑
-    BLOCK(2),
+    BLOCKED(2),
     // 3-删除
-    DELETE(3);
+    DELETED(3);
 
     @EnumValue
     private final int code;
