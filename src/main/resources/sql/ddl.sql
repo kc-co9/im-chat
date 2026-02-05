@@ -9,9 +9,9 @@ CREATE TABLE `db_user`
     `user_id`     BIGINT          NOT NULL DEFAULT 0 COMMENT '用户ID',
     `username`    VARCHAR(20)     NOT NULL DEFAULT '' COMMENT '用户名',
     `email`       VARCHAR(45)     NOT NULL DEFAULT '' COMMENT '邮箱',
-    `password`    VARCHAR(45)     NOT NULL DEFAULT '' COMMENT '密码',
-    `create_time` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `update_time` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `password`    VARCHAR(90)     NOT NULL DEFAULT '' COMMENT '密码',
+    `create_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`) USING BTREE,
     UNIQUE KEY `uk_user_id` (`user_id`) USING BTREE,
     UNIQUE KEY `uk_email` (`email`) USING BTREE

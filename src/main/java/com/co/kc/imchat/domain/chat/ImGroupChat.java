@@ -11,4 +11,8 @@ import java.util.List;
 public class ImGroupChat extends ImChat {
     private UserId ownerId;
     private List<ImGroupMember> members;
+
+    public boolean contain(UserId userId) {
+        return members.stream().anyMatch(member -> member.getUserId().equals(userId));
+    }
 }

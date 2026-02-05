@@ -1,5 +1,8 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.model.cqrs.dto.im.ImGroupMessageDTO;
+import com.co.kc.imchat.model.cqrs.query.ImGroupMessageHistoryQuery;
+import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.domain.chat.ImChat;
@@ -27,6 +30,7 @@ import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 群组-应用服务
@@ -107,4 +111,21 @@ public class ImGroupAppService {
 
     }
 
+    public List<ImGroupMessageDTO> queryHistoryMessage(ImGroupMessageHistoryQuery query) {
+        UserId userId = new UserId(query.getUserId());
+        ImChatId chatId = new ImChatId(query.getChatId());
+        ImMessageId lastMessageId = new ImMessageId(query.getLastMessageId());
+        Integer count = query.getCount();
+
+        ImGroupChat imGroupChat = imChatRepository.findGroupChat(chatId);
+        if (imGroupChat == null) {
+            throw new NotFoundException("聊天不存在");
+        }
+        if (!imGroupChat.contain(userId)) {
+            throw new BusinessException("无法查看别人的聊天记录");
+        }
+
+        List<ImGroupMessage> messageList = imGroupMessageRepository.queryHistory(chatId, lastMessageId, count);
+        return ImMessageAppTransformer.INSTANCE.imGroupMessageDtoListFrom(messageList);
+    }
 }

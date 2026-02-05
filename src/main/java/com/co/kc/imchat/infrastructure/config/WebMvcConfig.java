@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilde
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.format.FormatterRegistry;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -23,7 +24,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(httpContextInterceptor)
                 .addPathPatterns("/**")
-                .excludePathPatterns("/user/signUp", "/user/signIn");
+                .excludePathPatterns(
+                        "/user/signUp", "/user/signIn",
+                        "/login.html", "/register.html", "/chat.html",
+                        "/css/**", "/js/**", "/img/**", "/fonts/**");
     }
 
     /**
@@ -33,6 +37,19 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addFormatters(FormatterRegistry registry) {
         registry.addConverterFactory(new IntegerCodeToBaseEnumConverterFactory());
         registry.addConverterFactory(new StringCodeToBaseEnumConverterFactory());
+    }
+
+    /**
+     * 跨域配置
+     */
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true)
+                .maxAge(3600);
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.co.kc.imchat.infrastructure.domain;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.message.ImGroupMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageRepository;
@@ -11,6 +13,7 @@ import com.co.kc.imchat.transformer.domain.ImMessageDomainTransformer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -28,5 +31,14 @@ public class MysqlImGroupMessageRepository implements ImGroupMessageRepository {
     public ImGroupMessage find(ImChatId chatId, ImMessageId messageId) {
         Optional<DbImGroupMessage> dbImGroupMessage = dbImGroupMessageService.getByChatIdAndMessageId(chatId.getValue(), messageId.getValue());
         return dbImGroupMessage.map(ImMessageDomainTransformer.INSTANCE::imGroupMessageFrom).orElse(null);
+    }
+
+    @Override
+    public List<ImGroupMessage> queryHistory(ImChatId imChatId, ImMessageId lastMessageId, Integer count) {
+        IPage<DbImGroupMessage> dbImGroupMessagePage = dbImGroupMessageService.page(new Page<>(1, count), dbImGroupMessageService.getQueryWrapper()
+                .eq(DbImGroupMessage::getChatId, imChatId.getValue())
+                .lt(DbImGroupMessage::getMessageId, lastMessageId.getValue())
+                .orderByDesc(DbImGroupMessage::getMessageId));
+        return ImMessageDomainTransformer.INSTANCE.imGroupMessageListFrom(dbImGroupMessagePage.getRecords());
     }
 }

@@ -6,19 +6,26 @@ import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatCreateCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatEnterCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatEnterCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatCreateDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
+import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
+import com.co.kc.imchat.model.io.chat.ImChatListResponse;
 import com.co.kc.imchat.model.io.chat.ImGroupChatCreateRequest;
 import com.co.kc.imchat.model.io.chat.ImGroupChatCreateResponse;
 import com.co.kc.imchat.model.io.chat.ImGroupChatEnterRequest;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatEnterRequest;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatEnterResponse;
 import com.co.kc.imchat.support.context.UserContextUtils;
+import com.co.kc.imchat.transformer.http.ImChatHttpIoTransformer;
 import io.swagger.annotations.Api;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @Api("聊天接口")
 @RestController
@@ -26,6 +33,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping(value = "/im/chat")
 public class ChatController {
     private final ChatAppService chatAppService;
+
+    @GetMapping(value = "/getChatList")
+    public ImChatListResponse getChatList() {
+        Long userId = UserContextUtils.get().getUserId();
+        List<ImChatItemDTO> imChatList = chatAppService.getChatList(new ImChatListQuery(userId));
+        List<ImChatListResponse.ImChatItem> imChatItemList = ImChatHttpIoTransformer.INSTANCE.imChatItemListFrom(imChatList);
+        return new ImChatListResponse(imChatItemList);
+    }
 
     @PostMapping(value = "/enterPrivateChat")
     public ImPrivateChatEnterResponse enterPrivateChat(@RequestBody @Validated ImPrivateChatEnterRequest request) {

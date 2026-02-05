@@ -1,5 +1,6 @@
 package com.co.kc.imchat.transformer.application;
 
+import com.co.kc.imchat.domain.message.ImGroupMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.ImGroupMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageReadEvent;
@@ -18,7 +19,8 @@ import com.co.kc.imchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateRevokedNotifyCmd;
-import com.co.kc.imchat.model.cqrs.dto.im.ImMessageDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImGroupMessageDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.model.enums.ImMessageTypeEnum;
 import com.co.kc.imchat.model.io.im.ImGroupMessageRevokeRequest;
 import com.co.kc.imchat.model.io.im.ImGroupMessageSendRequest;
@@ -37,7 +39,7 @@ import java.util.List;
 public interface ImMessageAppTransformer {
     ImMessageAppTransformer INSTANCE = Mappers.getMapper(ImMessageAppTransformer.class);
 
-    List<ImMessageDTO> imMessageDtoListFrom(List<ImPrivateMessage> messageList);
+    List<ImPrivateMessageDTO> imPrivateMessageDtoListFrom(List<ImPrivateMessage> messageList);
 
     @Mappings(value = {
             @Mapping(target = "messageId", source = "id.value"),
@@ -52,7 +54,23 @@ public interface ImMessageAppTransformer {
             @Mapping(target = "readTime", source = "readTime"),
             @Mapping(target = "revokeTime", source = "revokeTime")}
     )
-    ImMessageDTO imMessageDtoFrom(ImPrivateMessage message);
+    ImPrivateMessageDTO imPrivateMessageDtoFrom(ImPrivateMessage message);
+
+    List<ImGroupMessageDTO> imGroupMessageDtoListFrom(List<ImGroupMessage> messageList);
+
+    @Mappings(value = {
+            @Mapping(target = "messageId", source = "id.value"),
+            @Mapping(target = "token", source = "token.value"),
+            @Mapping(target = "type", source = "content.type"),
+            @Mapping(target = "content", source = "content.value"),
+            @Mapping(target = "chatId", source = "chatId.value"),
+            @Mapping(target = "senderId", source = "senderId.value"),
+            @Mapping(target = "status", source = "status"),
+            @Mapping(target = "sendTime", source = "sendTime"),
+            @Mapping(target = "revokeTime", source = "revokeTime")}
+    )
+    ImGroupMessageDTO imGroupMessageDtoFrom(ImGroupMessage message);
+
 
     @Mappings(value = {
             @Mapping(target = "messageId", source = "id.value"),

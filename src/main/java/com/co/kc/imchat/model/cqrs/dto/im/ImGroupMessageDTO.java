@@ -7,16 +7,14 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-public class ImMessageDTO {
+public class ImGroupMessageDTO {
     private Long messageId;
     private String token;
     private ImMessageType type;
     private String content;
     private Long chatId;
     private Long senderId;
-    private Long receiverId;
     private ImMessageStatus status;
     private LocalDateTime sendTime;
-    private LocalDateTime readTime;
     private LocalDateTime revokeTime;
 }

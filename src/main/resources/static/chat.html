@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>即时通讯应用</title>
+    <link rel="stylesheet" href="css/wechat.css">
+    <link rel="stylesheet" href="css/font-awesome.css">
+</head>
+<body>
+    <div class="chat-container">
+        <!-- 左侧聊天列表 -->
+        <div class="chat-sidebar">
+            <!-- 顶部工具栏 -->
+            <div class="sidebar-header">
+                <div class="user-info">
+                    <img src="img/avatar-1.jpg" alt="我的头像" class="avatar">
+                    <span class="username">我</span>
+                </div>
+                <div class="sidebar-tools">
+                    <button class="tool-btn"><i class="fa fa-search"></i></button>
+                    <button class="tool-btn"><i class="fa fa-plus"></i></button>
+                    <button class="tool-btn"><i class="fa fa-ellipsis-v"></i></button>
+                </div>
+            </div>
+            
+            <!-- 搜索框 -->
+            <div class="search-box">
+                <i class="fa fa-search"></i>
+                <input type="text" placeholder="搜索">
+            </div>
+            
+            <!-- 聊天列表标签 -->
+            <div class="chat-tabs">
+                <div class="tab active">消息</div>
+                <div class="tab">联系人</div>
+                <div class="tab">动态</div>
+            </div>
+            
+            <!-- 聊天列表 -->
+            <div class="chat-list">
+                <!-- 聊天列表将通过JavaScript动态生成 -->
+            </div>
+        </div>
+
+        <!-- 右侧聊天窗口 -->
+        <div class="chat-main">
+            <!-- 聊天窗口头部 -->
+            <div class="chat-header">
+                <div class="user-info">
+                    <img src="" alt="对方头像" class="avatar" id="chat-avatar">
+                    <div class="user-details">
+                        <h3 id="chat-name">选择一个聊天</h3>
+                        <span id="chat-status">离线</span>
+                    </div>
+                </div>
+                <div class="chat-tools">
+                    <button class="tool-btn"><i class="fa fa-phone"></i></button>
+                    <button class="tool-btn"><i class="fa fa-video-camera"></i></button>
+                    <button class="tool-btn"><i class="fa fa-ellipsis-v"></i></button>
+                </div>
+            </div>
+
+            <!-- 聊天消息区域 -->
+            <div class="chat-messages">
+                <!-- 欢迎信息 -->
+                <div class="welcome-message">
+                    <h2>欢迎使用即时通讯</h2>
+                    <p>选择一个聊天开始对话</p>
+                </div>
+                <!-- 消息将通过JavaScript动态生成 -->
+            </div>
+
+            <!-- 消息输入区域 -->
+            <div class="chat-input-area">
+                <div class="input-tools">
+                    <button class="tool-btn"><i class="fa fa-smile-o"></i></button>
+                    <button class="tool-btn"><i class="fa fa-paperclip"></i></button>
+                    <button class="tool-btn"><i class="fa fa-image"></i></button>
+                </div>
+                <div class="input-container">
+                    <input type="text" id="message-input" placeholder="输入消息...">
+                </div>
+                <div class="send-button-container">
+                    <button id="send-button" class="send-btn">发送</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模板 -->
+    <script id="chat-item-template" type="text/x-handlebars-template">
+        <div class="chat-item" data-chat-id="{{chatId}}" data-user-id="{{userId}}" data-type="{{type}}">
+            <img src="{{avatar}}" alt="{{nickname}}" class="avatar">
+            <div class="chat-info">
+                <div class="chat-header-info">
+                    <span class="chat-name">{{nickname}}</span>
+                    <span class="chat-time">{{lastMessageTime}}</span>
+                </div>
+                <div class="chat-last-message">
+                    <span class="message-content">{{lastMessage}}</span>
+                    {{#if unreadCount}}
+                    <span class="unread-count">{{unreadCount}}</span>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+    </script>
+
+    <script id="message-template" type="text/x-handlebars-template">
+        <div class="message {{type}}">
+            <img src="{{avatar}}" alt="{{senderName}}" class="avatar">
+            <div class="message-content">
+                <div class="message-text">{{content}}</div>
+                <div class="message-time">{{time}}</div>
+            </div>
+        </div>
+    </script>
+
+    <script src="js/jquery-2.1.0.js"></script>
+    <script src="js/handlebars-v4.1.2.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="js/chat.js"></script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
@@ -27,7 +28,6 @@ import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateRevokedNotifyCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
-import com.co.kc.imchat.model.cqrs.dto.im.ImMessageDTO;
 import com.co.kc.imchat.domain.message.ImPrivateMessageReceivedEvent;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
@@ -166,7 +166,7 @@ public class ImPrivateAppService {
         imMessageNotifier.notify(notifyCmd);
     }
 
-    public List<ImMessageDTO> queryHistoryMessage(ImPrivateMessageHistoryQuery query) {
+    public List<ImPrivateMessageDTO> queryHistoryMessage(ImPrivateMessageHistoryQuery query) {
         UserId userId = new UserId(query.getUserId());
         ImChatId chatId = new ImChatId(query.getChatId());
         ImMessageId lastMessageId = new ImMessageId(query.getLastMessageId());
@@ -176,11 +176,11 @@ public class ImPrivateAppService {
         if (imPrivateChat == null) {
             throw new NotFoundException("聊天不存在");
         }
-        if (!imPrivateChat.getPair().contain(userId)) {
+        if (!imPrivateChat.contain(userId)) {
             throw new BusinessException("无法查看别人的聊天记录");
         }
 
         List<ImPrivateMessage> messageList = imPrivateMessageRepository.queryHistory(chatId, lastMessageId, count);
-        return ImMessageAppTransformer.INSTANCE.imMessageDtoListFrom(messageList);
+        return ImMessageAppTransformer.INSTANCE.imPrivateMessageDtoListFrom(messageList);
     }
 }

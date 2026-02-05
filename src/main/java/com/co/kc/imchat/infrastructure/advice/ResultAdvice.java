@@ -17,7 +17,7 @@ import java.util.Optional;
  * @author kc
  */
 @ConditionalOnWebApplication
-@RestControllerAdvice(basePackages = {"com.co.kc.im"})
+@RestControllerAdvice(basePackages = {"com.co.kc.imchat"})
 public class ResultAdvice implements ResponseBodyAdvice<Object> {
     @Override
     public boolean supports(@NotNull MethodParameter returnType, @NotNull Class converterType) {

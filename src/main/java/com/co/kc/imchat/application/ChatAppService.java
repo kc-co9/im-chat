@@ -100,6 +100,7 @@ public class ChatAppService {
     public List<ImChatItemDTO> getChatList(ImChatListQuery query) {
         UserId userId = new UserId(query.getUserId());
         List<ImChat> chatList = imChatRepository.find(userId);
+        // TODO 展示最后一条消息
         return ImChatAppTransformer.INSTANCE.imChatListFrom(chatList);
     }
 

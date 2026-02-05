@@ -38,6 +38,8 @@ public interface ImMessageDomainTransformer {
     })
     ImPrivateMessage imPrivateMessageFrom(DbImPrivateMessage dbMessage);
 
+    List<ImGroupMessage> imGroupMessageListFrom(List<DbImGroupMessage> records);
+
     @Mappings(value = {
             @Mapping(target = "id.value", source = "messageId"),
             @Mapping(target = "chatId.value", source = "chatId"),

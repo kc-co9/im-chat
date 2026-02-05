@@ -1,5 +1,6 @@
 package com.co.kc.imchat.domain.chat;
 
+import com.co.kc.imchat.domain.user.UserId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -10,4 +11,9 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 public class ImPrivateChat extends ImChat {
     private ImPrivatePair pair;
+
+    public boolean contain(UserId userId) {
+        return pair.contain(userId);
+    }
+
 }

@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ImChatListQuery {
+public class ImGroupMessageHistoryQuery {
+    private Long chatId;
     private Long userId;
+    private Long lastMessageId;
+    private Integer count;
 }
