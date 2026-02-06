@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum RedisKey {
     // 聊天会话缓存
-    IM_CHAT_SESSION("im:chat:session"),
+    IM_CHAT_SESSION("im:chat:session:"),
     ;
 
     private final String value;

@@ -5,6 +5,7 @@ import com.co.kc.imchat.infrastructure.config.properties.LogProperties;
 import com.co.kc.imchat.support.utils.LoggingUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.StopWatch;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
@@ -24,8 +25,9 @@ public class HttpLoggingInterceptor implements ClientHttpRequestInterceptor {
         this.logProperties = logProperties;
     }
 
+    @NotNull
     @Override
-    public ClientHttpResponse intercept(HttpRequest httpRequest, byte[] body, ClientHttpRequestExecution execution) throws IOException {
+    public ClientHttpResponse intercept(@NotNull HttpRequest httpRequest, @NotNull byte[] body, ClientHttpRequestExecution execution) throws IOException {
         StopWatch stopwatch = new StopWatch();
         ClientHttpResponse httpResponse = null;
         try {

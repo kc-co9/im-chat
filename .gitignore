@@ -1,32 +1,57 @@
+# Maven 项目构建
 HELP.md
 /target/
 !.mvn/wrapper/maven-wrapper.jar
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
-.idea
+# 编辑器配置文件
+## IntelliJ IDEA
+.idea/
 *.iws
 *.iml
 *.ipr
 
-### NetBeans ###
+## STS
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+
+## VS Code
+.vscode/
+!.vscode/extensions.json
+
+## NetBeans
 /nbproject/private/
 /nbbuild/
-/dist/
 /nbdist/
 /.nb-gradle/
-/build/
 
-### VS Code ###
-.vscode/
+## 其他编辑器
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-## Logs
+# Vue 项目
+## 依赖
+node_modules/
+
+## 构建产物
+dist/
+dist-ssr/
+*.local
+
+# 日志文件
 /logs/
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*

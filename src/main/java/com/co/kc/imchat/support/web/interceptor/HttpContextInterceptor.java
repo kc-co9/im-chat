@@ -39,6 +39,9 @@ public class HttpContextInterceptor implements HandlerInterceptor {
         }
 
         TokenDTO tokenDTO = tokenService.parse(token);
+        if (tokenDTO == null) {
+            return false;
+        }
 
         boolean isAuthenticated = userAppService.isAuthenticated(new UserAuthQuery(tokenDTO.getUserId()));
         if (!isAuthenticated) {

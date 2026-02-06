@@ -7,6 +7,7 @@ import com.co.kc.imchat.support.context.UserContextUtils;
 import com.co.kc.imchat.model.cqrs.dto.user.UserDetailDTO;
 import com.co.kc.imchat.model.cqrs.query.user.UserDetailQuery;
 import lombok.RequiredArgsConstructor;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
@@ -19,7 +20,7 @@ public class WsContextInterceptor implements ChannelInterceptor {
     private final UserAppService userAppService;
 
     @Override
-    public Message<?> preSend(Message<?> message, MessageChannel channel) {
+    public Message<?> preSend(@NotNull Message<?> message, @NotNull MessageChannel channel) {
         // 1. 包装消息获取 Accessor
         SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.wrap(message);
 
@@ -44,7 +45,7 @@ public class WsContextInterceptor implements ChannelInterceptor {
     }
 
     @Override
-    public void postSend(Message<?> message, MessageChannel channel, boolean sent) {
+    public void postSend(@NotNull Message<?> message, @NotNull MessageChannel channel, boolean sent) {
         // 3. 用完记得清理，防止内存泄漏
         UserContextUtils.remove();
     }

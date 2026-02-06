@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>即时通讯应用</title>
+    <!-- 引入Font Awesome图标库 -->
+    <link rel="stylesheet" href="/css/font-awesome.css">
+    <!-- 引入自定义样式 -->
+    <link rel="stylesheet" href="/css/wechat.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <!-- 解决stompjs在浏览器环境中使用global对象的问题 -->
+    <script>
+      window.global = window;
+    </script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

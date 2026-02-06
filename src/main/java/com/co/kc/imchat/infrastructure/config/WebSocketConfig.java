@@ -44,7 +44,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/web") // 连接地址：ws://localhost:8080/web
                 .addInterceptors(new WsHandshakeInterceptor(tokenService, userAppService))
                 .setHandshakeHandler(new WsHandshakeHandler())
-                .setAllowedOrigins("*"); // 允许跨域
+                .setAllowedOriginPatterns("*"); // 允许跨域，在Spring Boot 2.4+中应该使用allowedOriginPatterns而不是allowedOrigins
     }
 
     @Override
