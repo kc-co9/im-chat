@@ -2,8 +2,10 @@ package com.co.kc.imchat.transformer.http;
 
 import com.co.kc.imchat.model.cqrs.dto.friend.FriendDetailDTO;
 import com.co.kc.imchat.model.cqrs.dto.friend.FriendItemDTO;
+import com.co.kc.imchat.model.cqrs.dto.friend.FriendSearchDTO;
 import com.co.kc.imchat.model.io.friend.FriendDetailResponse;
 import com.co.kc.imchat.model.io.friend.FriendListResponse;
+import com.co.kc.imchat.model.io.friend.FriendSearchResponse;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Mappings;
@@ -29,4 +31,12 @@ public interface FriendHttpIoTransformer {
             @Mapping(target = "alias", source = "alias"),
             @Mapping(target = "createTime", source = "createTime")})
     FriendDetailResponse friendDetailResponseFrom(FriendDetailDTO friendDetailDTO);
+
+    List<FriendSearchResponse.SearchItem> searchListFrom(List<FriendSearchDTO> friendSearchList);
+
+    @Mappings(value = {
+            @Mapping(target = "userId", source = "userId"),
+            @Mapping(target = "username", source = "username"),
+    })
+    FriendSearchResponse.SearchItem searchDtoFrom(FriendSearchDTO friendSearchDTO);
 }

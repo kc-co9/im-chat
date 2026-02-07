@@ -3,7 +3,6 @@ package com.co.kc.imchat.domain.session;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.user.UserId;
 import lombok.Data;
-import lombok.Getter;
 
 import java.time.LocalDateTime;
 

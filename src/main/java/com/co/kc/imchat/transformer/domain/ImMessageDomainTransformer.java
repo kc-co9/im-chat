@@ -1,12 +1,14 @@
 package com.co.kc.imchat.transformer.domain;
 
 import com.co.kc.imchat.domain.message.ImGroupMessage;
-import com.co.kc.imchat.domain.message.ImMessageStatus;
+import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
+import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageType;
 import com.co.kc.imchat.domain.message.ImPrivateMessage;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMessage;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateMessage;
-import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageStatus;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbGroupImMessageStatus;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbPrivateImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageType;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -70,6 +72,13 @@ public interface ImMessageDomainTransformer {
             @ValueMapping(target = "READ", source = "READ"),
             @ValueMapping(target = "REVOKED", source = "REVOKED")
     })
-    ImMessageStatus imMessageStatusFrom(DbImMessageStatus dbStatus);
+    ImPrivateMessageStatus imPrivateMessageStatusFrom(DbPrivateImMessageStatus dbStatus);
+
+    @ValueMappings(value = {
+            @ValueMapping(target = MappingConstants.NULL, source = "NONE"),
+            @ValueMapping(target = "SENT", source = "SENT"),
+            @ValueMapping(target = "REVOKED", source = "REVOKED")
+    })
+    ImGroupMessageStatus imGroupMessageStatusFrom(DbGroupImMessageStatus dbStatus);
 
 }

@@ -37,14 +37,7 @@ HELP.md
 *.sln
 *.sw?
 
-# Vue 项目
-## 依赖
-node_modules/
-
-## 构建产物
-dist/
-dist-ssr/
-*.local
+# 前端项目已独立到 im-chat-frontend 目录
 
 # 日志文件
 /logs/

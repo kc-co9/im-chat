@@ -12,6 +12,14 @@ import lombok.EqualsAndHashCode;
 public class ImPrivateChat extends ImChat {
     private ImPrivatePair pair;
 
+    public UserId getAnother(UserId userId) {
+        if (pair.getMember1().equals(userId)) {
+            return pair.getMember2();
+        } else {
+            return pair.getMember1();
+        }
+    }
+
     public boolean contain(UserId userId) {
         return pair.contain(userId);
     }

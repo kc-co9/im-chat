@@ -19,6 +19,6 @@ public class DbImGroupChat extends BaseEntity {
     //群公告
     private String notification;
     //群设置
-    private String settings;
+    private String setting;
 }
 

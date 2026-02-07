@@ -4,6 +4,7 @@ import com.co.kc.imchat.application.ChatAppService;
 import com.co.kc.imchat.model.cqrs.command.chat.ImChatExitCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatCreateCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatEnterCmd;
+import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatCreateCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatEnterCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatCreateDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
@@ -12,8 +13,9 @@ import com.co.kc.imchat.model.io.chat.ImChatListResponse;
 import com.co.kc.imchat.model.io.chat.ImGroupChatCreateRequest;
 import com.co.kc.imchat.model.io.chat.ImGroupChatCreateResponse;
 import com.co.kc.imchat.model.io.chat.ImGroupChatEnterRequest;
+import com.co.kc.imchat.model.io.chat.ImPrivateChatCreateRequest;
+import com.co.kc.imchat.model.io.chat.ImPrivateChatCreateResponse;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatEnterRequest;
-import com.co.kc.imchat.model.io.chat.ImPrivateChatEnterResponse;
 import com.co.kc.imchat.support.context.UserContextUtils;
 import com.co.kc.imchat.transformer.http.ImChatHttpIoTransformer;
 import io.swagger.annotations.Api;
@@ -42,12 +44,18 @@ public class ChatController {
         return new ImChatListResponse(imChatItemList);
     }
 
-    @PostMapping(value = "/enterPrivateChat")
-    public ImPrivateChatEnterResponse enterPrivateChat(@RequestBody @Validated ImPrivateChatEnterRequest request) {
+    @PostMapping(value = "/createPrivateChat")
+    public ImPrivateChatCreateResponse createPrivateChat(@RequestBody @Validated ImPrivateChatCreateRequest request) {
         Long userId = UserContextUtils.get().getUserId();
-        ImPrivateChatEnterCmd command = new ImPrivateChatEnterCmd(userId, request.getReceiverId());
-        ImChatCreateDTO imChatCreateDTO = chatAppService.enterPrivateChat(command);
-        return new ImPrivateChatEnterResponse(imChatCreateDTO.getChatId());
+        ImChatCreateDTO imChatCreateDTO = chatAppService.createPrivateChat(new ImPrivateChatCreateCmd(userId, request.getReceiverId()));
+        return new ImPrivateChatCreateResponse(imChatCreateDTO.getChatId());
+    }
+
+    @PostMapping(value = "/enterPrivateChat")
+    public void enterPrivateChat(@RequestBody @Validated ImPrivateChatEnterRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        ImPrivateChatEnterCmd command = new ImPrivateChatEnterCmd(request.getChatId(), userId);
+        chatAppService.enterPrivateChat(command);
     }
 
     @PostMapping(value = "/createGroupChat")

@@ -1,5 +1,6 @@
 package com.co.kc.imchat.infrastructure.mybatis.entity;
 
+import com.co.kc.imchat.domain.chat.ImGroupMemberSetting;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -29,4 +30,10 @@ public class DbImGroupMember extends BaseEntity {
      * 用户定义的群别名
      */
     private String groupAlias;
+
+    /**
+     * 群成员设置
+     */
+    private String setting;
+
 }

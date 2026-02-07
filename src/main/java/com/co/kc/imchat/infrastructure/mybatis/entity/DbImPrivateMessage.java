@@ -2,7 +2,7 @@ package com.co.kc.imchat.infrastructure.mybatis.entity;
 
 import java.time.LocalDateTime;
 
-import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageStatus;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbPrivateImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -31,7 +31,7 @@ public class DbImPrivateMessage extends BaseEntity {
     //消息内容
     private String content;
     //消息状态 0-未知 1-已发送 2-已读 3-已撤回
-    private DbImMessageStatus status;
+    private DbPrivateImMessageStatus status;
     //发送时间
     private LocalDateTime sendTime;
     //接收时间

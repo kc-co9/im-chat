@@ -1,6 +1,13 @@
 package com.co.kc.imchat.endpoint.http;
 
 import com.co.kc.imchat.application.FriendAppService;
+import com.co.kc.imchat.model.cqrs.command.friend.FriendAddCmd;
+import com.co.kc.imchat.model.cqrs.command.friend.FriendDeleteCmd;
+import com.co.kc.imchat.model.cqrs.dto.friend.FriendSearchDTO;
+import com.co.kc.imchat.model.cqrs.query.friend.FriendSearchQuery;
+import com.co.kc.imchat.model.io.friend.FriendAddRequest;
+import com.co.kc.imchat.model.io.friend.FriendDeleteRequest;
+import com.co.kc.imchat.model.io.friend.FriendSearchResponse;
 import com.co.kc.imchat.support.context.UserContextUtils;
 import com.co.kc.imchat.model.cqrs.dto.friend.FriendDetailDTO;
 import com.co.kc.imchat.model.cqrs.query.friend.FriendDetailQuery;
@@ -12,6 +19,7 @@ import com.co.kc.imchat.transformer.http.FriendHttpIoTransformer;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -40,6 +48,32 @@ public class FriendController {
         FriendDetailQuery query = new FriendDetailQuery(userId, friendUserId);
         FriendDetailDTO friendDetailDTO = friendAppService.getFriendDetail(query);
         return FriendHttpIoTransformer.INSTANCE.friendDetailResponseFrom(friendDetailDTO);
+    }
+
+    @ApiOperation("搜索好友")
+    @GetMapping("/searchFriend")
+    public FriendSearchResponse searchFriend(@RequestParam("email") String email) {
+        FriendSearchQuery query = new FriendSearchQuery(email);
+        List<FriendSearchDTO> friendSearchList = friendAppService.searchFriends(query);
+        List<FriendSearchResponse.SearchItem> searchList =
+                FriendHttpIoTransformer.INSTANCE.searchListFrom(friendSearchList);
+        return new FriendSearchResponse(searchList);
+    }
+
+    @ApiOperation("添加好友")
+    @PostMapping("/addFriend")
+    public void addFriend(@RequestBody @Validated FriendAddRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        FriendAddCmd command = new FriendAddCmd(userId, request.getFriendUserId());
+        friendAppService.addFriend(command);
+    }
+
+    @ApiOperation("删除好友")
+    @PostMapping("/deleteFriend")
+    public void deleteFriend(@RequestBody @Validated FriendDeleteRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        FriendDeleteCmd command = new FriendDeleteCmd(userId, request.getFriendUserId());
+        friendAppService.deleteFriend(command);
     }
 
 

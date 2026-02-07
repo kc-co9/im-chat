@@ -7,6 +7,10 @@ import java.util.List;
 public interface ImChatRepository {
     ImChat find(ImChatId chatId);
 
+    ImChatLastMessage findLastMessage(ImChatId chatId);
+
+    List<ImChatLastMessage> findLastMessageList(List<ImChatId> chatIds);
+
     List<ImChat> find(UserId userId);
 
     ImPrivateChat findPrivateChat(ImChatId chatId);
@@ -15,5 +19,7 @@ public interface ImChatRepository {
 
     ImGroupChat findGroupChat(ImChatId chatId);
 
-    void save(ImChat imChat);
+    void save(ImPrivateChat imPrivateChat);
+
+    void save(ImGroupChat imGroupChat);
 }

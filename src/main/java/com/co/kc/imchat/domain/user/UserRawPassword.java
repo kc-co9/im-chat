@@ -1,11 +1,13 @@
 package com.co.kc.imchat.domain.user;
 
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.regex.Pattern;
 
 @Getter
+@EqualsAndHashCode
 public class UserRawPassword {
 
     private static final Pattern PASSWORD_PATTERN = Pattern.compile("^[a-zA-Z0-9!@#$%^&()_+\\-=\\[\\]{}|;:,.<>/?~`]+$");

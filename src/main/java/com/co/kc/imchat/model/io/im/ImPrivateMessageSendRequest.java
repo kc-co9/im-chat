@@ -9,7 +9,6 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 public class ImPrivateMessageSendRequest extends WsRequest {
     private Long chatId;
-    private Long receiverId;
     private String messageToken;
     private ImMessageTypeEnum messageType;
     private String messageContent;

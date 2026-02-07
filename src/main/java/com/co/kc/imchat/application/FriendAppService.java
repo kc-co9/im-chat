@@ -1,5 +1,8 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.domain.user.UserEmail;
+import com.co.kc.imchat.model.cqrs.dto.friend.FriendSearchDTO;
+import com.co.kc.imchat.model.cqrs.query.friend.FriendSearchQuery;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.domain.friend.Friend;
@@ -19,6 +22,7 @@ import com.co.kc.imchat.model.cqrs.query.friend.FriendListQuery;
 import com.co.kc.imchat.transformer.application.FriendAppTransformer;
 import lombok.RequiredArgsConstructor;
 
+import java.util.Collections;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -31,14 +35,17 @@ public class FriendAppService {
     public void addFriend(FriendAddCmd command) {
         UserId userId = new UserId(command.getUserId());
         UserId friendUserId = new UserId(command.getFriendUserId());
+        if (userId.equals(friendUserId)) {
+            throw new BusinessException("不能添加自己为好友");
+        }
 
         Friend friend = friendRepository.find(userId, friendUserId);
         if (friend != null) {
             throw new BusinessException("好友已存在");
         }
 
-        Friend newFriend = friendService.addFriend(userId, friendUserId);
-        Friend newPeerFriend = friendService.addFriend(friendUserId, userId);
+        Friend newFriend = friendService.newFriend(userId, friendUserId);
+        Friend newPeerFriend = friendService.newFriend(friendUserId, userId);
         friendRepository.save(newFriend);
         friendRepository.save(newPeerFriend);
     }
@@ -46,6 +53,9 @@ public class FriendAppService {
     public void blockFriend(FriendBlockCmd command) {
         UserId userId = new UserId(command.getUserId());
         UserId friendUserId = new UserId(command.getFriendUserId());
+        if (userId.equals(friendUserId)) {
+            throw new BusinessException("不能拉黑自己");
+        }
 
         Friend friend = friendRepository.find(userId, friendUserId);
         if (friend == null) {
@@ -59,6 +69,9 @@ public class FriendAppService {
     public void unblockFriend(FriendUnblockCmd command) {
         UserId userId = new UserId(command.getUserId());
         UserId friendUserId = new UserId(command.getFriendUserId());
+        if (userId.equals(friendUserId)) {
+            throw new BusinessException("不能取消拉黑自己");
+        }
 
         Friend friend = friendRepository.find(userId, friendUserId);
         if (friend == null) {
@@ -72,6 +85,9 @@ public class FriendAppService {
     public void deleteFriend(FriendDeleteCmd command) {
         UserId userId = new UserId(command.getUserId());
         UserId friendUserId = new UserId(command.getFriendUserId());
+        if (userId.equals(friendUserId)) {
+            throw new BusinessException("不能删除自己");
+        }
 
         Friend friend = friendRepository.find(userId, friendUserId);
         if (friend == null) {
@@ -99,5 +115,14 @@ public class FriendAppService {
             throw new NotFoundException("用户不存在");
         }
         return FriendAppTransformer.INSTANCE.friendDetailDtoFrom(user, friend);
+    }
+
+    public List<FriendSearchDTO> searchFriends(FriendSearchQuery query) {
+        UserEmail email = new UserEmail(query.getEmail());
+        User user = userRepository.find(email);
+        if (user == null) {
+            return Collections.emptyList();
+        }
+        return Collections.singletonList(FriendAppTransformer.INSTANCE.friendSearchDtoFrom(user));
     }
 }

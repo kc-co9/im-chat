@@ -34,8 +34,9 @@ public class BeanConfig {
 
     @Bean
     public UserService userService(UserRepository userRepository,
+                                   SessionRepository sessionRepository,
                                    PasswordService passwordService) {
-        return new UserService(userRepository, passwordService);
+        return new UserService(userRepository, sessionRepository, passwordService);
     }
 
     @Bean

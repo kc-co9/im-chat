@@ -8,12 +8,12 @@ import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 
 import com.co.kc.imchat.domain.message.ImGroupMessage;
-import com.co.kc.imchat.domain.message.ImMessageStatus;
+import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageType;
 import com.co.kc.imchat.domain.message.ImPrivateMessage;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMessage;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateMessage;
-import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageStatus;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbPrivateImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageType;
 import org.mapstruct.factory.Mappers;
 
@@ -67,5 +67,5 @@ public interface ImMessageDbTransformer {
             @ValueMapping(target = "READ", source = "READ"),
             @ValueMapping(target = "REVOKED", source = "REVOKED")
     })
-    DbImMessageStatus dbImMessageStatusFrom(ImMessageStatus status);
+    DbPrivateImMessageStatus dbImMessageStatusFrom(ImPrivateMessageStatus status);
 }

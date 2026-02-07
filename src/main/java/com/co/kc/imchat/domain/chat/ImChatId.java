@@ -1,10 +1,14 @@
 package com.co.kc.imchat.domain.chat;
 
-import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
 @Getter
-@AllArgsConstructor
+@EqualsAndHashCode
 public class ImChatId {
     private final Long value;
+
+    public ImChatId(Long value) {
+        this.value = value;
+    }
 }

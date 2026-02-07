@@ -82,7 +82,6 @@ public interface ImMessageAppTransformer {
     @Mappings(value = {
             @Mapping(target = "chatId", source = "request.chatId"),
             @Mapping(target = "senderId", source = "userId"),
-            @Mapping(target = "receiverId", source = "request.receiverId"),
             @Mapping(target = "messageToken", source = "request.messageToken"),
             @Mapping(target = "messageType", source = "request.messageType"),
             @Mapping(target = "messageContent", source = "request.messageContent")

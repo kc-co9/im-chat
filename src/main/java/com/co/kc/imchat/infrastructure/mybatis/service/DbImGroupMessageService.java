@@ -20,4 +20,10 @@ public class DbImGroupMessageService extends BaseMybatisService<DbImGroupMessage
                 .eq(DbImGroupMessage::getChatId, chatId)
                 .eq(DbImGroupMessage::getMessageId, messageId));
     }
+
+    public Optional<DbImGroupMessage> getLastMessageByChatId(Long chatId, Long messageId) {
+        return getFirst(this.getQueryWrapper()
+                .eq(DbImGroupMessage::getChatId, chatId)
+                .eq(DbImGroupMessage::getMessageId, messageId));
+    }
 }

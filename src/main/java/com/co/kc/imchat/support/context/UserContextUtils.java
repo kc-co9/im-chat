@@ -6,8 +6,8 @@ public class UserContextUtils {
     private UserContextUtils() {
     }
 
-    public static void set(UserContext webUser) {
-        CONTEXT.set(webUser);
+    public static void set(UserContext context) {
+        CONTEXT.set(context);
     }
 
     public static UserContext get() {

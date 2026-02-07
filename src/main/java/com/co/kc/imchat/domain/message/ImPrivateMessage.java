@@ -1,6 +1,5 @@
 package com.co.kc.imchat.domain.message;
 
-import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.user.UserId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -14,8 +13,9 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 public class ImPrivateMessage extends ImMessage {
     private UserId receiverId;
+    private ImPrivateMessageStatus status;
     private LocalDateTime receivedTime;
-    protected LocalDateTime readTime;
+    private LocalDateTime readTime;
 
 
     public void receive(UserId receiverId) {

@@ -8,6 +8,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ImPrivateChatEnterCmd {
-    private Long senderId;
-    private Long receiverId;
+    private Long chatId;
+    private Long userId;
 }

@@ -1,5 +1,7 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
+import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.model.cqrs.dto.im.ImGroupMessageDTO;
 import com.co.kc.imchat.model.cqrs.query.ImGroupMessageHistoryQuery;
 import com.co.kc.imchat.support.exception.BusinessException;
@@ -17,7 +19,6 @@ import com.co.kc.imchat.domain.message.ImGroupMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImMessageContent;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.message.ImMessageService;
-import com.co.kc.imchat.domain.message.ImMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageRevokeCmd;
@@ -64,7 +65,7 @@ public class ImGroupAppService {
         imMessage.setContent(messageContent);
         imMessage.setChatId(chatId);
         imMessage.setSenderId(senderId);
-        imMessage.setStatus(ImMessageStatus.SENT);
+        imMessage.setStatus(ImGroupMessageStatus.SENT);
         imMessage.setSendTime(LocalDateTime.now());
         imMessage.validate();
         imGroupMessageRepository.save(imMessage);

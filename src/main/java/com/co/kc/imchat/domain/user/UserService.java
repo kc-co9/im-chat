@@ -1,5 +1,8 @@
 package com.co.kc.imchat.domain.user;
 
+import com.co.kc.imchat.domain.session.Session;
+import com.co.kc.imchat.domain.session.SessionRepository;
+import com.co.kc.imchat.domain.session.SessionStatus;
 import com.co.kc.imchat.support.exception.AuthException;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.support.auth.PasswordService;
@@ -9,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final SessionRepository sessionRepository;
     private final PasswordService passwordService;
 
     public User authenticate(UserEmail email, UserRawPassword rawPassword) {
@@ -26,6 +30,7 @@ public class UserService {
     }
 
     public boolean isChatting(ImChatId chatId, UserId receiverId) {
-        return false;
+        Session session = sessionRepository.find(receiverId);
+        return SessionStatus.ONLINE.equals(session.getStatus()) && chatId.equals(session.getChatId());
     }
 }

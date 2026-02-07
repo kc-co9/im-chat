@@ -1,5 +1,7 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.domain.chat.ImChatLastMessage;
+import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatCreateCmd;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.support.utils.FunctionUtils;
@@ -41,7 +43,7 @@ public class ChatAppService {
 
     private final ImChatService imChatService;
 
-    public ImChatCreateDTO enterPrivateChat(ImPrivateChatEnterCmd command) {
+    public ImChatCreateDTO createPrivateChat(ImPrivateChatCreateCmd command) {
         UserId senderId = new UserId(command.getSenderId());
         UserId receiverId = new UserId(command.getReceiverId());
 
@@ -61,9 +63,14 @@ public class ChatAppService {
             imChatRepository.save(imPrivateChat);
         }
 
-        imChatService.enterChat(imPrivateChat.getId(), senderId);
-
         return new ImChatCreateDTO(imPrivateChat.getId().getValue());
+    }
+
+    public void enterPrivateChat(ImPrivateChatEnterCmd command) {
+        ImChatId chatId = new ImChatId(command.getChatId());
+        UserId userId = new UserId(command.getUserId());
+
+        imChatService.enterChat(chatId, userId);
     }
 
     public ImChatCreateDTO createGroupChat(ImGroupChatCreateCmd command) {
@@ -100,8 +107,11 @@ public class ChatAppService {
     public List<ImChatItemDTO> getChatList(ImChatListQuery query) {
         UserId userId = new UserId(query.getUserId());
         List<ImChat> chatList = imChatRepository.find(userId);
-        // TODO 展示最后一条消息
-        return ImChatAppTransformer.INSTANCE.imChatListFrom(chatList);
+
+        List<ImChatId> chatIds = FunctionUtils.mappingList(chatList, ImChat::getId);
+        List<ImChatLastMessage> chatLastMessageList = imChatRepository.findLastMessageList(chatIds);
+
+        return ImChatAppTransformer.INSTANCE.imChatListFrom(chatList, chatLastMessageList);
     }
 
 }

@@ -15,9 +15,8 @@ public class ImMessage extends Identification implements Validator {
     protected ImMessageId id;
     protected ImMessageToken token;
     protected ImMessageContent content;
-    private ImChatId chatId;
+    protected ImChatId chatId;
     protected UserId senderId;
-    protected ImMessageStatus status;
     protected LocalDateTime sendTime;
     protected LocalDateTime revokeTime;
 }

@@ -1,5 +1,6 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
@@ -13,7 +14,6 @@ import com.co.kc.imchat.domain.message.ImPrivateMessageReadEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImMessageService;
-import com.co.kc.imchat.domain.message.ImMessageStatus;
 import com.co.kc.imchat.domain.message.ImPrivateMessage;
 import com.co.kc.imchat.domain.message.ImMessageContent;
 import com.co.kc.imchat.domain.message.ImMessageId;
@@ -56,12 +56,11 @@ public class ImPrivateAppService {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
         ImChatId chatId = new ImChatId(command.getChatId());
         UserId senderId = new UserId(command.getSenderId());
-        UserId receiverId = new UserId(command.getReceiverId());
         ImMessageToken messageToken = new ImMessageToken(command.getMessageToken());
         ImMessageContent messageContent = new ImMessageContent(command.getMessageType(), command.getMessageContent());
 
-        ImChat imChat = imChatRepository.find(chatId);
-        if (imChat == null) {
+        ImPrivateChat imPrivateChat = imChatRepository.findPrivateChat(chatId);
+        if (imPrivateChat == null) {
             throw new NotFoundException("聊天不存在");
         }
 
@@ -71,8 +70,8 @@ public class ImPrivateAppService {
         imMessage.setContent(messageContent);
         imMessage.setChatId(chatId);
         imMessage.setSenderId(senderId);
-        imMessage.setReceiverId(receiverId);
-        imMessage.setStatus(ImMessageStatus.SENT);
+        imMessage.setReceiverId(imPrivateChat.getAnother(senderId));
+        imMessage.setStatus(ImPrivateMessageStatus.SENT);
         imMessage.setSendTime(LocalDateTime.now());
         imMessage.validate();
         imPrivateMessageRepository.save(imMessage);

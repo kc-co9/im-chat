@@ -7,7 +7,6 @@ import lombok.Data;
 public class ImPrivateMessageSendCmd {
     private Long chatId;
     private Long senderId;
-    private Long receiverId;
     private String messageToken;
     private ImMessageType messageType;
     private String messageContent;

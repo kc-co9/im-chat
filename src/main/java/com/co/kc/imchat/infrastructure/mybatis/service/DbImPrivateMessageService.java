@@ -4,6 +4,7 @@ import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateMessage;
 import com.co.kc.imchat.infrastructure.mybatis.mapper.DbImPrivateMessageMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -19,5 +20,17 @@ public class DbImPrivateMessageService extends BaseMybatisService<DbImPrivateMes
         return getFirst(getQueryWrapper()
                 .eq(DbImPrivateMessage::getChatId, chatId)
                 .eq(DbImPrivateMessage::getMessageId, messageId));
+    }
+
+    public Optional<DbImPrivateMessage> getLastMessageByChatId(Long chatId, Long messageId) {
+        return getFirst(getQueryWrapper()
+                .eq(DbImPrivateMessage::getChatId, chatId)
+                .eq(DbImPrivateMessage::getMessageId, messageId));
+    }
+
+    public List<DbImPrivateMessage> getLastMessageByChatIds(List<Long> chatIds) {
+        return list(getQueryWrapper()
+                .in(DbImPrivateMessage::getChatId, chatIds)
+                .orderByDesc(DbImPrivateMessage::getSendTime));
     }
 }

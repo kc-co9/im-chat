@@ -64,7 +64,7 @@ public class ImChatService {
     public List<ImGroupMember> newGroupMembers(List<UserId> memberIds) {
         List<User> users = userRepository.find(memberIds);
         return FunctionUtils.mappingList(users, user ->
-                new ImGroupMember(user.getId(), null, null));
+                new ImGroupMember(user.getId(), null, null, null));
     }
 
 

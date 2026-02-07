@@ -6,7 +6,7 @@ import lombok.Getter;
 
 @Getter
 @AllArgsConstructor
-public enum DbImMessageStatus {
+public enum DbGroupImMessageStatus {
     /**
      * 0-未知
      */
@@ -15,21 +15,10 @@ public enum DbImMessageStatus {
      * 1-已发送
      */
     SENT(1),
-
-    /**
-     * 2-已接收
-     */
-    RECEIVED(2),
-
-    /**
-     * 3-已读
-     */
-    READ(3),
-
     /**
      * 4-已撤回
      */
-    REVOKED(4);
+    REVOKED(2);
 
     @EnumValue
     private final int code;

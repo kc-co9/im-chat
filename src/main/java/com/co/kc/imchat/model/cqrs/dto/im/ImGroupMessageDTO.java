@@ -1,6 +1,6 @@
 package com.co.kc.imchat.model.cqrs.dto.im;
 
-import com.co.kc.imchat.domain.message.ImMessageStatus;
+import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageType;
 import lombok.Data;
 
@@ -14,7 +14,7 @@ public class ImGroupMessageDTO {
     private String content;
     private Long chatId;
     private Long senderId;
-    private ImMessageStatus status;
+    private ImPrivateMessageStatus status;
     private LocalDateTime sendTime;
     private LocalDateTime revokeTime;
 }

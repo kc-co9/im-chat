@@ -49,7 +49,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        registration.interceptors(new WsContextInterceptor(userAppService)); // <--- 注册在这里
+        registration.interceptors(new WsContextInterceptor()); // <--- 注册在这里
     }
 
     /**
