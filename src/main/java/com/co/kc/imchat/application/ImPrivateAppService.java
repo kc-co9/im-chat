@@ -2,10 +2,10 @@ package com.co.kc.imchat.application;
 
 import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
+import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageDetailQuery;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
-import com.co.kc.imchat.domain.chat.ImChat;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatRepository;
 import com.co.kc.imchat.domain.chat.ImChatService;
@@ -32,6 +32,7 @@ import com.co.kc.imchat.domain.message.ImPrivateMessageReceivedEvent;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.ImMessageNotifier;
+import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
 
@@ -167,9 +168,26 @@ public class ImPrivateAppService {
 
     public List<ImPrivateMessageDTO> queryHistoryMessage(ImPrivateMessageHistoryQuery query) {
         UserId userId = new UserId(query.getUserId());
-        ImChatId chatId = new ImChatId(query.getChatId());
-        ImMessageId lastMessageId = new ImMessageId(query.getLastMessageId());
+        ImChatId imChatId = new ImChatId(query.getChatId());
+        ImMessageId imLastMessageId = FunctionUtils.mappingOrNull(query.getLastMessageId(), ImMessageId::new);
         Integer count = query.getCount();
+
+        ImPrivateChat imPrivateChat = imChatRepository.findPrivateChat(imChatId);
+        if (imPrivateChat == null) {
+            throw new NotFoundException("聊天不存在");
+        }
+        if (!imPrivateChat.contain(userId)) {
+            throw new BusinessException("无法查看别人的聊天记录");
+        }
+
+        List<ImPrivateMessage> messageList = imPrivateMessageRepository.queryHistory(imChatId, imLastMessageId, count);
+        return ImMessageAppTransformer.INSTANCE.imPrivateMessageDtoListFrom(messageList);
+    }
+
+    public ImPrivateMessageDTO queryMessageDetail(ImPrivateMessageDetailQuery query) {
+        UserId userId = new UserId(query.getUserId());
+        ImChatId chatId = new ImChatId(query.getChatId());
+        ImMessageToken messageToken = new ImMessageToken(query.getMessageToken());
 
         ImPrivateChat imPrivateChat = imChatRepository.findPrivateChat(chatId);
         if (imPrivateChat == null) {
@@ -179,7 +197,7 @@ public class ImPrivateAppService {
             throw new BusinessException("无法查看别人的聊天记录");
         }
 
-        List<ImPrivateMessage> messageList = imPrivateMessageRepository.queryHistory(chatId, lastMessageId, count);
-        return ImMessageAppTransformer.INSTANCE.imPrivateMessageDtoListFrom(messageList);
+        ImPrivateMessage imPrivateMessage = imPrivateMessageRepository.queryDetail(chatId, messageToken);
+        return ImMessageAppTransformer.INSTANCE.imPrivateMessageDtoFrom(imPrivateMessage);
     }
 }

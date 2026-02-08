@@ -38,7 +38,7 @@ public class UserController {
     public UserSignInResponse signIn(@RequestBody @Validated UserSignInRequest request) {
         UserSignInCmd command = new UserSignInCmd(request.getEmail(), request.getPassword());
         SignInDTO signInDTO = userAppService.signIn(command);
-        return new UserSignInResponse(signInDTO.getToken());
+        return new UserSignInResponse(signInDTO.getUserId(), signInDTO.getToken());
     }
 
     @ApiOperation("退出登录接口")

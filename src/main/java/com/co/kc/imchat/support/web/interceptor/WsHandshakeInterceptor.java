@@ -3,6 +3,7 @@ package com.co.kc.imchat.support.web.interceptor;
 import com.co.kc.imchat.application.UserAppService;
 import com.co.kc.imchat.model.cqrs.dto.user.TokenDTO;
 import com.co.kc.imchat.model.cqrs.query.user.UserAuthQuery;
+import com.co.kc.imchat.model.enums.ParamsConstants;
 import com.co.kc.imchat.support.auth.TokenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +30,7 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
                                    @NotNull Map<String, Object> attributes) {
         try {
             // 1. 从请求头中获取 Token
-            String token = serverRequest.getHeaders().getFirst("token");
+            String token = serverRequest.getHeaders().getFirst(ParamsConstants.TOKEN);
 
             // 2. 如果请求头中没有，尝试从查询参数中获取 Token
             // 例如：ws://localhost:8080/ws?token=xxxxx
@@ -48,7 +49,6 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
             }
 
             TokenDTO tokenDTO = tokenService.parse(token);
-
             boolean isAuthenticated = userAppService.isAuthenticated(new UserAuthQuery(tokenDTO.getUserId()));
             if (!isAuthenticated) {
                 log.info("WebSocket认证失败，用户未登录");
@@ -56,7 +56,7 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
             }
 
             // 这个 attributes 会传递给 WebSocket 的 Session
-            attributes.put("userId", tokenDTO.getUserId());
+            attributes.put(ParamsConstants.USER_ID, tokenDTO.getUserId());
 
             return true;
         } catch (Exception ex) {
@@ -70,6 +70,10 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
                                @NotNull ServerHttpResponse serverResponse,
                                @NotNull WebSocketHandler webSocketHandler,
                                Exception e) {
-        // TODO document why this method is empty
+        if (e == null) {
+            log.info("WebSocket握手成功: {}", serverRequest.getURI());
+        } else {
+            log.warn("WebSocket握手失败: {}", e.getMessage());
+        }
     }
 }

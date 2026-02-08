@@ -1,6 +1,7 @@
 package com.co.kc.imchat.support.web.interceptor;
 
 import com.co.kc.imchat.application.UserAppService;
+import com.co.kc.imchat.model.enums.ParamsConstants;
 import com.co.kc.imchat.support.context.UserContext;
 import com.co.kc.imchat.support.context.UserContextUtils;
 import com.co.kc.imchat.model.cqrs.dto.user.TokenDTO;
@@ -9,6 +10,7 @@ import com.co.kc.imchat.model.cqrs.query.user.UserAuthQuery;
 import com.co.kc.imchat.model.cqrs.query.user.UserDetailQuery;
 import com.co.kc.imchat.support.auth.TokenService;
 import lombok.RequiredArgsConstructor;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.thymeleaf.util.StringUtils;
@@ -32,8 +34,8 @@ public class HttpContextInterceptor implements HandlerInterceptor {
     private final UserAppService userAppService;
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        String token = request.getHeader("token");
+    public boolean preHandle(HttpServletRequest request, @NotNull HttpServletResponse response, @NotNull Object handler) throws Exception {
+        String token = request.getHeader(ParamsConstants.TOKEN);
         if (StringUtils.isEmpty(token)) {
             return false;
         }
@@ -59,7 +61,7 @@ public class HttpContextInterceptor implements HandlerInterceptor {
     }
 
     @Override
-    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+    public void afterCompletion(@NotNull HttpServletRequest request, @NotNull HttpServletResponse response, @NotNull Object handler, Exception ex) throws Exception {
         //删除线程变量
         UserContextUtils.remove();
     }

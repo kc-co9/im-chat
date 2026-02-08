@@ -9,5 +9,7 @@ public interface ImGroupMessageRepository {
 
     ImGroupMessage find(ImChatId chatId, ImMessageId messageId);
 
-    List<ImGroupMessage> queryHistory(ImChatId chatId, ImMessageId lastMessageId, Integer count);
+    List<ImGroupMessage> queryHistory(ImChatId chatId, ImMessageId imLastMessageId, Integer count);
+
+    ImGroupMessage queryDetail(ImChatId chatId, ImMessageToken messageToken);
 }

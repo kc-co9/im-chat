@@ -1,5 +1,7 @@
 package com.co.kc.imchat.support.web.interceptor;
 
+import com.co.kc.imchat.application.UserAppService;
+import com.co.kc.imchat.model.cqrs.query.user.UserAuthQuery;
 import com.co.kc.imchat.support.exception.AuthException;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
@@ -12,6 +14,7 @@ import java.util.Map;
 
 @RequiredArgsConstructor
 public class WsContextInterceptor implements ChannelInterceptor {
+    private final UserAppService userAppService;
 
     @Override
     public Message<?> preSend(@NotNull Message<?> message, @NotNull MessageChannel channel) {
@@ -25,8 +28,11 @@ public class WsContextInterceptor implements ChannelInterceptor {
             throw new AuthException("用户未登录");
         }
 
+        if (!userAppService.isAuthenticated(new UserAuthQuery(userId))) {
+            throw new AuthException("用户未登录");
+        }
+
         return message;
     }
-
 
 }

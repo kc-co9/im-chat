@@ -3,7 +3,9 @@ package com.co.kc.imchat.endpoint.http;
 import com.co.kc.imchat.application.ImPrivateAppService;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
-import com.co.kc.imchat.model.io.im.ImPrivateMessageQueryResponse;
+import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageDetailQuery;
+import com.co.kc.imchat.model.io.im.ImPrivateMessageHistoryQueryResponse;
+import com.co.kc.imchat.model.io.im.ImPrivateMessageDetailQueryResponse;
 import com.co.kc.imchat.support.context.UserContextUtils;
 import com.co.kc.imchat.transformer.http.ImMessageHttpIoTransformer;
 import io.swagger.annotations.Api;
@@ -20,16 +22,25 @@ import java.util.List;
 public class ImPrivateController {
     private final ImPrivateAppService imPrivateAppService;
 
+    @GetMapping("/queryMessageDetail")
+    public ImPrivateMessageDetailQueryResponse queryMessageDetail(@RequestParam("chatId") Long chatId,
+                                                                  @RequestParam("messageToken") String messageToken) {
+        Long userId = UserContextUtils.get().getUserId();
+        ImPrivateMessageDetailQuery query = new ImPrivateMessageDetailQuery(chatId, userId, messageToken);
+        ImPrivateMessageDTO imPrivateMessageDTO = imPrivateAppService.queryMessageDetail(query);
+        return ImMessageHttpIoTransformer.INSTANCE.imPrivateMessageDetailQueryResponseFrom(imPrivateMessageDTO);
+    }
+
     @GetMapping("/queryHistoryMessage")
-    public ImPrivateMessageQueryResponse queryHistoryMessage(@RequestParam("chatId") Long chatId,
-                                                             @RequestParam("lastMessageId") Long lastMessageId,
-                                                             @RequestParam("count") Integer count) {
+    public ImPrivateMessageHistoryQueryResponse queryHistoryMessage(@RequestParam("chatId") Long chatId,
+                                                                    @RequestParam(value = "lastMessageId", required = false) Long lastMessageId,
+                                                                    @RequestParam("count") Integer count) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageHistoryQuery query = new ImPrivateMessageHistoryQuery(chatId, userId, lastMessageId, count);
         List<ImPrivateMessageDTO> messageList = imPrivateAppService.queryHistoryMessage(query);
-        List<ImPrivateMessageQueryResponse.MessageItem> messageResponseList =
+        List<ImPrivateMessageHistoryQueryResponse.MessageItem> messageResponseList =
                 ImMessageHttpIoTransformer.INSTANCE.imPrivateMessageItemListFrom(messageList);
-        return new ImPrivateMessageQueryResponse(messageResponseList);
+        return new ImPrivateMessageHistoryQueryResponse(messageResponseList);
     }
 
 }

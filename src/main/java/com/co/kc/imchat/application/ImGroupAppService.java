@@ -1,8 +1,8 @@
 package com.co.kc.imchat.application;
 
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
-import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.model.cqrs.dto.im.ImGroupMessageDTO;
+import com.co.kc.imchat.model.cqrs.query.ImGroupMessageDetailQuery;
 import com.co.kc.imchat.model.cqrs.query.ImGroupMessageHistoryQuery;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
@@ -27,6 +27,7 @@ import com.co.kc.imchat.model.cqrs.command.notify.ImGroupRevokedNotifyCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
 import com.co.kc.imchat.support.ImMessageNotifier;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
+import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
 
@@ -114,9 +115,26 @@ public class ImGroupAppService {
 
     public List<ImGroupMessageDTO> queryHistoryMessage(ImGroupMessageHistoryQuery query) {
         UserId userId = new UserId(query.getUserId());
-        ImChatId chatId = new ImChatId(query.getChatId());
-        ImMessageId lastMessageId = new ImMessageId(query.getLastMessageId());
+        ImChatId imChatId = new ImChatId(query.getChatId());
+        ImMessageId imLastMessageId = FunctionUtils.mappingOrNull(query.getLastMessageId(), ImMessageId::new);
         Integer count = query.getCount();
+
+        ImGroupChat imGroupChat = imChatRepository.findGroupChat(imChatId);
+        if (imGroupChat == null) {
+            throw new NotFoundException("聊天不存在");
+        }
+        if (!imGroupChat.contain(userId)) {
+            throw new BusinessException("无法查看别人的聊天记录");
+        }
+
+        List<ImGroupMessage> messageList = imGroupMessageRepository.queryHistory(imChatId, imLastMessageId, count);
+        return ImMessageAppTransformer.INSTANCE.imGroupMessageDtoListFrom(messageList);
+    }
+
+    public ImGroupMessageDTO queryMessageDetail(ImGroupMessageDetailQuery query) {
+        UserId userId = new UserId(query.getUserId());
+        ImChatId chatId = new ImChatId(query.getChatId());
+        ImMessageToken messageToken = new ImMessageToken(query.getMessageToken());
 
         ImGroupChat imGroupChat = imChatRepository.findGroupChat(chatId);
         if (imGroupChat == null) {
@@ -126,7 +144,7 @@ public class ImGroupAppService {
             throw new BusinessException("无法查看别人的聊天记录");
         }
 
-        List<ImGroupMessage> messageList = imGroupMessageRepository.queryHistory(chatId, lastMessageId, count);
-        return ImMessageAppTransformer.INSTANCE.imGroupMessageDtoListFrom(messageList);
+        ImGroupMessage imGroupMessage = imGroupMessageRepository.queryDetail(chatId, messageToken);
+        return ImMessageAppTransformer.INSTANCE.imGroupMessageDtoFrom(imGroupMessage);
     }
 }

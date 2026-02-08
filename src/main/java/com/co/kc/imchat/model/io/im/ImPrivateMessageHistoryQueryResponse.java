@@ -12,7 +12,8 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ImGroupMessageQueryResponse {
+public class ImPrivateMessageHistoryQueryResponse {
+
     private List<MessageItem> messageList;
 
     @Data
@@ -23,8 +24,10 @@ public class ImGroupMessageQueryResponse {
         private String content;
         private Long chatId;
         private Long senderId;
+        private Long receiverId;
         private ImMessageStatusEnum status;
         private LocalDateTime sendTime;
+        private LocalDateTime readTime;
         private LocalDateTime revokeTime;
     }
 }

@@ -11,5 +11,7 @@ public interface ImPrivateMessageRepository {
 
     ImPrivateMessage find(ImChatId chatId, ImMessageId messageId);
 
-    List<ImPrivateMessage> queryHistory(ImChatId imChatId, ImMessageId lastMessageId, int count);
+    List<ImPrivateMessage> queryHistory(ImChatId imChatId, ImMessageId imLastMessageId, int count);
+
+    ImPrivateMessage queryDetail(ImChatId chatId, ImMessageToken messageToken);
 }

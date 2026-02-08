@@ -6,8 +6,10 @@ import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.message.ImGroupMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageRepository;
 import com.co.kc.imchat.domain.message.ImMessageId;
+import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMessage;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupMessageService;
+import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.db.ImMessageDbTransformer;
 import com.co.kc.imchat.transformer.domain.ImMessageDomainTransformer;
 import lombok.RequiredArgsConstructor;
@@ -34,11 +36,19 @@ public class MysqlImGroupMessageRepository implements ImGroupMessageRepository {
     }
 
     @Override
-    public List<ImGroupMessage> queryHistory(ImChatId imChatId, ImMessageId lastMessageId, Integer count) {
+    public List<ImGroupMessage> queryHistory(ImChatId imChatId, ImMessageId imLastMessageId, Integer count) {
         IPage<DbImGroupMessage> dbImGroupMessagePage = dbImGroupMessageService.page(new Page<>(1, count), dbImGroupMessageService.getQueryWrapper()
                 .eq(DbImGroupMessage::getChatId, imChatId.getValue())
-                .lt(DbImGroupMessage::getMessageId, lastMessageId.getValue())
+                .lt(imLastMessageId != null, DbImGroupMessage::getMessageId, FunctionUtils.mappingOrNull(imLastMessageId, ImMessageId::getValue))
                 .orderByDesc(DbImGroupMessage::getMessageId));
         return ImMessageDomainTransformer.INSTANCE.imGroupMessageListFrom(dbImGroupMessagePage.getRecords());
+    }
+
+    @Override
+    public ImGroupMessage queryDetail(ImChatId chatId, ImMessageToken messageToken) {
+        Optional<DbImGroupMessage> dbImGroupMessage = dbImGroupMessageService.getFirst(dbImGroupMessageService.getQueryWrapper()
+                .eq(DbImGroupMessage::getChatId, chatId.getValue())
+                .eq(DbImGroupMessage::getToken, messageToken.getValue()));
+        return dbImGroupMessage.map(ImMessageDomainTransformer.INSTANCE::imGroupMessageFrom).orElse(null);
     }
 }

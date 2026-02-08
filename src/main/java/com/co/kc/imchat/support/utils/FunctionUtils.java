@@ -1,5 +1,6 @@
 package com.co.kc.imchat.support.utils;
 
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;
@@ -119,4 +120,16 @@ public class FunctionUtils {
         Set<R> tmpSet = FunctionUtils.mappingSet(list, function);
         return tmpList.size() != tmpSet.size();
     }
+
+
+    public static <T, R> R mappingOrNull(T value, Function<T, R> mapping) {
+        if (Objects.isNull(value)) {
+            return null;
+        }
+        if ((value instanceof String) && StringUtils.isBlank((String) value)) {
+            return null;
+        }
+        return mapping.apply(value);
+    }
+
 }
