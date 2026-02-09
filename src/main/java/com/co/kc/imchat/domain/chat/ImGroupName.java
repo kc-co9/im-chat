@@ -1,12 +1,18 @@
 package com.co.kc.imchat.domain.chat;
 
-import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
 
 @Getter
 @EqualsAndHashCode
-@AllArgsConstructor
 public class ImGroupName {
     private final String value;
+
+    public ImGroupName(String value) {
+        if (StringUtils.isBlank(value)) {
+            throw new IllegalArgumentException("群组名称不能为空");
+        }
+        this.value = value;
+    }
 }

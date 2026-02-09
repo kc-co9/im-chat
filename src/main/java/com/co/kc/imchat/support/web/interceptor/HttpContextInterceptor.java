@@ -9,6 +9,7 @@ import com.co.kc.imchat.model.cqrs.dto.user.UserDetailDTO;
 import com.co.kc.imchat.model.cqrs.query.user.UserAuthQuery;
 import com.co.kc.imchat.model.cqrs.query.user.UserDetailQuery;
 import com.co.kc.imchat.support.auth.TokenService;
+import com.co.kc.imchat.support.exception.AuthException;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
@@ -37,17 +38,17 @@ public class HttpContextInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, @NotNull HttpServletResponse response, @NotNull Object handler) throws Exception {
         String token = request.getHeader(ParamsConstants.TOKEN);
         if (StringUtils.isEmpty(token)) {
-            return false;
+            throw new AuthException("用户未登录");
         }
 
         TokenDTO tokenDTO = tokenService.parse(token);
         if (tokenDTO == null) {
-            return false;
+            throw new AuthException("用户未登录");
         }
 
         boolean isAuthenticated = userAppService.isAuthenticated(new UserAuthQuery(tokenDTO.getUserId()));
         if (!isAuthenticated) {
-            return false;
+            throw new AuthException("用户未登录");
         }
 
         //查询用户信息

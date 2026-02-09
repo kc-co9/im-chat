@@ -39,13 +39,23 @@ public class FriendAppService {
             throw new BusinessException("不能添加自己为好友");
         }
 
+        User user = userRepository.find(userId);
+        if (user == null) {
+            throw new NotFoundException("用户不存在");
+        }
+
+        User friendUser = userRepository.find(friendUserId);
+        if (friendUser == null) {
+            throw new NotFoundException("用户不存在");
+        }
+
         Friend friend = friendRepository.find(userId, friendUserId);
         if (friend != null) {
             throw new BusinessException("好友已存在");
         }
 
-        Friend newFriend = friendService.newFriend(userId, friendUserId);
-        Friend newPeerFriend = friendService.newFriend(friendUserId, userId);
+        Friend newFriend = friendService.newFriend(userId, friendUser);
+        Friend newPeerFriend = friendService.newFriend(friendUserId, user);
         friendRepository.save(newFriend);
         friendRepository.save(newPeerFriend);
     }

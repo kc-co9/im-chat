@@ -1,6 +1,7 @@
 package com.co.kc.imchat.infrastructure.mybatis.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -16,6 +17,11 @@ public class DbImChatLastMessage extends BaseEntity {
      * 聊天ID
      */
     private Long chatId;
+
+    /**
+     * 聊天类型
+     */
+    private DbImChatType chatType;
 
     /**
      * 消息ID

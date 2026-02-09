@@ -1,8 +1,10 @@
 package com.co.kc.imchat.domain.friend;
 
+import com.co.kc.imchat.domain.chat.ImChatName;
 import com.co.kc.imchat.domain.shared.Identification;
 import com.co.kc.imchat.domain.shared.Validator;
 import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.domain.user.UserName;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -21,7 +23,8 @@ public class Friend extends Identification implements Validator {
     private FriendId id;
     private UserId userId;
     private UserId friendUserId;
-    private FriendAlias alias;
+    private UserName friendName;
+    private FriendAlias friendAlias;
     private FriendStatus status;
     private LocalDateTime createTime;
 
@@ -32,4 +35,5 @@ public class Friend extends Identification implements Validator {
     public void unblock() {
         status = FriendStatus.NORMAL;
     }
+
 }

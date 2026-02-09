@@ -20,7 +20,7 @@ public interface FriendAppTransformer {
 
     @Mappings(value = {
             @Mapping(target = "userId", source = "friendUserId.value"),
-            @Mapping(target = "alias", source = "alias.value"),
+            @Mapping(target = "alias", source = "friendAlias.value"),
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "createTime", source = "createTime")
     })
@@ -29,7 +29,7 @@ public interface FriendAppTransformer {
     @Mappings(value = {
             @Mapping(target = "userId", source = "user.id.value"),
             @Mapping(target = "username", source = "user.username.value"),
-            @Mapping(target = "alias", source = "friend.alias.value"),
+            @Mapping(target = "alias", source = "friend.friendAlias.value"),
             @Mapping(target = "status", source = "friend.status"),
             @Mapping(target = "createTime", source = "friend.createTime")
     })

@@ -26,12 +26,17 @@ public class MysqlFriendRepository implements FriendRepository {
     @Override
     public List<Friend> find(UserId userId) {
         List<DbFriend> dbFriendList = dbFriendService.getListByUserId(userId.getValue());
-        if (CollectionUtils.isEmpty(dbFriendList)) {
+        return this.buildFriends(dbFriendList);
+    }
+
+    @Override
+    public List<Friend> find(UserId userId, List<UserId> friendUserIds) {
+        if (CollectionUtils.isEmpty(friendUserIds)) {
             return Collections.emptyList();
         }
-        List<Long> userIds = FunctionUtils.mappingList(dbFriendList, DbFriend::getUserId);
-        List<DbUser> dbUserList = dbUserService.getListByUserIds(userIds);
-        return FriendDomainTransformer.INSTANCE.friendListFrom(dbFriendList, dbUserList);
+        List<Long> friendUserIdValueList = FunctionUtils.mappingList(friendUserIds, UserId::getValue);
+        List<DbFriend> dbFriendList = dbFriendService.getListByUserIdAndFriendUserIds(userId.getValue(), friendUserIdValueList);
+        return this.buildFriends(dbFriendList);
     }
 
     @Override
@@ -57,4 +62,14 @@ public class MysqlFriendRepository implements FriendRepository {
     public void remove(Friend friend) {
         dbFriendService.removeByUserIdAndFriendUserId(friend.getUserId().getValue(), friend.getFriendUserId().getValue());
     }
+
+    private List<Friend> buildFriends(List<DbFriend> dbFriendList) {
+        if (CollectionUtils.isEmpty(dbFriendList)) {
+            return Collections.emptyList();
+        }
+        List<Long> userIds = FunctionUtils.mappingList(dbFriendList, DbFriend::getUserId);
+        List<DbUser> dbUserList = dbUserService.getListByUserIds(userIds);
+        return FriendDomainTransformer.INSTANCE.friendListFrom(dbFriendList, dbUserList);
+    }
+
 }

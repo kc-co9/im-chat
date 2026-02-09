@@ -4,6 +4,7 @@ import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.mapper.DbImGroupChatMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -16,5 +17,9 @@ import java.util.Optional;
 public class DbImGroupChatService extends BaseMybatisService<DbImGroupChatMapper, DbImGroupChat> {
     public Optional<DbImGroupChat> getByChatId(Long chatId) {
         return getFirst(this.getQueryWrapper().eq(DbImGroupChat::getChatId, chatId));
+    }
+
+    public List<DbImGroupChat> getListByUserId(Long userId) {
+        return this.baseMapper.selectListByUserId(userId);
     }
 }

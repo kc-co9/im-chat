@@ -1,13 +1,13 @@
 package com.co.kc.imchat.application;
 
-import com.co.kc.imchat.domain.chat.ImChatLastMessage;
+import com.co.kc.imchat.domain.chat.ImGroupMemberId;
+import com.co.kc.imchat.domain.chat.ImGroupName;
+import com.co.kc.imchat.domain.chat.ImUserChatDescriptor;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatCreateCmd;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.support.utils.FunctionUtils;
-import com.co.kc.imchat.domain.chat.ImChat;
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.chat.ImChatName;
 import com.co.kc.imchat.domain.chat.ImChatRepository;
 import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImChatType;
@@ -30,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 聊天-应用服务
@@ -58,7 +59,6 @@ public class ChatAppService {
             imPrivateChat = new ImPrivateChat();
             imPrivateChat.setId(new ImChatId(snowflakeId.next()));
             imPrivateChat.setPair(pair);
-            imPrivateChat.setName(null);
             imPrivateChat.setType(ImChatType.PRIVATE);
             imChatRepository.save(imPrivateChat);
         }
@@ -75,19 +75,30 @@ public class ChatAppService {
 
     public ImChatCreateDTO createGroupChat(ImGroupChatCreateCmd command) {
         UserId ownerId = new UserId(command.getOwnerId());
+        ImGroupName groupName = new ImGroupName(command.getGroupName());
         List<UserId> memberIds = FunctionUtils.mappingList(command.getMemberIds(), UserId::new);
-        ImChatName imChatName = new ImChatName(command.getGroupName());
 
         ImChatId chatId = new ImChatId(snowflakeId.next());
-        List<ImGroupMember> groupMembers = imChatService.newGroupMembers(memberIds);
 
         ImGroupChat imGroupChat = new ImGroupChat();
         imGroupChat.setId(chatId);
-        imGroupChat.setName(imChatName);
+        imGroupChat.setName(groupName);
         imGroupChat.setOwnerId(ownerId);
-        imGroupChat.setMembers(groupMembers);
         imGroupChat.setType(ImChatType.GROUP);
         imChatRepository.save(imGroupChat);
+
+        List<ImGroupMember> imGroupMembers = memberIds.stream()
+                .map(userId -> {
+                    ImGroupMember imGroupMember = new ImGroupMember();
+                    imGroupMember.setId(new ImGroupMemberId(chatId, userId));
+                    imGroupMember.setUserId(userId);
+                    imGroupMember.setChatId(chatId);
+                    imGroupMember.setGroupAlias(null);
+                    imGroupMember.setUserAlias(null);
+                    imGroupMember.setSetting(null);
+                    return imGroupMember;
+                }).collect(Collectors.toList());
+        imChatRepository.save(imGroupMembers);
 
         return new ImChatCreateDTO(imGroupChat.getId().getValue());
     }
@@ -106,12 +117,8 @@ public class ChatAppService {
 
     public List<ImChatItemDTO> getChatList(ImChatListQuery query) {
         UserId userId = new UserId(query.getUserId());
-        List<ImChat> chatList = imChatRepository.find(userId);
-
-        List<ImChatId> chatIds = FunctionUtils.mappingList(chatList, ImChat::getId);
-        List<ImChatLastMessage> chatLastMessageList = imChatRepository.findLastMessageList(chatIds);
-
-        return ImChatAppTransformer.INSTANCE.imChatListFrom(chatList, chatLastMessageList);
+        List<ImUserChatDescriptor> imUserChatDescriptors = imChatService.getUserChatList(userId);
+        return ImChatAppTransformer.INSTANCE.imChatListFrom(imUserChatDescriptors);
     }
 
 }

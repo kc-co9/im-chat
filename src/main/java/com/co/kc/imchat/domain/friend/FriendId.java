@@ -14,6 +14,12 @@ public class FriendId {
     private final UserId friendUserId;
 
     public FriendId(UserId userId, UserId friendUserId) {
+        if (userId == null || friendUserId == null) {
+            throw new IllegalArgumentException("用户不能为空");
+        }
+        if (userId.equals(friendUserId)) {
+            throw new IllegalArgumentException("用户不能是自己");
+        }
         this.userId = userId;
         this.friendUserId = friendUserId;
     }

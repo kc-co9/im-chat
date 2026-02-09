@@ -1,6 +1,5 @@
 package com.co.kc.imchat.domain.user;
 
-import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
@@ -9,7 +8,13 @@ import lombok.Getter;
  */
 @Getter
 @EqualsAndHashCode
-@AllArgsConstructor
 public class UserId {
     private final Long value;
+
+    public UserId(Long value) {
+        if (value == null) {
+            throw new IllegalArgumentException("用户ID不能为空");
+        }
+        this.value = value;
+    }
 }

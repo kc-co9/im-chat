@@ -14,6 +14,8 @@ import lombok.EqualsAndHashCode;
 public class DbImGroupChat extends BaseEntity {
     //聊天ID
     private Long chatId;
+    //群名称
+    private String name;
     //群主ID
     private Long ownerId;
     //群公告

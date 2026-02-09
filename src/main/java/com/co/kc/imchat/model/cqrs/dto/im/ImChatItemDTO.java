@@ -9,6 +9,6 @@ public class ImChatItemDTO {
     private Long chatId;
     private String chatName;
     private ImChatType chatType;
-    private ImMessageTypeEnum chatLastMessageType;
-    private String chatLastMessageContent;
+    private ImMessageTypeEnum lastMessageType;
+    private String lastMessageContent;
 }

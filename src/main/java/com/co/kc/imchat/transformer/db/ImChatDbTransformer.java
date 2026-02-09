@@ -13,9 +13,7 @@ import org.mapstruct.Mappings;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 
-import com.co.kc.imchat.domain.chat.ImChat;
 import com.co.kc.imchat.domain.chat.ImChatType;
-import com.co.kc.imchat.infrastructure.mybatis.entity.DbImChat;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatType;
 import org.mapstruct.factory.Mappers;
 
@@ -25,14 +23,6 @@ import java.util.stream.Collectors;
 @Mapper
 public interface ImChatDbTransformer {
     ImChatDbTransformer INSTANCE = Mappers.getMapper(ImChatDbTransformer.class);
-
-    @Mappings(value = {
-            @Mapping(target = "id", source = "incrId"),
-            @Mapping(target = "chatId", source = "id.value"),
-            @Mapping(target = "name", source = "name.value"),
-            @Mapping(target = "type", source = "type")
-    })
-    DbImChat dbImChatFrom(ImChat imChat);
 
     @Mappings(value = {
             @Mapping(target = "id", ignore = true),
@@ -51,13 +41,11 @@ public interface ImChatDbTransformer {
         return dbImGroupChat;
     }
 
-    default List<DbImGroupMember> dbImGroupMemberListFrom(ImGroupChat imGroupChat, List<ImGroupMember> members) {
-        return members.stream().map(member -> dbImGroupMemberFrom(imGroupChat, member)).collect(Collectors.toList());
-    }
+    List<DbImGroupMember> dbImGroupMemberListFrom(List<ImGroupMember> imGroupMembers);
 
-    default DbImGroupMember dbImGroupMemberFrom(ImGroupChat imGroupChat, ImGroupMember imGroupMember) {
+    default DbImGroupMember dbImGroupMemberFrom(ImGroupMember imGroupMember) {
         DbImGroupMember dbImGroupMember = new DbImGroupMember();
-        dbImGroupMember.setChatId(imGroupChat.getId().getValue());
+        dbImGroupMember.setChatId(imGroupMember.getChatId().getValue());
         dbImGroupMember.setUserId(imGroupMember.getUserId().getValue());
         dbImGroupMember.setUserAlias(imGroupMember.getUserAlias().getValue());
         dbImGroupMember.setGroupAlias(imGroupMember.getGroupAlias().getValue());

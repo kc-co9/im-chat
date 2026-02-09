@@ -31,19 +31,6 @@ CREATE TABLE `db_friend`
     KEY `idx_user_id` (`user_id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '好友表';
 
-DROP TABLE IF EXISTS `db_im_chat`;
-CREATE TABLE `db_im_chat`
-(
-    `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `chat_id`     BIGINT          NOT NULL DEFAULT 0 COMMENT '聊天ID',
-    `name`        VARCHAR(20)     NOT NULL DEFAULT '' COMMENT '聊天名称',
-    `type`        TINYINT         NOT NULL DEFAULT 0 COMMENT '聊天类型 0-未知, 1-单聊,2-群聊',
-    `create_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `update_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (`id`) USING BTREE,
-    UNIQUE KEY `uk_chat_id` (`chat_id`) USING BTREE
-) ENGINE = InnoDB COMMENT = '聊天表';
-
 DROP TABLE IF EXISTS `db_im_private_chat`;
 CREATE TABLE `db_im_private_chat`
 (
@@ -63,6 +50,7 @@ CREATE TABLE `db_im_group_chat`
     `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `chat_id`      BIGINT          NOT NULL DEFAULT 0 COMMENT '聊天ID',
     `owner_id`     BIGINT          NOT NULL DEFAULT 0 COMMENT '群主ID',
+    `name`         VARCHAR(20)     NOT NULL DEFAULT '' COMMENT '群名称',
     `notification` VARCHAR(255)    NOT NULL DEFAULT '' COMMENT '群公告',
     `setting`      VARCHAR(512)    NOT NULL DEFAULT '' COMMENT '群设置',
     `create_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -135,6 +123,7 @@ CREATE TABLE `db_im_chat_last_message`
 (
     `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `chat_id`     BIGINT          NOT NULL DEFAULT 0 COMMENT '聊天ID',
+    `chat_type`   TINYINT         NOT NULL DEFAULT 0 COMMENT '聊天类型',
     `message_id`  BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '消息ID',
     `create_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

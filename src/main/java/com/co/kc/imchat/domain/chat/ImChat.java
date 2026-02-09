@@ -12,6 +12,5 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = false)
 public class ImChat extends Identification implements Validator {
     private ImChatId id;
-    private ImChatName name;
     private ImChatType type;
 }

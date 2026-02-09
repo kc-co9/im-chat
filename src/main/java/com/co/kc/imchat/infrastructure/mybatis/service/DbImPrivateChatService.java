@@ -1,6 +1,5 @@
 package com.co.kc.imchat.infrastructure.mybatis.service;
 
-import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateChat;
 import com.co.kc.imchat.infrastructure.mybatis.mapper.DbImPrivateChatMapper;
 import org.springframework.stereotype.Service;

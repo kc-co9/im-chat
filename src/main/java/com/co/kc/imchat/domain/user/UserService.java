@@ -31,6 +31,9 @@ public class UserService {
 
     public boolean isChatting(ImChatId chatId, UserId receiverId) {
         Session session = sessionRepository.find(receiverId);
+        if (session == null) {
+            return false;
+        }
         return SessionStatus.ONLINE.equals(session.getStatus()) && chatId.equals(session.getChatId());
     }
 }

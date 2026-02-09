@@ -5,6 +5,7 @@ import com.co.kc.imchat.domain.friend.FriendAlias;
 import com.co.kc.imchat.domain.friend.FriendId;
 import com.co.kc.imchat.domain.friend.FriendStatus;
 import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.domain.user.UserName;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbFriend;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbUser;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbFriendStatus;
@@ -15,7 +16,6 @@ import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 import org.mapstruct.factory.Mappers;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -40,10 +40,9 @@ public interface FriendDomainTransformer {
         friend.setStatus(INSTANCE.friendStatusFrom(dbFriend.getFriendStatus()));
         friend.setCreateTime(dbFriend.getCreateTime());
         friend.setIncrId(dbFriend.getId());
+        friend.setFriendName(new UserName(dbUser.getUsername()));
         if (StringUtils.isNotBlank(dbFriend.getFriendAlias())) {
-            friend.setAlias(new FriendAlias(dbFriend.getFriendAlias()));
-        } else {
-            friend.setAlias(new FriendAlias(dbUser.getUsername()));
+            friend.setFriendAlias(new FriendAlias(dbFriend.getFriendAlias()));
         }
         return friend;
     }

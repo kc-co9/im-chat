@@ -7,14 +7,18 @@ import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.message.ImPrivateMessage;
 import com.co.kc.imchat.domain.message.ImPrivateMessageRepository;
-import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.infrastructure.mybatis.entity.DbImChatLastMessage;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateMessage;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatType;
+import com.co.kc.imchat.infrastructure.mybatis.service.DbImChatLastMessageService;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImPrivateMessageService;
 import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.db.ImMessageDbTransformer;
 import com.co.kc.imchat.transformer.domain.ImMessageDomainTransformer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -23,11 +27,24 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class MysqlImPrivateMessageRepository implements ImPrivateMessageRepository {
     private final DbImPrivateMessageService dbImPrivateMessageService;
+    private final DbImChatLastMessageService dbImChatLastMessageService;
 
     @Override
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void save(ImPrivateMessage message) {
         DbImPrivateMessage dbMessage = ImMessageDbTransformer.INSTANCE.dbImPrivateMessageFrom(message);
         dbImPrivateMessageService.saveOrUpdate(dbMessage);
+
+        boolean isExistLastMessage = dbImChatLastMessageService.isExistPrivateLastMessage(message.getChatId().getValue());
+        if (isExistLastMessage) {
+            dbImChatLastMessageService.updatePrivateLastMessage(message.getChatId().getValue(), message.getId().getValue());
+        } else {
+            DbImChatLastMessage dbImChatLastMessage = new DbImChatLastMessage();
+            dbImChatLastMessage.setChatId(message.getChatId().getValue());
+            dbImChatLastMessage.setChatType(DbImChatType.PRIVATE);
+            dbImChatLastMessage.setMessageId(message.getId().getValue());
+            dbImChatLastMessageService.save(dbImChatLastMessage);
+        }
     }
 
     @Override

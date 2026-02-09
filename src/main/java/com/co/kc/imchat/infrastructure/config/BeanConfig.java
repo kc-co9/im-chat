@@ -45,9 +45,10 @@ public class BeanConfig {
     }
 
     @Bean
-    public ImChatService imChatService(UserRepository userRepository,
+    public ImChatService imChatService(FriendRepository friendRepository,
+                                       ImChatRepository imChatRepository,
                                        SessionRepository sessionRepository) {
-        return new ImChatService(userRepository, sessionRepository);
+        return new ImChatService(friendRepository, imChatRepository, sessionRepository);
     }
 
     @Bean
