@@ -32,10 +32,9 @@ public class ImChatService {
 
         List<ImUserChatDescriptor> imUserChatDescriptors = new ArrayList<>();
         if (CollectionUtils.isNotEmpty(imPrivateChatList)) {
-            List<UserId> friendUserIds = imPrivateChatList.stream()
-                    .map(o -> o.getAnother(userId)).collect(Collectors.toList());
+            List<UserId> friendUserIds = FunctionUtils.mappingList(imPrivateChatList, o -> o.getAnother(userId));
             List<Friend> friendList = friendRepository.find(userId, friendUserIds);
-            Map<UserId, Friend> friendMap = FunctionUtils.mappingMap(friendList, Friend::getUserId, Function.identity());
+            Map<UserId, Friend> friendMap = FunctionUtils.mappingMap(friendList, Friend::getFriendUserId, Function.identity());
 
             List<ImChatId> chatIds = FunctionUtils.mappingList(imPrivateChatList, ImPrivateChat::getId);
             List<ImMessage> chatLastMessages = imChatRepository.findLastMessageList(ImChatType.PRIVATE, chatIds);

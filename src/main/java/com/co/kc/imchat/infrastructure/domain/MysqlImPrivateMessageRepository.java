@@ -55,6 +55,13 @@ public class MysqlImPrivateMessageRepository implements ImPrivateMessageReposito
     }
 
     @Override
+    public ImPrivateMessage find(ImChatId chatId, ImMessageToken messageToken) {
+        Optional<DbImPrivateMessage> dbImPrivateMessage =
+                dbImPrivateMessageService.getByChatIdAndMessageToken(chatId.getValue(), messageToken.getValue());
+        return dbImPrivateMessage.map(ImMessageDomainTransformer.INSTANCE::imPrivateMessageFrom).orElse(null);
+    }
+
+    @Override
     public List<ImPrivateMessage> queryHistory(ImChatId imChatId, ImMessageId imLastMessageId, int count) {
         IPage<DbImPrivateMessage> dbImPrivateMessagePage = dbImPrivateMessageService.page(new Page<>(1, count), dbImPrivateMessageService.getQueryWrapper()
                 .eq(DbImPrivateMessage::getChatId, imChatId.getValue())

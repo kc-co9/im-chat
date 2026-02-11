@@ -18,13 +18,18 @@ public interface FriendAppTransformer {
 
     List<FriendItemDTO> friendItemListFrom(List<Friend> friends);
 
-    @Mappings(value = {
-            @Mapping(target = "userId", source = "friendUserId.value"),
-            @Mapping(target = "alias", source = "friendAlias.value"),
-            @Mapping(target = "status", source = "status"),
-            @Mapping(target = "createTime", source = "createTime")
-    })
-    FriendItemDTO friendItemDtoFrom(Friend friend);
+    default FriendItemDTO friendItemDtoFrom(Friend friend) {
+        FriendItemDTO friendItemDTO = new FriendItemDTO();
+        friendItemDTO.setUserId(friend.getFriendUserId().getValue());
+        friendItemDTO.setStatus(friend.getStatus());
+        friendItemDTO.setCreateTime(friend.getCreateTime());
+        if (friend.getFriendAlias() != null) {
+            friendItemDTO.setAlias(friend.getFriendAlias().getValue());
+        } else {
+            friendItemDTO.setAlias(friend.getFriendName().getValue());
+        }
+        return friendItemDTO;
+    }
 
     @Mappings(value = {
             @Mapping(target = "userId", source = "user.id.value"),

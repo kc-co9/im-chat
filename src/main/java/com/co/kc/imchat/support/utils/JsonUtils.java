@@ -1,18 +1,23 @@
 package com.co.kc.imchat.support.utils;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
-import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 import com.co.kc.imchat.support.exception.SerializationException;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.ZoneOffset;
 
 /**
  * JSON序列化和反序列化工具类
@@ -21,15 +26,10 @@ import java.time.format.DateTimeFormatter;
  */
 public class JsonUtils {
     private static final ObjectMapper OBJECT_MAPPER;
-    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     static {
-        JavaTimeModule javaTimeModule = new JavaTimeModule();
-        javaTimeModule.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(DATE_TIME_FORMATTER));
-        javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(DATE_TIME_FORMATTER));
-
         OBJECT_MAPPER = new ObjectMapper();
-        OBJECT_MAPPER.registerModule(javaTimeModule);
+        OBJECT_MAPPER.registerModule(getJavaTimeModule());
         // 忽略未知字段，避免反序列化失败
         OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -80,4 +80,34 @@ public class JsonUtils {
     public static ObjectMapper getMapper() {
         return OBJECT_MAPPER;
     }
+
+    public static JavaTimeModule getJavaTimeModule() {
+        JavaTimeModule javaTimeModule = new JavaTimeModule();
+        javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeJsonSerializer());
+        javaTimeModule.addDeserializer(LocalDateTime.class, new LocalDateTimeJsonDeserializer());
+        return javaTimeModule;
+    }
+
+    private static class LocalDateTimeJsonSerializer extends JsonSerializer<LocalDateTime> {
+
+        @Override
+        public void serialize(LocalDateTime value, JsonGenerator jsonGenerator, SerializerProvider serializerProvider) throws IOException {
+            if (value != null) {
+                // 关键点：使用 ZoneOffset.UTC
+                // 将 LocalDateTime 当作 UTC 时间处理，计算出对应的时间戳
+                jsonGenerator.writeNumber(value.toInstant(ZoneOffset.UTC).toEpochMilli());
+            }
+        }
+    }
+
+    private static class LocalDateTimeJsonDeserializer extends JsonDeserializer<LocalDateTime> {
+        @Override
+        public LocalDateTime deserialize(JsonParser jsonParser, DeserializationContext deserializationContext) throws IOException {
+            long timestamp = jsonParser.getValueAsLong();
+            // 将接收到的时间戳，解析为 UTC 时区下的 LocalDateTime
+            return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneOffset.UTC);
+
+        }
+    }
+
 }

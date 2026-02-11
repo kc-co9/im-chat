@@ -16,6 +16,12 @@ import java.util.Optional;
 @Service
 public class DbImPrivateMessageService extends BaseMybatisService<DbImPrivateMessageMapper, DbImPrivateMessage> {
 
+    public Optional<DbImPrivateMessage> getByChatIdAndMessageToken(Long chatId, String messageToken) {
+        return getFirst(getQueryWrapper()
+                .eq(DbImPrivateMessage::getChatId, chatId)
+                .eq(DbImPrivateMessage::getToken, messageToken));
+    }
+
     public Optional<DbImPrivateMessage> getByChatIdAndMessageId(Long chatId, Long messageId) {
         return getFirst(getQueryWrapper()
                 .eq(DbImPrivateMessage::getChatId, chatId)
@@ -33,4 +39,6 @@ public class DbImPrivateMessageService extends BaseMybatisService<DbImPrivateMes
                 .in(DbImPrivateMessage::getChatId, chatIds)
                 .orderByDesc(DbImPrivateMessage::getSendTime));
     }
+
+
 }

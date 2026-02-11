@@ -27,6 +27,7 @@ public interface ImMessageDomainTransformer {
     List<ImPrivateMessage> imPrivateMessageListFrom(List<DbImPrivateMessage> dbMessageList);
 
     @Mappings(value = {
+            @Mapping(target = "incrId", source = "id"),
             @Mapping(target = "id.value", source = "messageId"),
             @Mapping(target = "chatId.value", source = "chatId"),
             @Mapping(target = "token.value", source = "token"),

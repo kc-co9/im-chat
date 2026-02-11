@@ -1,5 +1,6 @@
 package com.co.kc.imchat.infrastructure.config;
 
+import com.co.kc.imchat.support.utils.JsonUtils;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.co.kc.imchat.support.web.convert.IntegerCodeToBaseEnumConverterFactory;
 import com.co.kc.imchat.support.web.convert.StringCodeToBaseEnumConverterFactory;
@@ -81,6 +82,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Bean
     public Jackson2ObjectMapperBuilderCustomizer jacksonObjectMapperCustomization() {
         return jacksonObjectMapperBuilder -> jacksonObjectMapperBuilder
+                .modules(JsonUtils.getJavaTimeModule())
                 .serializerByType(Long.class, ToStringSerializer.instance)
                 .serializerByType(BaseEnum.class, new BaseEnumSerializer());
     }

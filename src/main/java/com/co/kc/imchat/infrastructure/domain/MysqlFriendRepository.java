@@ -67,9 +67,9 @@ public class MysqlFriendRepository implements FriendRepository {
         if (CollectionUtils.isEmpty(dbFriendList)) {
             return Collections.emptyList();
         }
-        List<Long> userIds = FunctionUtils.mappingList(dbFriendList, DbFriend::getUserId);
-        List<DbUser> dbUserList = dbUserService.getListByUserIds(userIds);
-        return FriendDomainTransformer.INSTANCE.friendListFrom(dbFriendList, dbUserList);
+        List<Long> friendUserIds = FunctionUtils.mappingList(dbFriendList, DbFriend::getFriendUserId);
+        List<DbUser> dbFriendUserList = dbUserService.getListByUserIds(friendUserIds);
+        return FriendDomainTransformer.INSTANCE.friendListFrom(dbFriendList, dbFriendUserList);
     }
 
 }

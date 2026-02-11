@@ -17,7 +17,6 @@ public class ImPrivateMessage extends ImMessage {
     private LocalDateTime receivedTime;
     private LocalDateTime readTime;
 
-
     public void receive(UserId receiverId) {
         if (!this.receiverId.equals(receiverId)) {
             throw new IllegalArgumentException("用户不能接收别人的消息");

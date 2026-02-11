@@ -1,9 +1,14 @@
 package com.co.kc.imchat.transformer.domain;
 
+import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.session.Session;
+import com.co.kc.imchat.domain.session.SessionStatus;
 import com.co.kc.imchat.domain.user.User;
+import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbUser;
 import com.co.kc.imchat.model.cqrs.dto.user.SessionDTO;
+import com.co.kc.imchat.model.enums.SessionStatusEnum;
+import com.co.kc.imchat.support.utils.FunctionUtils;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Mappings;
@@ -25,12 +30,14 @@ public interface UserDomainTransformer {
             @Mapping(target = "password.value", source = "password")})
     User userFrom(DbUser dbUser);
 
-    @Mappings(value = {
-            @Mapping(target = "userId.value", source = "userId"),
-            @Mapping(target = "chatId.value", source = "chatId"),
-            @Mapping(target = "status", source = "status"),
-            @Mapping(target = "signInTime", source = "signInTime"),
-            @Mapping(target = "signOutTime", source = "signOutTime")
-    })
-    Session sessionFrom(SessionDTO sessionDTO);
+    default Session sessionFrom(SessionDTO sessionDTO) {
+        Session session = new Session(new UserId(sessionDTO.getUserId()));
+        session.setChatId(FunctionUtils.mappingOrNull(sessionDTO.getChatId(), ImChatId::new));
+        session.setStatus(INSTANCE.sessionStatusFrom(sessionDTO.getStatus()));
+        session.setSignInTime(sessionDTO.getSignInTime());
+        session.setSignOutTime(sessionDTO.getSignOutTime());
+        return session;
+    }
+
+    SessionStatus sessionStatusFrom(SessionStatusEnum sessionStatusEnum);
 }

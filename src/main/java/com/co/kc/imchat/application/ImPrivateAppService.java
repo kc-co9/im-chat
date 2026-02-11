@@ -5,6 +5,7 @@ import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageDetailQuery;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
+import com.co.kc.imchat.support.exception.RepeatException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatRepository;
@@ -63,6 +64,11 @@ public class ImPrivateAppService {
         ImPrivateChat imPrivateChat = imChatRepository.findPrivateChat(chatId);
         if (imPrivateChat == null) {
             throw new NotFoundException("聊天不存在");
+        }
+
+        ImPrivateMessage imPrivateMessage = imPrivateMessageRepository.find(chatId, messageToken);
+        if (imPrivateMessage != null) {
+            throw new RepeatException("消息已存在");
         }
 
         ImPrivateMessage imMessage = new ImPrivateMessage();

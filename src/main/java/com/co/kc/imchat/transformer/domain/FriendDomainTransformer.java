@@ -25,14 +25,14 @@ import java.util.stream.Collectors;
 public interface FriendDomainTransformer {
     FriendDomainTransformer INSTANCE = Mappers.getMapper(FriendDomainTransformer.class);
 
-    default List<Friend> friendListFrom(List<DbFriend> dbFriendList, List<DbUser> dbUserList) {
-        Map<Long, DbUser> userIdEntityMap = FunctionUtils.mappingMap(dbUserList, DbUser::getUserId, Function.identity());
+    default List<Friend> friendListFrom(List<DbFriend> dbFriendList, List<DbUser> dbFriendUserList) {
+        Map<Long, DbUser> friendUserIdEntityMap = FunctionUtils.mappingMap(dbFriendUserList, DbUser::getUserId, Function.identity());
         return dbFriendList.stream()
-                .map(dbFriend -> INSTANCE.friendFrom(dbFriend, userIdEntityMap.get(dbFriend.getUserId())))
+                .map(dbFriend -> INSTANCE.friendFrom(dbFriend, friendUserIdEntityMap.get(dbFriend.getFriendUserId())))
                 .collect(Collectors.toList());
     }
 
-    default Friend friendFrom(DbFriend dbFriend, DbUser dbUser) {
+    default Friend friendFrom(DbFriend dbFriend, DbUser dbFriendUser) {
         Friend friend = new Friend();
         friend.setId(new FriendId(new UserId(dbFriend.getUserId()), new UserId(dbFriend.getFriendUserId())));
         friend.setUserId(new UserId(dbFriend.getUserId()));
@@ -40,7 +40,7 @@ public interface FriendDomainTransformer {
         friend.setStatus(INSTANCE.friendStatusFrom(dbFriend.getFriendStatus()));
         friend.setCreateTime(dbFriend.getCreateTime());
         friend.setIncrId(dbFriend.getId());
-        friend.setFriendName(new UserName(dbUser.getUsername()));
+        friend.setFriendName(new UserName(dbFriendUser.getUsername()));
         if (StringUtils.isNotBlank(dbFriend.getFriendAlias())) {
             friend.setFriendAlias(new FriendAlias(dbFriend.getFriendAlias()));
         }

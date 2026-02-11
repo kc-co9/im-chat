@@ -1,6 +1,5 @@
 package com.co.kc.imchat.infrastructure.mybatis.entity;
 
-import com.co.kc.imchat.domain.chat.ImGroupMemberSetting;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
