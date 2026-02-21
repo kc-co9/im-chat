@@ -45,11 +45,11 @@ public class MysqlFriendRepository implements FriendRepository {
         if (dbFriend == null) {
             return null;
         }
-        DbUser dbUser = dbUserService.getByUserId(dbFriend.getUserId()).orElse(null);
-        if (dbUser == null) {
+        DbUser dbFriendUser = dbUserService.getByUserId(dbFriend.getFriendUserId()).orElse(null);
+        if (dbFriendUser == null) {
             return null;
         }
-        return FriendDomainTransformer.INSTANCE.friendFrom(dbFriend, dbUser);
+        return FriendDomainTransformer.INSTANCE.friendFrom(dbFriend, dbFriendUser);
     }
 
     @Override

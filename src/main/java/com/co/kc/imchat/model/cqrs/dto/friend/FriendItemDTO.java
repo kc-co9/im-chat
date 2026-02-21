@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 @Data
 public class FriendItemDTO {
     private Long userId;
-    private String alias;
+    private String displayName;
     private FriendStatus status;
     private LocalDateTime createTime;
 }

@@ -155,7 +155,7 @@ public class MysqlImChatRepository implements ImChatRepository {
     }
 
     @Override
-    public void save(List<ImGroupMember> imGroupMembers) {
+    public void saveGroupMembers(List<ImGroupMember> imGroupMembers) {
         // TODO 判断更新
         List<DbImGroupMember> dbImGroupMemberList = ImChatDbTransformer.INSTANCE.dbImGroupMemberListFrom(imGroupMembers);
         dbImGroupMemberService.saveBatchIgnoreEmpty(dbImGroupMemberList);

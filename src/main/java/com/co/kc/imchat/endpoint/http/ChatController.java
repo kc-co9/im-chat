@@ -8,6 +8,7 @@ import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatCreateCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatEnterCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatCreateDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatEnterDTO;
 import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
 import com.co.kc.imchat.model.io.chat.ImChatListResponse;
 import com.co.kc.imchat.model.io.chat.ImGroupChatCreateRequest;
@@ -16,6 +17,7 @@ import com.co.kc.imchat.model.io.chat.ImGroupChatEnterRequest;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatCreateRequest;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatCreateResponse;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatEnterRequest;
+import com.co.kc.imchat.model.io.chat.ImPrivateChatEnterResponse;
 import com.co.kc.imchat.support.context.UserContextUtils;
 import com.co.kc.imchat.transformer.http.ImChatHttpIoTransformer;
 import io.swagger.annotations.Api;
@@ -52,10 +54,11 @@ public class ChatController {
     }
 
     @PostMapping(value = "/enterPrivateChat")
-    public void enterPrivateChat(@RequestBody @Validated ImPrivateChatEnterRequest request) {
+    public ImPrivateChatEnterResponse enterPrivateChat(@RequestBody @Validated ImPrivateChatEnterRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateChatEnterCmd command = new ImPrivateChatEnterCmd(request.getChatId(), userId);
-        chatAppService.enterPrivateChat(command);
+        ImPrivateChatEnterDTO enterDTO = chatAppService.enterPrivateChat(command);
+        return ImChatHttpIoTransformer.INSTANCE.imPrivateChatEnterResponseFrom(enterDTO);
     }
 
     @PostMapping(value = "/createGroupChat")

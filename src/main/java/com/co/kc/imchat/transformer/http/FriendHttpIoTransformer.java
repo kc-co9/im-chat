@@ -21,7 +21,7 @@ public interface FriendHttpIoTransformer {
 
     @Mappings(value = {
             @Mapping(target = "userId", source = "userId"),
-            @Mapping(target = "alias", source = "alias"),
+            @Mapping(target = "displayName", source = "displayName"),
             @Mapping(target = "createTime", source = "createTime")})
     FriendListResponse.FriendItem friendItemFrom(FriendItemDTO friend);
 

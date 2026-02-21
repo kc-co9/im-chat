@@ -16,7 +16,7 @@ public class FriendListResponse {
     @Data
     public static class FriendItem {
         private Long userId;
-        private String alias;
+        private String displayName;
         private LocalDateTime createTime;
     }
 }

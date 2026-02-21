@@ -33,10 +33,11 @@ public class BeanConfig {
     }
 
     @Bean
-    public UserService userService(UserRepository userRepository,
+    public UserService userService(SnowflakeId snowflakeId,
+                                   UserRepository userRepository,
                                    SessionRepository sessionRepository,
                                    PasswordService passwordService) {
-        return new UserService(userRepository, sessionRepository, passwordService);
+        return new UserService(snowflakeId, userRepository, sessionRepository, passwordService);
     }
 
     @Bean
@@ -57,13 +58,11 @@ public class BeanConfig {
     }
 
     @Bean
-    public UserAppService userAppService(SnowflakeId snowflakeId,
-                                         UserRepository userRepository,
+    public UserAppService userAppService(UserRepository userRepository,
                                          SessionRepository sessionRepository,
                                          UserService userService,
-                                         TokenService tokenService,
-                                         PasswordService passwordService) {
-        return new UserAppService(snowflakeId, userRepository, sessionRepository, userService, tokenService, passwordService);
+                                         TokenService tokenService) {
+        return new UserAppService(userRepository, sessionRepository, userService, tokenService);
     }
 
     @Bean

@@ -23,11 +23,7 @@ public interface FriendAppTransformer {
         friendItemDTO.setUserId(friend.getFriendUserId().getValue());
         friendItemDTO.setStatus(friend.getStatus());
         friendItemDTO.setCreateTime(friend.getCreateTime());
-        if (friend.getFriendAlias() != null) {
-            friendItemDTO.setAlias(friend.getFriendAlias().getValue());
-        } else {
-            friendItemDTO.setAlias(friend.getFriendName().getValue());
-        }
+        friendItemDTO.setDisplayName(friend.displayName().getValue());
         return friendItemDTO;
     }
 

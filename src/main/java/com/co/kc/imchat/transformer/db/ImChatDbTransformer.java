@@ -18,7 +18,6 @@ import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatType;
 import org.mapstruct.factory.Mappers;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Mapper
 public interface ImChatDbTransformer {

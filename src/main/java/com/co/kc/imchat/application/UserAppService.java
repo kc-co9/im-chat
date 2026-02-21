@@ -2,13 +2,11 @@ package com.co.kc.imchat.application;
 
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.exception.RepeatException;
-import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.domain.session.Session;
 import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.UserService;
 import com.co.kc.imchat.model.cqrs.dto.user.TokenDTO;
 import com.co.kc.imchat.model.cqrs.query.user.UserAuthQuery;
-import com.co.kc.imchat.support.auth.PasswordService;
 import com.co.kc.imchat.domain.user.User;
 import com.co.kc.imchat.domain.user.UserEmail;
 import com.co.kc.imchat.domain.user.UserId;
@@ -31,28 +29,24 @@ import java.time.LocalDateTime;
  */
 @RequiredArgsConstructor
 public class UserAppService {
-    private final SnowflakeId snowflakeId;
-
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
 
     private final UserService userService;
     private final TokenService tokenService;
-    private final PasswordService passwordService;
 
     public void signUp(UserSignUpCmd command) {
         UserEmail email = new UserEmail(command.getEmail());
         UserName username = new UserName(command.getUsername());
         UserRawPassword rawPassword = new UserRawPassword(command.getPassword());
 
-        User user = userRepository.find(email);
-        if (user != null) {
+        boolean existEmail = userRepository.contain(email);
+        if (existEmail) {
             throw new RepeatException("用户已存在");
         }
 
-        User newUser = new User(
-                new UserId(snowflakeId.next()), email, username, passwordService.encrypt(rawPassword));
-        userRepository.save(newUser);
+        User user = userService.newUser(email, username, rawPassword);
+        userRepository.save(user);
     }
 
 

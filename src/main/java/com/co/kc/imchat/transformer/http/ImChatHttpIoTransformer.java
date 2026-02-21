@@ -1,7 +1,9 @@
 package com.co.kc.imchat.transformer.http;
 
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatEnterDTO;
 import com.co.kc.imchat.model.io.chat.ImChatListResponse;
+import com.co.kc.imchat.model.io.chat.ImPrivateChatEnterResponse;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Mappings;
@@ -21,4 +23,12 @@ public interface ImChatHttpIoTransformer {
             @Mapping(target = "chatType", source = "chatType")
     })
     ImChatListResponse.ImChatItem imChatItemFrom(ImChatItemDTO imChatItem);
+
+    @Mappings(value = {
+            @Mapping(target = "chatId", source = "chatId"),
+            @Mapping(target = "chatName", source = "chatName"),
+            @Mapping(target = "friendUserId", source = "friendUserId"),
+            @Mapping(target = "friendDisplayName", source = "friendDisplayName")
+    })
+    ImPrivateChatEnterResponse imPrivateChatEnterResponseFrom(ImPrivateChatEnterDTO enterDTO);
 }

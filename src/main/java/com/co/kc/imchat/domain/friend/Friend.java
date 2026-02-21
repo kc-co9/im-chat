@@ -1,6 +1,5 @@
 package com.co.kc.imchat.domain.friend;
 
-import com.co.kc.imchat.domain.chat.ImChatName;
 import com.co.kc.imchat.domain.shared.Identification;
 import com.co.kc.imchat.domain.shared.Validator;
 import com.co.kc.imchat.domain.user.UserId;
@@ -34,6 +33,14 @@ public class Friend extends Identification implements Validator {
 
     public void unblock() {
         status = FriendStatus.NORMAL;
+    }
+
+    public FriendDisplayName displayName() {
+        if (friendAlias != null) {
+            return new FriendDisplayName(friendAlias.getValue());
+        } else {
+            return new FriendDisplayName(friendName.getValue());
+        }
     }
 
 }

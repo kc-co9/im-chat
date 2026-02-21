@@ -54,4 +54,9 @@ public class MysqlUserRepository implements UserRepository {
     public void remove(User user) {
         dbUserService.removeByUserId(user.getId().getValue());
     }
+
+    @Override
+    public boolean contain(UserEmail email) {
+        return dbUserService.isExist(dbUserService.getQueryWrapper().eq(DbUser::getEmail, email.getValue()));
+    }
 }

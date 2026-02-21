@@ -34,4 +34,12 @@ public interface UserRepository {
      * @param user 用户
      */
     void remove(User user);
+
+    /**
+     * 判断用户是否存在
+     *
+     * @param email 邮箱
+     * @return 用户是否存在
+     */
+    boolean contain(UserEmail email);
 }

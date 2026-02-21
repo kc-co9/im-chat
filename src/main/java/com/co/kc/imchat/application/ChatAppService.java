@@ -1,9 +1,12 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.domain.chat.ImChatName;
 import com.co.kc.imchat.domain.chat.ImGroupMemberId;
 import com.co.kc.imchat.domain.chat.ImGroupName;
 import com.co.kc.imchat.domain.chat.ImUserChatDescriptor;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatCreateCmd;
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatEnterDTO;
+import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.support.utils.FunctionUtils;
@@ -66,11 +69,25 @@ public class ChatAppService {
         return new ImChatCreateDTO(imPrivateChat.getId().getValue());
     }
 
-    public void enterPrivateChat(ImPrivateChatEnterCmd command) {
+    public ImPrivateChatEnterDTO enterPrivateChat(ImPrivateChatEnterCmd command) {
         ImChatId chatId = new ImChatId(command.getChatId());
         UserId userId = new UserId(command.getUserId());
 
+        ImPrivateChat imPrivateChat = imChatRepository.findPrivateChat(chatId);
+        if (imPrivateChat == null) {
+            throw new NotFoundException("聊天不存在");
+        }
+        if (!imPrivateChat.contain(userId)) {
+            throw new BusinessException("用户无此聊天权限");
+        }
+
         imChatService.enterChat(chatId, userId);
+
+        Friend friend = friendRepository.find(userId, imPrivateChat.getAnother(userId));
+        ImChatName chatName = imChatService.obtainFriendChatName(friend);
+
+        return new ImPrivateChatEnterDTO(
+                chatId.getValue(), chatName.getValue(), friend.getFriendUserId().getValue(), friend.displayName().getValue());
     }
 
     public ImChatCreateDTO createGroupChat(ImGroupChatCreateCmd command) {
@@ -98,7 +115,7 @@ public class ChatAppService {
                     imGroupMember.setSetting(null);
                     return imGroupMember;
                 }).collect(Collectors.toList());
-        imChatRepository.save(imGroupMembers);
+        imChatRepository.saveGroupMembers(imGroupMembers);
 
         return new ImChatCreateDTO(imGroupChat.getId().getValue());
     }

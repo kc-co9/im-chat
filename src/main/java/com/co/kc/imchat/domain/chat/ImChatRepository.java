@@ -27,7 +27,7 @@ public interface ImChatRepository {
 
     void save(ImGroupChat imGroupChat);
 
-    void save(List<ImGroupMember> imGroupMembers);
+    void saveGroupMembers(List<ImGroupMember> imGroupMembers);
 
     boolean containGroupMember(ImChatId chatId, UserId userId);
 

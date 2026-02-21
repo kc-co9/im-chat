@@ -17,7 +17,7 @@ import com.co.kc.imchat.support.exception.SerializationException;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 
 /**
  * JSON序列化和反序列化工具类
@@ -93,9 +93,7 @@ public class JsonUtils {
         @Override
         public void serialize(LocalDateTime value, JsonGenerator jsonGenerator, SerializerProvider serializerProvider) throws IOException {
             if (value != null) {
-                // 关键点：使用 ZoneOffset.UTC
-                // 将 LocalDateTime 当作 UTC 时间处理，计算出对应的时间戳
-                jsonGenerator.writeNumber(value.toInstant(ZoneOffset.UTC).toEpochMilli());
+                jsonGenerator.writeNumber(value.toInstant(ZoneId.systemDefault().getRules().getOffset(value)).toEpochMilli());
             }
         }
     }
@@ -104,8 +102,7 @@ public class JsonUtils {
         @Override
         public LocalDateTime deserialize(JsonParser jsonParser, DeserializationContext deserializationContext) throws IOException {
             long timestamp = jsonParser.getValueAsLong();
-            // 将接收到的时间戳，解析为 UTC 时区下的 LocalDateTime
-            return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneOffset.UTC);
+            return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault());
 
         }
     }

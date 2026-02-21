@@ -31,6 +31,9 @@ public interface UserDomainTransformer {
     User userFrom(DbUser dbUser);
 
     default Session sessionFrom(SessionDTO sessionDTO) {
+        if (sessionDTO == null) {
+            return null;
+        }
         Session session = new Session(new UserId(sessionDTO.getUserId()));
         session.setChatId(FunctionUtils.mappingOrNull(sessionDTO.getChatId(), ImChatId::new));
         session.setStatus(INSTANCE.sessionStatusFrom(sessionDTO.getStatus()));
