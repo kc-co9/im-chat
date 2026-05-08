@@ -21,5 +21,4 @@ public class ImGroupMember extends Identification implements Validator {
     private ImChatId chatId;
     private ImGroupAlias groupAlias;
     private ImGroupUserAlias userAlias;
-    private ImGroupMemberSetting setting;
 }

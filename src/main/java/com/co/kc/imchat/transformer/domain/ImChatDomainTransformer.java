@@ -5,10 +5,8 @@ import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupAlias;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupMember;
-import com.co.kc.imchat.domain.chat.ImGroupMemberSetting;
 import com.co.kc.imchat.domain.chat.ImGroupName;
 import com.co.kc.imchat.domain.chat.ImGroupNotification;
-import com.co.kc.imchat.domain.chat.ImGroupSetting;
 import com.co.kc.imchat.domain.chat.ImGroupUserAlias;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.chat.ImPrivatePair;
@@ -17,7 +15,6 @@ import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMember;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateChat;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatType;
-import com.co.kc.imchat.support.utils.JsonUtils;
 import org.mapstruct.Mapper;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
@@ -50,7 +47,6 @@ public interface ImChatDomainTransformer {
         ImGroupChat imGroupChat = new ImGroupChat();
         imGroupChat.setOwnerId(new UserId(dbImGroupChat.getOwnerId()));
         imGroupChat.setNotification(new ImGroupNotification(dbImGroupChat.getNotification()));
-        imGroupChat.setSetting(JsonUtils.fromJson(dbImGroupChat.getSetting(), ImGroupSetting.class));
         imGroupChat.setId(new ImChatId(dbImGroupChat.getChatId()));
         imGroupChat.setName(new ImGroupName(dbImGroupChat.getName()));
         imGroupChat.setType(ImChatType.GROUP);
@@ -66,7 +62,6 @@ public interface ImChatDomainTransformer {
         imGroupMember.setUserId(new UserId(dbImGroupMember.getUserId()));
         imGroupMember.setGroupAlias(new ImGroupAlias(dbImGroupMember.getGroupAlias()));
         imGroupMember.setUserAlias(new ImGroupUserAlias(dbImGroupMember.getUserAlias()));
-        imGroupMember.setSetting(JsonUtils.fromJson(dbImGroupMember.getSetting(), ImGroupMemberSetting.class));
         return imGroupMember;
     }
 

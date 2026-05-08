@@ -112,7 +112,6 @@ public class ChatAppService {
                     imGroupMember.setChatId(chatId);
                     imGroupMember.setGroupAlias(null);
                     imGroupMember.setUserAlias(null);
-                    imGroupMember.setSetting(null);
                     return imGroupMember;
                 }).collect(Collectors.toList());
         imChatRepository.saveGroupMembers(imGroupMembers);

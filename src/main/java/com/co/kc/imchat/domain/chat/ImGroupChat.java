@@ -10,5 +10,4 @@ public class ImGroupChat extends ImChat {
     private UserId ownerId;
     private ImGroupName name;
     private ImGroupNotification notification;
-    private ImGroupSetting setting;
 }
