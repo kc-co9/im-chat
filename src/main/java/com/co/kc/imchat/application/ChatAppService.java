@@ -26,7 +26,6 @@ import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatCreateCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatEnterCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatEnterCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatCreateDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatCreateDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
 import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
 import com.co.kc.imchat.transformer.application.ImChatAppTransformer;
@@ -62,20 +61,22 @@ public class ChatAppService {
 
         ImPrivateChat senderChat = imPrivateChatRepository.find(senderId, receiverId);
         if (senderChat == null) {
-            senderChat = new ImPrivateChat();
-            senderChat.setId(new ImChatId(snowflakeId.next()));
-            senderChat.setUserId(senderId);
-            senderChat.setPeerUserId(receiverId);
-            senderChat.setType(ImChatType.PRIVATE);
+            senderChat = ImPrivateChat.builder()
+                    .id(new ImChatId(snowflakeId.next()))
+                    .userId(senderId)
+                    .peerUserId(receiverId)
+                    .type(ImChatType.PRIVATE)
+                    .build();
             imPrivateChatRepository.save(senderChat);
         }
         ImPrivateChat receiverChat = imPrivateChatRepository.find(receiverId, senderId);
         if (receiverChat == null) {
-            receiverChat = new ImPrivateChat();
-            receiverChat.setId(new ImChatId(snowflakeId.next()));
-            receiverChat.setUserId(receiverId);
-            receiverChat.setPeerUserId(senderId);
-            receiverChat.setType(ImChatType.PRIVATE);
+            receiverChat = ImPrivateChat.builder()
+                    .id(new ImChatId(snowflakeId.next()))
+                    .userId(receiverId)
+                    .peerUserId(senderId)
+                    .type(ImChatType.PRIVATE)
+                    .build();
             imPrivateChatRepository.save(receiverChat);
         }
 
@@ -96,7 +97,7 @@ public class ChatAppService {
 
         imChatService.enterChat(chatId, userId);
 
-        Friend friend = friendRepository.find(userId, imPrivateChat.getAnother(userId));
+        Friend friend = friendRepository.find(userId, imPrivateChat.getPeerUserId());
         ImChatName chatName = imChatService.obtainFriendChatName(friend);
 
         return new ImPrivateChatEnterDTO(

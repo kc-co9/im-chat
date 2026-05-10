@@ -72,7 +72,7 @@ public class ImChatService {
             return Collections.emptyList();
         }
 
-        List<UserId> friendUserIds = FunctionUtils.mappingList(imPrivateChatList, o -> o.getAnother(userId));
+        List<UserId> friendUserIds = FunctionUtils.mappingList(imPrivateChatList, ImPrivateChat::getPeerUserId);
         List<Friend> friendList = friendRepository.find(userId, friendUserIds);
         Map<UserId, Friend> friendMap = FunctionUtils.mappingMap(friendList, Friend::getFriendUserId, Function.identity());
 
@@ -83,7 +83,7 @@ public class ImChatService {
 
         return imPrivateChatList.stream()
                 .map(imPrivateChat -> {
-                    UserId friendUserId = imPrivateChat.getAnother(userId);
+                    UserId friendUserId = imPrivateChat.getPeerUserId();
                     ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
                     descriptor.setChatId(imPrivateChat.getId());
                     descriptor.setChatName(obtainFriendChatName(friendMap.get(friendUserId)));

@@ -14,7 +14,7 @@ public interface UserDbTransformer {
     UserDbTransformer INSTANCE = Mappers.getMapper(UserDbTransformer.class);
 
     @Mappings(value = {
-            @Mapping(target = "id", source = "incrId"),
+            @Mapping(target = "id", source = "pkId"),
             @Mapping(target = "userId", source = "id.value"),
             @Mapping(target = "email", source = "email.value"),
             @Mapping(target = "username", source = "username.value"),

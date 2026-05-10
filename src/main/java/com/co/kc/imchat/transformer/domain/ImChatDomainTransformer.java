@@ -33,16 +33,16 @@ public interface ImChatDomainTransformer {
     List<ImPrivateChat> imPrivateChatListFrom(List<DbImPrivateChat> dbImPrivateChats);
 
     default ImPrivateChat imPrivateChatFrom(DbImPrivateChat dbImPrivateChat) {
-        ImPrivateChat imPrivateChat = new ImPrivateChat();
-        imPrivateChat.setUserId(new UserId(dbImPrivateChat.getUserId()));
-        imPrivateChat.setPeerUserId(new UserId(dbImPrivateChat.getPeerUserId()));
-        imPrivateChat.setId(new ImChatId(dbImPrivateChat.getChatId()));
-        imPrivateChat.setType(ImChatType.PRIVATE);
-        imPrivateChat.setLastMessageId(new ImMessageId(dbImPrivateChat.getLastMessageId()));
-        imPrivateChat.setReadMessageId(new ImMessageId(dbImPrivateChat.getReadMessageId()));
-        imPrivateChat.setUnreadMessageCount(dbImPrivateChat.getUnreadMessageCount());
-        imPrivateChat.setIncrId(dbImPrivateChat.getId());
-        return imPrivateChat;
+        return ImPrivateChat.builder()
+                .pkId(dbImPrivateChat.getId())
+                .userId(new UserId(dbImPrivateChat.getUserId()))
+                .peerUserId(new UserId(dbImPrivateChat.getPeerUserId()))
+                .id(new ImChatId(dbImPrivateChat.getChatId()))
+                .type(ImChatType.PRIVATE)
+                .lastMessageId(new ImMessageId(dbImPrivateChat.getLastMessageId()))
+                .readMessageId(new ImMessageId(dbImPrivateChat.getReadMessageId()))
+                .unreadMessageCount(dbImPrivateChat.getUnreadMessageCount())
+                .build();
     }
 
     List<ImGroupChat> imGroupChatListFrom(List<DbImGroupChat> dbImGroupChatList);
@@ -54,7 +54,7 @@ public interface ImChatDomainTransformer {
         imGroupChat.setId(new ImChatId(dbImGroupChat.getChatId()));
         imGroupChat.setName(new ImGroupName(dbImGroupChat.getName()));
         imGroupChat.setType(ImChatType.GROUP);
-        imGroupChat.setIncrId(dbImGroupChat.getId());
+        imGroupChat.setPkId(dbImGroupChat.getId());
         return imGroupChat;
     }
 

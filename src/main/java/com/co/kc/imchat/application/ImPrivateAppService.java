@@ -140,10 +140,8 @@ public class ImPrivateAppService {
             throw new BusinessException("请使用本人私聊会话的 chatId");
         }
 
-        ImPrivateInboxMessage imMessage = imPrivateInboxMessageRepository.find(chatId, messageId);
-        if (imMessage == null) {
-            throw new NotFoundException("消息不存在");
-        }
+        ImPrivateInboxMessage imMessage = imPrivateInboxMessageRepository.find(chatId, messageId)
+                .orElseThrow(() -> new NotFoundException("消息不存在"));
 
         imMessage.receive(userId);
         imPrivateInboxMessageRepository.save(imMessage);
@@ -178,11 +176,12 @@ public class ImPrivateAppService {
             throw new BusinessException("请使用本人私聊会话的 chatId 获取消息");
         }
 
-        ImPrivateInboxMessage senderInboxMessage = imPrivateInboxMessageRepository.find(senderChat.getId(), messageId);
-        ImPrivateInboxMessage receiverInboxMessage = imPrivateInboxMessageRepository.find(receiverChat.getId(), messageId);
-        if (senderInboxMessage == null || receiverInboxMessage == null) {
-            throw new NotFoundException("消息不存在");
-        }
+        ImPrivateInboxMessage senderInboxMessage = imPrivateInboxMessageRepository
+                .find(senderChat.getId(), messageId)
+                .orElseThrow(() -> new NotFoundException("消息不存在"));
+        ImPrivateInboxMessage receiverInboxMessage = imPrivateInboxMessageRepository
+                .find(receiverChat.getId(), messageId)
+                .orElseThrow(() -> new NotFoundException("消息不存在"));
 
         senderInboxMessage.revoke(senderChat.getUserId());
         receiverInboxMessage.revoke(receiverChat.getUserId());
@@ -213,10 +212,8 @@ public class ImPrivateAppService {
             throw new BusinessException("请使用本人私聊会话的 chatId");
         }
 
-        ImPrivateInboxMessage imMessage = imPrivateInboxMessageRepository.find(chatId, messageId);
-        if (imMessage == null) {
-            throw new NotFoundException("消息不存在");
-        }
+        ImPrivateInboxMessage imMessage = imPrivateInboxMessageRepository.find(chatId, messageId)
+                .orElseThrow(() -> new NotFoundException("消息不存在"));
 
         imMessage.read(userId);
         imPrivateInboxMessageRepository.save(imMessage);
@@ -264,7 +261,9 @@ public class ImPrivateAppService {
             throw new BusinessException("请使用本人私聊会话的 chatId 查询消息");
         }
 
-        ImPrivateInboxMessage imPrivateMessage = imPrivateInboxMessageRepository.queryDetail(chatId, messageToken, userId);
+        ImPrivateInboxMessage imPrivateMessage = imPrivateInboxMessageRepository
+                .queryDetail(chatId, messageToken, userId)
+                .orElseThrow(() -> new NotFoundException("消息不存在"));
         return ImMessageAppTransformer.INSTANCE.imPrivateMessageDtoFrom(imPrivateMessage);
     }
 }

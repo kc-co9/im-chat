@@ -33,19 +33,6 @@ public class ImPrivateChat extends ImChat {
      */
     private Integer unreadMessageCount;
 
-    public UserId getAnother(UserId userId) {
-        if (userId == null) {
-            throw new IllegalArgumentException("用户不能为空");
-        }
-        if (userId.equals(this.userId)) {
-            return peerUserId;
-        }
-        if (userId.equals(peerUserId)) {
-            return this.userId;
-        }
-        throw new IllegalArgumentException("用户不在会话中");
-    }
-
     public boolean contain(UserId userId) {
         if (userId == null || this.userId == null || peerUserId == null) {
             return false;
@@ -67,4 +54,66 @@ public class ImPrivateChat extends ImChat {
         this.unreadMessageCount = 0;
     }
 
+    @Override
+    public void validate() {
+        super.validate();
+        if (userId == null || peerUserId == null) {
+            throw new IllegalStateException("私聊会话缺少 userId 或 peerUserId");
+        }
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static class Builder {
+        private final ImPrivateChat chat = new ImPrivateChat();
+
+        public Builder pkId(Long pkId) {
+            if (pkId != null) {
+                chat.setPkId(pkId);
+            }
+            return this;
+        }
+
+        public Builder id(ImChatId id) {
+            chat.setId(id);
+            return this;
+        }
+
+        public Builder type(ImChatType type) {
+            chat.setType(type);
+            return this;
+        }
+
+        public Builder userId(UserId userId) {
+            chat.setUserId(userId);
+            return this;
+        }
+
+        public Builder peerUserId(UserId peerUserId) {
+            chat.setPeerUserId(peerUserId);
+            return this;
+        }
+
+        public Builder lastMessageId(ImMessageId lastMessageId) {
+            chat.setLastMessageId(lastMessageId);
+            return this;
+        }
+
+        public Builder readMessageId(ImMessageId readMessageId) {
+            chat.setReadMessageId(readMessageId);
+            return this;
+        }
+
+        public Builder unreadMessageCount(Integer unreadMessageCount) {
+            chat.setUnreadMessageCount(unreadMessageCount);
+            return this;
+        }
+
+        public ImPrivateChat build() {
+            chat.validate();
+            return chat;
+        }
+    }
 }

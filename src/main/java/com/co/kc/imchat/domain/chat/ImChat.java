@@ -13,4 +13,11 @@ import lombok.EqualsAndHashCode;
 public class ImChat extends Identification implements Validator {
     private ImChatId id;
     private ImChatType type;
+
+    @Override
+    public void validate() {
+        if (id == null || type == null) {
+            throw new IllegalStateException("聊天缺少 id 或 type");
+        }
+    }
 }

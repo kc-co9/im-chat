@@ -16,18 +16,18 @@ public class Identification {
     /**
      * 数据库主键ID
      */
-    private Long incrId;
+    private Long pkId;
 
     public Identification() {
     }
 
-    public void setIncrId(Long incrId) {
-        if (Objects.isNull(incrId)) {
+    public void setPkId(Long pkId) {
+        if (Objects.isNull(pkId)) {
             throw new IllegalArgumentException("id is null");
         }
-        if (incrId <= 0L) {
+        if (pkId <= 0L) {
             throw new IllegalArgumentException("id is less than or equal to 0");
         }
-        this.incrId = incrId;
+        this.pkId = pkId;
     }
 }

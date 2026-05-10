@@ -11,6 +11,14 @@ public class ImGroupMessage extends ImMessage {
     private ImChatId chatId;
     private ImGroupMessageStatus status;
 
+    @Override
+    public void validate() {
+        super.validate();
+        if (chatId == null || status == null) {
+            throw new IllegalStateException("群消息缺少 chatId 或 status");
+        }
+    }
+
     public void revoke(UserId userId) {
 
     }

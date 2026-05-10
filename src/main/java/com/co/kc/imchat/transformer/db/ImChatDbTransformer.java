@@ -22,6 +22,7 @@ public interface ImChatDbTransformer {
 
     default DbImPrivateChat dbImPrivateChatFrom(ImPrivateChat imPrivateChat) {
         DbImPrivateChat row = new DbImPrivateChat();
+        row.setId(imPrivateChat.getPkId());
         row.setChatId(imPrivateChat.getId().getValue());
         row.setUserId(imPrivateChat.getUserId().getValue());
         row.setPeerUserId(imPrivateChat.getPeerUserId().getValue());

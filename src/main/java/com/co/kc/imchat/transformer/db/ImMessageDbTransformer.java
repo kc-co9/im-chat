@@ -8,9 +8,11 @@ import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 
 import com.co.kc.imchat.domain.message.ImGroupMessage;
-import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageType;
+import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
+import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMessage;
+import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateInboxMessage;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbPrivateImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageType;
 import org.mapstruct.factory.Mappers;
@@ -20,7 +22,7 @@ public interface ImMessageDbTransformer {
     ImMessageDbTransformer INSTANCE = Mappers.getMapper(ImMessageDbTransformer.class);
 
     @Mappings(value = {
-            @Mapping(target = "id", source = "incrId"),
+            @Mapping(target = "id", source = "pkId"),
             @Mapping(target = "messageId", source = "id.value"),
             @Mapping(target = "chatId", source = "chatId.value"),
             @Mapping(target = "token", source = "token.value"),
@@ -58,4 +60,20 @@ public interface ImMessageDbTransformer {
                 return DbPrivateImMessageStatus.NONE;
         }
     }
+
+    @Mappings(value = {
+            @Mapping(target = "id", source = "pkId"),
+            @Mapping(target = "messageId", source = "id.value"),
+            @Mapping(target = "chatId", source = "chatId.value"),
+            @Mapping(target = "userId", source = "userId.value"),
+            @Mapping(target = "token", source = "token.value"),
+            @Mapping(target = "senderId", source = "senderId.value"),
+            @Mapping(target = "type", source = "content.type"),
+            @Mapping(target = "content", source = "content.value"),
+            @Mapping(target = "status", source = "status"),
+            @Mapping(target = "sendTime", source = "sendTime"),
+            @Mapping(target = "receiveTime", source = "receivedTime"),
+            @Mapping(target = "revokeTime", source = "revokeTime")
+    })
+    DbImPrivateInboxMessage dbImPrivateInboxMessageFrom(ImPrivateInboxMessage message);
 }

@@ -17,7 +17,7 @@ public interface FriendDbTransformer {
     FriendDbTransformer INSTANCE = Mappers.getMapper(FriendDbTransformer.class);
 
     @Mappings(value = {
-            @Mapping(target = "id", source = "incrId"),
+            @Mapping(target = "id", source = "pkId"),
             @Mapping(target = "userId", source = "userId.value"),
             @Mapping(target = "friendUserId", source = "friendUserId.value"),
             @Mapping(target = "friendAlias", source = "friendAlias.value"),

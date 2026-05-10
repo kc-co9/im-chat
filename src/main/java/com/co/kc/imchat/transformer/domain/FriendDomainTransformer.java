@@ -39,7 +39,7 @@ public interface FriendDomainTransformer {
         friend.setFriendUserId(new UserId(dbFriend.getFriendUserId()));
         friend.setStatus(INSTANCE.friendStatusFrom(dbFriend.getFriendStatus()));
         friend.setCreateTime(dbFriend.getCreateTime());
-        friend.setIncrId(dbFriend.getId());
+        friend.setPkId(dbFriend.getId());
         friend.setFriendName(new UserName(dbFriendUser.getUsername()));
         if (StringUtils.isNotBlank(dbFriend.getFriendAlias())) {
             friend.setFriendAlias(new FriendAlias(dbFriend.getFriendAlias()));

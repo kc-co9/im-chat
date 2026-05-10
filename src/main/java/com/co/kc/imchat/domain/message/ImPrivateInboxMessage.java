@@ -43,12 +43,27 @@ public class ImPrivateInboxMessage extends ImMessage {
         this.revokeTime = LocalDateTime.now();
     }
 
+    @Override
+    public void validate() {
+        super.validate();
+        if (chatId == null || userId == null || status == null) {
+            throw new IllegalStateException("私聊收件箱消息缺少 chatId、userId 或 status");
+        }
+    }
+
     public static Builder builder() {
         return new Builder();
     }
 
     public static class Builder {
         private final ImPrivateInboxMessage message = new ImPrivateInboxMessage();
+
+        public Builder pkId(Long pkId) {
+            if (pkId != null) {
+                message.setPkId(pkId);
+            }
+            return this;
+        }
 
         public Builder id(ImMessageId id) {
             message.setId(id);
@@ -97,6 +112,11 @@ public class ImPrivateInboxMessage extends ImMessage {
 
         public Builder readTime(LocalDateTime readTime) {
             message.setReadTime(readTime);
+            return this;
+        }
+
+        public Builder revokeTime(LocalDateTime revokeTime) {
+            message.setRevokeTime(revokeTime);
             return this;
         }
 

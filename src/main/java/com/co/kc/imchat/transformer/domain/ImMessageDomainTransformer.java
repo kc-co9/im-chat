@@ -2,16 +2,14 @@ package com.co.kc.imchat.transformer.domain;
 
 import com.co.kc.imchat.domain.message.ImGroupMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
-import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageType;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
+import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMessage;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateInboxMessage;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbGroupImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbPrivateImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageType;
-import org.mapstruct.BeanMapping;
-import org.mapstruct.Builder;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
@@ -26,21 +24,21 @@ import java.util.List;
 public interface ImMessageDomainTransformer {
     ImMessageDomainTransformer INSTANCE = Mappers.getMapper(ImMessageDomainTransformer.class);
 
-    @BeanMapping(builder = @Builder(disableBuilder = true))
     @Mappings(value = {
-            @Mapping(target = "incrId", source = "id"),
+            @Mapping(target = "pkId", source = "id"),
             @Mapping(target = "id.value", source = "messageId"),
             @Mapping(target = "chatId.value", source = "chatId"),
             @Mapping(target = "userId.value", source = "userId"),
             @Mapping(target = "token.value", source = "token"),
             @Mapping(target = "senderId.value", source = "senderId"),
+            @Mapping(target = "content.type", source = "type"),
             @Mapping(target = "content.value", source = "content"),
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "sendTime", source = "sendTime"),
             @Mapping(target = "receivedTime", source = "receiveTime"),
             @Mapping(target = "revokeTime", source = "revokeTime")
     })
-    ImPrivateInboxMessage imPrivateInboxMessageFrom(DbImPrivateInboxMessage dbMessage);
+    ImPrivateInboxMessage imPrivateInboxMessageFrom(DbImPrivateInboxMessage db);
 
     List<ImGroupMessage> imGroupMessageListFrom(List<DbImGroupMessage> records);
 
@@ -72,6 +70,8 @@ public interface ImMessageDomainTransformer {
             return null;
         }
         switch (dbStatus) {
+            case SENT:
+                return ImPrivateMessageStatus.SENT;
             case RECEIVED:
                 return ImPrivateMessageStatus.RECEIVED;
             case READ:

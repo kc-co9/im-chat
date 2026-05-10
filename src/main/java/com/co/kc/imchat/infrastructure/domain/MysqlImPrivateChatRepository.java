@@ -80,7 +80,8 @@ public class MysqlImPrivateChatRepository implements ImPrivateChatRepository {
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void save(ImPrivateChat imPrivateChat) {
         DbImPrivateChat dbImPrivateChat = ImChatDbTransformer.INSTANCE.dbImPrivateChatFrom(imPrivateChat);
-        dbImPrivateChatService.save(dbImPrivateChat);
+        // save() 仅为 INSERT；已持久化行需带主键并走 saveOrUpdate / updateById
+        dbImPrivateChatService.saveOrUpdate(dbImPrivateChat);
     }
 
     /** 发送方会话内副本行 user_id == sender_id，需从会话解析真实接收方。 */

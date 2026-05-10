@@ -1,5 +1,6 @@
 package com.co.kc.imchat.domain;
 
+import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.message.ImMessageContent;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.message.ImMessageToken;
@@ -23,6 +24,7 @@ class PrivateDomainModelTest {
         message.setContent(new ImMessageContent(ImMessageType.TEXT, "hello"));
         message.setSenderId(new UserId(1L));
         message.setUserId(new UserId(1L));
+        message.setChatId(new ImChatId(99L));
         message.setStatus(ImPrivateMessageStatus.SENT);
         message.setSendTime(LocalDateTime.now());
 

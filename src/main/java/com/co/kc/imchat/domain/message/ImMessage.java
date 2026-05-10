@@ -17,4 +17,14 @@ public class ImMessage extends Identification implements Validator {
     protected UserId senderId;
     protected LocalDateTime sendTime;
     protected LocalDateTime revokeTime;
+
+    @Override
+    public void validate() {
+        if (id == null || token == null || content == null || senderId == null || sendTime == null) {
+            throw new IllegalStateException("消息缺少 id、token、content、senderId 或 sendTime");
+        }
+        if (content.getType() == null) {
+            throw new IllegalStateException("消息 content.type 不能为空");
+        }
+    }
 }
