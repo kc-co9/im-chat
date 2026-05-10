@@ -2,6 +2,7 @@ package com.co.kc.imchat.domain.chat;
 
 import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendRepository;
+import com.co.kc.imchat.domain.message.ImGroupMessage;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.support.exception.AuthException;
 import com.co.kc.imchat.support.utils.FunctionUtils;
@@ -25,14 +26,22 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ImChatService {
     private final FriendRepository friendRepository;
-    private final ImChatRepository imChatRepository;
+    private final ImPrivateChatRepository imPrivateChatRepository;
+    private final ImGroupChatRepository imGroupChatRepository;
     private final SessionRepository sessionRepository;
 
+    public ImPrivateChat getPeerChat(ImPrivateChat imChat) {
+        if (imChat == null) {
+            throw new IllegalArgumentException("聊天会话传入为空");
+        }
+        return imPrivateChatRepository.find(imChat.getPeerUserId(), imChat.getUserId());
+    }
+
     public List<ImUserChatDescriptor> getUserChatList(UserId userId) {
-        List<ImPrivateChat> imPrivateChatList = imChatRepository.findPrivateChatList(userId);
+        List<ImPrivateChat> imPrivateChatList = imPrivateChatRepository.find(userId);
         List<ImUserChatDescriptor> imPrivateChatDescriptors = buildPrivateChatDescriptors(userId, imPrivateChatList);
 
-        List<ImGroupChat> imGroupChatList = imChatRepository.findGroupChatList(userId);
+        List<ImGroupChat> imGroupChatList = imGroupChatRepository.findGroupChatList(userId);
         List<ImUserChatDescriptor> imGroupChatDescriptors = buildGroupChatDescriptors(userId, imGroupChatList);
 
         return ListUtils.union(imPrivateChatDescriptors, imGroupChatDescriptors);
@@ -58,27 +67,6 @@ public class ImChatService {
         sessionRepository.save(session);
     }
 
-    /**
-     * 增加未读消息数
-     *
-     * @param chatId     聊天ID
-     * @param receiverId 接收者ID
-     */
-    public void increaseUnreadCount(ImChatId chatId, UserId receiverId) {
-
-    }
-
-    /**
-     * 减少未读消息数
-     *
-     * @param chatId    聊天ID
-     * @param userId    用户ID
-     * @param messageId 消息ID
-     */
-    public void decreaseUnreadCount(ImChatId chatId, UserId userId, ImMessageId messageId) {
-
-    }
-
     private List<ImUserChatDescriptor> buildPrivateChatDescriptors(UserId userId, List<ImPrivateChat> imPrivateChatList) {
         if (CollectionUtils.isEmpty(imPrivateChatList)) {
             return Collections.emptyList();
@@ -89,8 +77,9 @@ public class ImChatService {
         Map<UserId, Friend> friendMap = FunctionUtils.mappingMap(friendList, Friend::getFriendUserId, Function.identity());
 
         List<ImChatId> chatIds = FunctionUtils.mappingList(imPrivateChatList, ImPrivateChat::getId);
-        List<ImMessage> chatLastMessages = imChatRepository.findLastMessageList(ImChatType.PRIVATE, chatIds);
-        Map<ImChatId, ImMessage> chatLastMessageMap = FunctionUtils.mappingMap(chatLastMessages, ImMessage::getChatId, Function.identity());
+        List<ImMessage> chatLastMessages = imPrivateChatRepository.findLastMessageList(chatIds, userId);
+        Map<Long, ImMessage> chatLastMessageMap = FunctionUtils.mappingMap(
+                chatLastMessages, message -> message.getId().getValue(), Function.identity());
 
         return imPrivateChatList.stream()
                 .map(imPrivateChat -> {
@@ -99,7 +88,8 @@ public class ImChatService {
                     descriptor.setChatId(imPrivateChat.getId());
                     descriptor.setChatName(obtainFriendChatName(friendMap.get(friendUserId)));
                     descriptor.setChatType(imPrivateChat.getType());
-                    descriptor.setChatLastMessage(chatLastMessageMap.get(imPrivateChat.getId()));
+                    Long lastMessageId = FunctionUtils.mappingOrNull(imPrivateChat.getLastMessageId(), ImMessageId::getValue);
+                    descriptor.setChatLastMessage(chatLastMessageMap.get(lastMessageId));
                     return descriptor;
                 }).collect(Collectors.toList());
     }
@@ -110,12 +100,13 @@ public class ImChatService {
         }
 
         List<ImChatId> chatIds = FunctionUtils.mappingList(imGroupChatList, ImGroupChat::getId);
-        List<ImGroupMember> imGroupMembers = imChatRepository.findUserGroupMemberList(userId, chatIds);
+        List<ImGroupMember> imGroupMembers = imGroupChatRepository.findUserGroupMemberList(userId, chatIds);
         Map<ImChatId, ImGroupAlias> imGroupAliasMap =
                 FunctionUtils.mappingMap(imGroupMembers, ImGroupMember::getChatId, ImGroupMember::getGroupAlias);
 
-        List<ImMessage> chatLastMessages = imChatRepository.findLastMessageList(ImChatType.GROUP, chatIds);
-        Map<ImChatId, ImMessage> chatLastMessageMap = FunctionUtils.mappingMap(chatLastMessages, ImMessage::getChatId, Function.identity());
+        List<ImMessage> chatLastMessages = imGroupChatRepository.findLastMessageList(chatIds, userId);
+        Map<ImChatId, ImMessage> chatLastMessageMap = FunctionUtils.mappingMap(
+                chatLastMessages, message -> ((ImGroupMessage) message).getChatId(), Function.identity());
 
         return imGroupChatList.stream().map(imGroupChat -> {
             ImUserChatDescriptor descriptor = new ImUserChatDescriptor();

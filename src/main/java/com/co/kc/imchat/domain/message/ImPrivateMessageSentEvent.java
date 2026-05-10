@@ -12,9 +12,9 @@ import java.time.LocalDateTime;
 @Data
 public class ImPrivateMessageSentEvent implements DomainEvent {
     private Long messageId;
-    private Long chatId;
     private Long senderId;
     private Long receiverId;
+    private Long receiverChatId;
     private ImMessageTypeEnum messageType;
     private String messageContent;
     private LocalDateTime sendTime;

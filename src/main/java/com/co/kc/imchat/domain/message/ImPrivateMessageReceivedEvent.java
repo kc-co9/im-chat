@@ -7,8 +7,8 @@ import java.time.LocalDateTime;
 
 @Data
 public class ImPrivateMessageReceivedEvent implements DomainEvent {
-    private Long chatId;
     private Long receiverId;
+    private Long receiverChatId;
     private Long messageId;
     private LocalDateTime createTime;
 

@@ -4,6 +4,7 @@ import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateChat;
 import com.co.kc.imchat.infrastructure.mybatis.mapper.DbImPrivateChatMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,16 +21,25 @@ public class DbImPrivateChatService extends BaseMybatisService<DbImPrivateChatMa
         return getFirst(getQueryWrapper().eq(DbImPrivateChat::getChatId, chatId));
     }
 
+    /**
+     * 某用户作为「记录拥有者」的私聊列表（每人每个会话一条记录，user_id = 本人）。
+     */
     public List<DbImPrivateChat> getListByUserId(Long userId) {
-        return list(getQueryWrapper()
-                .eq(DbImPrivateChat::getMember1, userId)
-                .or()
-                .eq(DbImPrivateChat::getMember2, userId));
+        return list(getQueryWrapper().eq(DbImPrivateChat::getUserId, userId));
     }
 
-    public Optional<DbImPrivateChat> getByMember1AndMember2(Long member1, Long member2) {
+    public Optional<DbImPrivateChat> getByUserIdAndPeerUserId(Long userId, Long peerUserId) {
         return getFirst(getQueryWrapper()
-                .eq(DbImPrivateChat::getMember1, member1)
-                .eq(DbImPrivateChat::getMember2, member2));
+                .eq(DbImPrivateChat::getUserId, userId)
+                .eq(DbImPrivateChat::getPeerUserId, peerUserId));
+    }
+
+    public List<DbImPrivateChat> listByChatIdsAndUserId(List<Long> chatIds, Long userId) {
+        if (chatIds == null || chatIds.isEmpty() || userId == null) {
+            return Collections.emptyList();
+        }
+        return list(getQueryWrapper()
+                .eq(DbImPrivateChat::getUserId, userId)
+                .in(DbImPrivateChat::getChatId, chatIds));
     }
 }

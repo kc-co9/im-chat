@@ -11,13 +11,13 @@ import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.chat.ImChatRepository;
 import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
+import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
 import com.co.kc.imchat.domain.chat.ImGroupMember;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
-import com.co.kc.imchat.domain.chat.ImPrivatePair;
+import com.co.kc.imchat.domain.chat.ImPrivateChatRepository;
 import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendRepository;
 import com.co.kc.imchat.domain.user.UserId;
@@ -26,11 +26,13 @@ import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatCreateCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatEnterCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatEnterCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatCreateDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatCreateDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
 import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
 import com.co.kc.imchat.transformer.application.ImChatAppTransformer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -42,11 +44,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ChatAppService {
     private final SnowflakeId snowflakeId;
-    private final ImChatRepository imChatRepository;
+    private final ImPrivateChatRepository imPrivateChatRepository;
+    private final ImGroupChatRepository imGroupChatRepository;
     private final FriendRepository friendRepository;
 
     private final ImChatService imChatService;
 
+    @Transactional(rollbackFor = Exception.class)
     public ImChatCreateDTO createPrivateChat(ImPrivateChatCreateCmd command) {
         UserId senderId = new UserId(command.getSenderId());
         UserId receiverId = new UserId(command.getReceiverId());
@@ -56,24 +60,33 @@ public class ChatAppService {
             throw new NotFoundException("好友不存在");
         }
 
-        ImPrivatePair pair = new ImPrivatePair(senderId, receiverId);
-        ImPrivateChat imPrivateChat = imChatRepository.findPrivateChat(pair);
-        if (imPrivateChat == null) {
-            imPrivateChat = new ImPrivateChat();
-            imPrivateChat.setId(new ImChatId(snowflakeId.next()));
-            imPrivateChat.setPair(pair);
-            imPrivateChat.setType(ImChatType.PRIVATE);
-            imChatRepository.save(imPrivateChat);
+        ImPrivateChat senderChat = imPrivateChatRepository.find(senderId, receiverId);
+        if (senderChat == null) {
+            senderChat = new ImPrivateChat();
+            senderChat.setId(new ImChatId(snowflakeId.next()));
+            senderChat.setUserId(senderId);
+            senderChat.setPeerUserId(receiverId);
+            senderChat.setType(ImChatType.PRIVATE);
+            imPrivateChatRepository.save(senderChat);
+        }
+        ImPrivateChat receiverChat = imPrivateChatRepository.find(receiverId, senderId);
+        if (receiverChat == null) {
+            receiverChat = new ImPrivateChat();
+            receiverChat.setId(new ImChatId(snowflakeId.next()));
+            receiverChat.setUserId(receiverId);
+            receiverChat.setPeerUserId(senderId);
+            receiverChat.setType(ImChatType.PRIVATE);
+            imPrivateChatRepository.save(receiverChat);
         }
 
-        return new ImChatCreateDTO(imPrivateChat.getId().getValue());
+        return new ImChatCreateDTO(senderChat.getId().getValue());
     }
 
     public ImPrivateChatEnterDTO enterPrivateChat(ImPrivateChatEnterCmd command) {
         ImChatId chatId = new ImChatId(command.getChatId());
         UserId userId = new UserId(command.getUserId());
 
-        ImPrivateChat imPrivateChat = imChatRepository.findPrivateChat(chatId);
+        ImPrivateChat imPrivateChat = imPrivateChatRepository.find(chatId);
         if (imPrivateChat == null) {
             throw new NotFoundException("聊天不存在");
         }
@@ -102,7 +115,7 @@ public class ChatAppService {
         imGroupChat.setName(groupName);
         imGroupChat.setOwnerId(ownerId);
         imGroupChat.setType(ImChatType.GROUP);
-        imChatRepository.save(imGroupChat);
+        imGroupChatRepository.save(imGroupChat);
 
         List<ImGroupMember> imGroupMembers = memberIds.stream()
                 .map(userId -> {
@@ -114,7 +127,7 @@ public class ChatAppService {
                     imGroupMember.setUserAlias(null);
                     return imGroupMember;
                 }).collect(Collectors.toList());
-        imChatRepository.saveGroupMembers(imGroupMembers);
+        imGroupChatRepository.saveGroupMembers(imGroupMembers);
 
         return new ImChatCreateDTO(imGroupChat.getId().getValue());
     }

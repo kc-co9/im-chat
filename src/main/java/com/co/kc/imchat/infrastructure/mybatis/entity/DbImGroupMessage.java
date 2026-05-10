@@ -2,20 +2,21 @@ package com.co.kc.imchat.infrastructure.mybatis.entity;
 
 import java.time.LocalDateTime;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbGroupImMessageStatus;
-import com.co.kc.imchat.infrastructure.mybatis.enums.DbPrivateImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
- * 群聊消息表(DbImGroupMessage)表实体类
+ * 群聊消息接收表 db_im_group_receive_message
  *
  * @author kc
  * @since 2026-02-03 11:12:55
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
+@TableName("db_im_group_receive_message")
 public class DbImGroupMessage extends BaseEntity {
     //消息ID
     private Long messageId;
@@ -29,7 +30,7 @@ public class DbImGroupMessage extends BaseEntity {
     private DbImMessageType type;
     //消息内容
     private String content;
-    //消息状态 0-未知 1-已发送 2-已撤回
+    //消息状态 0-未知 1-已发送 2-已读 3-已撤回
     private DbGroupImMessageStatus status;
     //发送时间
     private LocalDateTime sendTime;

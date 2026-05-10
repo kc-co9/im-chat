@@ -1,22 +1,26 @@
 package com.co.kc.imchat.domain.message;
 
+import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.model.enums.ImMessageTypeEnum;
 import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
+import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
 
 /**
  * IM消息-领域服务
  */
+@RequiredArgsConstructor
 public class ImMessageService {
-    public ImPrivateMessageSentEvent newImMessageSentEvent(ImPrivateMessage imMessage) {
+
+    public ImPrivateMessageSentEvent newImMessageSentEvent(ImPrivateInboxMessage imMessage) {
         ImMessageTypeEnum imMessageTypeEnum =
                 ImMessageAppTransformer.INSTANCE.imMessageTypeEnumFrom(imMessage.getContent().getType());
         ImPrivateMessageSentEvent imMessageSentEvent = new ImPrivateMessageSentEvent();
         imMessageSentEvent.setMessageId(imMessage.getId().getValue());
-        imMessageSentEvent.setChatId(imMessage.getChatId().getValue());
+        imMessageSentEvent.setReceiverChatId(imMessage.getChatId().getValue());
         imMessageSentEvent.setSenderId(imMessage.getSenderId().getValue());
-        imMessageSentEvent.setReceiverId(imMessage.getReceiverId().getValue());
+        imMessageSentEvent.setReceiverId(imMessage.getUserId().getValue());
         imMessageSentEvent.setMessageType(imMessageTypeEnum);
         imMessageSentEvent.setMessageContent(imMessage.getContent().getValue());
         imMessageSentEvent.setSendTime(imMessage.getSendTime());
@@ -24,25 +28,25 @@ public class ImMessageService {
         return imMessageSentEvent;
     }
 
-    public ImPrivateMessageRevokedEvent newImMessageRevokedEvent(ImPrivateMessage imMessage) {
+    public ImPrivateMessageRevokedEvent newImMessageRevokedEvent(ImPrivateInboxMessage imMessage, UserId receiverId) {
         ImPrivateMessageRevokedEvent imMessageRevokedEvent = new ImPrivateMessageRevokedEvent();
-        imMessageRevokedEvent.setChatId(imMessage.getId().getValue());
-        imMessageRevokedEvent.setReceiverId(imMessage.getReceiverId().getValue());
+        imMessageRevokedEvent.setChatId(imMessage.getChatId().getValue());
+        imMessageRevokedEvent.setReceiverId(receiverId.getValue());
         imMessageRevokedEvent.setMessageId(imMessage.getId().getValue());
         imMessageRevokedEvent.setCreateTime(LocalDateTime.now());
         return imMessageRevokedEvent;
     }
 
-    public ImPrivateMessageReceivedEvent newImMessageReceivedEvent(ImPrivateMessage imMessage) {
+    public ImPrivateMessageReceivedEvent newImMessageReceivedEvent(ImPrivateInboxMessage imMessage) {
         ImPrivateMessageReceivedEvent imMessageReceivedEvent = new ImPrivateMessageReceivedEvent();
-        imMessageReceivedEvent.setChatId(imMessage.getChatId().getValue());
-        imMessageReceivedEvent.setReceiverId(imMessage.getSenderId().getValue());
+        imMessageReceivedEvent.setReceiverChatId(imMessage.getChatId().getValue());
+        imMessageReceivedEvent.setReceiverId(imMessage.getUserId().getValue());
         imMessageReceivedEvent.setMessageId(imMessage.getId().getValue());
         imMessageReceivedEvent.setCreateTime(LocalDateTime.now());
         return imMessageReceivedEvent;
     }
 
-    public ImPrivateMessageReadEvent newImMessageReadEvent(ImPrivateMessage imMessage) {
+    public ImPrivateMessageReadEvent newImMessageReadEvent(ImPrivateInboxMessage imMessage) {
         ImPrivateMessageReadEvent imMessageReadEvent = new ImPrivateMessageReadEvent();
         imMessageReadEvent.setChatId(imMessage.getChatId().getValue());
         imMessageReadEvent.setReceiverId(imMessage.getSenderId().getValue());
@@ -68,7 +72,7 @@ public class ImMessageService {
 
     public ImGroupMessageRevokedEvent newImMessageRevokedEvent(ImGroupMessage imMessage) {
         ImGroupMessageRevokedEvent imMessageRevokedEvent = new ImGroupMessageRevokedEvent();
-        imMessageRevokedEvent.setChatId(imMessage.getId().getValue());
+        imMessageRevokedEvent.setChatId(imMessage.getChatId().getValue());
         imMessageRevokedEvent.setMessageId(imMessage.getId().getValue());
         imMessageRevokedEvent.setCreateTime(LocalDateTime.now());
         return imMessageRevokedEvent;

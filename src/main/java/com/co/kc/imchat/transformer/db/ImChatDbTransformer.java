@@ -6,10 +6,7 @@ import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMember;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateChat;
-import com.co.kc.imchat.support.utils.JsonUtils;
 import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.Mappings;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 
@@ -23,20 +20,22 @@ import java.util.List;
 public interface ImChatDbTransformer {
     ImChatDbTransformer INSTANCE = Mappers.getMapper(ImChatDbTransformer.class);
 
-    @Mappings(value = {
-            @Mapping(target = "id", ignore = true),
-            @Mapping(target = "chatId", source = "id.value"),
-            @Mapping(target = "member1", source = "pair.member1.value"),
-            @Mapping(target = "member2", source = "pair.member2.value")
-    })
-    DbImPrivateChat dbImPrivateChatFrom(ImPrivateChat imPrivateChat);
+    default DbImPrivateChat dbImPrivateChatFrom(ImPrivateChat imPrivateChat) {
+        DbImPrivateChat row = new DbImPrivateChat();
+        row.setChatId(imPrivateChat.getId().getValue());
+        row.setUserId(imPrivateChat.getUserId().getValue());
+        row.setPeerUserId(imPrivateChat.getPeerUserId().getValue());
+        row.setLastMessageId(imPrivateChat.getLastMessageId() == null ? 0L : imPrivateChat.getLastMessageId().getValue());
+        row.setReadMessageId(imPrivateChat.getReadMessageId() == null ? 0L : imPrivateChat.getReadMessageId().getValue());
+        row.setUnreadMessageCount(imPrivateChat.getUnreadMessageCount() == null ? 0 : imPrivateChat.getUnreadMessageCount());
+        return row;
+    }
 
     default DbImGroupChat dbImGroupChatFrom(ImGroupChat imGroupChat) {
         DbImGroupChat dbImGroupChat = new DbImGroupChat();
         dbImGroupChat.setChatId(imGroupChat.getId().getValue());
         dbImGroupChat.setOwnerId(imGroupChat.getOwnerId().getValue());
         dbImGroupChat.setNotification(imGroupChat.getNotification().getValue());
-        dbImGroupChat.setSetting(JsonUtils.toJson(imGroupChat.getSetting()));
         return dbImGroupChat;
     }
 
@@ -48,7 +47,6 @@ public interface ImChatDbTransformer {
         dbImGroupMember.setUserId(imGroupMember.getUserId().getValue());
         dbImGroupMember.setUserAlias(imGroupMember.getUserAlias().getValue());
         dbImGroupMember.setGroupAlias(imGroupMember.getGroupAlias().getValue());
-        dbImGroupMember.setSetting(JsonUtils.toJson(imGroupMember.getSetting()));
         return dbImGroupMember;
     }
 

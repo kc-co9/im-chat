@@ -5,26 +5,20 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
- * 私聊表(DbImPrivateChat)表实体类
- *
- * @author kc
- * @since 2026-02-03 11:12:55
+ * 群聊会话表 db_im_group_chat_session
  */
 @EqualsAndHashCode(callSuper = true)
 @Data
-@TableName("db_im_private_chat")
-public class DbImPrivateChat extends BaseEntity {
-    //聊天ID
+@TableName("db_im_group_chat_session")
+public class DbImGroupChatSession extends BaseEntity {
+
     private Long chatId;
-    //用户ID
+
     private Long userId;
-    //聊天的用户ID（对端）
-    private Long peerUserId;
-    //最新消息ID
+
     private Long lastMessageId;
-    //已读消息ID
+
     private Long readMessageId;
-    //未读消息数量
+
     private Integer unreadMessageCount;
 }
-

@@ -7,7 +7,7 @@ import com.co.kc.imchat.domain.message.ImPrivateMessageReadEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImMessageType;
-import com.co.kc.imchat.domain.message.ImPrivateMessage;
+import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
 import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageSendCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
@@ -39,7 +39,7 @@ import java.util.List;
 public interface ImMessageAppTransformer {
     ImMessageAppTransformer INSTANCE = Mappers.getMapper(ImMessageAppTransformer.class);
 
-    List<ImPrivateMessageDTO> imPrivateMessageDtoListFrom(List<ImPrivateMessage> messageList);
+    List<ImPrivateMessageDTO> imPrivateMessageDtoListFrom(List<ImPrivateInboxMessage> messageList);
 
     @Mappings(value = {
             @Mapping(target = "messageId", source = "id.value"),
@@ -48,13 +48,12 @@ public interface ImMessageAppTransformer {
             @Mapping(target = "content", source = "content.value"),
             @Mapping(target = "chatId", source = "chatId.value"),
             @Mapping(target = "senderId", source = "senderId.value"),
-            @Mapping(target = "receiverId", source = "receiverId.value"),
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "sendTime", source = "sendTime"),
             @Mapping(target = "readTime", source = "readTime"),
             @Mapping(target = "revokeTime", source = "revokeTime")}
     )
-    ImPrivateMessageDTO imPrivateMessageDtoFrom(ImPrivateMessage message);
+    ImPrivateMessageDTO imPrivateMessageDtoFrom(ImPrivateInboxMessage message);
 
     List<ImGroupMessageDTO> imGroupMessageDtoListFrom(List<ImGroupMessage> messageList);
 
@@ -71,17 +70,9 @@ public interface ImMessageAppTransformer {
     )
     ImGroupMessageDTO imGroupMessageDtoFrom(ImGroupMessage message);
 
-
-    @Mappings(value = {
-            @Mapping(target = "messageId", source = "id.value"),
-            @Mapping(target = "receiverId", source = "senderId.value"),
-            @Mapping(target = "chatId", source = "chatId.value")}
-    )
-    ImPrivateReadNotifyCmd imPrivateMessageReadNotifyDtoFrom(ImPrivateMessage imMessage);
-
     @Mappings(value = {
             @Mapping(target = "chatId", source = "request.chatId"),
-            @Mapping(target = "senderId", source = "userId"),
+            @Mapping(target = "userId", source = "userId"),
             @Mapping(target = "messageToken", source = "request.messageToken"),
             @Mapping(target = "messageType", source = "request.messageType"),
             @Mapping(target = "messageContent", source = "request.messageContent")
@@ -127,7 +118,7 @@ public interface ImMessageAppTransformer {
 
     @Mappings(value = {
             @Mapping(target = "messageId", source = "messageId"),
-            @Mapping(target = "chatId", source = "chatId"),
+            @Mapping(target = "chatId", source = "receiverChatId"),
             @Mapping(target = "senderId", source = "senderId"),
             @Mapping(target = "receiverId", source = "receiverId"),
             @Mapping(target = "messageType", source = "messageType"),
@@ -135,7 +126,7 @@ public interface ImMessageAppTransformer {
     ImPrivateSentNotifyCmd imPrivateSentNotifyCmdFrom(ImPrivateMessageSentEvent event);
 
     @Mappings(value = {
-            @Mapping(target = "chatId", source = "chatId"),
+            @Mapping(target = "receiverChatId", source = "chatId"),
             @Mapping(target = "receiverId", source = "receiverId"),
             @Mapping(target = "messageId", source = "messageId")})
     ImPrivateRevokedNotifyCmd imPrivateRevokedNotifyCmdFrom(ImPrivateMessageRevokedEvent event);

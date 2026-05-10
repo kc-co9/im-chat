@@ -5,6 +5,7 @@ import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.session.SessionStatus;
 import com.co.kc.imchat.support.exception.AuthException;
 import com.co.kc.imchat.domain.chat.ImChatId;
+import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.support.auth.PasswordService;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import lombok.RequiredArgsConstructor;
@@ -41,5 +42,12 @@ public class UserService {
             return false;
         }
         return SessionStatus.ONLINE.equals(session.getStatus()) && chatId.equals(session.getChatId());
+    }
+
+    /**
+     * 会话归属用户是否正在该私聊会话界面（用于未读等策略）。
+     */
+    public boolean isChatting(ImPrivateChat chat) {
+        return isChatting(chat.getId(), chat.getUserId());
     }
 }

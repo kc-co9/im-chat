@@ -7,10 +7,10 @@ import com.co.kc.imchat.domain.message.ImGroupMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageRepository;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.message.ImMessageToken;
-import com.co.kc.imchat.infrastructure.mybatis.entity.DbImChatLastMessage;
+import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMember;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMessage;
-import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatType;
-import com.co.kc.imchat.infrastructure.mybatis.service.DbImChatLastMessageService;
+import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupChatSessionService;
+import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupMemberService;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupMessageService;
 import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.db.ImMessageDbTransformer;
@@ -27,22 +27,20 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class MysqlImGroupMessageRepository implements ImGroupMessageRepository {
     private final DbImGroupMessageService dbImGroupMessageService;
-    private final DbImChatLastMessageService dbImChatLastMessageService;
+    private final DbImGroupChatSessionService dbImGroupChatSessionService;
+    private final DbImGroupMemberService dbImGroupMemberService;
 
     @Override
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void save(ImGroupMessage imMessage) {
         DbImGroupMessage dbMessage = ImMessageDbTransformer.INSTANCE.dbImGroupMessageFrom(imMessage);
         dbImGroupMessageService.saveOrUpdate(dbMessage);
-        boolean isExistLastMessage = dbImChatLastMessageService.isExistGroupLastMessage(imMessage.getChatId().getValue());
-        if (isExistLastMessage) {
-            dbImChatLastMessageService.updateGroupLastMessage(imMessage.getChatId().getValue(), imMessage.getId().getValue());
-        } else {
-            DbImChatLastMessage dbImChatLastMessage = new DbImChatLastMessage();
-            dbImChatLastMessage.setChatId(imMessage.getChatId().getValue());
-            dbImChatLastMessage.setChatType(DbImChatType.GROUP);
-            dbImChatLastMessage.setMessageId(imMessage.getId().getValue());
-            dbImChatLastMessageService.save(dbImChatLastMessage);
+
+        Long chatId = imMessage.getChatId().getValue();
+        Long messageId = imMessage.getId().getValue();
+        List<DbImGroupMember> members = dbImGroupMemberService.getByChatId(chatId);
+        for (DbImGroupMember member : members) {
+            dbImGroupChatSessionService.upsertLastMessageId(chatId, member.getUserId(), messageId);
         }
     }
 

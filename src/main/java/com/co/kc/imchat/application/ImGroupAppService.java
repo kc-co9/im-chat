@@ -8,8 +8,8 @@ import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.chat.ImChatRepository;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
+import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
 import com.co.kc.imchat.domain.chat.ImGroupMember;
 import com.co.kc.imchat.domain.message.ImGroupMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageRepository;
@@ -39,7 +39,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ImGroupAppService {
     private final SnowflakeId snowflakeId;
-    private final ImChatRepository imChatRepository;
+    private final ImGroupChatRepository imGroupChatRepository;
     private final ImGroupMessageRepository imGroupMessageRepository;
 
     private final ImMessageService imMessageService;
@@ -54,7 +54,7 @@ public class ImGroupAppService {
         ImMessageToken messageToken = new ImMessageToken(command.getMessageToken());
         ImMessageContent messageContent = new ImMessageContent(command.getMessageType(), command.getMessageContent());
 
-        ImGroupChat imGroupChat = imChatRepository.findGroupChat(chatId);
+        ImGroupChat imGroupChat = imGroupChatRepository.findGroupChat(chatId);
         if (imGroupChat == null) {
             throw new NotFoundException("聊天不存在");
         }
@@ -76,7 +76,7 @@ public class ImGroupAppService {
 
     public void onMessageSent(ImGroupMessageSentEvent event) {
         ImChatId chatId = new ImChatId(event.getChatId());
-        List<ImGroupMember> imGroupMembers = imChatRepository.findGroupMemberList(chatId);
+        List<ImGroupMember> imGroupMembers = imGroupChatRepository.findGroupMemberList(chatId);
         for (ImGroupMember member : imGroupMembers) {
             ImGroupSentNotifyCmd notifyCmd =
                     ImMessageAppTransformer.INSTANCE.imGroupSentNotifyCmdFrom(member.getUserId().getValue(), event);
@@ -103,7 +103,7 @@ public class ImGroupAppService {
 
     public void onMessageRevoked(ImGroupMessageRevokedEvent event) {
         ImChatId chatId = new ImChatId(event.getChatId());
-        List<ImGroupMember> imGroupMembers = imChatRepository.findGroupMemberList(chatId);
+        List<ImGroupMember> imGroupMembers = imGroupChatRepository.findGroupMemberList(chatId);
         for (ImGroupMember member : imGroupMembers) {
             ImGroupRevokedNotifyCmd notifyCmd =
                     ImMessageAppTransformer.INSTANCE.imGroupRevokedNotifyCmdFrom(member.getUserId().getValue(), event);
@@ -118,7 +118,7 @@ public class ImGroupAppService {
         ImMessageId imLastMessageId = FunctionUtils.mappingOrNull(query.getLastMessageId(), ImMessageId::new);
         Integer count = query.getCount();
 
-        boolean containMember = imChatRepository.containGroupMember(imChatId, userId);
+        boolean containMember = imGroupChatRepository.containGroupMember(imChatId, userId);
         if (!containMember) {
             throw new BusinessException("无法查看别人的聊天记录");
         }
@@ -132,7 +132,7 @@ public class ImGroupAppService {
         ImChatId chatId = new ImChatId(query.getChatId());
         ImMessageToken messageToken = new ImMessageToken(query.getMessageToken());
 
-        boolean containMember = imChatRepository.containGroupMember(chatId, userId);
+        boolean containMember = imGroupChatRepository.containGroupMember(chatId, userId);
         if (!containMember) {
             throw new BusinessException("无法查看别人的聊天记录");
         }

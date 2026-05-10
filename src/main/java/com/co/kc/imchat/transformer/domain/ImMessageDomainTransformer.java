@@ -4,12 +4,14 @@ import com.co.kc.imchat.domain.message.ImGroupMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageType;
-import com.co.kc.imchat.domain.message.ImPrivateMessage;
+import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMessage;
-import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateMessage;
+import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateInboxMessage;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbGroupImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbPrivateImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageType;
+import org.mapstruct.BeanMapping;
+import org.mapstruct.Builder;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
@@ -24,22 +26,21 @@ import java.util.List;
 public interface ImMessageDomainTransformer {
     ImMessageDomainTransformer INSTANCE = Mappers.getMapper(ImMessageDomainTransformer.class);
 
-    List<ImPrivateMessage> imPrivateMessageListFrom(List<DbImPrivateMessage> dbMessageList);
-
+    @BeanMapping(builder = @Builder(disableBuilder = true))
     @Mappings(value = {
             @Mapping(target = "incrId", source = "id"),
             @Mapping(target = "id.value", source = "messageId"),
             @Mapping(target = "chatId.value", source = "chatId"),
+            @Mapping(target = "userId.value", source = "userId"),
             @Mapping(target = "token.value", source = "token"),
             @Mapping(target = "senderId.value", source = "senderId"),
             @Mapping(target = "content.value", source = "content"),
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "sendTime", source = "sendTime"),
             @Mapping(target = "receivedTime", source = "receiveTime"),
-            @Mapping(target = "revokeTime", source = "revokeTime"),
-            @Mapping(target = "receiverId.value", source = "receiverId")
+            @Mapping(target = "revokeTime", source = "revokeTime")
     })
-    ImPrivateMessage imPrivateMessageFrom(DbImPrivateMessage dbMessage);
+    ImPrivateInboxMessage imPrivateInboxMessageFrom(DbImPrivateInboxMessage dbMessage);
 
     List<ImGroupMessage> imGroupMessageListFrom(List<DbImGroupMessage> records);
 
@@ -66,20 +67,34 @@ public interface ImMessageDomainTransformer {
     })
     ImMessageType imMessageTypeFrom(DbImMessageType dbType);
 
-    @ValueMappings(value = {
-            @ValueMapping(target = MappingConstants.NULL, source = "NONE"),
-            @ValueMapping(target = "SENT", source = "SENT"),
-            @ValueMapping(target = "RECEIVED", source = "RECEIVED"),
-            @ValueMapping(target = "READ", source = "READ"),
-            @ValueMapping(target = "REVOKED", source = "REVOKED")
-    })
-    ImPrivateMessageStatus imPrivateMessageStatusFrom(DbPrivateImMessageStatus dbStatus);
+    default ImPrivateMessageStatus imPrivateMessageStatusFrom(DbPrivateImMessageStatus dbStatus) {
+        if (dbStatus == null || dbStatus == DbPrivateImMessageStatus.NONE) {
+            return null;
+        }
+        switch (dbStatus) {
+            case RECEIVED:
+                return ImPrivateMessageStatus.RECEIVED;
+            case READ:
+                return ImPrivateMessageStatus.READ;
+            case REVOKED:
+                return ImPrivateMessageStatus.REVOKED;
+            default:
+                return null;
+        }
+    }
 
-    @ValueMappings(value = {
-            @ValueMapping(target = MappingConstants.NULL, source = "NONE"),
-            @ValueMapping(target = "SENT", source = "SENT"),
-            @ValueMapping(target = "REVOKED", source = "REVOKED")
-    })
-    ImGroupMessageStatus imGroupMessageStatusFrom(DbGroupImMessageStatus dbStatus);
+    default ImGroupMessageStatus imGroupMessageStatusFrom(DbGroupImMessageStatus dbStatus) {
+        if (dbStatus == null || dbStatus == DbGroupImMessageStatus.NONE) {
+            return null;
+        }
+        switch (dbStatus) {
+            case SENT:
+                return ImGroupMessageStatus.SENT;
+            case REVOKED:
+                return ImGroupMessageStatus.REVOKED;
+            default:
+                return null;
+        }
+    }
 
 }

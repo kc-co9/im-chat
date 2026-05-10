@@ -9,7 +9,7 @@ import com.co.kc.imchat.domain.chat.ImGroupName;
 import com.co.kc.imchat.domain.chat.ImGroupNotification;
 import com.co.kc.imchat.domain.chat.ImGroupUserAlias;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
-import com.co.kc.imchat.domain.chat.ImPrivatePair;
+import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMember;
@@ -34,9 +34,13 @@ public interface ImChatDomainTransformer {
 
     default ImPrivateChat imPrivateChatFrom(DbImPrivateChat dbImPrivateChat) {
         ImPrivateChat imPrivateChat = new ImPrivateChat();
-        imPrivateChat.setPair(new ImPrivatePair(new UserId(dbImPrivateChat.getMember1()), new UserId(dbImPrivateChat.getMember2())));
+        imPrivateChat.setUserId(new UserId(dbImPrivateChat.getUserId()));
+        imPrivateChat.setPeerUserId(new UserId(dbImPrivateChat.getPeerUserId()));
         imPrivateChat.setId(new ImChatId(dbImPrivateChat.getChatId()));
         imPrivateChat.setType(ImChatType.PRIVATE);
+        imPrivateChat.setLastMessageId(new ImMessageId(dbImPrivateChat.getLastMessageId()));
+        imPrivateChat.setReadMessageId(new ImMessageId(dbImPrivateChat.getReadMessageId()));
+        imPrivateChat.setUnreadMessageCount(dbImPrivateChat.getUnreadMessageCount());
         imPrivateChat.setIncrId(dbImPrivateChat.getId());
         return imPrivateChat;
     }

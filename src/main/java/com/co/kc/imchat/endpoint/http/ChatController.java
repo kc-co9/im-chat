@@ -49,8 +49,8 @@ public class ChatController {
     @PostMapping(value = "/createPrivateChat")
     public ImPrivateChatCreateResponse createPrivateChat(@RequestBody @Validated ImPrivateChatCreateRequest request) {
         Long userId = UserContextUtils.get().getUserId();
-        ImChatCreateDTO imChatCreateDTO = chatAppService.createPrivateChat(new ImPrivateChatCreateCmd(userId, request.getReceiverId()));
-        return new ImPrivateChatCreateResponse(imChatCreateDTO.getChatId());
+        ImChatCreateDTO dto = chatAppService.createPrivateChat(new ImPrivateChatCreateCmd(userId, request.getReceiverId()));
+        return new ImPrivateChatCreateResponse(dto.getChatId());
     }
 
     @PostMapping(value = "/enterPrivateChat")
