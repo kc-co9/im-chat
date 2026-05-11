@@ -24,7 +24,7 @@ import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageSendCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImGroupRevokedNotifyCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
-import com.co.kc.imchat.support.ImMessageNotifier;
+import com.co.kc.imchat.support.notifier.ImMessageNotifierInvoker;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
@@ -44,7 +44,7 @@ public class ImGroupAppService {
 
     private final ImMessageService imMessageService;
 
-    private final ImMessageNotifier imMessageNotifier;
+    private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
 
     public void sendMessage(ImGroupMessageSendCmd command) {
@@ -80,7 +80,7 @@ public class ImGroupAppService {
         for (ImGroupMember member : imGroupMembers) {
             ImGroupSentNotifyCmd notifyCmd =
                     ImMessageAppTransformer.INSTANCE.imGroupSentNotifyCmdFrom(member.getUserId().getValue(), event);
-            imMessageNotifier.notify(notifyCmd);
+            imMessageNotifierInvoker.invoke(notifyCmd);
         }
     }
 
@@ -107,7 +107,7 @@ public class ImGroupAppService {
         for (ImGroupMember member : imGroupMembers) {
             ImGroupRevokedNotifyCmd notifyCmd =
                     ImMessageAppTransformer.INSTANCE.imGroupRevokedNotifyCmdFrom(member.getUserId().getValue(), event);
-            imMessageNotifier.notify(notifyCmd);
+            imMessageNotifierInvoker.invoke(notifyCmd);
         }
 
     }

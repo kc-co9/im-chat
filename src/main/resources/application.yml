@@ -125,4 +125,3 @@ mybatis-plus:
     localCacheScope: STATEMENT
     cacheEnabled: false
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-

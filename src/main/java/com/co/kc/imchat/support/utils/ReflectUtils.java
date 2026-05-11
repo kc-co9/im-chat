@@ -8,7 +8,9 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Arrays;
@@ -170,6 +172,52 @@ public class ReflectUtils {
             LOG.error("Fail to get private value", e);
             return null;
         }
+    }
+
+    /**
+     * 从 {@code sourceClass} 的接口或父类声明中解析 {@code targetRawType<T>} 的第一个泛型参数。
+     */
+    public static Class<?> resolveFirstGenericTypeArgument(Class<?> sourceClass, Class<?> targetRawType) {
+        Class<?> current = sourceClass;
+        while (current != null && current != Object.class) {
+            Class<?> genericType = resolveFirstGenericTypeArgument(current.getGenericInterfaces(), targetRawType);
+            if (genericType != null) {
+                return genericType;
+            }
+            genericType = resolveFirstGenericTypeArgument(current.getGenericSuperclass(), targetRawType);
+            if (genericType != null) {
+                return genericType;
+            }
+            current = current.getSuperclass();
+        }
+        return null;
+    }
+
+    private static Class<?> resolveFirstGenericTypeArgument(Type[] types, Class<?> targetRawType) {
+        for (Type type : types) {
+            Class<?> genericType = resolveFirstGenericTypeArgument(type, targetRawType);
+            if (genericType != null) {
+                return genericType;
+            }
+        }
+        return null;
+    }
+
+    private static Class<?> resolveFirstGenericTypeArgument(Type type, Class<?> targetRawType) {
+        if (!(type instanceof ParameterizedType)) {
+            return null;
+        }
+        ParameterizedType parameterizedType = (ParameterizedType) type;
+        Type rawType = parameterizedType.getRawType();
+        if (!(rawType instanceof Class)) {
+            return null;
+        }
+        Class<?> rawClass = (Class<?>) rawType;
+        if (!targetRawType.equals(rawClass) && !targetRawType.isAssignableFrom(rawClass)) {
+            return null;
+        }
+        Type actualType = parameterizedType.getActualTypeArguments()[0];
+        return actualType instanceof Class ? (Class<?>) actualType : null;
     }
 
     public static Set<Class<?>> getInheritClass(Object obj) {

@@ -26,11 +26,10 @@ import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageReceiveCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageSendCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
-import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateReadNotifyCmd;
 import com.co.kc.imchat.domain.message.ImPrivateMessageReceivedEvent;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
-import com.co.kc.imchat.support.ImMessageNotifier;
+import com.co.kc.imchat.support.notifier.ImMessageNotifierInvoker;
 import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +48,7 @@ public class ImPrivateAppService {
     private final ImChatService imChatService;
     private final ImMessageService imMessageService;
 
-    private final ImMessageNotifier imMessageNotifier;
+    private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
 
     public void sendMessage(ImPrivateMessageSendCmd command) {
@@ -113,8 +112,6 @@ public class ImPrivateAppService {
 
         ImPrivateMessageSentEvent imMessageSentEvent = imMessageService.newImMessageSentEvent(receiverInboxMessage);
         imMessageEventPublisher.publish(imMessageSentEvent);
-
-        // TODO 添加消息通知重试机制
     }
 
     public void onMessageSent(ImPrivateMessageSentEvent event) {
@@ -123,7 +120,7 @@ public class ImPrivateAppService {
 
         boolean isChatting = userService.isChatting(receiverChatId, receiverId);
         if (isChatting) {
-            imMessageNotifier.notify(ImMessageAppTransformer.INSTANCE.imPrivateSentNotifyCmdFrom(event));
+            imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateSentNotifyCmdFrom(event));
         }
     }
 
@@ -151,7 +148,6 @@ public class ImPrivateAppService {
     }
 
     public void onMessageReceived(ImPrivateMessageReceivedEvent event) {
-        // TODO 清理重试发送
     }
 
 
@@ -191,12 +187,10 @@ public class ImPrivateAppService {
         ImPrivateMessageRevokedEvent imMessageRevokedEvent =
                 imMessageService.newImMessageRevokedEvent(senderInboxMessage, receiverChat.getUserId());
         imMessageEventPublisher.publish(imMessageRevokedEvent);
-
-        // TODO 添加消息通知重试机制
     }
 
     public void onMessageRevoked(ImPrivateMessageRevokedEvent event) {
-        imMessageNotifier.notify(ImMessageAppTransformer.INSTANCE.imPrivateRevokedNotifyCmdFrom(event));
+        imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateRevokedNotifyCmdFrom(event));
     }
 
     public void readMessage(ImPrivateMessageReadCmd command) {
@@ -226,8 +220,7 @@ public class ImPrivateAppService {
     }
 
     public void onMessageRead(ImPrivateMessageReadEvent event) {
-        ImPrivateReadNotifyCmd notifyCmd = ImMessageAppTransformer.INSTANCE.imPrivateMessageReadNotifyCmdFrom(event);
-        imMessageNotifier.notify(notifyCmd);
+        imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateMessageReadNotifyCmdFrom(event));
     }
 
     public List<ImPrivateMessageDTO> queryHistoryMessage(ImPrivateMessageHistoryQuery query) {

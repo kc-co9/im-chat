@@ -19,7 +19,7 @@ import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.UserRepository;
 import com.co.kc.imchat.domain.user.UserService;
 import com.co.kc.imchat.infrastructure.support.SpringEventPublisher;
-import com.co.kc.imchat.support.ImMessageNotifier;
+import com.co.kc.imchat.support.notifier.ImMessageNotifierInvoker;
 import com.co.kc.imchat.support.auth.PasswordService;
 import com.co.kc.imchat.support.auth.TokenService;
 import org.springframework.context.annotation.Bean;
@@ -91,11 +91,12 @@ public class BeanConfig {
                                                    UserService userService,
                                                    ImChatService imChatService,
                                                    ImMessageService imMessageService,
-                                                   ImMessageNotifier imMessageNotifier,
+                                                   ImMessageNotifierInvoker imMessageNotifierInvoker,
                                                    SpringEventPublisher imMessageEventPublisher) {
         return new ImPrivateAppService(
                 snowflakeId, imPrivateChatRepository, imPrivateInboxMessageRepository,
-                userService, imChatService, imMessageService, imMessageNotifier, imMessageEventPublisher);
+                userService, imChatService, imMessageService, imMessageNotifierInvoker,
+                imMessageEventPublisher);
     }
 
     @Bean
@@ -103,10 +104,10 @@ public class BeanConfig {
                                                ImGroupChatRepository imGroupChatRepository,
                                                ImGroupMessageRepository imGroupMessageRepository,
                                                ImMessageService imMessageService,
-                                               ImMessageNotifier imMessageNotifier,
+                                               ImMessageNotifierInvoker imMessageNotifierInvoker,
                                                SpringEventPublisher imMessageEventPublisher) {
         return new ImGroupAppService(
                 snowflakeId, imGroupChatRepository, imGroupMessageRepository,
-                imMessageService, imMessageNotifier, imMessageEventPublisher);
+                imMessageService, imMessageNotifierInvoker, imMessageEventPublisher);
     }
 }
