@@ -14,6 +14,13 @@ import com.co.kc.imchat.domain.group.ImGroupName;
 import com.co.kc.imchat.domain.group.ImGroupRepository;
 import com.co.kc.imchat.domain.group.ImGroupService;
 import com.co.kc.imchat.domain.message.ImMessage;
+import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
+import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
+import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
+import com.co.kc.imchat.domain.message.ImMessageId;
+import com.co.kc.imchat.domain.message.ImMessageToken;
+import com.co.kc.imchat.domain.message.ImMessageType;
+import com.co.kc.imchat.domain.message.ImMessageService;
 import com.co.kc.imchat.domain.session.Session;
 import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.UserId;
@@ -24,6 +31,7 @@ import com.co.kc.imchat.model.cqrs.dto.im.ImGroupDetailDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImGroupItemDTO;
 import com.co.kc.imchat.model.cqrs.query.ImGroupDetailQuery;
 import com.co.kc.imchat.model.cqrs.query.ImGroupListQuery;
+import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import org.junit.jupiter.api.Test;
@@ -32,6 +40,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,14 +53,19 @@ class GroupAppServiceTest {
         RecordingGroupRepository groupRepository = new RecordingGroupRepository();
         RecordingGroupChatRepository groupChatRepository = new RecordingGroupChatRepository();
         RecordingGroupMemberRepository groupMemberRepository = new RecordingGroupMemberRepository();
+        RecordingGroupInboxMessageRepository groupInboxMessageRepository = new RecordingGroupInboxMessageRepository();
         SignedInSessionRepository sessionRepository = new SignedInSessionRepository();
+        FixedSnowflakeId snowflakeId = new FixedSnowflakeId(1000L);
         GroupAppService appService = new GroupAppService(
-                new FixedSnowflakeId(1000L),
+                snowflakeId,
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
                 new ImGroupService(groupMemberRepository, groupChatRepository),
-                new ImChatService(new FixedSnowflakeId(1001L), null, null, null, null, sessionRepository));
+                new ImChatService(snowflakeId, null, null, null, null, sessionRepository),
+                groupInboxMessageRepository,
+                new ImMessageService(snowflakeId),
+                new NoopDomainEventPublisher());
         ImGroupCreateCmd command = new ImGroupCreateCmd(1L, Collections.singletonList(2L), "group");
 
         ImGroupCreateDTO result = appService.createGroup(command);
@@ -72,6 +86,48 @@ class GroupAppServiceTest {
     }
 
     @Test
+    void createGroupStoresSystemMessageForEachMemberAndUpdatesChats() {
+        RecordingGroupRepository groupRepository = new RecordingGroupRepository();
+        RecordingGroupChatRepository groupChatRepository = new RecordingGroupChatRepository();
+        RecordingGroupMemberRepository groupMemberRepository = new RecordingGroupMemberRepository();
+        RecordingGroupInboxMessageRepository groupInboxMessageRepository = new RecordingGroupInboxMessageRepository();
+        FixedSnowflakeId snowflakeId = new FixedSnowflakeId(1000L);
+        GroupAppService appService = new GroupAppService(
+                snowflakeId,
+                groupRepository,
+                groupChatRepository,
+                groupMemberRepository,
+                new ImGroupService(groupMemberRepository, groupChatRepository),
+                new ImChatService(snowflakeId, null, null, null, null, new SignedInSessionRepository()),
+                groupInboxMessageRepository,
+                new ImMessageService(snowflakeId),
+                new NoopDomainEventPublisher());
+        ImGroupCreateCmd command = new ImGroupCreateCmd(1L, Collections.singletonList(2L), "group");
+
+        appService.createGroup(command);
+
+        assertThat(groupInboxMessageRepository.savedMessages).hasSize(2);
+        assertThat(groupInboxMessageRepository.savedMessages)
+                .extracting(message -> message.getUserId().getValue())
+                .containsExactly(1L, 2L);
+        assertThat(groupInboxMessageRepository.savedMessages)
+                .allSatisfy(message -> {
+                    assertThat(message.getId().getValue()).isEqualTo(1003L);
+                    assertThat(message.getSenderId().getValue()).isEqualTo(1L);
+                    assertThat(message.getContent().getType()).isEqualTo(ImMessageType.SYSTEM);
+                    assertThat(message.getContent().getValue()).isEqualTo("群聊已创建");
+                });
+        assertThat(groupInboxMessageRepository.savedMessages.get(0).getStatus()).isEqualTo(ImGroupMessageStatus.READ);
+        assertThat(groupInboxMessageRepository.savedMessages.get(1).getStatus()).isEqualTo(ImGroupMessageStatus.RECEIVED);
+        assertThat(groupChatRepository.savedGroupChats)
+                .extracting(chat -> chat.getLastMessageId().getValue())
+                .containsExactly(1003L, 1003L);
+        assertThat(groupChatRepository.savedGroupChats)
+                .extracting(ImGroupChat::getUnreadMessageCount)
+                .containsExactly(0, 1);
+    }
+
+    @Test
     void inviteGroupMembersCreatesMemberAndChatRowsForNewMembers() {
         RecordingGroupRepository groupRepository = new RecordingGroupRepository();
         groupRepository.groups.add(group(1001L, 1L, "group"));
@@ -85,7 +141,10 @@ class GroupAppServiceTest {
                 groupChatRepository,
                 groupMemberRepository,
                 new ImGroupService(groupMemberRepository, groupChatRepository),
-                new ImChatService(new FixedSnowflakeId(3000L), null, null, null, null, null));
+                new ImChatService(new FixedSnowflakeId(3000L), null, null, null, null, null),
+                null,
+                null,
+                null);
         ImGroupInviteMembersCmd command = new ImGroupInviteMembersCmd(1L, 1001L, Collections.singletonList(2L));
 
         appService.inviteGroupMembers(command);
@@ -116,6 +175,9 @@ class GroupAppServiceTest {
                 groupChatRepository,
                 groupMemberRepository,
                 new ImGroupService(groupMemberRepository, groupChatRepository),
+                null,
+                null,
+                null,
                 null);
 
         List<ImGroupItemDTO> groupList = appService.getGroupList(new ImGroupListQuery(1L));
@@ -147,6 +209,9 @@ class GroupAppServiceTest {
                 groupChatRepository,
                 groupMemberRepository,
                 null,
+                null,
+                null,
+                null,
                 null);
 
         ImGroupDetailDTO detail = appService.getGroupDetail(new ImGroupDetailQuery(1L, 1001L));
@@ -172,6 +237,9 @@ class GroupAppServiceTest {
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
+                null,
+                null,
+                null,
                 null,
                 null);
 
@@ -411,6 +479,65 @@ class GroupAppServiceTest {
             return members.stream()
                     .filter(member -> groupIds.contains(member.getGroupId()))
                     .collect(Collectors.groupingBy(ImGroupMember::getGroupId, Collectors.summingInt(member -> 1)));
+        }
+    }
+
+    private static class RecordingGroupInboxMessageRepository implements ImGroupInboxMessageRepository {
+        private List<ImGroupInboxMessage> savedMessages = new ArrayList<>();
+
+        @Override
+        public void save(ImGroupInboxMessage message) {
+            savedMessages = Collections.singletonList(message);
+        }
+
+        @Override
+        public void saveAll(List<ImGroupInboxMessage> messages) {
+            savedMessages = new ArrayList<>(messages);
+        }
+
+        @Override
+        public boolean contain(ImChatId chatId, UserId userId, ImMessageToken token) {
+            return false;
+        }
+
+        @Override
+        public Optional<ImGroupInboxMessage> find(ImChatId chatId, UserId userId, ImMessageId messageId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<ImGroupInboxMessage> findByGroupIdAndMessageId(ImGroupId groupId, ImMessageId messageId) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public List<ImGroupInboxMessage> findUnreadMessages(ImChatId chatId, UserId userId) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public List<ImGroupInboxMessage> queryHistory(ImChatId chatId, UserId userId, ImMessageId lastMessageId, Integer count) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public ImGroupInboxMessage queryDetail(ImChatId chatId, UserId userId, ImMessageToken token) {
+            return null;
+        }
+
+        @Override
+        public List<ImMessage> findLastMessageList(List<ImChatId> chatIds, UserId userId) {
+            return Collections.emptyList();
+        }
+    }
+
+    private static class NoopDomainEventPublisher implements DomainEventPublisher {
+        @Override
+        public void publish(com.co.kc.imchat.domain.shared.DomainEvent event) {
+        }
+
+        @Override
+        public void publish(List<com.co.kc.imchat.domain.shared.DomainEvent> eventList) {
         }
     }
 }

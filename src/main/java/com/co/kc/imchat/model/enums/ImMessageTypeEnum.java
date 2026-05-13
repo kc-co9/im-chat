@@ -24,5 +24,9 @@ public enum ImMessageTypeEnum {
     /**
      * 表情包消息
      */
-    STICKER
+    STICKER,
+    /**
+     * 系统消息
+     */
+    SYSTEM
 }

@@ -13,6 +13,10 @@ import com.co.kc.imchat.domain.group.ImGroupName;
 import com.co.kc.imchat.domain.group.ImGroupRepository;
 import com.co.kc.imchat.domain.group.ImGroupRoster;
 import com.co.kc.imchat.domain.group.ImGroupService;
+import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
+import com.co.kc.imchat.domain.message.ImGroupMessageSentEvent;
+import com.co.kc.imchat.domain.message.ImGroupMessageTransmission;
+import com.co.kc.imchat.domain.message.ImMessageService;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupCreateCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupInviteMembersCmd;
@@ -21,6 +25,7 @@ import com.co.kc.imchat.model.cqrs.dto.im.ImGroupDetailDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImGroupItemDTO;
 import com.co.kc.imchat.model.cqrs.query.ImGroupDetailQuery;
 import com.co.kc.imchat.model.cqrs.query.ImGroupListQuery;
+import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
@@ -41,6 +46,9 @@ public class GroupAppService {
     private final ImGroupMemberRepository imGroupMemberRepository;
     private final ImGroupService imGroupService;
     private final ImChatService imChatService;
+    private final ImGroupInboxMessageRepository imGroupInboxMessageRepository;
+    private final ImMessageService imMessageService;
+    private final DomainEventPublisher imMessageEventPublisher;
 
     @Transactional(rollbackFor = Exception.class)
     public ImGroupCreateDTO createGroup(ImGroupCreateCmd command) {
@@ -68,6 +76,15 @@ public class GroupAppService {
                 .findFirst()
                 .orElseThrow(() -> new BusinessException("群主会话创建失败"));
         imChatService.enterChat(ownerChat);
+
+        ImGroupMessageTransmission transmission =
+                imMessageService.transmitGroupCreated(groupId, ownerId, ownerChat, groupChats);
+        imGroupInboxMessageRepository.saveAll(transmission.getInboxMessages());
+        imGroupChatRepository.saveAll(transmission.getGroupChats());
+
+        ImGroupMessageSentEvent imGroupMessageSentEvent =
+                imMessageService.newImMessageSentEvent(groupId, transmission.getSenderMessage(ownerId));
+        imMessageEventPublisher.publish(imGroupMessageSentEvent);
 
         return new ImGroupCreateDTO(groupId.getValue(), ownerChat.getId().getValue());
     }

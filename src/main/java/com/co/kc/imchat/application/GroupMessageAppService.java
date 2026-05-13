@@ -82,7 +82,8 @@ public class GroupMessageAppService {
         ImOutboundMessage outboundMessage = new ImOutboundMessage(messageId, messageToken, messageContent);
         List<ImMessageRecipient> recipients = imGroupService.findMessageRecipients(
                 senderChat.getGroupId(), chat -> userService.isChatting(chat.getId(), chat.getUserId()));
-        ImGroupMessageTransmission transmission = imMessageService.transmitGroupMessage(outboundMessage, imMessageSender, recipients);
+        ImGroupMessageTransmission transmission =
+                imMessageService.transmitGroupMessage(outboundMessage, imMessageSender, recipients);
 
         imGroupInboxMessageRepository.saveAll(transmission.getInboxMessages());
         imGroupChatRepository.saveAll(transmission.getGroupChats());

@@ -62,8 +62,8 @@ public class BeanConfig {
     }
 
     @Bean
-    public ImMessageService imMessageService() {
-        return new ImMessageService();
+    public ImMessageService imMessageService(SnowflakeId snowflakeId) {
+        return new ImMessageService(snowflakeId);
     }
 
     @Bean
@@ -106,10 +106,14 @@ public class BeanConfig {
                                            ImGroupChatRepository imGroupChatRepository,
                                            ImGroupMemberRepository imGroupMemberRepository,
                                            ImGroupService imGroupService,
-                                           ImChatService imChatService) {
+                                           ImChatService imChatService,
+                                           ImGroupInboxMessageRepository imGroupInboxMessageRepository,
+                                           ImMessageService imMessageService,
+                                           SpringEventPublisher imMessageEventPublisher) {
         return new GroupAppService(
                 snowflakeId, imGroupRepository, imGroupChatRepository,
-                imGroupMemberRepository, imGroupService, imChatService);
+                imGroupMemberRepository, imGroupService, imChatService,
+                imGroupInboxMessageRepository, imMessageService, imMessageEventPublisher);
     }
 
     @Bean

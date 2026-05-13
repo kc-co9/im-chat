@@ -25,8 +25,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ImMessageServiceTest {
 
     @Test
-    void transmitGroupMessageBuildsInboxMessagesAndUpdatesChats() {
-        ImMessageService service = new ImMessageService();
+    void buildGroupInboxMessageToRecipientsBuildsInboxMessagesAndUpdatesChats() {
+        ImMessageService service = new ImMessageService(new FixedSnowflakeId(1L));
         UserId senderId = new UserId(1L);
         ImGroupChat senderChat = groupChat(101L, 1001L, 1L);
         ImGroupChat receiverChat = groupChat(102L, 1001L, 2L);
@@ -60,6 +60,36 @@ class ImMessageServiceTest {
         assertThat(transmission.getGroupChats()).containsExactly(senderChat, receiverChat);
     }
 
+    @Test
+    void transmitGroupCreatedSystemMessageBuildsSystemMessageForEachGroupChat() {
+        ImMessageService service = new ImMessageService(new FixedSnowflakeId(900L));
+        UserId ownerId = new UserId(1L);
+        ImGroupId groupId = new ImGroupId(1001L);
+        ImGroupChat ownerChat = groupChat(101L, 1001L, 1L);
+        ImGroupChat memberChat = groupChat(102L, 1001L, 2L);
+
+        ImGroupMessageTransmission transmission =
+                service.transmitGroupCreated(groupId, ownerId, ownerChat, Arrays.asList(ownerChat, memberChat));
+
+        assertThat(transmission.getInboxMessages()).hasSize(2);
+        assertThat(transmission.getInboxMessages())
+                .allSatisfy(message -> {
+                    assertThat(message.getId().getValue()).isEqualTo(900L);
+                    assertThat(message.getToken().getValue()).isEqualTo("system:group_created:1001");
+                    assertThat(message.getSenderId()).isEqualTo(ownerId);
+                    assertThat(message.getContent().getType()).isEqualTo(ImMessageType.SYSTEM);
+                    assertThat(message.getContent().getValue()).isEqualTo("群聊已创建");
+                });
+        assertThat(transmission.getSenderMessage(ownerId).getStatus()).isEqualTo(ImGroupMessageStatus.READ);
+        ImGroupInboxMessage memberMessage = transmission.getInboxMessages().stream()
+                .filter(message -> message.getUserId().equals(new UserId(2L)))
+                .findFirst()
+                .orElseThrow(AssertionError::new);
+        assertThat(memberMessage.getStatus()).isEqualTo(ImGroupMessageStatus.RECEIVED);
+        assertThat(ownerChat.getUnreadMessageCount()).isZero();
+        assertThat(memberChat.getUnreadMessageCount()).isEqualTo(1);
+    }
+
     private ImGroupChat groupChat(Long chatId, Long groupId, Long userId) {
         return ImGroupChat.builder()
                 .id(new ImChatId(chatId))
@@ -68,5 +98,31 @@ class ImMessageServiceTest {
                 .type(ImChatType.GROUP)
                 .unreadMessageCount(0)
                 .build();
+    }
+
+    private static class FixedSnowflakeId extends com.co.kc.imchat.support.identity.snowflake.SnowflakeId {
+        private long next;
+
+        FixedSnowflakeId(long next) {
+            super(new TestMachineId());
+            this.next = next;
+        }
+
+        @Override
+        public synchronized Long next() {
+            return next++;
+        }
+    }
+
+    private static class TestMachineId implements com.co.kc.imchat.support.identity.snowflake.ISnowflakeMachineId {
+        @Override
+        public long getDataCenterId() {
+            return 1L;
+        }
+
+        @Override
+        public long getMachineId() {
+            return 1L;
+        }
     }
 }

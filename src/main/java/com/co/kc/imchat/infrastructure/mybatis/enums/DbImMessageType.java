@@ -34,7 +34,11 @@ public enum DbImMessageType {
     /**
      * 6-表情包消息
      */
-    STICKER(6);
+    STICKER(6),
+    /**
+     * 7-系统消息
+     */
+    SYSTEM(7);
 
     @EnumValue
     private final int code;

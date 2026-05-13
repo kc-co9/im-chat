@@ -4,6 +4,7 @@ import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.group.ImGroupId;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.model.enums.ImMessageTypeEnum;
+import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
 
@@ -17,12 +18,28 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ImMessageService {
 
+    private final SnowflakeId snowflakeId;
+
+
+    public ImGroupMessageTransmission transmitGroupCreated(ImGroupId groupId,
+                                                           UserId ownerId,
+                                                           ImGroupChat ownerChat,
+                                                           List<ImGroupChat> groupChats) {
+        ImOutboundMessage outboundMessage = new ImOutboundMessage(
+                new ImMessageId(snowflakeId.next()),
+                ImSystemMessageTokenFactory.createSystemGroupCreated(groupId),
+                new ImMessageContent(ImMessageType.SYSTEM, "群聊已创建"));
+        ImMessageSender sender = new ImMessageSender(ownerChat, ownerId);
+        List<ImMessageRecipient> recipients = groupChats.stream()
+                .map(chat -> new ImMessageRecipient(chat, chat.getUserId().equals(ownerId)))
+                .collect(Collectors.toList());
+        return this.transmitGroupMessage(outboundMessage, sender, recipients);
+    }
+
     public ImGroupMessageTransmission transmitGroupMessage(ImOutboundMessage outboundMessage,
-                                                           ImMessageSender sender,
-                                                           List<ImMessageRecipient> recipients) {
+                                                           ImMessageSender sender, List<ImMessageRecipient> recipients) {
         List<ImGroupInboxMessage> inboxMessages = recipients.stream()
-                .map(recipient -> transmitGroupMessage(
-                        outboundMessage, sender, recipient))
+                .map(recipient -> this.buildGroupInboxMessage(outboundMessage, sender, recipient))
                 .collect(Collectors.toList());
         List<ImGroupChat> groupChats = recipients.stream()
                 .map(recipient -> (ImGroupChat) recipient.getChat())
@@ -30,25 +47,24 @@ public class ImMessageService {
         return new ImGroupMessageTransmission(inboxMessages, groupChats);
     }
 
-    private ImGroupInboxMessage transmitGroupMessage(ImOutboundMessage outboundMessage,
-                                                     ImMessageSender sender,
-                                                     ImMessageRecipient recipient) {
+    private ImGroupInboxMessage buildGroupInboxMessage(ImOutboundMessage outboundMessage,
+                                                       ImMessageSender sender, ImMessageRecipient recipient) {
         ImGroupChat senderChat = (ImGroupChat) sender.getChat();
-        ImGroupChat groupChat = (ImGroupChat) recipient.getChat();
-        boolean isSender = groupChat.getUserId().equals(sender.getUserId());
+        ImGroupChat receiverChat = (ImGroupChat) recipient.getChat();
+        boolean isSender = receiverChat.getUserId().equals(sender.getUserId());
         ImGroupInboxMessage inboxMessage = ImGroupInboxMessage.builder()
                 .id(outboundMessage.getId())
                 .token(outboundMessage.getToken())
                 .content(outboundMessage.getContent())
                 .groupId(senderChat.getGroupId())
-                .chatId(groupChat.getId())
-                .userId(groupChat.getUserId())
+                .chatId(receiverChat.getId())
+                .userId(receiverChat.getUserId())
                 .senderId(sender.getUserId())
                 .status(isSender ? ImGroupMessageStatus.SENT : ImGroupMessageStatus.RECEIVED)
                 .sendTime(outboundMessage.getSendTime())
                 .receivedTime(isSender ? null : outboundMessage.getSendTime())
                 .build();
-        groupChat.receiveLatestMessage(inboxMessage, isSender || recipient.isChatting());
+        receiverChat.receiveLatestMessage(inboxMessage, isSender || recipient.isChatting());
         return inboxMessage;
     }
 

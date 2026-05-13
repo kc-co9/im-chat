@@ -68,7 +68,7 @@ class GroupChatAppServiceTest {
                 inboxRepository,
                 new NonChattingUserService(),
                 new ImGroupService(groupMemberRepository, groupChatRepository),
-                new ImMessageService(),
+                new ImMessageService(new FixedSnowflakeId(1L)),
                 null,
                 new NoopDomainEventPublisher());
 
@@ -129,7 +129,7 @@ class GroupChatAppServiceTest {
                 inboxRepository,
                 new NonChattingUserService(),
                 new ImGroupService(groupMemberRepository, groupChatRepository),
-                new ImMessageService(),
+                new ImMessageService(new FixedSnowflakeId(1L)),
                 null,
                 new NoopDomainEventPublisher());
 
@@ -245,7 +245,7 @@ class GroupChatAppServiceTest {
                 inboxRepository,
                 new NonChattingUserService(),
                 new ImGroupService(groupMemberRepository, groupChatRepository),
-                new ImMessageService(),
+                new ImMessageService(new FixedSnowflakeId(1L)),
                 null,
                 new NoopDomainEventPublisher());
         ImGroupMessageRevokeCmd command = new ImGroupMessageRevokeCmd();
@@ -273,7 +273,7 @@ class GroupChatAppServiceTest {
                 new RecordingGroupInboxRepository(),
                 new NonChattingUserService(),
                 new ImGroupService(groupMemberRepository, groupChatRepository),
-                new ImMessageService(),
+                new ImMessageService(new FixedSnowflakeId(1L)),
                 null,
                 new NoopDomainEventPublisher());
         ImGroupMessageDetailQuery query = new ImGroupMessageDetailQuery(101L, 1L, "missing");

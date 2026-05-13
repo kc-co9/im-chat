@@ -79,7 +79,7 @@ class PrivateChatAppServiceTest {
                 inboxRepository,
                 null,
                 new ImChatService(null, null, privateChatRepository, null, null, null),
-                new ImMessageService(),
+                new ImMessageService(new FixedSnowflakeId(1L)),
                 null,
                 new NoopDomainEventPublisher());
         ImPrivateMessageRevokeCmd command = new ImPrivateMessageRevokeCmd();
