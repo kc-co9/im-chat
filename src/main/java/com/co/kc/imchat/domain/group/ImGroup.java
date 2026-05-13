@@ -1,5 +1,6 @@
-package com.co.kc.imchat.domain.chat;
+package com.co.kc.imchat.domain.group;
 
+import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.shared.Identification;
 import com.co.kc.imchat.domain.shared.Validator;

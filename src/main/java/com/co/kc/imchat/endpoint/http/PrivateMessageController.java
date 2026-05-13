@@ -1,6 +1,6 @@
 package com.co.kc.imchat.endpoint.http;
 
-import com.co.kc.imchat.application.ImPrivateAppService;
+import com.co.kc.imchat.application.PrivateMessageAppService;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageDetailQuery;
@@ -19,15 +19,15 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/im/private")
-public class ImPrivateController {
-    private final ImPrivateAppService imPrivateAppService;
+public class PrivateMessageController {
+    private final PrivateMessageAppService privateMessageAppService;
 
     @GetMapping("/queryMessageDetail")
     public ImPrivateMessageDetailQueryResponse queryMessageDetail(@RequestParam("chatId") Long chatId,
                                                                   @RequestParam("messageToken") String messageToken) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageDetailQuery query = new ImPrivateMessageDetailQuery(chatId, userId, messageToken);
-        ImPrivateMessageDTO imPrivateMessageDTO = imPrivateAppService.queryMessageDetail(query);
+        ImPrivateMessageDTO imPrivateMessageDTO = privateMessageAppService.queryMessageDetail(query);
         return ImMessageHttpIoTransformer.INSTANCE.imPrivateMessageDetailQueryResponseFrom(imPrivateMessageDTO);
     }
 
@@ -37,7 +37,7 @@ public class ImPrivateController {
                                                                     @RequestParam("count") Integer count) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageHistoryQuery query = new ImPrivateMessageHistoryQuery(chatId, userId, lastMessageId, count);
-        List<ImPrivateMessageDTO> messageList = imPrivateAppService.queryHistoryMessage(query);
+        List<ImPrivateMessageDTO> messageList = privateMessageAppService.queryHistoryMessage(query);
         List<ImPrivateMessageHistoryQueryResponse.MessageItem> messageResponseList =
                 ImMessageHttpIoTransformer.INSTANCE.imPrivateMessageItemListFrom(messageList);
         return new ImPrivateMessageHistoryQueryResponse(messageResponseList);

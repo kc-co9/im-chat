@@ -24,7 +24,7 @@ public class FunctionUtils {
     }
 
 
-    public static <T, R> List<R> mappingList(List<T> list, Function<T, R> function) {
+    public static <T, R> List<R> mappingList(Collection<T> list, Function<T, R> function) {
         if (CollectionUtils.isEmpty(list)) {
             return new ArrayList<>();
         }

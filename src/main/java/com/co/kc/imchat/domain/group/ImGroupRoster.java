@@ -1,4 +1,4 @@
-package com.co.kc.imchat.domain.chat;
+package com.co.kc.imchat.domain.group;
 
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.support.exception.BusinessException;

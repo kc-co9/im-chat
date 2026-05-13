@@ -22,4 +22,8 @@ public class DbImGroupService extends BaseMybatisService<DbImGroupMapper, DbImGr
         }
         return list(getQueryWrapper().in(DbImGroup::getGroupId, groupIds));
     }
+
+    public List<DbImGroup> getListByUserId(Long userId) {
+        return this.baseMapper.selectByUserId(userId);
+    }
 }

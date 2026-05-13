@@ -3,7 +3,7 @@ package com.co.kc.imchat.domain;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.chat.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupId;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImGroupMessageTransmission;

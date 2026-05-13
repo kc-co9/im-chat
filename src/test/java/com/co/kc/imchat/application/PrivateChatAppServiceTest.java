@@ -3,7 +3,6 @@ package com.co.kc.imchat.application;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImChatType;
-import com.co.kc.imchat.domain.chat.ImGroupService;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.chat.ImPrivateChatRepository;
 import com.co.kc.imchat.domain.friend.Friend;
@@ -47,9 +46,7 @@ class PrivateChatAppServiceTest {
                 null,
                 null,
                 null,
-                null,
                 new NormalFriendRepository(),
-                new ImGroupService(null, null),
                 new ImChatService(null, null, privateChatRepository, null, null, sessionRepository));
         ImPrivateChatOpenCmd command = new ImPrivateChatOpenCmd(1L, 2L);
 
@@ -76,7 +73,7 @@ class PrivateChatAppServiceTest {
         RecordingPrivateInboxRepository inboxRepository = new RecordingPrivateInboxRepository();
         inboxRepository.messages.add(privateMessage(900L, 101L, 1L, 1L, ImPrivateMessageStatus.SENT));
         inboxRepository.messages.add(privateMessage(900L, 102L, 2L, 1L, ImPrivateMessageStatus.RECEIVED));
-        ImPrivateAppService appService = new ImPrivateAppService(
+        PrivateMessageAppService appService = new PrivateMessageAppService(
                 new FixedSnowflakeId(900L),
                 privateChatRepository,
                 inboxRepository,

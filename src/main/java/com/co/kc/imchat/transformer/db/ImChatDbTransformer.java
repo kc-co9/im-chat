@@ -1,8 +1,8 @@
 package com.co.kc.imchat.transformer.db;
 
-import com.co.kc.imchat.domain.chat.ImGroup;
+import com.co.kc.imchat.domain.group.ImGroup;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.chat.ImGroupMember;
+import com.co.kc.imchat.domain.group.ImGroupMember;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroup;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;

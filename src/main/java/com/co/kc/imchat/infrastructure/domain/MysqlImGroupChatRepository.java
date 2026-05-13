@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
-import com.co.kc.imchat.domain.chat.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupId;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.user.UserId;
@@ -18,6 +18,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
@@ -42,14 +43,34 @@ public class MysqlImGroupChatRepository implements ImGroupChatRepository {
     }
 
     @Override
-    public List<ImGroupChat> findByGroupId(ImGroupId groupId) {
+    public List<ImGroupChat> find(ImGroupId groupId) {
         List<DbImGroupChat> rows = dbImGroupChatService.getByGroupId(groupId.getValue());
         return ImChatDomainTransformer.INSTANCE.imGroupChatListFrom(rows);
     }
 
     @Override
-    public List<ImGroupChat> findByUserId(UserId userId) {
+    public List<ImGroupChat> find(Collection<ImGroupId> groupIds) {
+        if (CollectionUtils.isEmpty(groupIds)) {
+            return Collections.emptyList();
+        }
+        List<Long> groupIdValues = FunctionUtils.mappingList(groupIds, ImGroupId::getValue);
+        List<DbImGroupChat> rows = dbImGroupChatService.getByGroupIds(groupIdValues);
+        return ImChatDomainTransformer.INSTANCE.imGroupChatListFrom(rows);
+    }
+
+    @Override
+    public List<ImGroupChat> find(UserId userId) {
         List<DbImGroupChat> rows = dbImGroupChatService.getListByUserId(userId.getValue());
+        return ImChatDomainTransformer.INSTANCE.imGroupChatListFrom(rows);
+    }
+
+    @Override
+    public List<ImGroupChat> find(UserId userId, Collection<ImGroupId> groupIds) {
+        if (userId == null || CollectionUtils.isEmpty(groupIds)) {
+            return Collections.emptyList();
+        }
+        List<Long> groupIdValues = FunctionUtils.mappingList(groupIds, ImGroupId::getValue);
+        List<DbImGroupChat> rows = dbImGroupChatService.getListByUserIdAndGroupIds(userId.getValue(), groupIdValues);
         return ImChatDomainTransformer.INSTANCE.imGroupChatListFrom(rows);
     }
 

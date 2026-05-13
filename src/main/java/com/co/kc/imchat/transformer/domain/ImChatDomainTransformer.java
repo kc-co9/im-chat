@@ -2,15 +2,15 @@ package com.co.kc.imchat.transformer.domain;
 
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatType;
-import com.co.kc.imchat.domain.chat.ImGroup;
-import com.co.kc.imchat.domain.chat.ImGroupAlias;
+import com.co.kc.imchat.domain.group.ImGroup;
+import com.co.kc.imchat.domain.group.ImGroupAlias;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.chat.ImGroupId;
-import com.co.kc.imchat.domain.chat.ImGroupMember;
-import com.co.kc.imchat.domain.chat.ImGroupMemberId;
-import com.co.kc.imchat.domain.chat.ImGroupName;
-import com.co.kc.imchat.domain.chat.ImGroupNotification;
-import com.co.kc.imchat.domain.chat.ImGroupUserAlias;
+import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupMember;
+import com.co.kc.imchat.domain.group.ImGroupMemberId;
+import com.co.kc.imchat.domain.group.ImGroupName;
+import com.co.kc.imchat.domain.group.ImGroupNotification;
+import com.co.kc.imchat.domain.group.ImGroupUserAlias;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.user.UserId;
@@ -90,7 +90,7 @@ public interface ImChatDomainTransformer {
                 .id(new ImGroupMemberId(groupId, userId))
                 .groupId(groupId)
                 .userId(userId)
-                .userAlias(new ImGroupUserAlias(dbImGroupMember.getUserAlias()))
+                .userAlias(StringUtils.isBlank(dbImGroupMember.getUserAlias()) ? null : new ImGroupUserAlias(dbImGroupMember.getUserAlias()))
                 .joinTime(dbImGroupMember.getJoinTime())
                 .build();
     }

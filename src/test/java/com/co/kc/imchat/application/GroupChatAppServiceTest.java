@@ -5,16 +5,16 @@ import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
-import com.co.kc.imchat.domain.chat.ImGroupId;
-import com.co.kc.imchat.domain.chat.ImGroupMember;
-import com.co.kc.imchat.domain.chat.ImGroupMemberId;
-import com.co.kc.imchat.domain.chat.ImGroupMemberRepository;
-import com.co.kc.imchat.domain.chat.ImGroupRepository;
-import com.co.kc.imchat.domain.chat.ImGroup;
-import com.co.kc.imchat.domain.chat.ImGroupName;
-import com.co.kc.imchat.domain.chat.ImGroupService;
+import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupMember;
+import com.co.kc.imchat.domain.group.ImGroupMemberId;
+import com.co.kc.imchat.domain.group.ImGroupMemberRepository;
+import com.co.kc.imchat.domain.group.ImGroup;
+import com.co.kc.imchat.domain.group.ImGroupName;
+import com.co.kc.imchat.domain.group.ImGroupService;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
+import com.co.kc.imchat.domain.message.ImGroupMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.domain.message.ImMessageId;
@@ -27,12 +27,10 @@ import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.user.UserService;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatOpenCmd;
-import com.co.kc.imchat.model.cqrs.command.chat.ImGroupCreateCmd;
-import com.co.kc.imchat.model.cqrs.command.chat.ImGroupInviteMembersCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatOpenDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupCreateDTO;
 import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageSendCmd;
+import com.co.kc.imchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
 import com.co.kc.imchat.model.cqrs.query.ImGroupMessageDetailQuery;
 import com.co.kc.imchat.support.auth.PasswordService;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
@@ -45,6 +43,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -52,45 +51,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GroupChatAppServiceTest {
-
-    @Test
-    void createGroupPersistsMembersAndCreatesChatForEachMember() {
-        RecordingGroupRepository groupRepository = new RecordingGroupRepository();
-        RecordingGroupChatRepository groupChatRepository = new RecordingGroupChatRepository();
-        RecordingGroupMemberRepository groupMemberRepository = new RecordingGroupMemberRepository();
-        SignedInSessionRepository sessionRepository = new SignedInSessionRepository();
-        ChatAppService appService = new ChatAppService(
-                new FixedSnowflakeId(1000L),
-                null,
-                groupRepository,
-                groupChatRepository,
-                groupMemberRepository,
-                null,
-                null,
-                new ImGroupService(groupMemberRepository, groupChatRepository),
-                new ImChatService(new FixedSnowflakeId(1001L), null, null, null, null, sessionRepository));
-        ImGroupCreateCmd command = new ImGroupCreateCmd(1L, Collections.singletonList(2L), "group");
-
-        ImGroupCreateDTO result = appService.createGroup(command);
-
-        assertThat(result.getGroupId()).isEqualTo(1000L);
-        assertThat(result.getChatId()).isEqualTo(1001L);
-        assertThat(groupRepository.savedGroup.getId().getValue()).isEqualTo(1000L);
-        assertThat(groupMemberRepository.savedMembers)
-                .extracting(member -> member.getUserId().getValue())
-                .containsExactly(1L, 2L);
-        assertThat(groupMemberRepository.savedMembers)
-                .allSatisfy(member -> assertThat(member.getGroupId().getValue()).isEqualTo(1000L));
-        assertThat(groupMemberRepository.savedMembers)
-                .allSatisfy(member -> assertThat(member.getJoinTime()).isNotNull());
-        assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getUserId().getValue())
-                .containsExactly(1L, 2L);
-        assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getId().getValue())
-                .containsExactly(1001L, 1002L);
-        assertThat(sessionRepository.session.getChatId().getValue()).isEqualTo(1001L);
-    }
 
     @Test
     void sendGroupMessageRejectsChatIdOwnedByAnotherMember() {
@@ -101,7 +61,7 @@ class GroupChatAppServiceTest {
         groupMemberRepository.members.add(groupMember(1001L, 1L));
         groupMemberRepository.members.add(groupMember(1001L, 2L));
         RecordingGroupInboxRepository inboxRepository = new RecordingGroupInboxRepository();
-        ImGroupAppService appService = new ImGroupAppService(
+        GroupMessageAppService appService = new GroupMessageAppService(
                 new FixedSnowflakeId(900L),
                 groupChatRepository,
                 groupMemberRepository,
@@ -135,12 +95,10 @@ class GroupChatAppServiceTest {
         ChatAppService appService = new ChatAppService(
                 new FixedSnowflakeId(2000L),
                 null,
-                null,
                 groupChatRepository,
                 groupMemberRepository,
                 new RecordingGroupInboxRepository(),
                 null,
-                new ImGroupService(groupMemberRepository, groupChatRepository),
                 new ImChatService(null, null, null, null, null, sessionRepository));
         ImGroupChatOpenCmd command = new ImGroupChatOpenCmd(2L, 102L);
 
@@ -156,44 +114,6 @@ class GroupChatAppServiceTest {
     }
 
     @Test
-    void inviteGroupMembersCreatesMemberAndChatRowsForNewMembers() {
-        RecordingGroupChatRepository groupChatRepository = new RecordingGroupChatRepository();
-        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
-        RecordingGroupRepository groupRepository = new RecordingGroupRepository();
-        groupRepository.groups.add(group(1001L, 1L, "group"));
-        RecordingGroupMemberRepository groupMemberRepository = new RecordingGroupMemberRepository();
-        groupMemberRepository.members.add(groupMember(1001L, 1L));
-        ChatAppService appService = new ChatAppService(
-                new FixedSnowflakeId(3000L),
-                null,
-                groupRepository,
-                groupChatRepository,
-                groupMemberRepository,
-                null,
-                null,
-                new ImGroupService(groupMemberRepository, groupChatRepository),
-                new ImChatService(new FixedSnowflakeId(3000L), null, null, null, null, null));
-        ImGroupInviteMembersCmd command = new ImGroupInviteMembersCmd(1L, 1001L, Collections.singletonList(2L));
-
-        appService.inviteGroupMembers(command);
-
-        assertThat(groupMemberRepository.savedMembers)
-                .extracting(member -> member.getUserId().getValue())
-                .containsExactly(2L);
-        assertThat(groupMemberRepository.savedMembers)
-                .allSatisfy(member -> {
-                    assertThat(member.getGroupId().getValue()).isEqualTo(1001L);
-                    assertThat(member.getJoinTime()).isNotNull();
-                });
-        assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getUserId().getValue())
-                .containsExactly(2L);
-        assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getId().getValue())
-                .containsExactly(3000L);
-    }
-
-    @Test
     void sendGroupMessageCreatesInboxForEachMemberAndUpdatesReadState() {
         RecordingGroupChatRepository groupChatRepository = new RecordingGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
@@ -202,7 +122,7 @@ class GroupChatAppServiceTest {
         groupMemberRepository.members.add(groupMember(1001L, 1L));
         groupMemberRepository.members.add(groupMember(1001L, 2L));
         RecordingGroupInboxRepository inboxRepository = new RecordingGroupInboxRepository();
-        ImGroupAppService appService = new ImGroupAppService(
+        GroupMessageAppService appService = new GroupMessageAppService(
                 new FixedSnowflakeId(900L),
                 groupChatRepository,
                 groupMemberRepository,
@@ -238,6 +158,43 @@ class GroupChatAppServiceTest {
     }
 
     @Test
+    void groupMessageSentNotificationSkipsSender() {
+        RecordingGroupChatRepository groupChatRepository = new RecordingGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
+        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+        RecordingGroupMemberRepository groupMemberRepository = new RecordingGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        RecordingNotifierInvoker notifierInvoker = new RecordingNotifierInvoker();
+        GroupMessageAppService appService = new GroupMessageAppService(
+                null,
+                groupChatRepository,
+                groupMemberRepository,
+                null,
+                null,
+                null,
+                null,
+                notifierInvoker,
+                null);
+        ImGroupMessageSentEvent event = new ImGroupMessageSentEvent();
+        event.setGroupId(1001L);
+        event.setSenderId(1L);
+        event.setMessageId(900L);
+        event.setMessageType(com.co.kc.imchat.model.enums.ImMessageTypeEnum.TEXT);
+        event.setMessageContent("hello");
+        event.setSendTime(java.time.LocalDateTime.now());
+
+        appService.onMessageSent(event);
+
+        assertThat(notifierInvoker.groupSentCommands)
+                .extracting(ImGroupSentNotifyCmd::getReceiverId)
+                .containsExactly(2L);
+        assertThat(notifierInvoker.groupSentCommands)
+                .extracting(ImGroupSentNotifyCmd::getChatId)
+                .containsExactly(102L);
+    }
+
+    @Test
     void openGroupChatMarksUnreadInboxMessagesRead() {
         RecordingGroupChatRepository groupChatRepository = new RecordingGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L, 902L, 2));
@@ -249,12 +206,10 @@ class GroupChatAppServiceTest {
         ChatAppService appService = new ChatAppService(
                 null,
                 null,
-                null,
                 groupChatRepository,
                 groupMemberRepository,
                 inboxRepository,
                 null,
-                new ImGroupService(groupMemberRepository, groupChatRepository),
                 new ImChatService(null, null, null, null, null, new SignedInSessionRepository()));
         ImGroupChatOpenCmd command = new ImGroupChatOpenCmd(1L, 101L);
 
@@ -283,7 +238,7 @@ class GroupChatAppServiceTest {
         ImGroupInboxMessage receiverMessage = groupInboxMessage(900L, 102L, 1001L, 2L, 1L);
         inboxRepository.messages.add(senderMessage);
         inboxRepository.messages.add(receiverMessage);
-        ImGroupAppService appService = new ImGroupAppService(
+        GroupMessageAppService appService = new GroupMessageAppService(
                 new FixedSnowflakeId(900L),
                 groupChatRepository,
                 groupMemberRepository,
@@ -311,7 +266,7 @@ class GroupChatAppServiceTest {
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
         RecordingGroupMemberRepository groupMemberRepository = new RecordingGroupMemberRepository();
         groupMemberRepository.members.add(groupMember(1001L, 1L));
-        ImGroupAppService appService = new ImGroupAppService(
+        GroupMessageAppService appService = new GroupMessageAppService(
                 new FixedSnowflakeId(900L),
                 groupChatRepository,
                 groupMemberRepository,
@@ -451,35 +406,18 @@ class GroupChatAppServiceTest {
         }
     }
 
-    private static class RecordingGroupRepository implements ImGroupRepository {
-        private final List<ImGroup> groups = new ArrayList<>();
-        private ImGroup savedGroup;
+    private static class RecordingNotifierInvoker extends ImMessageNotifierInvoker {
+        private final List<ImGroupSentNotifyCmd> groupSentCommands = new ArrayList<>();
 
-        @Override
-        public ImGroup find(ImGroupId groupId) {
-            if (savedGroup != null && savedGroup.getId().equals(groupId)) {
-                return savedGroup;
-            }
-            return groups.stream()
-                    .filter(group -> group.getId().equals(groupId))
-                    .findFirst()
-                    .orElse(null);
+        RecordingNotifierInvoker() {
+            super(null, null);
         }
 
         @Override
-        public List<ImGroup> find(List<ImGroupId> groupIds) {
-            List<ImGroup> result = groups.stream()
-                    .filter(group -> groupIds.contains(group.getId()))
-                    .collect(Collectors.toList());
-            if (savedGroup != null && groupIds.contains(savedGroup.getId())) {
-                result.add(savedGroup);
+        public <T> void invoke(T command) {
+            if (command instanceof ImGroupSentNotifyCmd) {
+                groupSentCommands.add((ImGroupSentNotifyCmd) command);
             }
-            return result;
-        }
-
-        @Override
-        public void save(ImGroup group) {
-            savedGroup = group;
         }
     }
 
@@ -505,14 +443,29 @@ class GroupChatAppServiceTest {
         }
 
         @Override
-        public List<ImGroupChat> findByGroupId(ImGroupId groupId) {
+        public List<ImGroupChat> find(ImGroupId groupId) {
             return groupChats.stream()
                     .filter(groupChat -> groupChat.getGroupId().getValue().equals(groupId.getValue()))
                     .collect(Collectors.toList());
         }
 
         @Override
-        public List<ImGroupChat> findByUserId(UserId userId) {
+        public List<ImGroupChat> find(java.util.Collection<ImGroupId> groupIds) {
+            return groupChats.stream()
+                    .filter(groupChat -> groupIds.contains(groupChat.getGroupId()))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public List<ImGroupChat> find(UserId userId, java.util.Collection<ImGroupId> groupIds) {
+            return groupChats.stream()
+                    .filter(groupChat -> groupChat.getUserId().equals(userId))
+                    .filter(groupChat -> groupIds.contains(groupChat.getGroupId()))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public List<ImGroupChat> find(UserId userId) {
             return Collections.emptyList();
         }
 
@@ -575,6 +528,13 @@ class GroupChatAppServiceTest {
                     .filter(member -> member.getUserId().equals(userId))
                     .findFirst()
                     .orElse(null);
+        }
+
+        @Override
+        public Map<ImGroupId, Integer> countByGroupIds(List<ImGroupId> groupIds) {
+            return members.stream()
+                    .filter(member -> groupIds.contains(member.getGroupId()))
+                    .collect(Collectors.groupingBy(ImGroupMember::getGroupId, Collectors.summingInt(member -> 1)));
         }
 
         @Override

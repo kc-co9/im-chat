@@ -1,4 +1,4 @@
-package com.co.kc.imchat.domain.chat;
+package com.co.kc.imchat.domain.group;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

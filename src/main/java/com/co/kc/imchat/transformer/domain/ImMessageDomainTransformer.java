@@ -6,7 +6,7 @@ import com.co.kc.imchat.domain.message.ImMessageType;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
 import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.chat.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupId;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.message.ImMessageContent;
 import com.co.kc.imchat.domain.message.ImMessageId;

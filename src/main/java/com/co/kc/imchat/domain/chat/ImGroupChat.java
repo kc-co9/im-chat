@@ -1,5 +1,7 @@
 package com.co.kc.imchat.domain.chat;
 
+import com.co.kc.imchat.domain.group.ImGroupAlias;
+import com.co.kc.imchat.domain.group.ImGroupId;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.user.UserId;

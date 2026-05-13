@@ -1,12 +1,12 @@
 package com.co.kc.imchat.application;
 
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.chat.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupId;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
-import com.co.kc.imchat.domain.chat.ImGroupService;
-import com.co.kc.imchat.domain.chat.ImGroupMember;
-import com.co.kc.imchat.domain.chat.ImGroupMemberRepository;
+import com.co.kc.imchat.domain.group.ImGroupService;
+import com.co.kc.imchat.domain.group.ImGroupMember;
+import com.co.kc.imchat.domain.group.ImGroupMemberRepository;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.message.ImGroupMessageRevokedEvent;
@@ -42,7 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @RequiredArgsConstructor
-public class ImGroupAppService {
+public class GroupMessageAppService {
     private final SnowflakeId snowflakeId;
     private final ImGroupChatRepository imGroupChatRepository;
     private final ImGroupMemberRepository imGroupMemberRepository;
@@ -98,6 +98,9 @@ public class ImGroupAppService {
         List<UserId> memberUserIds = FunctionUtils.mappingList(memberList, ImGroupMember::getUserId);
         List<ImGroupChat> memberChats = imGroupChatRepository.findByUserIdsAndGroupId(groupId, memberUserIds);
         for (ImGroupChat memberChat : memberChats) {
+            if (memberChat.getUserId().getValue().equals(event.getSenderId())) {
+                continue;
+            }
             ImGroupSentNotifyCmd notifyCmd =
                     ImMessageAppTransformer.INSTANCE.imGroupSentNotifyCmdFrom(
                             memberChat.getUserId().getValue(), memberChat.getId().getValue(), event);

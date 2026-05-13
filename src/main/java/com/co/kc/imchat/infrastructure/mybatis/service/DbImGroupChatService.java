@@ -20,6 +20,13 @@ public class DbImGroupChatService extends BaseMybatisService<DbImGroupChatMapper
         return list(getQueryWrapper().eq(DbImGroupChat::getGroupId, groupId));
     }
 
+    public List<DbImGroupChat> getByGroupIds(List<Long> groupIds) {
+        if (CollectionUtils.isEmpty(groupIds)) {
+            return Collections.emptyList();
+        }
+        return list(getQueryWrapper().in(DbImGroupChat::getGroupId, groupIds));
+    }
+
     public Optional<DbImGroupChat> getByGroupIdAndUserId(Long groupId, Long userId) {
         return getFirst(getQueryWrapper()
                 .eq(DbImGroupChat::getGroupId, groupId)
@@ -28,6 +35,15 @@ public class DbImGroupChatService extends BaseMybatisService<DbImGroupChatMapper
 
     public List<DbImGroupChat> getListByUserId(Long userId) {
         return list(getQueryWrapper().eq(DbImGroupChat::getUserId, userId));
+    }
+
+    public List<DbImGroupChat> getListByUserIdAndGroupIds(Long userId, List<Long> groupIds) {
+        if (CollectionUtils.isEmpty(groupIds)) {
+            return Collections.emptyList();
+        }
+        return list(getQueryWrapper()
+                .eq(DbImGroupChat::getUserId, userId)
+                .in(DbImGroupChat::getGroupId, groupIds));
     }
 
     public List<DbImGroupChat> getListByUserIdAndChatIds(Long userId, List<Long> chatIds) {

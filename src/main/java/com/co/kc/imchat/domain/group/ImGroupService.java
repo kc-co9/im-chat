@@ -1,13 +1,18 @@
-package com.co.kc.imchat.domain.chat;
+package com.co.kc.imchat.domain.group;
 
+import com.co.kc.imchat.domain.chat.ImGroupChat;
+import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
 import com.co.kc.imchat.domain.message.ImMessageRecipient;
 import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.support.utils.FunctionUtils;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -49,6 +54,21 @@ public class ImGroupService {
                 .collect(Collectors.toList());
     }
 
+    public List<ImUserGroupDescriptor> describeUserGroups(UserId userId, List<ImGroup> groups) {
+        if (userId == null || CollectionUtils.isEmpty(groups)) {
+            return Collections.emptyList();
+        }
+
+        Set<ImGroupId> groupIdSet = FunctionUtils.mappingSet(groups, ImGroup::getId);
+        List<ImGroupChat> groupChats = imGroupChatRepository.find(userId, groupIdSet);
+
+        Map<ImGroupId, ImGroupChat> groupChatMap = FunctionUtils.mappingMap(groupChats, ImGroupChat::getGroupId, Function.identity());
+        return groups.stream()
+                .map(group -> new ImUserGroupDescriptor(group.getId(), group.getName(), groupChatMap.get(group.getId())))
+                .filter(descriptor -> descriptor.getChat() != null)
+                .collect(Collectors.toList());
+    }
+
     private ImGroupMember newGroupMember(ImGroupId groupId, UserId userId, LocalDateTime joinTime) {
         return ImGroupMember.builder()
                 .id(new ImGroupMemberId(groupId, userId))
@@ -57,6 +77,5 @@ public class ImGroupService {
                 .joinTime(joinTime)
                 .build();
     }
-
 
 }

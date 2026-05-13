@@ -3,7 +3,7 @@ package com.co.kc.imchat.infrastructure.domain;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.chat.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupId;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupChatService;

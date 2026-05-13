@@ -2,16 +2,17 @@ package com.co.kc.imchat.infrastructure.config;
 
 import com.co.kc.imchat.application.ChatAppService;
 import com.co.kc.imchat.application.FriendAppService;
-import com.co.kc.imchat.application.ImGroupAppService;
-import com.co.kc.imchat.application.ImPrivateAppService;
+import com.co.kc.imchat.application.GroupAppService;
+import com.co.kc.imchat.application.GroupMessageAppService;
+import com.co.kc.imchat.application.PrivateMessageAppService;
 import com.co.kc.imchat.application.UserAppService;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.support.identity.snowflake.impl.StaticSnowflakeMachineId;
 import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
-import com.co.kc.imchat.domain.chat.ImGroupMemberRepository;
-import com.co.kc.imchat.domain.chat.ImGroupRepository;
-import com.co.kc.imchat.domain.chat.ImGroupService;
+import com.co.kc.imchat.domain.group.ImGroupMemberRepository;
+import com.co.kc.imchat.domain.group.ImGroupRepository;
+import com.co.kc.imchat.domain.group.ImGroupService;
 import com.co.kc.imchat.domain.chat.ImPrivateChatRepository;
 import com.co.kc.imchat.domain.friend.FriendRepository;
 import com.co.kc.imchat.domain.friend.FriendService;
@@ -89,20 +90,30 @@ public class BeanConfig {
     @Bean
     public ChatAppService chatAppService(SnowflakeId snowflakeId,
                                          ImPrivateChatRepository imPrivateChatRepository,
-                                         ImGroupRepository imGroupRepository,
                                          ImGroupChatRepository imGroupChatRepository,
                                          ImGroupMemberRepository imGroupMemberRepository,
                                          ImGroupInboxMessageRepository imGroupInboxMessageRepository,
                                          FriendRepository friendRepository,
-                                         ImGroupService imGroupService,
                                          ImChatService imChatService) {
         return new ChatAppService(
-                snowflakeId, imPrivateChatRepository, imGroupRepository, imGroupChatRepository,
-                imGroupMemberRepository, imGroupInboxMessageRepository, friendRepository, imGroupService, imChatService);
+                snowflakeId, imPrivateChatRepository, imGroupChatRepository,
+                imGroupMemberRepository, imGroupInboxMessageRepository, friendRepository, imChatService);
     }
 
     @Bean
-    public ImPrivateAppService imPrivateAppService(SnowflakeId snowflakeId,
+    public GroupAppService groupAppService(SnowflakeId snowflakeId,
+                                           ImGroupRepository imGroupRepository,
+                                           ImGroupChatRepository imGroupChatRepository,
+                                           ImGroupMemberRepository imGroupMemberRepository,
+                                           ImGroupService imGroupService,
+                                           ImChatService imChatService) {
+        return new GroupAppService(
+                snowflakeId, imGroupRepository, imGroupChatRepository,
+                imGroupMemberRepository, imGroupService, imChatService);
+    }
+
+    @Bean
+    public PrivateMessageAppService privateMessageAppService(SnowflakeId snowflakeId,
                                                    ImPrivateChatRepository imPrivateChatRepository,
                                                    ImPrivateInboxMessageRepository imPrivateInboxMessageRepository,
                                                    UserService userService,
@@ -110,23 +121,23 @@ public class BeanConfig {
                                                    ImMessageService imMessageService,
                                                    ImMessageNotifierInvoker imMessageNotifierInvoker,
                                                    SpringEventPublisher imMessageEventPublisher) {
-        return new ImPrivateAppService(
+        return new PrivateMessageAppService(
                 snowflakeId, imPrivateChatRepository, imPrivateInboxMessageRepository,
                 userService, imChatService, imMessageService, imMessageNotifierInvoker,
                 imMessageEventPublisher);
     }
 
     @Bean
-    public ImGroupAppService imGroupAppService(SnowflakeId snowflakeId,
-                                               ImGroupChatRepository imGroupChatRepository,
-                                               ImGroupMemberRepository imGroupMemberRepository,
-                                               ImGroupInboxMessageRepository imGroupInboxMessageRepository,
-                                               UserService userService,
-                                               ImGroupService imGroupService,
-                                               ImMessageService imMessageService,
-                                               ImMessageNotifierInvoker imMessageNotifierInvoker,
-                                               SpringEventPublisher imMessageEventPublisher) {
-        return new ImGroupAppService(
+    public GroupMessageAppService imGroupAppService(SnowflakeId snowflakeId,
+                                                    ImGroupChatRepository imGroupChatRepository,
+                                                    ImGroupMemberRepository imGroupMemberRepository,
+                                                    ImGroupInboxMessageRepository imGroupInboxMessageRepository,
+                                                    UserService userService,
+                                                    ImGroupService imGroupService,
+                                                    ImMessageService imMessageService,
+                                                    ImMessageNotifierInvoker imMessageNotifierInvoker,
+                                                    SpringEventPublisher imMessageEventPublisher) {
+        return new GroupMessageAppService(
                 snowflakeId, imGroupChatRepository, imGroupMemberRepository, imGroupInboxMessageRepository,
                 userService, imGroupService, imMessageService, imMessageNotifierInvoker, imMessageEventPublisher);
     }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.co.kc.imchat.infrastructure.mybatis.mapper.DbImGroupMapper">
+    <select id="selectByUserId" resultType="com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroup">
+        SELECT db_im_group.*
+        FROM db_im_group
+                 INNER JOIN db_im_group_member ON db_im_group_member.group_id = db_im_group.group_id
+        WHERE user_id = #{userId}
+    </select>
+</mapper>

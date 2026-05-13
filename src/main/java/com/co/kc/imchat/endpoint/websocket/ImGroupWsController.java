@@ -1,6 +1,6 @@
 package com.co.kc.imchat.endpoint.websocket;
 
-import com.co.kc.imchat.application.ImGroupAppService;
+import com.co.kc.imchat.application.GroupMessageAppService;
 import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageSendCmd;
 import com.co.kc.imchat.model.enums.ParamsConstants;
@@ -19,7 +19,7 @@ import org.springframework.stereotype.Controller;
 @Controller
 @RequiredArgsConstructor
 public class ImGroupWsController {
-    private final ImGroupAppService imGroupAppService;
+    private final GroupMessageAppService groupMessageAppService;
 
     /**
      * 处理客户端消息发送
@@ -29,7 +29,7 @@ public class ImGroupWsController {
     public Result<WsResponse> sendGroupMessage(ImGroupMessageSendRequest request, SimpMessageHeaderAccessor headerAccessor) {
         Long userId = (Long) headerAccessor.getSessionAttributes().get(ParamsConstants.USER_ID);
         ImGroupMessageSendCmd command = ImMessageAppTransformer.INSTANCE.imGroupMessageSendCmdFrom(userId, request);
-        imGroupAppService.sendMessage(command);
+        groupMessageAppService.sendMessage(command);
         return Result.success(new WsResponse(request.getRequestId()));
     }
 
@@ -41,7 +41,7 @@ public class ImGroupWsController {
     public Result<WsResponse> revokeGroupMessage(ImGroupMessageRevokeRequest request, SimpMessageHeaderAccessor headerAccessor) {
         Long userId = (Long) headerAccessor.getSessionAttributes().get(ParamsConstants.USER_ID);
         ImGroupMessageRevokeCmd command = ImMessageAppTransformer.INSTANCE.imGroupMessageRevokeCmdFrom(userId, request);
-        imGroupAppService.revokeMessage(command);
+        groupMessageAppService.revokeMessage(command);
         return Result.success(new WsResponse(request.getRequestId()));
     }
 }

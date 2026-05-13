@@ -1,6 +1,6 @@
 package com.co.kc.imchat.endpoint.http;
 
-import com.co.kc.imchat.application.ImGroupAppService;
+import com.co.kc.imchat.application.GroupMessageAppService;
 import com.co.kc.imchat.model.cqrs.dto.im.ImGroupMessageDTO;
 import com.co.kc.imchat.model.cqrs.query.ImGroupMessageDetailQuery;
 import com.co.kc.imchat.model.cqrs.query.ImGroupMessageHistoryQuery;
@@ -19,15 +19,15 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(value = "/im/group")
-public class ImGroupController {
-    private final ImGroupAppService imGroupAppService;
+public class GroupMessageController {
+    private final GroupMessageAppService groupMessageAppService;
 
     @GetMapping("/queryMessageDetail")
     public ImGroupMessageDetailResponse queryMessageDetail(@RequestParam("chatId") Long chatId,
                                                            @RequestParam("messageToken") String messageToken) {
         Long userId = UserContextUtils.get().getUserId();
         ImGroupMessageDetailQuery query = new ImGroupMessageDetailQuery(chatId, userId, messageToken);
-        ImGroupMessageDTO imGroupMessageDTO = imGroupAppService.queryMessageDetail(query);
+        ImGroupMessageDTO imGroupMessageDTO = groupMessageAppService.queryMessageDetail(query);
         return ImMessageHttpIoTransformer.INSTANCE.imGroupMessageDetailResponseFrom(imGroupMessageDTO);
     }
 
@@ -37,7 +37,7 @@ public class ImGroupController {
                                                                   @RequestParam("count") Integer count) {
         Long userId = UserContextUtils.get().getUserId();
         ImGroupMessageHistoryQuery query = new ImGroupMessageHistoryQuery(chatId, userId, lastMessageId, count);
-        List<ImGroupMessageDTO> messageList = imGroupAppService.queryHistoryMessage(query);
+        List<ImGroupMessageDTO> messageList = groupMessageAppService.queryHistoryMessage(query);
         List<ImGroupMessageHistoryQueryResponse.MessageItem> messageResponseList =
                 ImMessageHttpIoTransformer.INSTANCE.imGroupMessageItemListFrom(messageList);
         return new ImGroupMessageHistoryQueryResponse(messageResponseList);

@@ -1,7 +1,7 @@
 package com.co.kc.imchat.domain.message;
 
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.chat.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupId;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.model.enums.ImMessageTypeEnum;
 import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;

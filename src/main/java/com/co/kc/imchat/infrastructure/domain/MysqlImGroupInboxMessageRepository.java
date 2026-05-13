@@ -3,7 +3,7 @@ package com.co.kc.imchat.infrastructure.domain;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.chat.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupId;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;

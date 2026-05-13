@@ -38,7 +38,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @RequiredArgsConstructor
-public class ImPrivateAppService {
+public class PrivateMessageAppService {
 
     private final SnowflakeId snowflakeId;
     private final ImPrivateChatRepository imPrivateChatRepository;

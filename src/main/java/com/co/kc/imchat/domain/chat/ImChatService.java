@@ -2,6 +2,11 @@ package com.co.kc.imchat.domain.chat;
 
 import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendRepository;
+import com.co.kc.imchat.domain.group.ImGroup;
+import com.co.kc.imchat.domain.group.ImGroupAlias;
+import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.ImGroupMember;
+import com.co.kc.imchat.domain.group.ImGroupRepository;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.support.exception.AuthException;
@@ -44,7 +49,7 @@ public class ImChatService {
         List<ImPrivateChat> imPrivateChatList = imPrivateChatRepository.find(userId);
         List<ImUserChatDescriptor> imPrivateChatDescriptors = buildPrivateChatDescriptors(userId, imPrivateChatList);
 
-        List<ImGroupChat> imGroupChatList = imGroupChatRepository.findByUserId(userId);
+        List<ImGroupChat> imGroupChatList = imGroupChatRepository.find(userId);
         List<ImUserChatDescriptor> imGroupChatDescriptors = buildGroupChatDescriptors(userId, imGroupChatList);
 
         return ListUtils.union(imPrivateChatDescriptors, imGroupChatDescriptors);
