@@ -50,6 +50,10 @@ public class WsHandshakeInterceptor implements HandshakeInterceptor {
         }
 
         TokenDTO tokenDTO = tokenService.parse(token);
+        if (tokenDTO == null) {
+            log.info("WebSocket认证失败，token无效");
+            return false;
+        }
         boolean isAuthenticated = userAppService.isAuthenticated(new UserAuthQuery(tokenDTO.getUserId()));
         if (!isAuthenticated) {
             log.info("WebSocket认证失败，用户未登录");

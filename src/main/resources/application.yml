@@ -74,6 +74,8 @@ spring:
   mvc:
     favicon:
       enabled: false
+    pathmatch:
+      matching-strategy: ant_path_matcher
 
 # springdoc-openapi项目配置
 springdoc:

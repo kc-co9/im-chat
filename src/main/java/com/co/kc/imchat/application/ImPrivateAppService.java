@@ -180,7 +180,7 @@ public class ImPrivateAppService {
                 .orElseThrow(() -> new NotFoundException("消息不存在"));
 
         senderInboxMessage.revoke(senderChat.getUserId());
-        receiverInboxMessage.revoke(receiverChat.getUserId());
+        receiverInboxMessage.revoke(senderChat.getUserId());
         imPrivateInboxMessageRepository.save(senderInboxMessage);
         imPrivateInboxMessageRepository.save(receiverInboxMessage);
 
