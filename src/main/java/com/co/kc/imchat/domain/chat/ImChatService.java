@@ -2,7 +2,7 @@ package com.co.kc.imchat.domain.chat;
 
 import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendRepository;
-import com.co.kc.imchat.domain.message.ImGroupMessage;
+import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.support.exception.AuthException;
 import com.co.kc.imchat.support.utils.FunctionUtils;
@@ -13,6 +13,7 @@ import com.co.kc.imchat.domain.user.UserId;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.ListUtils;
+import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 
 import java.util.Collections;
 import java.util.List;
@@ -25,8 +26,10 @@ import java.util.stream.Collectors;
  */
 @RequiredArgsConstructor
 public class ImChatService {
+    private final SnowflakeId snowflakeId;
     private final FriendRepository friendRepository;
     private final ImPrivateChatRepository imPrivateChatRepository;
+    private final ImGroupRepository imGroupRepository;
     private final ImGroupChatRepository imGroupChatRepository;
     private final SessionRepository sessionRepository;
 
@@ -41,19 +44,33 @@ public class ImChatService {
         List<ImPrivateChat> imPrivateChatList = imPrivateChatRepository.find(userId);
         List<ImUserChatDescriptor> imPrivateChatDescriptors = buildPrivateChatDescriptors(userId, imPrivateChatList);
 
-        List<ImGroupChat> imGroupChatList = imGroupChatRepository.findGroupChatList(userId);
+        List<ImGroupChat> imGroupChatList = imGroupChatRepository.findByUserId(userId);
         List<ImUserChatDescriptor> imGroupChatDescriptors = buildGroupChatDescriptors(userId, imGroupChatList);
 
         return ListUtils.union(imPrivateChatDescriptors, imGroupChatDescriptors);
     }
 
-    public void enterChat(ImChatId chatId, UserId userId) {
+    public List<ImGroupChat> createGroupChats(List<ImGroupMember> newMembers) {
+        return CollectionUtils.emptyIfNull(newMembers).stream()
+                .distinct()
+                .map(member -> ImGroupChat.builder()
+                        .id(new ImChatId(snowflakeId.next()))
+                        .groupId(member.getGroupId())
+                        .userId(member.getUserId())
+                        .type(ImChatType.GROUP)
+                        .unreadMessageCount(0)
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    public void enterChat(ImChat chat) {
+        UserId userId = chat.getUserId();
         Session session = sessionRepository.find(userId);
         if (session == null || !session.isSignIn()) {
             throw new AuthException("用户尚未登陆");
         }
 
-        session.onEnterChat(chatId);
+        session.onEnterChat(chat.getId());
         sessionRepository.save(session);
     }
 
@@ -99,19 +116,19 @@ public class ImChatService {
             return Collections.emptyList();
         }
 
-        List<ImChatId> chatIds = FunctionUtils.mappingList(imGroupChatList, ImGroupChat::getId);
-        List<ImGroupMember> imGroupMembers = imGroupChatRepository.findUserGroupMemberList(userId, chatIds);
-        Map<ImChatId, ImGroupAlias> imGroupAliasMap =
-                FunctionUtils.mappingMap(imGroupMembers, ImGroupMember::getChatId, ImGroupMember::getGroupAlias);
+        List<ImGroupId> groupIds = FunctionUtils.mappingList(imGroupChatList, ImGroupChat::getGroupId);
+        List<ImGroup> groups = imGroupRepository.find(groupIds);
+        Map<ImGroupId, ImGroup> groupMap = FunctionUtils.mappingMap(groups, ImGroup::getId, Function.identity());
 
+        List<ImChatId> chatIds = FunctionUtils.mappingList(imGroupChatList, ImGroupChat::getId);
         List<ImMessage> chatLastMessages = imGroupChatRepository.findLastMessageList(chatIds, userId);
         Map<ImChatId, ImMessage> chatLastMessageMap = FunctionUtils.mappingMap(
-                chatLastMessages, message -> ((ImGroupMessage) message).getChatId(), Function.identity());
+                chatLastMessages, message -> ((ImGroupInboxMessage) message).getChatId(), Function.identity());
 
         return imGroupChatList.stream().map(imGroupChat -> {
             ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
             descriptor.setChatId(imGroupChat.getId());
-            descriptor.setChatName(obtainGroupChatName(imGroupChat, imGroupAliasMap.get(imGroupChat.getId())));
+            descriptor.setChatName(obtainGroupChatName(groupMap.get(imGroupChat.getGroupId()), imGroupChat.getGroupAlias()));
             descriptor.setChatType(imGroupChat.getType());
             descriptor.setChatLastMessage(chatLastMessageMap.get(imGroupChat.getId()));
             return descriptor;
@@ -131,14 +148,14 @@ public class ImChatService {
         return new ImChatName(friend.displayName().getValue());
     }
 
-    public ImChatName obtainGroupChatName(ImGroupChat imGroupChat, ImGroupAlias imGroupAlias) {
-        if (imGroupChat == null) {
+    public ImChatName obtainGroupChatName(ImGroup group, ImGroupAlias imGroupAlias) {
+        if (group == null) {
             return null;
         }
         if (imGroupAlias != null) {
             return new ImChatName(imGroupAlias.getValue());
         } else {
-            return new ImChatName(imGroupChat.getName().getValue());
+            return new ImChatName(group.getName().getValue());
         }
     }
 

@@ -1,26 +1,18 @@
 package com.co.kc.imchat.infrastructure.mybatis.entity;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-/**
- * 群聊表(DbImGroupChat)表实体类
- *
- * @author kc
- * @since 2026-02-03 11:12:55
- */
 @Data
 @EqualsAndHashCode(callSuper = true)
+@TableName("db_im_group_chat")
 public class DbImGroupChat extends BaseEntity {
-    //聊天ID
     private Long chatId;
-    //群名称
-    private String name;
-    //群主ID
-    private Long ownerId;
-    //群公告
-    private String notification;
-    //群设置
-    private String setting;
+    private Long groupId;
+    private Long userId;
+    private String groupAlias;
+    private Long lastMessageId;
+    private Long readMessageId;
+    private Integer unreadMessageCount;
 }
-

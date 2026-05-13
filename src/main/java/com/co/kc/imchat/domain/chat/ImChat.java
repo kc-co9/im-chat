@@ -2,6 +2,7 @@ package com.co.kc.imchat.domain.chat;
 
 import com.co.kc.imchat.domain.shared.Identification;
 import com.co.kc.imchat.domain.shared.Validator;
+import com.co.kc.imchat.domain.user.UserId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -13,11 +14,12 @@ import lombok.EqualsAndHashCode;
 public class ImChat extends Identification implements Validator {
     private ImChatId id;
     private ImChatType type;
+    private UserId userId;
 
     @Override
     public void validate() {
-        if (id == null || type == null) {
-            throw new IllegalStateException("聊天缺少 id 或 type");
+        if (id == null || type == null || userId == null) {
+            throw new IllegalStateException("聊天缺少 id、type 或 userId");
         }
     }
 }

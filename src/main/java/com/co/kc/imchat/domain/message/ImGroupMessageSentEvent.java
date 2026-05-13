@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 @Data
 public class ImGroupMessageSentEvent implements DomainEvent {
     private Long messageId;
-    private Long chatId;
+    private Long groupId;
     private Long senderId;
     private ImMessageTypeEnum messageType;
     private String messageContent;

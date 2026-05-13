@@ -1,11 +1,17 @@
 package com.co.kc.imchat.transformer.domain;
 
-import com.co.kc.imchat.domain.message.ImGroupMessage;
+import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageType;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
 import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
-import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMessage;
+import com.co.kc.imchat.domain.chat.ImChatId;
+import com.co.kc.imchat.domain.chat.ImGroupId;
+import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.domain.message.ImMessageContent;
+import com.co.kc.imchat.domain.message.ImMessageId;
+import com.co.kc.imchat.domain.message.ImMessageToken;
+import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupInboxMessage;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateInboxMessage;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbGroupImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbPrivateImMessageStatus;
@@ -40,19 +46,25 @@ public interface ImMessageDomainTransformer {
     })
     ImPrivateInboxMessage imPrivateInboxMessageFrom(DbImPrivateInboxMessage db);
 
-    List<ImGroupMessage> imGroupMessageListFrom(List<DbImGroupMessage> records);
+    List<ImGroupInboxMessage> imGroupInboxMessageListFrom(List<DbImGroupInboxMessage> records);
 
-    @Mappings(value = {
-            @Mapping(target = "id.value", source = "messageId"),
-            @Mapping(target = "chatId.value", source = "chatId"),
-            @Mapping(target = "token.value", source = "token"),
-            @Mapping(target = "senderId.value", source = "senderId"),
-            @Mapping(target = "content.value", source = "content"),
-            @Mapping(target = "status", source = "status"),
-            @Mapping(target = "sendTime", source = "sendTime"),
-            @Mapping(target = "revokeTime", source = "revokeTime"),
-    })
-    ImGroupMessage imGroupMessageFrom(DbImGroupMessage dbImGroupMessage);
+    default ImGroupInboxMessage imGroupInboxMessageFrom(DbImGroupInboxMessage db) {
+        return ImGroupInboxMessage.builder()
+                .pkId(db.getId())
+                .id(new ImMessageId(db.getMessageId()))
+                .groupId(new ImGroupId(db.getGroupId()))
+                .chatId(new ImChatId(db.getChatId()))
+                .userId(new UserId(db.getUserId()))
+                .token(new ImMessageToken(db.getToken()))
+                .senderId(new UserId(db.getSenderId()))
+                .content(new ImMessageContent(imMessageTypeFrom(db.getType()), db.getContent()))
+                .status(imGroupMessageStatusFrom(db.getStatus()))
+                .sendTime(db.getSendTime())
+                .receivedTime(db.getReceiveTime())
+                .readTime(db.getReadTime())
+                .revokeTime(db.getRevokeTime())
+                .build();
+    }
 
     @ValueMappings(value = {
             @ValueMapping(target = MappingConstants.NULL, source = "NONE"),
@@ -90,6 +102,10 @@ public interface ImMessageDomainTransformer {
         switch (dbStatus) {
             case SENT:
                 return ImGroupMessageStatus.SENT;
+            case RECEIVED:
+                return ImGroupMessageStatus.RECEIVED;
+            case READ:
+                return ImGroupMessageStatus.READ;
             case REVOKED:
                 return ImGroupMessageStatus.REVOKED;
             default:

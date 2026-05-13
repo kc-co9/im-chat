@@ -7,19 +7,23 @@ import java.util.List;
 
 public interface ImGroupChatRepository {
 
-    List<ImGroupChat> findGroupChatList(UserId userId);
+    ImGroupChat find(ImChatId chatId);
 
-    List<ImGroupMember> findGroupMemberList(ImChatId chatId);
+    ImGroupChat find(ImGroupId groupId, UserId userId);
 
-    List<ImGroupMember> findUserGroupMemberList(UserId userId, List<ImChatId> chatIds);
+    List<ImGroupChat> findByGroupId(ImGroupId groupId);
 
-    ImGroupChat findGroupChat(ImChatId chatId);
+    List<ImGroupChat> findByUserId(UserId userId);
+
+    List<ImGroupChat> findByUserIdAndChatIds(UserId userId, List<ImChatId> chatIds);
+
+    List<ImGroupChat> findByUserIdsAndGroupId(ImGroupId groupId, List<UserId> userIds);
 
     List<ImMessage> findLastMessageList(List<ImChatId> chatIds, UserId viewer);
 
-    void save(ImGroupChat imGroupChat);
+    void save(ImGroupChat groupChat);
 
-    void saveGroupMembers(List<ImGroupMember> imGroupMembers);
+    void saveAll(List<ImGroupChat> groupChats);
 
-    boolean containGroupMember(ImChatId chatId, UserId userId);
+    boolean contain(ImChatId chatId, UserId userId);
 }

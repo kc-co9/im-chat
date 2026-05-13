@@ -7,12 +7,14 @@ import org.mapstruct.Mappings;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 
-import com.co.kc.imchat.domain.message.ImGroupMessage;
+import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImMessageType;
+import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
 import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
-import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMessage;
+import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupInboxMessage;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateInboxMessage;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbGroupImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbPrivateImMessageStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImMessageType;
 import org.mapstruct.factory.Mappers;
@@ -24,15 +26,20 @@ public interface ImMessageDbTransformer {
     @Mappings(value = {
             @Mapping(target = "id", source = "pkId"),
             @Mapping(target = "messageId", source = "id.value"),
+            @Mapping(target = "groupId", source = "groupId.value"),
             @Mapping(target = "chatId", source = "chatId.value"),
+            @Mapping(target = "userId", source = "userId.value"),
             @Mapping(target = "token", source = "token.value"),
             @Mapping(target = "senderId", source = "senderId.value"),
+            @Mapping(target = "type", source = "content.type"),
             @Mapping(target = "content", source = "content.value"),
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "sendTime", source = "sendTime"),
+            @Mapping(target = "receiveTime", source = "receivedTime"),
+            @Mapping(target = "readTime", source = "readTime"),
             @Mapping(target = "revokeTime", source = "revokeTime")
     })
-    DbImGroupMessage dbImGroupMessageFrom(ImGroupMessage groupMessage);
+    DbImGroupInboxMessage dbImGroupInboxMessageFrom(ImGroupInboxMessage message);
 
     @ValueMappings(value = {
             @ValueMapping(target = "NONE", source = MappingConstants.NULL),
@@ -58,6 +65,24 @@ public interface ImMessageDbTransformer {
                 return DbPrivateImMessageStatus.REVOKED;
             default:
                 return DbPrivateImMessageStatus.NONE;
+        }
+    }
+
+    default DbGroupImMessageStatus dbImMessageStatusFrom(ImGroupMessageStatus status) {
+        if (status == null) {
+            return DbGroupImMessageStatus.NONE;
+        }
+        switch (status) {
+            case SENT:
+                return DbGroupImMessageStatus.SENT;
+            case RECEIVED:
+                return DbGroupImMessageStatus.RECEIVED;
+            case READ:
+                return DbGroupImMessageStatus.READ;
+            case REVOKED:
+                return DbGroupImMessageStatus.REVOKED;
+            default:
+                return DbGroupImMessageStatus.NONE;
         }
     }
 

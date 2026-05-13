@@ -7,8 +7,10 @@ import java.time.LocalDateTime;
 
 @Data
 public class ImGroupMessageRevokedEvent implements DomainEvent {
-    private Long chatId;
+    private Long groupId;
     private Long messageId;
+    private Long senderId;
+    private LocalDateTime revokeTime;
     private LocalDateTime createTime;
 
     @Override

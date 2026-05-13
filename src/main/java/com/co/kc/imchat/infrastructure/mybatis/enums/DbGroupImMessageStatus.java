@@ -16,9 +16,17 @@ public enum DbGroupImMessageStatus {
      */
     SENT(1),
     /**
+     * 2-已接收
+     */
+    RECEIVED(2),
+    /**
+     * 3-已读
+     */
+    READ(3),
+    /**
      * 4-已撤回
      */
-    REVOKED(2);
+    REVOKED(4);
 
     @EnumValue
     private final int code;

@@ -1,38 +1,17 @@
 package com.co.kc.imchat.infrastructure.mybatis.entity;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-/**
- * 群聊表
- * db_im_group_member
- */
-@EqualsAndHashCode(callSuper = true)
+import java.time.LocalDateTime;
+
 @Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("db_im_group_member")
 public class DbImGroupMember extends BaseEntity {
-    /**
-     * 聊天ID
-     */
-    private Long chatId;
-
-    /**
-     * 用户ID
-     */
+    private Long groupId;
     private Long userId;
-
-    /**
-     * 用户别名
-     */
     private String userAlias;
-
-    /**
-     * 用户定义的群别名
-     */
-    private String groupAlias;
-
-    /**
-     * 群成员设置
-     */
-    private String setting;
-
+    private LocalDateTime joinTime;
 }

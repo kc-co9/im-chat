@@ -1,29 +1,22 @@
 package com.co.kc.imchat.infrastructure.mybatis.service;
 
-import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMember;
 import com.co.kc.imchat.infrastructure.mybatis.mapper.DbImGroupMemberMapper;
-import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class DbImGroupMemberService extends BaseMybatisService<DbImGroupMemberMapper, DbImGroupMember> {
 
-    public List<DbImGroupMember> getListByUserId(Long userId) {
-        return list(getQueryWrapper().eq(DbImGroupMember::getUserId, userId));
+    public List<DbImGroupMember> getByGroupId(Long groupId) {
+        return list(getQueryWrapper().eq(DbImGroupMember::getGroupId, groupId));
     }
 
-    public List<DbImGroupMember> getByChatId(Long chatId) {
-        return list(getQueryWrapper().eq(DbImGroupMember::getChatId, chatId));
-    }
-
-    public List<DbImGroupMember> getListByUserIdAndChatIds(UserId userId, List<Long> chatIds) {
-        if (CollectionUtils.isEmpty(chatIds)) {
-            return Collections.emptyList();
-        }
-        return list(getQueryWrapper().eq(DbImGroupMember::getUserId, userId).in(DbImGroupMember::getChatId, chatIds));
+    public Optional<DbImGroupMember> getByGroupIdAndUserId(Long groupId, Long userId) {
+        return getFirst(getQueryWrapper()
+                .eq(DbImGroupMember::getGroupId, groupId)
+                .eq(DbImGroupMember::getUserId, userId));
     }
 }

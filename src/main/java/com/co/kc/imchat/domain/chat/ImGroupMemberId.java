@@ -7,14 +7,14 @@ import lombok.Getter;
 @Getter
 @EqualsAndHashCode
 public class ImGroupMemberId {
-    private final ImChatId chatId;
+    private final ImGroupId groupId;
     private final UserId userId;
 
-    public ImGroupMemberId(ImChatId chatId, UserId userId) {
-        if (chatId == null || userId == null) {
+    public ImGroupMemberId(ImGroupId groupId, UserId userId) {
+        if (groupId == null || userId == null) {
             throw new IllegalArgumentException("参数不能为空");
         }
-        this.chatId = chatId;
+        this.groupId = groupId;
         this.userId = userId;
     }
 }

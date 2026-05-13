@@ -21,7 +21,7 @@
         <java.version>1.8</java.version>
 
         <mapstruct.version>1.5.5.Final</mapstruct.version> <!-- 兼容Java 8 -->
-        <lombok.version>1.18.24</lombok.version> <!-- 稳定版本 -->
+        <lombok.version>1.18.42</lombok.version> <!-- 支持当前 JDK 21 编译环境 -->
         <mybatis.version>2.2.2</mybatis.version> <!-- 兼容Spring Boot 2.7.x -->
         <mybatis-plus.version>3.5.3.1</mybatis-plus.version> <!-- 兼容Spring Boot 2.7.x -->
         <mysql.version>8.0.33</mysql.version> <!-- 稳定版本 -->

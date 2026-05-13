@@ -14,6 +14,16 @@ public enum ImGroupMessageStatus {
     SENT,
 
     /**
+     * 已接收
+     */
+    RECEIVED,
+
+    /**
+     * 已读
+     */
+    READ,
+
+    /**
      * 已撤回
      */
     REVOKED;
@@ -29,6 +39,14 @@ public enum ImGroupMessageStatus {
     static class ImMessageStatusMachine extends DefaultStateMachine<ImGroupMessageStatus, ImMessageEvent> {
         public ImMessageStatusMachine() {
             putTransition(ImGroupMessageStatus.SENT, ImMessageEvent.REVOKE, ImGroupMessageStatus.REVOKED);
+            putTransition(ImGroupMessageStatus.SENT, ImMessageEvent.RECEIVE, ImGroupMessageStatus.RECEIVED);
+            putTransition(ImGroupMessageStatus.SENT, ImMessageEvent.READ, ImGroupMessageStatus.READ);
+
+            putTransition(ImGroupMessageStatus.RECEIVED, ImMessageEvent.READ, ImGroupMessageStatus.READ);
+            putTransition(ImGroupMessageStatus.RECEIVED, ImMessageEvent.REVOKE, ImGroupMessageStatus.REVOKED);
+
+            putTransition(ImGroupMessageStatus.READ, ImMessageEvent.READ, ImGroupMessageStatus.READ);
+            putTransition(ImGroupMessageStatus.READ, ImMessageEvent.REVOKE, ImGroupMessageStatus.REVOKED);
         }
     }
 

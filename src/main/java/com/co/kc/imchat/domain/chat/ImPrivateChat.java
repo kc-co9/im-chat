@@ -13,10 +13,6 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 public class ImPrivateChat extends ImChat {
     /**
-     * 本条记录所属用户（客户端使用的 chatId 对应 {@link ImChat#getId()}）。
-     */
-    private UserId userId;
-    /**
      * 会话对端用户。
      */
     private UserId peerUserId;
@@ -34,10 +30,10 @@ public class ImPrivateChat extends ImChat {
     private Integer unreadMessageCount;
 
     public boolean contain(UserId userId) {
-        if (userId == null || this.userId == null || peerUserId == null) {
+        if (userId == null || getUserId() == null || peerUserId == null) {
             return false;
         }
-        return userId.equals(this.userId) || userId.equals(peerUserId);
+        return userId.equals(getUserId()) || userId.equals(peerUserId);
     }
 
     public void receiveLatestMessage(ImPrivateInboxMessage message, boolean isChatting) {
@@ -57,8 +53,8 @@ public class ImPrivateChat extends ImChat {
     @Override
     public void validate() {
         super.validate();
-        if (userId == null || peerUserId == null) {
-            throw new IllegalStateException("私聊会话缺少 userId 或 peerUserId");
+        if (peerUserId == null) {
+            throw new IllegalStateException("私聊会话缺少 peerUserId");
         }
     }
 

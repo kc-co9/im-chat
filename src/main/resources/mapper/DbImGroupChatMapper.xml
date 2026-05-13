@@ -1,11 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.co.kc.imchat.infrastructure.mybatis.mapper.DbImGroupChatMapper">
-
-    <select id="selectListByUserId" resultType="com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat">
-        SELECT db_im_group_chat.*
-        FROM db_im_group_member
-                 LEFT JOIN db_im_group_chat ON db_im_group_member.chat_id = db_im_group_chat.chat_id
-        WHERE db_im_group_member.user_id = #{userId}
-    </select>
 </mapper>

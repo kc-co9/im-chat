@@ -1,8 +1,10 @@
 package com.co.kc.imchat.transformer.db;
 
+import com.co.kc.imchat.domain.chat.ImGroup;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupMember;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
+import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroup;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMember;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateChat;
@@ -32,23 +34,41 @@ public interface ImChatDbTransformer {
         return row;
     }
 
-    default DbImGroupChat dbImGroupChatFrom(ImGroupChat imGroupChat) {
-        DbImGroupChat dbImGroupChat = new DbImGroupChat();
-        dbImGroupChat.setChatId(imGroupChat.getId().getValue());
-        dbImGroupChat.setOwnerId(imGroupChat.getOwnerId().getValue());
-        dbImGroupChat.setNotification(imGroupChat.getNotification().getValue());
-        return dbImGroupChat;
+    default DbImGroup dbImGroupFrom(ImGroup group) {
+        DbImGroup dbGroup = new DbImGroup();
+        dbGroup.setId(group.getPkId());
+        dbGroup.setGroupId(group.getId().getValue());
+        dbGroup.setOwnerId(group.getOwnerId().getValue());
+        dbGroup.setName(group.getName().getValue());
+        dbGroup.setNotification(group.getNotification() == null ? "" : group.getNotification().getValue());
+        return dbGroup;
     }
 
-    List<DbImGroupMember> dbImGroupMemberListFrom(List<ImGroupMember> imGroupMembers);
+    List<DbImGroupChat> dbImGroupChatListFrom(List<ImGroupChat> groupChats);
 
-    default DbImGroupMember dbImGroupMemberFrom(ImGroupMember imGroupMember) {
-        DbImGroupMember dbImGroupMember = new DbImGroupMember();
-        dbImGroupMember.setChatId(imGroupMember.getChatId().getValue());
-        dbImGroupMember.setUserId(imGroupMember.getUserId().getValue());
-        dbImGroupMember.setUserAlias(imGroupMember.getUserAlias().getValue());
-        dbImGroupMember.setGroupAlias(imGroupMember.getGroupAlias().getValue());
-        return dbImGroupMember;
+    List<DbImGroupMember> dbImGroupMemberListFrom(List<ImGroupMember> members);
+
+    default DbImGroupChat dbImGroupChatFrom(ImGroupChat groupChat) {
+        DbImGroupChat dbGroupChat = new DbImGroupChat();
+        dbGroupChat.setId(groupChat.getPkId());
+        dbGroupChat.setChatId(groupChat.getId().getValue());
+        dbGroupChat.setGroupId(groupChat.getGroupId().getValue());
+        dbGroupChat.setUserId(groupChat.getUserId().getValue());
+        dbGroupChat.setGroupAlias(groupChat.getGroupAlias() == null ? "" : groupChat.getGroupAlias().getValue());
+        dbGroupChat.setLastMessageId(groupChat.getLastMessageId() == null ? 0L : groupChat.getLastMessageId().getValue());
+        dbGroupChat.setReadMessageId(groupChat.getReadMessageId() == null ? 0L : groupChat.getReadMessageId().getValue());
+        dbGroupChat.setUnreadMessageCount(groupChat.getUnreadMessageCount() == null ? 0 : groupChat.getUnreadMessageCount());
+        return dbGroupChat;
+    }
+
+    default DbImGroupMember dbImGroupMemberFrom(ImGroupMember member) {
+        DbImGroupMember dbGroupMember = new DbImGroupMember();
+        dbGroupMember.setId(member.getPkId());
+        dbGroupMember.setGroupId(member.getGroupId().getValue());
+        dbGroupMember.setUserId(member.getUserId().getValue());
+        dbGroupMember.setUserAlias(member.getUserAlias() == null ? "" : member.getUserAlias().getValue());
+        dbGroupMember.setJoinTime(member.getJoinTime());
+        return dbGroupMember;
     }
 
     @ValueMappings(value = {

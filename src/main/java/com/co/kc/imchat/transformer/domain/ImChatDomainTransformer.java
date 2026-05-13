@@ -2,15 +2,19 @@ package com.co.kc.imchat.transformer.domain;
 
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatType;
+import com.co.kc.imchat.domain.chat.ImGroup;
 import com.co.kc.imchat.domain.chat.ImGroupAlias;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
+import com.co.kc.imchat.domain.chat.ImGroupId;
 import com.co.kc.imchat.domain.chat.ImGroupMember;
+import com.co.kc.imchat.domain.chat.ImGroupMemberId;
 import com.co.kc.imchat.domain.chat.ImGroupName;
 import com.co.kc.imchat.domain.chat.ImGroupNotification;
 import com.co.kc.imchat.domain.chat.ImGroupUserAlias;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroup;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMember;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateChat;
@@ -19,6 +23,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 import org.mapstruct.factory.Mappers;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 
@@ -45,28 +50,49 @@ public interface ImChatDomainTransformer {
                 .build();
     }
 
+    List<ImGroup> imGroupListFrom(List<DbImGroup> dbImGroupList);
+
+    default ImGroup imGroupFrom(DbImGroup dbImGroup) {
+        ImGroup group = ImGroup.builder()
+                .id(new ImGroupId(dbImGroup.getGroupId()))
+                .type(ImChatType.GROUP)
+                .ownerId(new UserId(dbImGroup.getOwnerId()))
+                .name(new ImGroupName(dbImGroup.getName()))
+                .notification(new ImGroupNotification(dbImGroup.getNotification()))
+                .build();
+        group.setPkId(dbImGroup.getId());
+        return group;
+    }
+
     List<ImGroupChat> imGroupChatListFrom(List<DbImGroupChat> dbImGroupChatList);
 
     default ImGroupChat imGroupChatFrom(DbImGroupChat dbImGroupChat) {
-        ImGroupChat imGroupChat = new ImGroupChat();
-        imGroupChat.setOwnerId(new UserId(dbImGroupChat.getOwnerId()));
-        imGroupChat.setNotification(new ImGroupNotification(dbImGroupChat.getNotification()));
-        imGroupChat.setId(new ImChatId(dbImGroupChat.getChatId()));
-        imGroupChat.setName(new ImGroupName(dbImGroupChat.getName()));
-        imGroupChat.setType(ImChatType.GROUP);
-        imGroupChat.setPkId(dbImGroupChat.getId());
-        return imGroupChat;
+        return ImGroupChat.builder()
+                .pkId(dbImGroupChat.getId())
+                .id(new ImChatId(dbImGroupChat.getChatId()))
+                .type(ImChatType.GROUP)
+                .groupId(new ImGroupId(dbImGroupChat.getGroupId()))
+                .userId(new UserId(dbImGroupChat.getUserId()))
+                .groupAlias(StringUtils.isBlank(dbImGroupChat.getGroupAlias()) ? null : new ImGroupAlias(dbImGroupChat.getGroupAlias()))
+                .lastMessageId(new ImMessageId(dbImGroupChat.getLastMessageId()))
+                .readMessageId(new ImMessageId(dbImGroupChat.getReadMessageId()))
+                .unreadMessageCount(dbImGroupChat.getUnreadMessageCount())
+                .build();
     }
 
-
-    List<ImGroupMember> imGroupMemberListFrom(List<DbImGroupMember> dbImGroupMemberList);
+    List<ImGroupMember> imGroupMemberListFrom(List<DbImGroupMember> dbImGroupMembers);
 
     default ImGroupMember imGroupMemberFrom(DbImGroupMember dbImGroupMember) {
-        ImGroupMember imGroupMember = new ImGroupMember();
-        imGroupMember.setUserId(new UserId(dbImGroupMember.getUserId()));
-        imGroupMember.setGroupAlias(new ImGroupAlias(dbImGroupMember.getGroupAlias()));
-        imGroupMember.setUserAlias(new ImGroupUserAlias(dbImGroupMember.getUserAlias()));
-        return imGroupMember;
+        ImGroupId groupId = new ImGroupId(dbImGroupMember.getGroupId());
+        UserId userId = new UserId(dbImGroupMember.getUserId());
+        return ImGroupMember.builder()
+                .pkId(dbImGroupMember.getId())
+                .id(new ImGroupMemberId(groupId, userId))
+                .groupId(groupId)
+                .userId(userId)
+                .userAlias(new ImGroupUserAlias(dbImGroupMember.getUserAlias()))
+                .joinTime(dbImGroupMember.getJoinTime())
+                .build();
     }
 
     @ValueMappings(value = {

@@ -2,22 +2,22 @@ package com.co.kc.imchat.endpoint.http;
 
 import com.co.kc.imchat.application.ChatAppService;
 import com.co.kc.imchat.model.cqrs.command.chat.ImChatExitCmd;
-import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatCreateCmd;
-import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatEnterCmd;
-import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatCreateCmd;
-import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatEnterCmd;
-import com.co.kc.imchat.model.cqrs.dto.im.ImChatCreateDTO;
+import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatOpenCmd;
+import com.co.kc.imchat.model.cqrs.command.chat.ImGroupCreateCmd;
+import com.co.kc.imchat.model.cqrs.command.chat.ImGroupInviteMembersCmd;
+import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatOpenCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatEnterDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImChatOpenDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImGroupCreateDTO;
 import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
 import com.co.kc.imchat.model.io.chat.ImChatListResponse;
-import com.co.kc.imchat.model.io.chat.ImGroupChatCreateRequest;
-import com.co.kc.imchat.model.io.chat.ImGroupChatCreateResponse;
-import com.co.kc.imchat.model.io.chat.ImGroupChatEnterRequest;
-import com.co.kc.imchat.model.io.chat.ImPrivateChatCreateRequest;
-import com.co.kc.imchat.model.io.chat.ImPrivateChatCreateResponse;
-import com.co.kc.imchat.model.io.chat.ImPrivateChatEnterRequest;
-import com.co.kc.imchat.model.io.chat.ImPrivateChatEnterResponse;
+import com.co.kc.imchat.model.io.chat.ImGroupChatOpenRequest;
+import com.co.kc.imchat.model.io.chat.ImGroupChatOpenResponse;
+import com.co.kc.imchat.model.io.chat.ImGroupCreateRequest;
+import com.co.kc.imchat.model.io.chat.ImGroupCreateResponse;
+import com.co.kc.imchat.model.io.chat.ImGroupInviteMembersRequest;
+import com.co.kc.imchat.model.io.chat.ImPrivateChatOpenRequest;
+import com.co.kc.imchat.model.io.chat.ImPrivateChatOpenResponse;
 import com.co.kc.imchat.support.context.UserContextUtils;
 import com.co.kc.imchat.transformer.http.ImChatHttpIoTransformer;
 import io.swagger.annotations.Api;
@@ -46,34 +46,32 @@ public class ChatController {
         return new ImChatListResponse(imChatItemList);
     }
 
-    @PostMapping(value = "/createPrivateChat")
-    public ImPrivateChatCreateResponse createPrivateChat(@RequestBody @Validated ImPrivateChatCreateRequest request) {
+    @PostMapping(value = "/openPrivateChat")
+    public ImPrivateChatOpenResponse openPrivateChat(@RequestBody @Validated ImPrivateChatOpenRequest request) {
         Long userId = UserContextUtils.get().getUserId();
-        ImChatCreateDTO dto = chatAppService.createPrivateChat(new ImPrivateChatCreateCmd(userId, request.getReceiverId()));
-        return new ImPrivateChatCreateResponse(dto.getChatId());
+        ImChatOpenDTO dto = chatAppService.openPrivateChat(new ImPrivateChatOpenCmd(userId, request.getPeerUserId()));
+        return ImChatHttpIoTransformer.INSTANCE.imPrivateChatOpenResponseFrom(dto);
     }
 
-    @PostMapping(value = "/enterPrivateChat")
-    public ImPrivateChatEnterResponse enterPrivateChat(@RequestBody @Validated ImPrivateChatEnterRequest request) {
+    @PostMapping(value = "/createGroup")
+    public ImGroupCreateResponse createGroup(@RequestBody @Validated ImGroupCreateRequest request) {
         Long userId = UserContextUtils.get().getUserId();
-        ImPrivateChatEnterCmd command = new ImPrivateChatEnterCmd(request.getChatId(), userId);
-        ImPrivateChatEnterDTO enterDTO = chatAppService.enterPrivateChat(command);
-        return ImChatHttpIoTransformer.INSTANCE.imPrivateChatEnterResponseFrom(enterDTO);
+        ImGroupCreateCmd command = new ImGroupCreateCmd(userId, request.getMemberIds(), request.getGroupName());
+        ImGroupCreateDTO dto = chatAppService.createGroup(command);
+        return ImChatHttpIoTransformer.INSTANCE.imGroupCreateResponseFrom(dto);
     }
 
-    @PostMapping(value = "/createGroupChat")
-    public ImGroupChatCreateResponse createGroupChat(@RequestBody @Validated ImGroupChatCreateRequest request) {
+    @PostMapping(value = "/openGroupChat")
+    public ImGroupChatOpenResponse openGroupChat(@RequestBody @Validated ImGroupChatOpenRequest request) {
         Long userId = UserContextUtils.get().getUserId();
-        ImGroupChatCreateCmd command = new ImGroupChatCreateCmd(userId, request.getMemberIds(), request.getGroupName());
-        ImChatCreateDTO imChatCreateDTO = chatAppService.createGroupChat(command);
-        return new ImGroupChatCreateResponse(imChatCreateDTO.getChatId());
+        ImChatOpenDTO dto = chatAppService.openGroupChat(new ImGroupChatOpenCmd(userId, request.getChatId()));
+        return ImChatHttpIoTransformer.INSTANCE.imGroupChatOpenResponseFrom(dto);
     }
 
-    @PostMapping(value = "/enterGroupChat")
-    public void enterGroupChat(@RequestBody @Validated ImGroupChatEnterRequest request) {
+    @PostMapping(value = "/inviteGroupMembers")
+    public void inviteGroupMembers(@RequestBody @Validated ImGroupInviteMembersRequest request) {
         Long userId = UserContextUtils.get().getUserId();
-        ImGroupChatEnterCmd command = new ImGroupChatEnterCmd(request.getChatId(), userId);
-        chatAppService.enterGroupChat(command);
+        chatAppService.inviteGroupMembers(new ImGroupInviteMembersCmd(userId, request.getGroupId(), request.getMemberIds()));
     }
 
     @PostMapping(value = "/exitChat")
