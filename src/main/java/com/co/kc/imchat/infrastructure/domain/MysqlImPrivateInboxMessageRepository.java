@@ -44,6 +44,7 @@ public class MysqlImPrivateInboxMessageRepository implements ImPrivateInboxMessa
             dbImPrivateInboxMessageService.update(dbImPrivateInboxMessageService.getUpdateWrapper()
                     .set(DbImPrivateInboxMessage::getStatus, ImMessageDbTransformer.INSTANCE.dbImMessageStatusFrom(message.getStatus()))
                     .set(DbImPrivateInboxMessage::getReceiveTime, message.getReceivedTime())
+                    .set(DbImPrivateInboxMessage::getReadTime, message.getReadTime())
                     .set(DbImPrivateInboxMessage::getRevokeTime, message.getRevokeTime())
                     .set(DbImPrivateInboxMessage::getContent, message.getContent().getValue())
                     .set(DbImPrivateInboxMessage::getType, ImMessageDbTransformer.INSTANCE.dbImMessageTypeFrom(message.getContent().getType()))

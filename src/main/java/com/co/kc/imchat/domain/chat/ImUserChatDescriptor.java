@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -13,4 +15,5 @@ public class ImUserChatDescriptor {
     private ImChatName chatName;
     private ImChatType chatType;
     private ImMessage chatLastMessage;
+    private LocalDateTime activeTime;
 }

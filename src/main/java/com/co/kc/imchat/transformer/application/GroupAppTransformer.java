@@ -1,11 +1,11 @@
 package com.co.kc.imchat.transformer.application;
 
-import com.co.kc.imchat.domain.group.ImGroup;
+import com.co.kc.imchat.domain.group.Group;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.group.ImUserGroupDescriptor;
-import com.co.kc.imchat.domain.group.ImGroupMember;
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupDetailDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupItemDTO;
+import com.co.kc.imchat.domain.group.MemberDescriptor;
+import com.co.kc.imchat.domain.group.UserGroupDescriptor;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupDetailDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupItemDTO;
 import org.mapstruct.Mapper;
 import org.mapstruct.factory.Mappers;
 
@@ -16,14 +16,14 @@ import java.util.stream.Collectors;
 public interface GroupAppTransformer {
     GroupAppTransformer INSTANCE = Mappers.getMapper(GroupAppTransformer.class);
 
-    default List<ImGroupItemDTO> imGroupDtoListFrom(List<ImUserGroupDescriptor> imUserGroupDescriptors) {
-        return imUserGroupDescriptors.stream()
-                .map(this::imGroupItemDtoFrom)
+    default List<GroupItemDTO> groupDtoListFrom(List<UserGroupDescriptor> userGroupDescriptors) {
+        return userGroupDescriptors.stream()
+                .map(this::groupItemDtoFrom)
                 .collect(Collectors.toList());
     }
 
-    default ImGroupItemDTO imGroupItemDtoFrom(ImUserGroupDescriptor descriptor) {
-        ImGroupItemDTO dto = new ImGroupItemDTO();
+    default GroupItemDTO groupItemDtoFrom(UserGroupDescriptor descriptor) {
+        GroupItemDTO dto = new GroupItemDTO();
         dto.setGroupId(descriptor.getId().getValue());
         dto.setChatId(descriptor.getChat().getId().getValue());
         dto.setGroupName(descriptor.getName().getValue());
@@ -31,8 +31,8 @@ public interface GroupAppTransformer {
         return dto;
     }
 
-    default ImGroupItemDTO imGroupItemDtoFrom(ImGroup group, ImGroupChat groupChat, int memberCount) {
-        ImGroupItemDTO dto = new ImGroupItemDTO();
+    default GroupItemDTO groupItemDtoFrom(Group group, ImGroupChat groupChat, int memberCount) {
+        GroupItemDTO dto = new GroupItemDTO();
         dto.setGroupId(groupChat.getGroupId().getValue());
         dto.setChatId(groupChat.getId().getValue());
         if (group != null) {
@@ -42,22 +42,22 @@ public interface GroupAppTransformer {
         return dto;
     }
 
-    default ImGroupDetailDTO imGroupDetailDtoFrom(ImGroup group, ImGroupChat groupChat, List<ImGroupMember> members) {
-        ImGroupDetailDTO dto = new ImGroupDetailDTO();
+    default GroupDetailDTO groupDetailDtoFrom(Group group, ImGroupChat groupChat, List<MemberDescriptor> members) {
+        GroupDetailDTO dto = new GroupDetailDTO();
         dto.setGroupId(group.getId().getValue());
         dto.setChatId(groupChat.getId().getValue());
         dto.setGroupName(group.getName().getValue());
         dto.setOwnerId(group.getOwnerId().getValue());
         dto.setNotification(group.getNotification() == null ? null : group.getNotification().getValue());
         dto.setMemberCount(members.size());
-        dto.setMembers(members.stream().map(this::imGroupMemberDtoFrom).collect(Collectors.toList()));
+        dto.setMembers(members.stream().map(this::groupMemberDtoFrom).collect(Collectors.toList()));
         return dto;
     }
 
-    default ImGroupDetailDTO.Member imGroupMemberDtoFrom(ImGroupMember member) {
-        ImGroupDetailDTO.Member dto = new ImGroupDetailDTO.Member();
+    default GroupDetailDTO.Member groupMemberDtoFrom(MemberDescriptor member) {
+        GroupDetailDTO.Member dto = new GroupDetailDTO.Member();
         dto.setUserId(member.getUserId().getValue());
-        dto.setUserAlias(member.getUserAlias() == null ? null : member.getUserAlias().getValue());
+        dto.setDisplayName(member.getDisplayName().getValue());
         dto.setJoinTime(member.getJoinTime());
         return dto;
     }

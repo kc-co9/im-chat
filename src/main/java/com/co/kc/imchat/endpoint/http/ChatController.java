@@ -4,12 +4,17 @@ import com.co.kc.imchat.application.ChatAppService;
 import com.co.kc.imchat.model.cqrs.command.chat.ImChatExitCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatOpenCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatOpenCmd;
+import com.co.kc.imchat.model.cqrs.command.chat.PrivateChatHideCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupChatHideCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImChatOpenDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupChatOpenDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatOpenDTO;
 import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
 import com.co.kc.imchat.model.io.chat.ImChatListResponse;
-import com.co.kc.imchat.model.io.chat.ImGroupChatOpenRequest;
-import com.co.kc.imchat.model.io.chat.ImGroupChatOpenResponse;
+import com.co.kc.imchat.model.io.chat.PrivateChatHideRequest;
+import com.co.kc.imchat.model.io.group.GroupChatHideRequest;
+import com.co.kc.imchat.model.io.group.GroupChatOpenRequest;
+import com.co.kc.imchat.model.io.group.GroupChatOpenResponse;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatOpenRequest;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatOpenResponse;
 import com.co.kc.imchat.support.context.UserContextUtils;
@@ -43,21 +48,33 @@ public class ChatController {
     @PostMapping(value = "/openPrivateChat")
     public ImPrivateChatOpenResponse openPrivateChat(@RequestBody @Validated ImPrivateChatOpenRequest request) {
         Long userId = UserContextUtils.get().getUserId();
-        ImChatOpenDTO dto = chatAppService.openPrivateChat(new ImPrivateChatOpenCmd(userId, request.getPeerUserId()));
+        ImPrivateChatOpenDTO dto = chatAppService.openPrivateChat(new ImPrivateChatOpenCmd(userId, request.getPeerUserId()));
         return ImChatHttpIoTransformer.INSTANCE.imPrivateChatOpenResponseFrom(dto);
     }
 
     @PostMapping(value = "/openGroupChat")
-    public ImGroupChatOpenResponse openGroupChat(@RequestBody @Validated ImGroupChatOpenRequest request) {
+    public GroupChatOpenResponse openGroupChat(@RequestBody @Validated GroupChatOpenRequest request) {
         Long userId = UserContextUtils.get().getUserId();
-        ImChatOpenDTO dto = chatAppService.openGroupChat(new ImGroupChatOpenCmd(userId, request.getChatId()));
-        return ImChatHttpIoTransformer.INSTANCE.imGroupChatOpenResponseFrom(dto);
+        GroupChatOpenDTO dto = chatAppService.openGroupChat(new ImGroupChatOpenCmd(userId, request.getChatId()));
+        return ImChatHttpIoTransformer.INSTANCE.groupChatOpenResponseFrom(dto);
     }
 
     @PostMapping(value = "/exitChat")
     public void exitChat() {
         Long userId = UserContextUtils.get().getUserId();
         chatAppService.exitChat(new ImChatExitCmd(userId));
+    }
+
+    @PostMapping(value = "/hidePrivateChat")
+    public void hidePrivateChat(@RequestBody @Validated PrivateChatHideRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        chatAppService.hidePrivateChat(new PrivateChatHideCmd(userId, request.getChatId()));
+    }
+
+    @PostMapping(value = "/hideGroupChat")
+    public void hideGroupChat(@RequestBody @Validated GroupChatHideRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        chatAppService.hideGroupChat(new GroupChatHideCmd(userId, request.getChatId()));
     }
 
 }

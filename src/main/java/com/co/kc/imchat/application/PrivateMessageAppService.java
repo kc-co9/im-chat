@@ -11,7 +11,6 @@ import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.chat.ImPrivateChatRepository;
-import com.co.kc.imchat.domain.message.ImPrivateMessageReadEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImMessageService;
@@ -214,13 +213,6 @@ public class PrivateMessageAppService {
 
         imPrivateChat.readMessage(imMessage);
         imPrivateChatRepository.save(imPrivateChat);
-
-        ImPrivateMessageReadEvent imMessageReadEvent = imMessageService.newImMessageReadEvent(imMessage);
-        imMessageEventPublisher.publish(imMessageReadEvent);
-    }
-
-    public void onMessageRead(ImPrivateMessageReadEvent event) {
-        imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateMessageReadNotifyCmdFrom(event));
     }
 
     public List<ImPrivateMessageDTO> queryHistoryMessage(ImPrivateMessageHistoryQuery query) {

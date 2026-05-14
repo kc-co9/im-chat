@@ -1,7 +1,7 @@
 package com.co.kc.imchat.domain.message;
 
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.user.UserId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class ImGroupInboxMessage extends ImMessage {
-    private ImGroupId groupId;
+    private GroupId groupId;
     private ImChatId chatId;
     private UserId userId;
     private ImGroupMessageStatus status;
@@ -79,7 +79,7 @@ public class ImGroupInboxMessage extends ImMessage {
             return this;
         }
 
-        public Builder groupId(ImGroupId groupId) {
+        public Builder groupId(GroupId groupId) {
             message.setGroupId(groupId);
             return this;
         }

@@ -1,9 +1,9 @@
 package com.co.kc.imchat.transformer.http;
 
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupMessageDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupMessageDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
-import com.co.kc.imchat.model.io.im.ImGroupMessageDetailResponse;
-import com.co.kc.imchat.model.io.im.ImGroupMessageHistoryQueryResponse;
+import com.co.kc.imchat.model.io.group.GroupMessageDetailResponse;
+import com.co.kc.imchat.model.io.group.GroupMessageHistoryQueryResponse;
 import com.co.kc.imchat.model.io.im.ImPrivateMessageHistoryQueryResponse;
 import com.co.kc.imchat.model.io.im.ImPrivateMessageDetailQueryResponse;
 import org.mapstruct.Mapper;
@@ -35,7 +35,7 @@ public interface ImMessageHttpIoTransformer {
     )
     ImPrivateMessageHistoryQueryResponse.MessageItem imPrivateMessageItemFrom(ImPrivateMessageDTO message);
 
-    List<ImGroupMessageHistoryQueryResponse.MessageItem> imGroupMessageItemListFrom(List<ImGroupMessageDTO> messageList);
+    List<GroupMessageHistoryQueryResponse.MessageItem> groupMessageItemListFrom(List<GroupMessageDTO> messageList);
 
     @Mappings(value = {
             @Mapping(target = "messageId", source = "messageId"),
@@ -46,9 +46,10 @@ public interface ImMessageHttpIoTransformer {
             @Mapping(target = "senderId", source = "senderId"),
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "sendTime", source = "sendTime"),
+            @Mapping(target = "readTime", source = "readTime"),
             @Mapping(target = "revokeTime", source = "revokeTime")}
     )
-    ImGroupMessageHistoryQueryResponse.MessageItem imGroupMessageItemFrom(ImGroupMessageDTO message);
+    GroupMessageHistoryQueryResponse.MessageItem groupMessageItemFrom(GroupMessageDTO message);
 
     @Mappings(value = {
             @Mapping(target = "messageId", source = "messageId"),
@@ -74,7 +75,8 @@ public interface ImMessageHttpIoTransformer {
             @Mapping(target = "senderId", source = "senderId"),
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "sendTime", source = "sendTime"),
+            @Mapping(target = "readTime", source = "readTime"),
             @Mapping(target = "revokeTime", source = "revokeTime")}
     )
-    ImGroupMessageDetailResponse imGroupMessageDetailResponseFrom(ImGroupMessageDTO imGroupMessageDTO);
+    GroupMessageDetailResponse groupMessageDetailResponseFrom(GroupMessageDTO imGroupMessageDTO);
 }

@@ -1,7 +1,7 @@
 package com.co.kc.imchat.domain.message;
 
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.model.enums.ImMessageTypeEnum;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
@@ -21,7 +21,7 @@ public class ImMessageService {
     private final SnowflakeId snowflakeId;
 
 
-    public ImGroupMessageTransmission transmitGroupCreated(ImGroupId groupId,
+    public ImGroupMessageTransmission transmitGroupCreated(GroupId groupId,
                                                            UserId ownerId,
                                                            ImGroupChat ownerChat,
                                                            List<ImGroupChat> groupChats) {
@@ -29,6 +29,21 @@ public class ImMessageService {
                 new ImMessageId(snowflakeId.next()),
                 ImSystemMessageTokenFactory.createSystemGroupCreated(groupId),
                 new ImMessageContent(ImMessageType.SYSTEM, "群聊已创建"));
+        ImMessageSender sender = new ImMessageSender(ownerChat, ownerId);
+        List<ImMessageRecipient> recipients = groupChats.stream()
+                .map(chat -> new ImMessageRecipient(chat, chat.getUserId().equals(ownerId)))
+                .collect(Collectors.toList());
+        return this.transmitGroupMessage(outboundMessage, sender, recipients);
+    }
+
+    public ImGroupMessageTransmission transmitGroupDismissed(GroupId groupId,
+                                                             UserId ownerId,
+                                                             ImGroupChat ownerChat,
+                                                             List<ImGroupChat> groupChats) {
+        ImOutboundMessage outboundMessage = new ImOutboundMessage(
+                new ImMessageId(snowflakeId.next()),
+                ImSystemMessageTokenFactory.createSystemGroupDismissed(groupId),
+                new ImMessageContent(ImMessageType.SYSTEM, "群聊已解散"));
         ImMessageSender sender = new ImMessageSender(ownerChat, ownerId);
         List<ImMessageRecipient> recipients = groupChats.stream()
                 .map(chat -> new ImMessageRecipient(chat, chat.getUserId().equals(ownerId)))
@@ -101,17 +116,7 @@ public class ImMessageService {
         return imMessageReceivedEvent;
     }
 
-    public ImPrivateMessageReadEvent newImMessageReadEvent(ImPrivateInboxMessage imMessage) {
-        ImPrivateMessageReadEvent imMessageReadEvent = new ImPrivateMessageReadEvent();
-        imMessageReadEvent.setChatId(imMessage.getChatId().getValue());
-        imMessageReadEvent.setReceiverId(imMessage.getSenderId().getValue());
-        imMessageReadEvent.setMessageId(imMessage.getId().getValue());
-        imMessageReadEvent.setCreateTime(LocalDateTime.now());
-        return imMessageReadEvent;
-    }
-
-
-    public ImGroupMessageSentEvent newImMessageSentEvent(ImGroupId groupId, ImGroupInboxMessage imMessage) {
+    public ImGroupMessageSentEvent newImMessageSentEvent(GroupId groupId, ImGroupInboxMessage imMessage) {
         ImMessageTypeEnum imMessageTypeEnum =
                 ImMessageAppTransformer.INSTANCE.imMessageTypeEnumFrom(imMessage.getContent().getType());
         ImGroupMessageSentEvent event = new ImGroupMessageSentEvent();
@@ -125,7 +130,7 @@ public class ImMessageService {
         return event;
     }
 
-    public ImGroupMessageRevokedEvent newImMessageRevokedEvent(ImGroupId groupId, ImGroupInboxMessage imMessage) {
+    public ImGroupMessageRevokedEvent newImMessageRevokedEvent(GroupId groupId, ImGroupInboxMessage imMessage) {
         ImGroupMessageRevokedEvent event = new ImGroupMessageRevokedEvent();
         event.setGroupId(groupId.getValue());
         event.setMessageId(imMessage.getId().getValue());

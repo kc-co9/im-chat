@@ -1,9 +1,9 @@
 package com.co.kc.imchat.infrastructure.domain;
 
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
-import com.co.kc.imchat.domain.group.ImGroup;
-import com.co.kc.imchat.domain.group.ImGroupId;
-import com.co.kc.imchat.domain.group.ImGroupRepository;
+import com.co.kc.imchat.domain.group.Group;
+import com.co.kc.imchat.domain.group.GroupId;
+import com.co.kc.imchat.domain.group.GroupRepository;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroup;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
@@ -20,35 +20,35 @@ import java.util.List;
 
 @Repository
 @RequiredArgsConstructor
-public class MysqlImGroupRepository implements ImGroupRepository {
+public class MysqlImGroupRepository implements GroupRepository {
     private final DbImGroupService dbImGroupService;
     private final DbImGroupChatService dbImGroupChatService;
 
     @Override
-    public ImGroup find(ImGroupId groupId) {
+    public Group find(GroupId groupId) {
         return dbImGroupService.getByGroupId(groupId.getValue())
                 .map(ImChatDomainTransformer.INSTANCE::imGroupFrom)
                 .orElse(null);
     }
 
     @Override
-    public List<ImGroup> find(List<ImGroupId> groupIds) {
+    public List<Group> find(List<GroupId> groupIds) {
         if (CollectionUtils.isEmpty(groupIds)) {
             return Collections.emptyList();
         }
-        List<Long> groupIdValues = FunctionUtils.mappingList(groupIds, ImGroupId::getValue);
+        List<Long> groupIdValues = FunctionUtils.mappingList(groupIds, GroupId::getValue);
         List<DbImGroup> rows = dbImGroupService.listByGroupIds(groupIdValues);
         return ImChatDomainTransformer.INSTANCE.imGroupListFrom(rows);
     }
 
     @Override
-    public List<ImGroup> find(UserId userId) {
+    public List<Group> find(UserId userId) {
         List<DbImGroup> dbImGroups = dbImGroupService.getListByUserId(userId.getValue());
         return ImChatDomainTransformer.INSTANCE.imGroupListFrom(dbImGroups);
     }
 
     @Override
-    public void save(ImGroup group) {
+    public void save(Group group) {
         DbImGroup row = ImChatDbTransformer.INSTANCE.dbImGroupFrom(group);
         dbImGroupService.saveOrUpdate(row);
     }

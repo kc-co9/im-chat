@@ -2,6 +2,7 @@ package com.co.kc.imchat.application;
 
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatService;
+import com.co.kc.imchat.domain.chat.ImChatStatus;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.chat.ImPrivateChatRepository;
@@ -10,20 +11,22 @@ import com.co.kc.imchat.domain.friend.FriendRepository;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.domain.message.ImMessageContent;
 import com.co.kc.imchat.domain.message.ImMessageId;
+import com.co.kc.imchat.domain.message.ImMessageService;
 import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.message.ImMessageType;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessageRepository;
 import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
-import com.co.kc.imchat.domain.message.ImMessageService;
 import com.co.kc.imchat.domain.session.Session;
 import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatOpenCmd;
+import com.co.kc.imchat.model.cqrs.command.chat.PrivateChatHideCmd;
+import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
-import com.co.kc.imchat.model.cqrs.dto.im.ImChatOpenDTO;
-import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatOpenDTO;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
+import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -38,7 +41,7 @@ class PrivateChatAppServiceTest {
 
     @Test
     void openPrivateChatCreatesBothSidesAndEntersCurrentUserChat() {
-        RecordingPrivateChatRepository privateChatRepository = new RecordingPrivateChatRepository();
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
         SignedInSessionRepository sessionRepository = new SignedInSessionRepository();
         ChatAppService appService = new ChatAppService(
                 new FixedSnowflakeId(3000L),
@@ -46,13 +49,16 @@ class PrivateChatAppServiceTest {
                 null,
                 null,
                 null,
+                null,
                 new NormalFriendRepository(),
                 new ImChatService(null, null, privateChatRepository, null, null, sessionRepository));
         ImPrivateChatOpenCmd command = new ImPrivateChatOpenCmd(1L, 2L);
 
-        ImChatOpenDTO result = appService.openPrivateChat(command);
+        ImPrivateChatOpenDTO result = appService.openPrivateChat(command);
 
         assertThat(result.getChatId()).isEqualTo(3000L);
+        assertThat(result.getPeerUserId()).isEqualTo(2L);
+
         assertThat(privateChatRepository.savedChats)
                 .extracting(chat -> chat.getUserId().getValue())
                 .containsExactly(1L, 2L);
@@ -62,17 +68,78 @@ class PrivateChatAppServiceTest {
         assertThat(privateChatRepository.savedChats)
                 .extracting(chat -> chat.getId().getValue())
                 .containsExactly(3000L, 3001L);
+        assertThat(privateChatRepository.savedChats)
+                .extracting(ImPrivateChat::getStatus)
+                .containsExactly(ImChatStatus.NORMAL, ImChatStatus.NORMAL);
+        assertThat(privateChatRepository.savedChats)
+                .allSatisfy(chat -> assertThat(chat.getActiveTime()).isNotNull());
         assertThat(sessionRepository.session.getChatId().getValue()).isEqualTo(3000L);
     }
 
     @Test
-    void revokePrivateMessageUsesOriginalSenderForBothInboxCopies() {
-        RecordingPrivateChatRepository privateChatRepository = new RecordingPrivateChatRepository();
+    void openPrivateChatShowsHiddenChatAndUpdatesActiveTime() {
+        LocalDateTime oldActiveTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        ImPrivateChat userChat = privateChat(101L, 1L, 2L);
+        userChat.hide();
+        userChat.setActiveTime(oldActiveTime);
+
+        privateChatRepository.chats.add(userChat);
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+
+        ChatAppService appService = new ChatAppService(
+                new FixedSnowflakeId(3000L),
+                privateChatRepository,
+                null,
+                null,
+                null,
+                null,
+                new NormalFriendRepository(),
+                new ImChatService(null, null, privateChatRepository, null, null, new SignedInSessionRepository()));
+
+        ImPrivateChatOpenDTO result = appService.openPrivateChat(new ImPrivateChatOpenCmd(1L, 2L));
+
+        assertThat(result.getChatId()).isEqualTo(101L);
+
+        ImPrivateChat savedChat = privateChatRepository.savedChats.get(0);
+        assertThat(savedChat.getStatus()).isEqualTo(ImChatStatus.NORMAL);
+        assertThat(savedChat.getActiveTime()).isAfter(oldActiveTime);
+    }
+
+    @Test
+    void hidePrivateChatHidesOnlyCurrentUserChat() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
         privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
         privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
-        RecordingPrivateInboxRepository inboxRepository = new RecordingPrivateInboxRepository();
+
+        ChatAppService appService = new ChatAppService(
+                null,
+                privateChatRepository,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ImChatService(null, null, privateChatRepository, null, null, null));
+
+        appService.hidePrivateChat(new PrivateChatHideCmd(1L, 101L));
+
+        assertThat(privateChatRepository.savedChats).hasSize(1);
+
+        ImPrivateChat savedChat = privateChatRepository.savedChats.get(0);
+        assertThat(savedChat.getStatus()).isEqualTo(ImChatStatus.HIDDEN);
+    }
+
+    @Test
+    void revokePrivateMessageUsesOriginalSenderForBothInboxCopies() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
         inboxRepository.messages.add(privateMessage(900L, 101L, 1L, 1L, ImPrivateMessageStatus.SENT));
         inboxRepository.messages.add(privateMessage(900L, 102L, 2L, 1L, ImPrivateMessageStatus.RECEIVED));
+
         PrivateMessageAppService appService = new PrivateMessageAppService(
                 new FixedSnowflakeId(900L),
                 privateChatRepository,
@@ -81,7 +148,8 @@ class PrivateChatAppServiceTest {
                 new ImChatService(null, null, privateChatRepository, null, null, null),
                 new ImMessageService(new FixedSnowflakeId(1L)),
                 null,
-                new NoopDomainEventPublisher());
+                new MemoryDomainEventPublisher());
+
         ImPrivateMessageRevokeCmd command = new ImPrivateMessageRevokeCmd();
         command.setChatId(101L);
         command.setUserId(1L);
@@ -92,6 +160,37 @@ class PrivateChatAppServiceTest {
         assertThat(inboxRepository.savedMessages)
                 .extracting(ImPrivateInboxMessage::getStatus)
                 .containsExactly(ImPrivateMessageStatus.REVOKED, ImPrivateMessageStatus.REVOKED);
+    }
+
+    @Test
+    void readPrivateMessageOnlyPersistsLocalReadState() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        inboxRepository.messages.add(privateMessage(900L, 102L, 2L, 1L, ImPrivateMessageStatus.RECEIVED));
+
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                new FixedSnowflakeId(900L),
+                privateChatRepository,
+                inboxRepository,
+                null,
+                new ImChatService(null, null, privateChatRepository, null, null, null),
+                new ImMessageService(new FixedSnowflakeId(1L)),
+                null,
+                eventPublisher);
+
+        appService.readMessage(new ImPrivateMessageReadCmd(102L, 2L, 900L));
+
+        ImPrivateInboxMessage savedMessage = inboxRepository.savedMessages.get(0);
+        assertThat(savedMessage.getStatus()).isEqualTo(ImPrivateMessageStatus.READ);
+        assertThat(savedMessage.getReadTime()).isNotNull();
+
+        ImPrivateChat savedChat = privateChatRepository.savedChats.get(0);
+        assertThat(savedChat.getReadMessageId().getValue()).isEqualTo(900L);
+        assertThat(savedChat.getUnreadMessageCount()).isZero();
+        assertThat(eventPublisher.events).isEmpty();
     }
 
     private ImPrivateChat privateChat(Long chatId, Long userId, Long peerUserId) {
@@ -117,7 +216,7 @@ class PrivateChatAppServiceTest {
                 .build();
     }
 
-    private static class RecordingPrivateChatRepository implements ImPrivateChatRepository {
+    private static class MemoryPrivateChatRepository implements ImPrivateChatRepository {
         private final List<ImPrivateChat> chats = new ArrayList<>();
         private final List<ImPrivateChat> savedChats = new ArrayList<>();
 
@@ -155,7 +254,7 @@ class PrivateChatAppServiceTest {
         }
     }
 
-    private static class RecordingPrivateInboxRepository implements ImPrivateInboxMessageRepository {
+    private static class MemoryPrivateInboxRepository implements ImPrivateInboxMessageRepository {
         private final List<ImPrivateInboxMessage> messages = new ArrayList<>();
         private final List<ImPrivateInboxMessage> savedMessages = new ArrayList<>();
 
@@ -183,12 +282,14 @@ class PrivateChatAppServiceTest {
         }
 
         @Override
-        public List<ImPrivateInboxMessage> queryHistory(ImChatId imChatId, ImMessageId imLastMessageId, int count, UserId viewer) {
+        public List<ImPrivateInboxMessage> queryHistory(
+                ImChatId imChatId, ImMessageId imLastMessageId, int count, UserId viewer) {
             return Collections.emptyList();
         }
 
         @Override
-        public Optional<ImPrivateInboxMessage> queryDetail(ImChatId chatId, ImMessageToken messageToken, UserId viewer) {
+        public Optional<ImPrivateInboxMessage> queryDetail(
+                ImChatId chatId, ImMessageToken messageToken, UserId viewer) {
             return Optional.empty();
         }
 
@@ -239,13 +340,17 @@ class PrivateChatAppServiceTest {
         }
     }
 
-    private static class NoopDomainEventPublisher implements DomainEventPublisher {
+    private static class MemoryDomainEventPublisher implements DomainEventPublisher {
+        private final List<com.co.kc.imchat.domain.shared.DomainEvent> events = new ArrayList<>();
+
         @Override
         public void publish(com.co.kc.imchat.domain.shared.DomainEvent event) {
+            events.add(event);
         }
 
         @Override
         public void publish(List<com.co.kc.imchat.domain.shared.DomainEvent> eventList) {
+            events.addAll(eventList);
         }
     }
 

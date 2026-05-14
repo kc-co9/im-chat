@@ -4,7 +4,8 @@ import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
 public enum ImSystemMessageType {
-    GROUP_CREATED("system:group_created:");
+    GROUP_CREATED("system:group_created:"),
+    GROUP_DISMISSED("system:group_dismissed:");
 
     private final String tokenPrefix;
 

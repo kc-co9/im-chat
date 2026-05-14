@@ -1,6 +1,7 @@
 package com.co.kc.imchat.infrastructure.mybatis.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbImGroupStatus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -12,4 +13,5 @@ public class DbImGroup extends BaseEntity {
     private Long ownerId;
     private String name;
     private String notification;
+    private DbImGroupStatus status;
 }

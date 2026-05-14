@@ -1,9 +1,9 @@
 package com.co.kc.imchat.transformer.http;
 
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupDetailDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupItemDTO;
-import com.co.kc.imchat.model.io.chat.ImGroupDetailResponse;
-import com.co.kc.imchat.model.io.chat.ImGroupListResponse;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupDetailDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupItemDTO;
+import com.co.kc.imchat.model.io.group.GroupDetailResponse;
+import com.co.kc.imchat.model.io.group.GroupListResponse;
 import org.mapstruct.Mapper;
 import org.mapstruct.factory.Mappers;
 
@@ -13,9 +13,9 @@ import java.util.List;
 public interface GroupHttpIoTransformer {
     GroupHttpIoTransformer INSTANCE = Mappers.getMapper(GroupHttpIoTransformer.class);
 
-    List<ImGroupListResponse.GroupItem> imGroupItemListFrom(List<ImGroupItemDTO> groupList);
+    List<GroupListResponse.GroupItem> groupItemListFrom(List<GroupItemDTO> groupList);
 
-    ImGroupListResponse.GroupItem imGroupItemFrom(ImGroupItemDTO groupItem);
+    GroupListResponse.GroupItem groupItemFrom(GroupItemDTO groupItem);
 
-    ImGroupDetailResponse imGroupDetailResponseFrom(ImGroupDetailDTO detail);
+    GroupDetailResponse groupDetailResponseFrom(GroupDetailDTO detail);
 }

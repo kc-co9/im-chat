@@ -2,11 +2,11 @@ package com.co.kc.imchat.domain.chat;
 
 import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendRepository;
-import com.co.kc.imchat.domain.group.ImGroup;
-import com.co.kc.imchat.domain.group.ImGroupAlias;
-import com.co.kc.imchat.domain.group.ImGroupId;
-import com.co.kc.imchat.domain.group.ImGroupMember;
-import com.co.kc.imchat.domain.group.ImGroupRepository;
+import com.co.kc.imchat.domain.group.Group;
+import com.co.kc.imchat.domain.group.GroupAlias;
+import com.co.kc.imchat.domain.group.GroupId;
+import com.co.kc.imchat.domain.group.GroupMember;
+import com.co.kc.imchat.domain.group.GroupRepository;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.support.exception.AuthException;
@@ -21,6 +21,7 @@ import org.apache.commons.collections4.ListUtils;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -34,7 +35,7 @@ public class ImChatService {
     private final SnowflakeId snowflakeId;
     private final FriendRepository friendRepository;
     private final ImPrivateChatRepository imPrivateChatRepository;
-    private final ImGroupRepository imGroupRepository;
+    private final GroupRepository groupRepository;
     private final ImGroupChatRepository imGroupChatRepository;
     private final SessionRepository sessionRepository;
 
@@ -52,10 +53,14 @@ public class ImChatService {
         List<ImGroupChat> imGroupChatList = imGroupChatRepository.find(userId);
         List<ImUserChatDescriptor> imGroupChatDescriptors = buildGroupChatDescriptors(userId, imGroupChatList);
 
-        return ListUtils.union(imPrivateChatDescriptors, imGroupChatDescriptors);
+        return ListUtils.union(imPrivateChatDescriptors, imGroupChatDescriptors).stream()
+                .sorted(Comparator.comparing(
+                        ImUserChatDescriptor::getActiveTime,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .collect(Collectors.toList());
     }
 
-    public List<ImGroupChat> createGroupChats(List<ImGroupMember> newMembers) {
+    public List<ImGroupChat> createGroupChats(List<GroupMember> newMembers) {
         return CollectionUtils.emptyIfNull(newMembers).stream()
                 .distinct()
                 .map(member -> ImGroupChat.builder()
@@ -93,6 +98,12 @@ public class ImChatService {
         if (CollectionUtils.isEmpty(imPrivateChatList)) {
             return Collections.emptyList();
         }
+        imPrivateChatList = imPrivateChatList.stream()
+                .filter(ImChat::isVisible)
+                .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(imPrivateChatList)) {
+            return Collections.emptyList();
+        }
 
         List<UserId> friendUserIds = FunctionUtils.mappingList(imPrivateChatList, ImPrivateChat::getPeerUserId);
         List<Friend> friendList = friendRepository.find(userId, friendUserIds);
@@ -110,6 +121,7 @@ public class ImChatService {
                     descriptor.setChatId(imPrivateChat.getId());
                     descriptor.setChatName(obtainFriendChatName(friendMap.get(friendUserId)));
                     descriptor.setChatType(imPrivateChat.getType());
+                    descriptor.setActiveTime(imPrivateChat.getActiveTime());
                     Long lastMessageId = FunctionUtils.mappingOrNull(imPrivateChat.getLastMessageId(), ImMessageId::getValue);
                     descriptor.setChatLastMessage(chatLastMessageMap.get(lastMessageId));
                     return descriptor;
@@ -120,21 +132,33 @@ public class ImChatService {
         if (CollectionUtils.isEmpty(imGroupChatList)) {
             return Collections.emptyList();
         }
+        imGroupChatList = imGroupChatList.stream()
+                .filter(ImChat::isVisible)
+                .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(imGroupChatList)) {
+            return Collections.emptyList();
+        }
 
-        List<ImGroupId> groupIds = FunctionUtils.mappingList(imGroupChatList, ImGroupChat::getGroupId);
-        List<ImGroup> groups = imGroupRepository.find(groupIds);
-        Map<ImGroupId, ImGroup> groupMap = FunctionUtils.mappingMap(groups, ImGroup::getId, Function.identity());
+        List<GroupId> groupIds = FunctionUtils.mappingList(imGroupChatList, ImGroupChat::getGroupId);
+        List<Group> groups = groupRepository.find(groupIds);
+        Map<GroupId, Group> groupMap = FunctionUtils.mappingMap(groups, Group::getId, Function.identity());
 
         List<ImChatId> chatIds = FunctionUtils.mappingList(imGroupChatList, ImGroupChat::getId);
         List<ImMessage> chatLastMessages = imGroupChatRepository.findLastMessageList(chatIds, userId);
         Map<ImChatId, ImMessage> chatLastMessageMap = FunctionUtils.mappingMap(
                 chatLastMessages, message -> ((ImGroupInboxMessage) message).getChatId(), Function.identity());
 
-        return imGroupChatList.stream().map(imGroupChat -> {
+        return imGroupChatList.stream()
+                .filter(imGroupChat -> {
+                    Group group = groupMap.get(imGroupChat.getGroupId());
+                    return group != null && !group.isDismissed();
+                })
+                .map(imGroupChat -> {
             ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
             descriptor.setChatId(imGroupChat.getId());
             descriptor.setChatName(obtainGroupChatName(groupMap.get(imGroupChat.getGroupId()), imGroupChat.getGroupAlias()));
             descriptor.setChatType(imGroupChat.getType());
+            descriptor.setActiveTime(imGroupChat.getActiveTime());
             descriptor.setChatLastMessage(chatLastMessageMap.get(imGroupChat.getId()));
             return descriptor;
         }).collect(Collectors.toList());
@@ -153,7 +177,7 @@ public class ImChatService {
         return new ImChatName(friend.displayName().getValue());
     }
 
-    public ImChatName obtainGroupChatName(ImGroup group, ImGroupAlias imGroupAlias) {
+    public ImChatName obtainGroupChatName(Group group, GroupAlias imGroupAlias) {
         if (group == null) {
             return null;
         }

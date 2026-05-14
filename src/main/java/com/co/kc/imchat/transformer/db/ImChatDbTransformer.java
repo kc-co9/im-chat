@@ -1,8 +1,10 @@
 package com.co.kc.imchat.transformer.db;
 
-import com.co.kc.imchat.domain.group.ImGroup;
+import com.co.kc.imchat.domain.group.Group;
+import com.co.kc.imchat.domain.group.GroupStatus;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.group.ImGroupMember;
+import com.co.kc.imchat.domain.group.GroupMember;
+import com.co.kc.imchat.domain.chat.ImChatStatus;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroup;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
@@ -13,7 +15,9 @@ import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 
 import com.co.kc.imchat.domain.chat.ImChatType;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatStatus;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatType;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbImGroupStatus;
 import org.mapstruct.factory.Mappers;
 
 import java.util.List;
@@ -31,22 +35,25 @@ public interface ImChatDbTransformer {
         row.setLastMessageId(imPrivateChat.getLastMessageId() == null ? 0L : imPrivateChat.getLastMessageId().getValue());
         row.setReadMessageId(imPrivateChat.getReadMessageId() == null ? 0L : imPrivateChat.getReadMessageId().getValue());
         row.setUnreadMessageCount(imPrivateChat.getUnreadMessageCount() == null ? 0 : imPrivateChat.getUnreadMessageCount());
+        row.setStatus(dbImChatStatusFrom(imPrivateChat.getStatus()));
+        row.setActiveTime(imPrivateChat.getActiveTime());
         return row;
     }
 
-    default DbImGroup dbImGroupFrom(ImGroup group) {
+    default DbImGroup dbImGroupFrom(Group group) {
         DbImGroup dbGroup = new DbImGroup();
         dbGroup.setId(group.getPkId());
         dbGroup.setGroupId(group.getId().getValue());
         dbGroup.setOwnerId(group.getOwnerId().getValue());
         dbGroup.setName(group.getName().getValue());
         dbGroup.setNotification(group.getNotification() == null ? "" : group.getNotification().getValue());
+        dbGroup.setStatus(dbImGroupStatusFrom(group.getStatus()));
         return dbGroup;
     }
 
     List<DbImGroupChat> dbImGroupChatListFrom(List<ImGroupChat> groupChats);
 
-    List<DbImGroupMember> dbImGroupMemberListFrom(List<ImGroupMember> members);
+    List<DbImGroupMember> dbImGroupMemberListFrom(List<GroupMember> members);
 
     default DbImGroupChat dbImGroupChatFrom(ImGroupChat groupChat) {
         DbImGroupChat dbGroupChat = new DbImGroupChat();
@@ -57,11 +64,14 @@ public interface ImChatDbTransformer {
         dbGroupChat.setGroupAlias(groupChat.getGroupAlias() == null ? "" : groupChat.getGroupAlias().getValue());
         dbGroupChat.setLastMessageId(groupChat.getLastMessageId() == null ? 0L : groupChat.getLastMessageId().getValue());
         dbGroupChat.setReadMessageId(groupChat.getReadMessageId() == null ? 0L : groupChat.getReadMessageId().getValue());
+        dbGroupChat.setReadTime(groupChat.getReadTime());
         dbGroupChat.setUnreadMessageCount(groupChat.getUnreadMessageCount() == null ? 0 : groupChat.getUnreadMessageCount());
+        dbGroupChat.setStatus(dbImChatStatusFrom(groupChat.getStatus()));
+        dbGroupChat.setActiveTime(groupChat.getActiveTime());
         return dbGroupChat;
     }
 
-    default DbImGroupMember dbImGroupMemberFrom(ImGroupMember member) {
+    default DbImGroupMember dbImGroupMemberFrom(GroupMember member) {
         DbImGroupMember dbGroupMember = new DbImGroupMember();
         dbGroupMember.setId(member.getPkId());
         dbGroupMember.setGroupId(member.getGroupId().getValue());
@@ -76,5 +86,26 @@ public interface ImChatDbTransformer {
             @ValueMapping(source = "GROUP", target = "GROUP")
     })
     DbImChatType dbImChatTypeFrom(ImChatType type);
+
+    default DbImChatStatus dbImChatStatusFrom(ImChatStatus status) {
+        if (status == null) {
+            return DbImChatStatus.UNKNOWN;
+        }
+        switch (status) {
+            case NORMAL:
+                return DbImChatStatus.NORMAL;
+            case HIDDEN:
+                return DbImChatStatus.HIDDEN;
+            case UNKNOWN:
+            default:
+                return DbImChatStatus.UNKNOWN;
+        }
+    }
+
+    @ValueMappings(value = {
+            @ValueMapping(source = "NORMAL", target = "NORMAL"),
+            @ValueMapping(source = "DISMISSED", target = "DISMISSED")
+    })
+    DbImGroupStatus dbImGroupStatusFrom(GroupStatus status);
 
 }

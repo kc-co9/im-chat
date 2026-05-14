@@ -1,8 +1,11 @@
 package com.co.kc.imchat.infrastructure.mybatis.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatStatus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+
+import java.time.LocalDateTime;
 
 /**
  * 私聊表(DbImPrivateChat)表实体类
@@ -26,5 +29,8 @@ public class DbImPrivateChat extends BaseEntity {
     private Long readMessageId;
     //未读消息数量
     private Integer unreadMessageCount;
+    //状态
+    private DbImChatStatus status;
+    //活跃时间
+    private LocalDateTime activeTime;
 }
-

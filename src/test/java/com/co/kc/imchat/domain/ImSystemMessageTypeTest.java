@@ -12,4 +12,10 @@ class ImSystemMessageTypeTest {
         assertThat(ImSystemMessageType.GROUP_CREATED.token(1001L).getValue())
                 .isEqualTo("system:group_created:1001");
     }
+
+    @Test
+    void groupDismissedBuildsTokenWithSystemPrefix() {
+        assertThat(ImSystemMessageType.GROUP_DISMISSED.token(1001L).getValue())
+                .isEqualTo("system:group_dismissed:1001");
+    }
 }

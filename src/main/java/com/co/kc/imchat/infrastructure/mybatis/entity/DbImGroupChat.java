@@ -1,8 +1,11 @@
 package com.co.kc.imchat.infrastructure.mybatis.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatStatus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+
+import java.time.LocalDateTime;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -14,5 +17,8 @@ public class DbImGroupChat extends BaseEntity {
     private String groupAlias;
     private Long lastMessageId;
     private Long readMessageId;
+    private LocalDateTime readTime;
     private Integer unreadMessageCount;
+    private DbImChatStatus status;
+    private LocalDateTime activeTime;
 }

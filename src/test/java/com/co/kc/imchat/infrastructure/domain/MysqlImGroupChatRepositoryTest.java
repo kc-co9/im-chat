@@ -3,7 +3,7 @@ package com.co.kc.imchat.infrastructure.domain;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupChatService;
@@ -23,7 +23,7 @@ class MysqlImGroupChatRepositoryTest {
         ImGroupChat groupChat = ImGroupChat.builder()
                 .pkId(1L)
                 .id(new ImChatId(101L))
-                .groupId(new ImGroupId(1001L))
+                .groupId(new GroupId(1001L))
                 .userId(new UserId(1L))
                 .type(ImChatType.GROUP)
                 .unreadMessageCount(1)

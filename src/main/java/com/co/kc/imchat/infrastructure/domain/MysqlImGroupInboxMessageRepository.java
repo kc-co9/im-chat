@@ -3,7 +3,7 @@ package com.co.kc.imchat.infrastructure.domain;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
@@ -61,7 +61,7 @@ public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRe
     }
 
     @Override
-    public List<ImGroupInboxMessage> findByGroupIdAndMessageId(ImGroupId groupId, ImMessageId messageId) {
+    public List<ImGroupInboxMessage> findByGroupIdAndMessageId(GroupId groupId, ImMessageId messageId) {
         List<DbImGroupInboxMessage> rows =
                 dbImGroupInboxMessageService.listByGroupIdAndMessageId(groupId.getValue(), messageId.getValue());
         return ImMessageDomainTransformer.INSTANCE.imGroupInboxMessageListFrom(rows);

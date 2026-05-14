@@ -2,29 +2,31 @@ package com.co.kc.imchat.application;
 
 import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImChatType;
-import com.co.kc.imchat.domain.group.ImGroup;
+import com.co.kc.imchat.domain.group.Group;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
-import com.co.kc.imchat.domain.group.ImUserGroupDescriptor;
-import com.co.kc.imchat.domain.group.ImGroupId;
-import com.co.kc.imchat.domain.group.ImGroupMember;
-import com.co.kc.imchat.domain.group.ImGroupMemberRepository;
-import com.co.kc.imchat.domain.group.ImGroupName;
-import com.co.kc.imchat.domain.group.ImGroupRepository;
-import com.co.kc.imchat.domain.group.ImGroupRoster;
-import com.co.kc.imchat.domain.group.ImGroupService;
+import com.co.kc.imchat.domain.group.UserGroupDescriptor;
+import com.co.kc.imchat.domain.group.GroupId;
+import com.co.kc.imchat.domain.group.GroupMember;
+import com.co.kc.imchat.domain.group.MemberDescriptor;
+import com.co.kc.imchat.domain.group.GroupMemberRepository;
+import com.co.kc.imchat.domain.group.GroupName;
+import com.co.kc.imchat.domain.group.GroupRepository;
+import com.co.kc.imchat.domain.group.GroupRoster;
+import com.co.kc.imchat.domain.group.GroupService;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.message.ImGroupMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImGroupMessageTransmission;
 import com.co.kc.imchat.domain.message.ImMessageService;
 import com.co.kc.imchat.domain.user.UserId;
-import com.co.kc.imchat.model.cqrs.command.chat.ImGroupCreateCmd;
-import com.co.kc.imchat.model.cqrs.command.chat.ImGroupInviteMembersCmd;
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupCreateDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupDetailDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupItemDTO;
-import com.co.kc.imchat.model.cqrs.query.ImGroupDetailQuery;
-import com.co.kc.imchat.model.cqrs.query.ImGroupListQuery;
+import com.co.kc.imchat.model.cqrs.command.group.GroupCreateCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupDismissCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupInviteMembersCmd;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupCreateDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupDetailDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupItemDTO;
+import com.co.kc.imchat.model.cqrs.query.group.GroupDetailQuery;
+import com.co.kc.imchat.model.cqrs.query.group.GroupListQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
@@ -36,41 +38,41 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 public class GroupAppService {
     private final SnowflakeId snowflakeId;
-    private final ImGroupRepository imGroupRepository;
+    private final GroupRepository groupRepository;
     private final ImGroupChatRepository imGroupChatRepository;
-    private final ImGroupMemberRepository imGroupMemberRepository;
-    private final ImGroupService imGroupService;
+    private final GroupMemberRepository groupMemberRepository;
+    private final GroupService groupService;
     private final ImChatService imChatService;
     private final ImGroupInboxMessageRepository imGroupInboxMessageRepository;
     private final ImMessageService imMessageService;
     private final DomainEventPublisher imMessageEventPublisher;
 
     @Transactional(rollbackFor = Exception.class)
-    public ImGroupCreateDTO createGroup(ImGroupCreateCmd command) {
+    public GroupCreateDTO createGroup(GroupCreateCmd command) {
         UserId ownerId = new UserId(command.getOwnerId());
-        ImGroupId groupId = new ImGroupId(snowflakeId.next());
-        ImGroupName groupName = new ImGroupName(command.getGroupName());
+        GroupId groupId = new GroupId(snowflakeId.next());
+        GroupName groupName = new GroupName(command.getGroupName());
         List<UserId> memberIds = FunctionUtils.mappingList(command.getMemberIds(), UserId::new);
 
-        ImGroup imGroup = ImGroup.builder()
+        Group imGroup = Group.builder()
                 .id(groupId)
                 .type(ImChatType.GROUP)
                 .ownerId(ownerId)
                 .name(groupName)
                 .build();
-        imGroupRepository.save(imGroup);
+        groupRepository.save(imGroup);
 
-        ImGroupRoster groupRoster = imGroupService.createRoster(groupId, ownerId, memberIds);
-        imGroupMemberRepository.saveAll(groupRoster.getMembers());
+        GroupRoster groupRoster = groupService.createRoster(groupId, ownerId, memberIds);
+        groupMemberRepository.saveAll(groupRoster.getMembers());
 
         List<ImGroupChat> groupChats = imChatService.createGroupChats(groupRoster.getMembers());
-        imGroupChatRepository.saveAll(groupChats);
-
         ImGroupChat ownerChat = groupChats.stream()
                 .filter(groupChat -> groupChat.getUserId().equals(ownerId))
                 .findFirst()
@@ -86,55 +88,97 @@ public class GroupAppService {
                 imMessageService.newImMessageSentEvent(groupId, transmission.getSenderMessage(ownerId));
         imMessageEventPublisher.publish(imGroupMessageSentEvent);
 
-        return new ImGroupCreateDTO(groupId.getValue(), ownerChat.getId().getValue());
+        return new GroupCreateDTO(groupId.getValue(), ownerChat.getId().getValue());
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void inviteGroupMembers(ImGroupInviteMembersCmd command) {
+    public void dismissGroup(GroupDismissCmd command) {
         UserId userId = new UserId(command.getUserId());
-        ImGroupId groupId = new ImGroupId(command.getGroupId());
-        List<UserId> inviteeIds = FunctionUtils.mappingList(command.getInviteeIds(), UserId::new);
+        GroupId groupId = new GroupId(command.getGroupId());
 
-        ImGroup group = imGroupRepository.find(groupId);
+        Group group = groupRepository.find(groupId);
         if (group == null) {
             throw new NotFoundException("群组不存在");
         }
-        ImGroupRoster groupRoster = imGroupService.findGroup(group.getId());
-        List<ImGroupMember> newInvitees = groupRoster.invite(userId, inviteeIds);
-        imGroupMemberRepository.saveAll(newInvitees);
+        group.dismiss(userId);
+        groupRepository.save(group);
+
+        List<ImGroupChat> groupChats = imGroupChatRepository.find(groupId);
+        ImGroupChat ownerChat = groupChats.stream()
+                .filter(groupChat -> groupChat.getUserId().equals(userId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("群主会话不存在"));
+        ImGroupMessageTransmission transmission =
+                imMessageService.transmitGroupDismissed(groupId, userId, ownerChat, groupChats);
+        imGroupInboxMessageRepository.saveAll(transmission.getInboxMessages());
+        imGroupChatRepository.saveAll(transmission.getGroupChats());
+
+        ImGroupMessageSentEvent event =
+                imMessageService.newImMessageSentEvent(groupId, transmission.getSenderMessage(userId));
+        imMessageEventPublisher.publish(event);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void inviteGroupMembers(GroupInviteMembersCmd command) {
+        UserId userId = new UserId(command.getUserId());
+        GroupId groupId = new GroupId(command.getGroupId());
+        List<UserId> inviteeIds = FunctionUtils.mappingList(command.getInviteeIds(), UserId::new);
+
+        Group group = groupRepository.find(groupId);
+        if (group == null) {
+            throw new NotFoundException("群组不存在");
+        }
+        if (group.isDismissed()) {
+            throw new BusinessException("群聊已解散");
+        }
+        GroupRoster groupRoster = groupService.findGroup(group.getId());
+        List<GroupMember> newInvitees = groupRoster.invite(userId, inviteeIds);
+        groupMemberRepository.saveAll(newInvitees);
 
         List<ImGroupChat> newMemberChatList = imChatService.createGroupChats(newInvitees);
         imGroupChatRepository.saveAll(newMemberChatList);
     }
 
-    public List<ImGroupItemDTO> getGroupList(ImGroupListQuery query) {
+    public List<GroupItemDTO> getGroupList(GroupListQuery query) {
         UserId userId = new UserId(query.getUserId());
 
-        List<ImGroup> groups = imGroupRepository.find(userId);
+        List<Group> groups = groupRepository.find(userId);
+        if (CollectionUtils.isEmpty(groups)) {
+            return Collections.emptyList();
+        }
+        groups = groups.stream()
+                .filter(group -> !group.isDismissed())
+                .collect(Collectors.toList());
         if (CollectionUtils.isEmpty(groups)) {
             return Collections.emptyList();
         }
 
-        List<ImUserGroupDescriptor> groupDescriptors = imGroupService.describeUserGroups(userId, groups);
+        List<UserGroupDescriptor> groupDescriptors = groupService.describeUserGroups(userId, groups);
         if (CollectionUtils.isEmpty(groupDescriptors)) {
             return Collections.emptyList();
         }
 
-        return GroupAppTransformer.INSTANCE.imGroupDtoListFrom(groupDescriptors);
+        return GroupAppTransformer.INSTANCE.groupDtoListFrom(groupDescriptors);
     }
 
-    public ImGroupDetailDTO getGroupDetail(ImGroupDetailQuery query) {
+    public GroupDetailDTO getGroupDetail(GroupDetailQuery query) {
         UserId userId = new UserId(query.getUserId());
-        ImGroupId groupId = new ImGroupId(query.getGroupId());
-        ImGroup group = imGroupRepository.find(groupId);
+        GroupId groupId = new GroupId(query.getGroupId());
+        Group group = groupRepository.find(groupId);
         if (group == null) {
             throw new NotFoundException("群组不存在");
         }
+        if (group.isDismissed()) {
+            throw new BusinessException("群聊已解散");
+        }
         ImGroupChat groupChat = imGroupChatRepository.find(groupId, userId);
-        if (groupChat == null || imGroupMemberRepository.find(groupId, userId) == null) {
+        if (groupChat == null || groupMemberRepository.find(groupId, userId) == null) {
             throw new BusinessException("用户无此群组权限");
         }
-        List<ImGroupMember> members = imGroupMemberRepository.find(groupId);
-        return GroupAppTransformer.INSTANCE.imGroupDetailDtoFrom(group, groupChat, members);
+        List<GroupMember> members = groupMemberRepository.find(groupId).stream()
+                .sorted(Comparator.comparing(member -> !member.getUserId().equals(group.getOwnerId())))
+                .collect(Collectors.toList());
+        List<MemberDescriptor> memberDescriptors = groupService.describeGroupMembers(userId, members);
+        return GroupAppTransformer.INSTANCE.groupDetailDtoFrom(group, groupChat, memberDescriptors);
     }
 }

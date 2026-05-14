@@ -1,16 +1,18 @@
 package com.co.kc.imchat.transformer.domain;
 
 import com.co.kc.imchat.domain.chat.ImChatId;
+import com.co.kc.imchat.domain.chat.ImChatStatus;
 import com.co.kc.imchat.domain.chat.ImChatType;
-import com.co.kc.imchat.domain.group.ImGroup;
-import com.co.kc.imchat.domain.group.ImGroupAlias;
+import com.co.kc.imchat.domain.group.Group;
+import com.co.kc.imchat.domain.group.GroupAlias;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.group.ImGroupId;
-import com.co.kc.imchat.domain.group.ImGroupMember;
-import com.co.kc.imchat.domain.group.ImGroupMemberId;
-import com.co.kc.imchat.domain.group.ImGroupName;
-import com.co.kc.imchat.domain.group.ImGroupNotification;
-import com.co.kc.imchat.domain.group.ImGroupUserAlias;
+import com.co.kc.imchat.domain.group.GroupId;
+import com.co.kc.imchat.domain.group.GroupMember;
+import com.co.kc.imchat.domain.group.MemberId;
+import com.co.kc.imchat.domain.group.GroupName;
+import com.co.kc.imchat.domain.group.GroupNotification;
+import com.co.kc.imchat.domain.group.GroupStatus;
+import com.co.kc.imchat.domain.group.GroupUserAlias;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.user.UserId;
@@ -19,6 +21,8 @@ import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMember;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateChat;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatType;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbImChatStatus;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbImGroupStatus;
 import org.mapstruct.Mapper;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
@@ -44,21 +48,24 @@ public interface ImChatDomainTransformer {
                 .peerUserId(new UserId(dbImPrivateChat.getPeerUserId()))
                 .id(new ImChatId(dbImPrivateChat.getChatId()))
                 .type(ImChatType.PRIVATE)
+                .status(imChatStatusFrom(dbImPrivateChat.getStatus()))
+                .activeTime(dbImPrivateChat.getActiveTime())
                 .lastMessageId(new ImMessageId(dbImPrivateChat.getLastMessageId()))
                 .readMessageId(new ImMessageId(dbImPrivateChat.getReadMessageId()))
                 .unreadMessageCount(dbImPrivateChat.getUnreadMessageCount())
                 .build();
     }
 
-    List<ImGroup> imGroupListFrom(List<DbImGroup> dbImGroupList);
+    List<Group> imGroupListFrom(List<DbImGroup> dbImGroupList);
 
-    default ImGroup imGroupFrom(DbImGroup dbImGroup) {
-        ImGroup group = ImGroup.builder()
-                .id(new ImGroupId(dbImGroup.getGroupId()))
+    default Group imGroupFrom(DbImGroup dbImGroup) {
+        Group group = Group.builder()
+                .id(new GroupId(dbImGroup.getGroupId()))
                 .type(ImChatType.GROUP)
                 .ownerId(new UserId(dbImGroup.getOwnerId()))
-                .name(new ImGroupName(dbImGroup.getName()))
-                .notification(new ImGroupNotification(dbImGroup.getNotification()))
+                .name(new GroupName(dbImGroup.getName()))
+                .notification(new GroupNotification(dbImGroup.getNotification()))
+                .status(imGroupStatusFrom(dbImGroup.getStatus()))
                 .build();
         group.setPkId(dbImGroup.getId());
         return group;
@@ -71,26 +78,29 @@ public interface ImChatDomainTransformer {
                 .pkId(dbImGroupChat.getId())
                 .id(new ImChatId(dbImGroupChat.getChatId()))
                 .type(ImChatType.GROUP)
-                .groupId(new ImGroupId(dbImGroupChat.getGroupId()))
+                .groupId(new GroupId(dbImGroupChat.getGroupId()))
                 .userId(new UserId(dbImGroupChat.getUserId()))
-                .groupAlias(StringUtils.isBlank(dbImGroupChat.getGroupAlias()) ? null : new ImGroupAlias(dbImGroupChat.getGroupAlias()))
+                .groupAlias(StringUtils.isBlank(dbImGroupChat.getGroupAlias()) ? null : new GroupAlias(dbImGroupChat.getGroupAlias()))
+                .status(imChatStatusFrom(dbImGroupChat.getStatus()))
+                .activeTime(dbImGroupChat.getActiveTime())
                 .lastMessageId(new ImMessageId(dbImGroupChat.getLastMessageId()))
                 .readMessageId(new ImMessageId(dbImGroupChat.getReadMessageId()))
+                .readTime(dbImGroupChat.getReadTime())
                 .unreadMessageCount(dbImGroupChat.getUnreadMessageCount())
                 .build();
     }
 
-    List<ImGroupMember> imGroupMemberListFrom(List<DbImGroupMember> dbImGroupMembers);
+    List<GroupMember> imGroupMemberListFrom(List<DbImGroupMember> dbImGroupMembers);
 
-    default ImGroupMember imGroupMemberFrom(DbImGroupMember dbImGroupMember) {
-        ImGroupId groupId = new ImGroupId(dbImGroupMember.getGroupId());
+    default GroupMember imGroupMemberFrom(DbImGroupMember dbImGroupMember) {
+        GroupId groupId = new GroupId(dbImGroupMember.getGroupId());
         UserId userId = new UserId(dbImGroupMember.getUserId());
-        return ImGroupMember.builder()
+        return GroupMember.builder()
                 .pkId(dbImGroupMember.getId())
-                .id(new ImGroupMemberId(groupId, userId))
+                .id(new MemberId(groupId, userId))
                 .groupId(groupId)
                 .userId(userId)
-                .userAlias(StringUtils.isBlank(dbImGroupMember.getUserAlias()) ? null : new ImGroupUserAlias(dbImGroupMember.getUserAlias()))
+                .userAlias(StringUtils.isBlank(dbImGroupMember.getUserAlias()) ? null : new GroupUserAlias(dbImGroupMember.getUserAlias()))
                 .joinTime(dbImGroupMember.getJoinTime())
                 .build();
     }
@@ -101,5 +111,34 @@ public interface ImChatDomainTransformer {
             @ValueMapping(source = "GROUP", target = "GROUP")
     })
     ImChatType imChatTypeFrom(DbImChatType type);
+
+    default ImChatStatus imChatStatusFrom(DbImChatStatus status) {
+        if (status == null) {
+            return ImChatStatus.UNKNOWN;
+        }
+        switch (status) {
+            case NORMAL:
+                return ImChatStatus.NORMAL;
+            case HIDDEN:
+                return ImChatStatus.HIDDEN;
+            case UNKNOWN:
+            default:
+                return ImChatStatus.UNKNOWN;
+        }
+    }
+
+    default GroupStatus imGroupStatusFrom(DbImGroupStatus status) {
+        if (status == null || status == DbImGroupStatus.NONE) {
+            throw new IllegalStateException("群状态不能为未知");
+        }
+        switch (status) {
+            case NORMAL:
+                return GroupStatus.NORMAL;
+            case DISMISSED:
+                return GroupStatus.DISMISSED;
+            default:
+                throw new IllegalStateException("不支持的群状态：" + status);
+        }
+    }
 
 }

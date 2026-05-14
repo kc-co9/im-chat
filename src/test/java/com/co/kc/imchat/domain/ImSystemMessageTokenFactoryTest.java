@@ -1,6 +1,6 @@
 package com.co.kc.imchat.domain;
 
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.message.ImSystemMessageTokenFactory;
 import org.junit.jupiter.api.Test;
@@ -11,8 +11,15 @@ class ImSystemMessageTokenFactoryTest {
 
     @Test
     void groupCreatedBuildsStableTokenFromCreateSystemGroupId() {
-        ImMessageToken token = ImSystemMessageTokenFactory.createSystemGroupCreated(new ImGroupId(1001L));
+        ImMessageToken token = ImSystemMessageTokenFactory.createSystemGroupCreated(new GroupId(1001L));
 
         assertThat(token.getValue()).isEqualTo("system:group_created:1001");
+    }
+
+    @Test
+    void groupDismissedBuildsStableTokenFromGroupId() {
+        ImMessageToken token = ImSystemMessageTokenFactory.createSystemGroupDismissed(new GroupId(1001L));
+
+        assertThat(token.getValue()).isEqualTo("system:group_dismissed:1001");
     }
 }

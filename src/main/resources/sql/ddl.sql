@@ -28,6 +28,7 @@ CREATE TABLE `db_friend`
     `create_time`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_user_friend` (`user_id`, `friend_user_id`) USING BTREE,
     KEY `idx_user_id` (`user_id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '好友表';
 
@@ -40,7 +41,10 @@ CREATE TABLE `db_im_private_chat`
     `peer_user_id`         BIGINT          NOT NULL DEFAULT 0 COMMENT '聊天的用户ID',
     `last_message_id`      BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '最新消息ID',
     `read_message_id`      BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已读消息ID',
+    `read_time`            DATETIME        NULL COMMENT '已读时间',
     `unread_message_count` INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT '未读消息数量',
+    `status`               TINYINT         NOT NULL DEFAULT 0 COMMENT '状态：0-未知，1-正常，2-隐藏',
+    `active_time`          DATETIME        NULL COMMENT '活跃时间',
     `create_time`          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`) USING BTREE,
@@ -56,6 +60,7 @@ CREATE TABLE `db_im_group`
     `owner_id`     BIGINT          NOT NULL DEFAULT 0 COMMENT '群主ID',
     `name`         VARCHAR(20)     NOT NULL DEFAULT '' COMMENT '群名称',
     `notification` VARCHAR(255)    NOT NULL DEFAULT '' COMMENT '群公告',
+    `status`       TINYINT         NOT NULL DEFAULT 0 COMMENT '群状态 0-未知,1-正常,2-已解散',
     `create_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`) USING BTREE,
@@ -89,6 +94,8 @@ CREATE TABLE `db_im_group_chat`
     `last_message_id`      BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '最新消息ID',
     `read_message_id`      BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已读消息ID',
     `unread_message_count` INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT '未读消息数量',
+    `status`               TINYINT         NOT NULL DEFAULT 0 COMMENT '状态：0-未知，1-正常，2-隐藏',
+    `active_time`          DATETIME        NULL COMMENT '活跃时间',
     `create_time`          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`) USING BTREE,
@@ -107,19 +114,21 @@ CREATE TABLE `db_im_private_inbox_message`
     `user_id`      BIGINT          NOT NULL DEFAULT 0 COMMENT '收件箱所属用户ID',
     `token`        VARCHAR(45)     NOT NULL DEFAULT '' COMMENT '消息TOKEN',
     `sender_id`    BIGINT          NOT NULL DEFAULT 0 COMMENT '发送的用户ID',
-    `type`         TINYINT         NOT NULL DEFAULT 0 COMMENT '消息类型 0-未知,1-文本消息,2-图片消息,3-语音消息,4-视频消息,5-文件消息,6-表情包消息',
+    `type`         TINYINT         NOT NULL DEFAULT 0 COMMENT '消息类型 0-未知,1-文本消息,2-图片消息,3-语音消息,4-视频消息,5-文件消息,6-表情包消息,7-系统消息',
     `content`      VARCHAR(512)    NOT NULL DEFAULT '' COMMENT '消息内容',
     `status`       TINYINT         NOT NULL DEFAULT 0 COMMENT '消息状态 0-未知 1-已收到 2-已读 3-已撤回',
     `send_time`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
-    `receive_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '接收时间',
+    `receive_time` TIMESTAMP                DEFAULT NULL COMMENT '接收时间',
+    `read_time`    TIMESTAMP                DEFAULT NULL COMMENT '已读时间',
     `revoke_time`  TIMESTAMP                DEFAULT NULL COMMENT '撤回时间',
     `create_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`) USING BTREE,
-    KEY `idx_message_id` (`message_id`) USING BTREE,
-    KEY `idx_chat_id` (`chat_id`) USING BTREE,
-    KEY `idx_user_id` (`user_id`) USING BTREE,
-    KEY `idx_token` (`token`) USING BTREE
+    UNIQUE KEY `uk_chat_token` (`chat_id`, `token`) USING BTREE,
+    UNIQUE KEY `uk_chat_message` (`chat_id`, `message_id`) USING BTREE,
+    KEY `idx_chat_user_message` (`chat_id`, `user_id`, `message_id`) USING BTREE,
+    KEY `idx_user_message` (`user_id`, `message_id`) USING BTREE,
+    KEY `idx_message_id` (`message_id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '私聊收件箱消息表';
 
 DROP TABLE IF EXISTS `db_im_group_inbox_message`;
@@ -132,17 +141,18 @@ CREATE TABLE `db_im_group_inbox_message`
     `user_id`      BIGINT          NOT NULL DEFAULT 0 COMMENT '收件箱所属用户ID',
     `token`        VARCHAR(45)     NOT NULL DEFAULT '' COMMENT '消息TOKEN',
     `sender_id`    BIGINT          NOT NULL DEFAULT 0 COMMENT '发送的用户ID',
-    `type`         TINYINT         NOT NULL DEFAULT 0 COMMENT '消息类型 0-未知,1-文本消息,2-图片消息,3-语音消息,4-视频消息,5-文件消息,6-表情包消息',
+    `type`         TINYINT         NOT NULL DEFAULT 0 COMMENT '消息类型 0-未知,1-文本消息,2-图片消息,3-语音消息,4-视频消息,5-文件消息,6-表情包消息,7-系统消息',
     `content`      VARCHAR(512)    NOT NULL DEFAULT '' COMMENT '消息内容',
     `status`       TINYINT         NOT NULL DEFAULT 0 COMMENT '消息状态 0-未知 1-已发送 2-已收到 3-已读 4-已撤回',
     `send_time`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
-    `receive_time` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '接收时间',
+    `receive_time` TIMESTAMP                DEFAULT NULL COMMENT '接收时间',
     `read_time`    TIMESTAMP                DEFAULT NULL COMMENT '已读时间',
     `revoke_time`  TIMESTAMP                DEFAULT NULL COMMENT '撤回时间',
     `create_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`) USING BTREE,
+    UNIQUE KEY `uk_chat_user_token` (`chat_id`, `user_id`, `token`) USING BTREE,
+    UNIQUE KEY `uk_chat_user_message` (`chat_id`, `user_id`, `message_id`) USING BTREE,
     KEY `idx_group_message` (`group_id`, `message_id`) USING BTREE,
-    KEY `idx_chat_user_message` (`chat_id`, `user_id`, `message_id`) USING BTREE,
-    UNIQUE KEY `uk_chat_user_token` (`chat_id`, `user_id`, `token`) USING BTREE
+    KEY `idx_user_chat_message` (`user_id`, `chat_id`, `message_id`) USING BTREE
 ) ENGINE = InnoDB COMMENT = '群聊收件箱消息表';

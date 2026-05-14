@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.user.UserId;
@@ -36,24 +36,24 @@ public class MysqlImGroupChatRepository implements ImGroupChatRepository {
     }
 
     @Override
-    public ImGroupChat find(ImGroupId groupId, UserId userId) {
+    public ImGroupChat find(GroupId groupId, UserId userId) {
         return dbImGroupChatService.getByGroupIdAndUserId(groupId.getValue(), userId.getValue())
                 .map(ImChatDomainTransformer.INSTANCE::imGroupChatFrom)
                 .orElse(null);
     }
 
     @Override
-    public List<ImGroupChat> find(ImGroupId groupId) {
+    public List<ImGroupChat> find(GroupId groupId) {
         List<DbImGroupChat> rows = dbImGroupChatService.getByGroupId(groupId.getValue());
         return ImChatDomainTransformer.INSTANCE.imGroupChatListFrom(rows);
     }
 
     @Override
-    public List<ImGroupChat> find(Collection<ImGroupId> groupIds) {
+    public List<ImGroupChat> find(Collection<GroupId> groupIds) {
         if (CollectionUtils.isEmpty(groupIds)) {
             return Collections.emptyList();
         }
-        List<Long> groupIdValues = FunctionUtils.mappingList(groupIds, ImGroupId::getValue);
+        List<Long> groupIdValues = FunctionUtils.mappingList(groupIds, GroupId::getValue);
         List<DbImGroupChat> rows = dbImGroupChatService.getByGroupIds(groupIdValues);
         return ImChatDomainTransformer.INSTANCE.imGroupChatListFrom(rows);
     }
@@ -65,11 +65,11 @@ public class MysqlImGroupChatRepository implements ImGroupChatRepository {
     }
 
     @Override
-    public List<ImGroupChat> find(UserId userId, Collection<ImGroupId> groupIds) {
+    public List<ImGroupChat> find(UserId userId, Collection<GroupId> groupIds) {
         if (userId == null || CollectionUtils.isEmpty(groupIds)) {
             return Collections.emptyList();
         }
-        List<Long> groupIdValues = FunctionUtils.mappingList(groupIds, ImGroupId::getValue);
+        List<Long> groupIdValues = FunctionUtils.mappingList(groupIds, GroupId::getValue);
         List<DbImGroupChat> rows = dbImGroupChatService.getListByUserIdAndGroupIds(userId.getValue(), groupIdValues);
         return ImChatDomainTransformer.INSTANCE.imGroupChatListFrom(rows);
     }
@@ -85,7 +85,7 @@ public class MysqlImGroupChatRepository implements ImGroupChatRepository {
     }
 
     @Override
-    public List<ImGroupChat> findByUserIdsAndGroupId(ImGroupId groupId, List<UserId> userIds) {
+    public List<ImGroupChat> findByUserIdsAndGroupId(GroupId groupId, List<UserId> userIds) {
         if (CollectionUtils.isEmpty(userIds)) {
             return Collections.emptyList();
         }

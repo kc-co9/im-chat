@@ -6,8 +6,6 @@ public class PushQueue {
 
     public static final String QUEUE_PRIVATE_MESSAGE_SENT = "/queue/message/private/sent";
 
-    public static final String QUEUE_PRIVATE_MESSAGE_READ = "/queue/message/private/read";
-
     public static final String QUEUE_PRIVATE_MESSAGE_REVOKED = "/queue/message/private/revoked";
 
     public static final String QUEUE_GROUP_MESSAGE_SENT = "/queue/message/group/sent";

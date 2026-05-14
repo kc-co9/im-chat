@@ -1,12 +1,14 @@
 package com.co.kc.imchat.application;
 
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.Group;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
-import com.co.kc.imchat.domain.group.ImGroupService;
-import com.co.kc.imchat.domain.group.ImGroupMember;
-import com.co.kc.imchat.domain.group.ImGroupMemberRepository;
+import com.co.kc.imchat.domain.group.GroupRepository;
+import com.co.kc.imchat.domain.group.GroupService;
+import com.co.kc.imchat.domain.group.GroupMember;
+import com.co.kc.imchat.domain.group.GroupMemberRepository;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.message.ImGroupMessageRevokedEvent;
@@ -21,13 +23,14 @@ import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.message.ImOutboundMessage;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.user.UserService;
-import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageRevokeCmd;
-import com.co.kc.imchat.model.cqrs.command.im.ImGroupMessageSendCmd;
-import com.co.kc.imchat.model.cqrs.command.notify.ImGroupRevokedNotifyCmd;
-import com.co.kc.imchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupMessageDTO;
-import com.co.kc.imchat.model.cqrs.query.ImGroupMessageDetailQuery;
-import com.co.kc.imchat.model.cqrs.query.ImGroupMessageHistoryQuery;
+import com.co.kc.imchat.model.cqrs.command.group.GroupMessageRevokeCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupMessageReadCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupMessageSendCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupRevokedNotifyCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupSentNotifyCmd;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupMessageDTO;
+import com.co.kc.imchat.model.cqrs.query.group.GroupMessageDetailQuery;
+import com.co.kc.imchat.model.cqrs.query.group.GroupMessageHistoryQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
@@ -45,18 +48,19 @@ import java.util.List;
 public class GroupMessageAppService {
     private final SnowflakeId snowflakeId;
     private final ImGroupChatRepository imGroupChatRepository;
-    private final ImGroupMemberRepository imGroupMemberRepository;
+    private final GroupMemberRepository groupMemberRepository;
     private final ImGroupInboxMessageRepository imGroupInboxMessageRepository;
+    private final GroupRepository groupRepository;
 
     private final UserService userService;
-    private final ImGroupService imGroupService;
+    private final GroupService groupService;
     private final ImMessageService imMessageService;
 
     private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
 
     @Transactional(rollbackFor = Exception.class)
-    public void sendMessage(ImGroupMessageSendCmd command) {
+    public void sendMessage(GroupMessageSendCmd command) {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
         ImChatId senderChatId = new ImChatId(command.getChatId());
         UserId senderId = new UserId(command.getSenderId());
@@ -70,9 +74,16 @@ public class GroupMessageAppService {
         if (!senderChat.contain(senderId)) {
             throw new BusinessException("请使用本人群聊会话的 chatId 发送消息");
         }
-        ImGroupMember senderMember = imGroupMemberRepository.find(senderChat.getGroupId(), senderId);
+        GroupMember senderMember = groupMemberRepository.find(senderChat.getGroupId(), senderId);
         if (senderMember == null) {
             throw new BusinessException("请使用本人群聊会话的 chatId 发送消息");
+        }
+        Group group = groupRepository.find(senderChat.getGroupId());
+        if (group == null) {
+            throw new NotFoundException("群组不存在");
+        }
+        if (group.isDismissed()) {
+            throw new BusinessException("群聊已解散");
         }
         if (imGroupInboxMessageRepository.contain(senderChatId, senderId, messageToken)) {
             throw new RepeatException("消息已存在");
@@ -80,7 +91,7 @@ public class GroupMessageAppService {
 
         ImMessageSender imMessageSender = new ImMessageSender(senderChat, senderId);
         ImOutboundMessage outboundMessage = new ImOutboundMessage(messageId, messageToken, messageContent);
-        List<ImMessageRecipient> recipients = imGroupService.findMessageRecipients(
+        List<ImMessageRecipient> recipients = groupService.findMessageRecipients(
                 senderChat.getGroupId(), chat -> userService.isChatting(chat.getId(), chat.getUserId()));
         ImGroupMessageTransmission transmission =
                 imMessageService.transmitGroupMessage(outboundMessage, imMessageSender, recipients);
@@ -94,23 +105,23 @@ public class GroupMessageAppService {
     }
 
     public void onMessageSent(ImGroupMessageSentEvent event) {
-        ImGroupId groupId = new ImGroupId(event.getGroupId());
-        List<ImGroupMember> memberList = imGroupMemberRepository.find(groupId);
-        List<UserId> memberUserIds = FunctionUtils.mappingList(memberList, ImGroupMember::getUserId);
+        GroupId groupId = new GroupId(event.getGroupId());
+        List<GroupMember> memberList = groupMemberRepository.find(groupId);
+        List<UserId> memberUserIds = FunctionUtils.mappingList(memberList, GroupMember::getUserId);
         List<ImGroupChat> memberChats = imGroupChatRepository.findByUserIdsAndGroupId(groupId, memberUserIds);
         for (ImGroupChat memberChat : memberChats) {
             if (memberChat.getUserId().getValue().equals(event.getSenderId())) {
                 continue;
             }
-            ImGroupSentNotifyCmd notifyCmd =
-                    ImMessageAppTransformer.INSTANCE.imGroupSentNotifyCmdFrom(
+            GroupSentNotifyCmd notifyCmd =
+                    ImMessageAppTransformer.INSTANCE.groupSentNotifyCmdFrom(
                             memberChat.getUserId().getValue(), memberChat.getId().getValue(), event);
             imMessageNotifierInvoker.invoke(notifyCmd);
         }
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void revokeMessage(ImGroupMessageRevokeCmd command) {
+    public void revokeMessage(GroupMessageRevokeCmd command) {
         UserId userId = new UserId(command.getUserId());
         ImChatId chatId = new ImChatId(command.getChatId());
         ImMessageId messageId = new ImMessageId(command.getMessageId());
@@ -119,9 +130,19 @@ public class GroupMessageAppService {
         if (senderChat == null) {
             throw new NotFoundException("聊天不存在");
         }
-        ImGroupMember senderMember = imGroupMemberRepository.find(senderChat.getGroupId(), userId);
+        if (!senderChat.contain(userId)) {
+            throw new BusinessException("请使用本人群聊会话的 chatId 撤回消息");
+        }
+        GroupMember senderMember = groupMemberRepository.find(senderChat.getGroupId(), userId);
         if (senderMember == null) {
             throw new BusinessException("请使用本人群聊会话的 chatId 撤回消息");
+        }
+        Group group = groupRepository.find(senderChat.getGroupId());
+        if (group == null) {
+            throw new NotFoundException("群组不存在");
+        }
+        if (group.isDismissed()) {
+            throw new BusinessException("群聊已解散");
         }
 
         ImGroupInboxMessage senderInboxMessage = imGroupInboxMessageRepository.find(chatId, userId, messageId)
@@ -144,19 +165,52 @@ public class GroupMessageAppService {
     }
 
     public void onMessageRevoked(ImGroupMessageRevokedEvent event) {
-        ImGroupId groupId = new ImGroupId(event.getGroupId());
-        List<ImGroupMember> memberList = imGroupMemberRepository.find(groupId);
-        List<UserId> memberUserIds = FunctionUtils.mappingList(memberList, ImGroupMember::getUserId);
+        GroupId groupId = new GroupId(event.getGroupId());
+        List<GroupMember> memberList = groupMemberRepository.find(groupId);
+        List<UserId> memberUserIds = FunctionUtils.mappingList(memberList, GroupMember::getUserId);
         List<ImGroupChat> memberChats = imGroupChatRepository.findByUserIdsAndGroupId(groupId, memberUserIds);
         for (ImGroupChat memberChat : memberChats) {
-            ImGroupRevokedNotifyCmd notifyCmd =
-                    ImMessageAppTransformer.INSTANCE.imGroupRevokedNotifyCmdFrom(
+            GroupRevokedNotifyCmd notifyCmd =
+                    ImMessageAppTransformer.INSTANCE.groupRevokedNotifyCmdFrom(
                             memberChat.getUserId().getValue(), memberChat.getId().getValue(), event);
             imMessageNotifierInvoker.invoke(notifyCmd);
         }
     }
 
-    public List<ImGroupMessageDTO> queryHistoryMessage(ImGroupMessageHistoryQuery query) {
+    @Transactional(rollbackFor = Exception.class)
+    public void readMessage(GroupMessageReadCmd command) {
+        UserId userId = new UserId(command.getUserId());
+        ImChatId chatId = new ImChatId(command.getChatId());
+        ImMessageId messageId = new ImMessageId(command.getMessageId());
+
+        ImGroupChat groupChat = imGroupChatRepository.find(chatId);
+        if (groupChat == null) {
+            throw new NotFoundException("聊天不存在");
+        }
+        if (!groupChat.contain(userId)) {
+            throw new BusinessException("请使用本人群聊会话的 chatId 读取消息");
+        }
+        GroupMember groupMember = groupMemberRepository.find(groupChat.getGroupId(), userId);
+        if (groupMember == null) {
+            throw new BusinessException("请使用本人群聊会话的 chatId 读取消息");
+        }
+        Group group = groupRepository.find(groupChat.getGroupId());
+        if (group == null) {
+            throw new NotFoundException("群组不存在");
+        }
+        if (group.isDismissed()) {
+            throw new BusinessException("群聊已解散");
+        }
+
+        ImGroupInboxMessage message = imGroupInboxMessageRepository.find(chatId, userId, messageId)
+                .orElseThrow(() -> new NotFoundException("消息不存在"));
+        groupChat.readMessage(message);
+
+        imGroupInboxMessageRepository.save(message);
+        imGroupChatRepository.save(groupChat);
+    }
+
+    public List<GroupMessageDTO> queryHistoryMessage(GroupMessageHistoryQuery query) {
         UserId userId = new UserId(query.getUserId());
         ImChatId chatId = new ImChatId(query.getChatId());
         ImMessageId lastMessageId = FunctionUtils.mappingOrNull(query.getLastMessageId(), ImMessageId::new);
@@ -165,17 +219,27 @@ public class GroupMessageAppService {
         if (groupChat == null) {
             throw new NotFoundException("聊天不存在");
         }
-        ImGroupMember groupMember = imGroupMemberRepository.find(groupChat.getGroupId(), userId);
+        if (!groupChat.contain(userId)) {
+            throw new BusinessException("无法查看别人的聊天记录");
+        }
+        GroupMember groupMember = groupMemberRepository.find(groupChat.getGroupId(), userId);
         if (groupMember == null) {
             throw new BusinessException("无法查看别人的聊天记录");
+        }
+        Group group = groupRepository.find(groupChat.getGroupId());
+        if (group == null) {
+            throw new NotFoundException("群组不存在");
+        }
+        if (group.isDismissed()) {
+            throw new BusinessException("群聊已解散");
         }
 
         List<ImGroupInboxMessage> messageList =
                 imGroupInboxMessageRepository.queryHistory(chatId, userId, lastMessageId, query.getCount());
-        return ImMessageAppTransformer.INSTANCE.imGroupMessageDtoListFrom(messageList);
+        return ImMessageAppTransformer.INSTANCE.groupMessageDtoListFrom(messageList);
     }
 
-    public ImGroupMessageDTO queryMessageDetail(ImGroupMessageDetailQuery query) {
+    public GroupMessageDTO queryMessageDetail(GroupMessageDetailQuery query) {
         UserId userId = new UserId(query.getUserId());
         ImChatId chatId = new ImChatId(query.getChatId());
         ImMessageToken messageToken = new ImMessageToken(query.getMessageToken());
@@ -184,15 +248,26 @@ public class GroupMessageAppService {
         if (groupChat == null) {
             throw new NotFoundException("聊天不存在");
         }
-        ImGroupMember groupMember = imGroupMemberRepository.find(groupChat.getGroupId(), userId);
+        if (!groupChat.contain(userId)) {
+            throw new BusinessException("无法查看别人的聊天记录");
+        }
+        GroupMember groupMember = groupMemberRepository.find(groupChat.getGroupId(), userId);
         if (groupMember == null) {
             throw new BusinessException("无法查看别人的聊天记录");
+        }
+        Group group = groupRepository.find(groupChat.getGroupId());
+        if (group == null) {
+            throw new NotFoundException("群组不存在");
+        }
+        if (group.isDismissed()) {
+            throw new BusinessException("群聊已解散");
         }
 
         ImGroupInboxMessage message = imGroupInboxMessageRepository.queryDetail(chatId, userId, messageToken);
         if (message == null) {
             throw new NotFoundException("消息不存在");
         }
-        return ImMessageAppTransformer.INSTANCE.imGroupMessageDtoFrom(message);
+        return ImMessageAppTransformer.INSTANCE.groupMessageDtoFrom(message);
     }
+
 }

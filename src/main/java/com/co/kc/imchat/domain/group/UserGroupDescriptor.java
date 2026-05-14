@@ -1,0 +1,16 @@
+package com.co.kc.imchat.domain.group;
+
+import com.co.kc.imchat.domain.chat.ImGroupChat;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
+/**
+ * 群组描述-值对象
+ */
+@Getter
+@RequiredArgsConstructor
+public class UserGroupDescriptor {
+    private final GroupId id;
+    private final GroupName name;
+    private final ImGroupChat chat;
+}

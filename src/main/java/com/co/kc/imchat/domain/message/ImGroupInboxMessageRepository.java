@@ -1,7 +1,7 @@
 package com.co.kc.imchat.domain.message;
 
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.user.UserId;
 
 import java.util.List;
@@ -17,7 +17,7 @@ public interface ImGroupInboxMessageRepository {
 
     Optional<ImGroupInboxMessage> find(ImChatId chatId, UserId userId, ImMessageId messageId);
 
-    List<ImGroupInboxMessage> findByGroupIdAndMessageId(ImGroupId groupId, ImMessageId messageId);
+    List<ImGroupInboxMessage> findByGroupIdAndMessageId(GroupId groupId, ImMessageId messageId);
 
     List<ImGroupInboxMessage> findUnreadMessages(ImChatId chatId, UserId userId);
 

@@ -25,5 +25,6 @@ public class DbImPrivateInboxMessage extends BaseEntity {
     private DbPrivateImMessageStatus status;
     private LocalDateTime sendTime;
     private LocalDateTime receiveTime;
+    private LocalDateTime readTime;
     private LocalDateTime revokeTime;
 }

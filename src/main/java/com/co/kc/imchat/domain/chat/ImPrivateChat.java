@@ -6,6 +6,8 @@ import com.co.kc.imchat.domain.user.UserId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.time.LocalDateTime;
+
 /**
  * 私聊-领域模型（每人一条持久化记录：{@link #userId} 为记录归属方，{@link #peerUserId} 为对端）。
  */
@@ -37,11 +39,12 @@ public class ImPrivateChat extends ImChat {
     }
 
     public void receiveLatestMessage(ImPrivateInboxMessage message, boolean isChatting) {
+        activate(message.getSendTime());
         this.lastMessageId = message.getId();
         if (isChatting) {
             readMessage(message);
         } else {
-            this.unreadMessageCount++;
+            this.unreadMessageCount = (this.unreadMessageCount == null ? 0 : this.unreadMessageCount) + 1;
         }
     }
 
@@ -87,6 +90,16 @@ public class ImPrivateChat extends ImChat {
             return this;
         }
 
+        public Builder status(ImChatStatus status) {
+            chat.setStatus(status);
+            return this;
+        }
+
+        public Builder activeTime(LocalDateTime activeTime) {
+            chat.setActiveTime(activeTime);
+            return this;
+        }
+
         public Builder peerUserId(UserId peerUserId) {
             chat.setPeerUserId(peerUserId);
             return this;
@@ -108,6 +121,12 @@ public class ImPrivateChat extends ImChat {
         }
 
         public ImPrivateChat build() {
+            if (chat.getStatus() == null) {
+                chat.setStatus(ImChatStatus.NORMAL);
+            }
+            if (chat.getUnreadMessageCount() == null) {
+                chat.setUnreadMessageCount(0);
+            }
             chat.validate();
             return chat;
         }

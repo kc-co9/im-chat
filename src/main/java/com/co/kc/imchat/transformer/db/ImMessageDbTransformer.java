@@ -47,7 +47,9 @@ public interface ImMessageDbTransformer {
             @ValueMapping(target = "IMAGE", source = "IMAGE"),
             @ValueMapping(target = "AUDIO", source = "AUDIO"),
             @ValueMapping(target = "VIDEO", source = "VIDEO"),
-            @ValueMapping(target = "FILE", source = "FILE")
+            @ValueMapping(target = "FILE", source = "FILE"),
+            @ValueMapping(target = "STICKER", source = "STICKER"),
+            @ValueMapping(target = "SYSTEM", source = "SYSTEM")
     })
     DbImMessageType dbImMessageTypeFrom(ImMessageType type);
 
@@ -98,6 +100,7 @@ public interface ImMessageDbTransformer {
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "sendTime", source = "sendTime"),
             @Mapping(target = "receiveTime", source = "receivedTime"),
+            @Mapping(target = "readTime", source = "readTime"),
             @Mapping(target = "revokeTime", source = "revokeTime")
     })
     DbImPrivateInboxMessage dbImPrivateInboxMessageFrom(ImPrivateInboxMessage message);

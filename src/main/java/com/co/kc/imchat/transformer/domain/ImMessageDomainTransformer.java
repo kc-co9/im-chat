@@ -6,7 +6,7 @@ import com.co.kc.imchat.domain.message.ImMessageType;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
 import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.domain.chat.ImChatId;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.message.ImMessageContent;
 import com.co.kc.imchat.domain.message.ImMessageId;
@@ -42,6 +42,7 @@ public interface ImMessageDomainTransformer {
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "sendTime", source = "sendTime"),
             @Mapping(target = "receivedTime", source = "receiveTime"),
+            @Mapping(target = "readTime", source = "readTime"),
             @Mapping(target = "revokeTime", source = "revokeTime")
     })
     ImPrivateInboxMessage imPrivateInboxMessageFrom(DbImPrivateInboxMessage db);
@@ -52,7 +53,7 @@ public interface ImMessageDomainTransformer {
         return ImGroupInboxMessage.builder()
                 .pkId(db.getId())
                 .id(new ImMessageId(db.getMessageId()))
-                .groupId(new ImGroupId(db.getGroupId()))
+                .groupId(new GroupId(db.getGroupId()))
                 .chatId(new ImChatId(db.getChatId()))
                 .userId(new UserId(db.getUserId()))
                 .token(new ImMessageToken(db.getToken()))
@@ -74,6 +75,7 @@ public interface ImMessageDomainTransformer {
             @ValueMapping(target = "VIDEO", source = "VIDEO"),
             @ValueMapping(target = "FILE", source = "FILE"),
             @ValueMapping(target = "STICKER", source = "STICKER"),
+            @ValueMapping(target = "SYSTEM", source = "SYSTEM"),
     })
     ImMessageType imMessageTypeFrom(DbImMessageType dbType);
 

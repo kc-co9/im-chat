@@ -3,7 +3,7 @@ package com.co.kc.imchat.domain;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImGroupMessageTransmission;
@@ -64,7 +64,7 @@ class ImMessageServiceTest {
     void transmitGroupCreatedSystemMessageBuildsSystemMessageForEachGroupChat() {
         ImMessageService service = new ImMessageService(new FixedSnowflakeId(900L));
         UserId ownerId = new UserId(1L);
-        ImGroupId groupId = new ImGroupId(1001L);
+        GroupId groupId = new GroupId(1001L);
         ImGroupChat ownerChat = groupChat(101L, 1001L, 1L);
         ImGroupChat memberChat = groupChat(102L, 1001L, 2L);
 
@@ -93,7 +93,7 @@ class ImMessageServiceTest {
     private ImGroupChat groupChat(Long chatId, Long groupId, Long userId) {
         return ImGroupChat.builder()
                 .id(new ImChatId(chatId))
-                .groupId(new ImGroupId(groupId))
+                .groupId(new GroupId(groupId))
                 .userId(new UserId(userId))
                 .type(ImChatType.GROUP)
                 .unreadMessageCount(0)

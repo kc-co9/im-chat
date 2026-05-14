@@ -9,4 +9,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ImPrivateChatOpenResponse {
     private Long chatId;
+    private Long peerUserId;
 }

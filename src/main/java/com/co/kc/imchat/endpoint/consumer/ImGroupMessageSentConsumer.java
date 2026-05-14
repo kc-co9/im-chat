@@ -1,6 +1,6 @@
 package com.co.kc.imchat.endpoint.consumer;
 
-import com.co.kc.imchat.model.cqrs.command.notify.ImGroupSentNotifyCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupSentNotifyCmd;
 import com.co.kc.imchat.model.enums.RedisTopic;
 import com.co.kc.imchat.support.redis.RedisSubscriber;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +11,7 @@ import static com.co.kc.imchat.model.enums.PushQueue.QUEUE_GROUP_MESSAGE_SENT;
 
 @Component
 @RequiredArgsConstructor
-public class ImGroupMessageSentConsumer implements RedisSubscriber<ImGroupSentNotifyCmd> {
+public class ImGroupMessageSentConsumer implements RedisSubscriber<GroupSentNotifyCmd> {
     private final SimpMessagingTemplate messagingTemplate;
 
     @Override
@@ -20,7 +20,7 @@ public class ImGroupMessageSentConsumer implements RedisSubscriber<ImGroupSentNo
     }
 
     @Override
-    public void onMessage(ImGroupSentNotifyCmd message) {
+    public void onMessage(GroupSentNotifyCmd message) {
         messagingTemplate.convertAndSendToUser(String.valueOf(message.getReceiverId()), QUEUE_GROUP_MESSAGE_SENT, message);
     }
 

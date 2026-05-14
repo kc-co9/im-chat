@@ -2,7 +2,7 @@ package com.co.kc.imchat.domain;
 
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatType;
-import com.co.kc.imchat.domain.group.ImGroupId;
+import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
@@ -24,7 +24,7 @@ class GroupDomainModelTest {
     void groupChatReceivesUnreadMessageWhenUserIsNotChatting() {
         ImGroupChat chat = ImGroupChat.builder()
                 .id(new ImChatId(101L))
-                .groupId(new ImGroupId(1001L))
+                .groupId(new GroupId(1001L))
                 .userId(new UserId(2L))
                 .type(ImChatType.GROUP)
                 .unreadMessageCount(0)
@@ -42,7 +42,7 @@ class GroupDomainModelTest {
     void groupChatReadsMessageImmediatelyWhenUserIsChatting() {
         ImGroupChat chat = ImGroupChat.builder()
                 .id(new ImChatId(101L))
-                .groupId(new ImGroupId(1001L))
+                .groupId(new GroupId(1001L))
                 .userId(new UserId(2L))
                 .type(ImChatType.GROUP)
                 .unreadMessageCount(0)
@@ -54,13 +54,14 @@ class GroupDomainModelTest {
         assertThat(chat.getLastMessageId().getValue()).isEqualTo(900L);
         assertThat(chat.getReadMessageId().getValue()).isEqualTo(900L);
         assertThat(chat.getUnreadMessageCount()).isZero();
+        assertThat(chat.getReadTime()).isNotNull();
     }
 
     @Test
     void groupChatReadsToLatestMessage() {
         ImGroupChat chat = ImGroupChat.builder()
                 .id(new ImChatId(101L))
-                .groupId(new ImGroupId(1001L))
+                .groupId(new GroupId(1001L))
                 .userId(new UserId(2L))
                 .type(ImChatType.GROUP)
                 .lastMessageId(new ImMessageId(900L))
@@ -71,6 +72,7 @@ class GroupDomainModelTest {
 
         assertThat(chat.getReadMessageId().getValue()).isEqualTo(900L);
         assertThat(chat.getUnreadMessageCount()).isZero();
+        assertThat(chat.getReadTime()).isNotNull();
     }
 
     @Test
@@ -101,7 +103,7 @@ class GroupDomainModelTest {
                 .id(new ImMessageId(messageId))
                 .token(new ImMessageToken("token-" + messageId + "-" + userId))
                 .content(new ImMessageContent(ImMessageType.TEXT, "hello"))
-                .groupId(new ImGroupId(groupId))
+                .groupId(new GroupId(groupId))
                 .chatId(new ImChatId(chatId))
                 .userId(new UserId(userId))
                 .senderId(new UserId(senderId))

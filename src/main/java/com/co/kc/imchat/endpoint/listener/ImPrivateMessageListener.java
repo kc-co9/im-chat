@@ -1,7 +1,6 @@
 package com.co.kc.imchat.endpoint.listener;
 
 import com.co.kc.imchat.application.PrivateMessageAppService;
-import com.co.kc.imchat.domain.message.ImPrivateMessageReadEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageReceivedEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageSentEvent;
@@ -22,11 +21,6 @@ public class ImPrivateMessageListener {
     @EventListener
     public void onMessageReceived(ImPrivateMessageReceivedEvent event) {
         privateMessageAppService.onMessageReceived(event);
-    }
-
-    @EventListener
-    public void onMessageRead(ImPrivateMessageReadEvent event) {
-        privateMessageAppService.onMessageRead(event);
     }
 
     @EventListener

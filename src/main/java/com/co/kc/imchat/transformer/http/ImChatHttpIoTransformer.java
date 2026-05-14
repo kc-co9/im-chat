@@ -1,11 +1,12 @@
 package com.co.kc.imchat.transformer.http;
 
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImChatOpenDTO;
-import com.co.kc.imchat.model.cqrs.dto.im.ImGroupCreateDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupChatOpenDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupCreateDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatOpenDTO;
 import com.co.kc.imchat.model.io.chat.ImChatListResponse;
-import com.co.kc.imchat.model.io.chat.ImGroupChatOpenResponse;
-import com.co.kc.imchat.model.io.chat.ImGroupCreateResponse;
+import com.co.kc.imchat.model.io.group.GroupChatOpenResponse;
+import com.co.kc.imchat.model.io.group.GroupCreateResponse;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatOpenResponse;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -27,9 +28,9 @@ public interface ImChatHttpIoTransformer {
     })
     ImChatListResponse.ImChatItem imChatItemFrom(ImChatItemDTO imChatItem);
 
-    ImPrivateChatOpenResponse imPrivateChatOpenResponseFrom(ImChatOpenDTO dto);
+    ImPrivateChatOpenResponse imPrivateChatOpenResponseFrom(ImPrivateChatOpenDTO dto);
 
-    ImGroupChatOpenResponse imGroupChatOpenResponseFrom(ImChatOpenDTO dto);
+    GroupChatOpenResponse groupChatOpenResponseFrom(GroupChatOpenDTO dto);
 
-    ImGroupCreateResponse imGroupCreateResponseFrom(ImGroupCreateDTO dto);
+    GroupCreateResponse groupCreateResponseFrom(GroupCreateDTO dto);
 }
