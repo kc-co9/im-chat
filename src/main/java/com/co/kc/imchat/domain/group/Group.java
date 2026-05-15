@@ -32,6 +32,12 @@ public class Group extends Identification implements Validator {
         return status == GroupStatus.DISMISSED;
     }
 
+    public void ensureActive() {
+        if (isDismissed()) {
+            throw new BusinessException("群聊已解散");
+        }
+    }
+
     @Override
     public void validate() {
         if (id == null || type == null || ownerId == null || name == null || status == null) {

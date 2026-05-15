@@ -5,6 +5,7 @@ import com.co.kc.imchat.domain.user.User;
 import com.co.kc.imchat.domain.user.UserEmail;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.user.UserRepository;
+import com.co.kc.imchat.infrastructure.mybatis.entity.BaseEntity;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbUser;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbUserService;
 import com.co.kc.imchat.transformer.db.UserDbTransformer;
@@ -23,9 +24,9 @@ public class MysqlUserRepository implements UserRepository {
     private final DbUserService dbUserService;
 
     @Override
-    public User find(UserId userId) {
-        Optional<DbUser> user = dbUserService.getByUserId(userId.getValue());
-        return user.map(UserDomainTransformer.INSTANCE::userFrom).orElse(null);
+    public Optional<User> find(UserId userId) {
+        return dbUserService.getByUserId(userId.getValue())
+                .map(UserDomainTransformer.INSTANCE::userFrom);
     }
 
     @Override
@@ -39,9 +40,9 @@ public class MysqlUserRepository implements UserRepository {
     }
 
     @Override
-    public User find(UserEmail email) {
-        Optional<DbUser> user = dbUserService.getByEmail(email.getValue());
-        return user.map(UserDomainTransformer.INSTANCE::userFrom).orElse(null);
+    public Optional<User> find(UserEmail email) {
+        return dbUserService.getByEmail(email.getValue())
+                .map(UserDomainTransformer.INSTANCE::userFrom);
     }
 
     @Override
@@ -57,6 +58,8 @@ public class MysqlUserRepository implements UserRepository {
 
     @Override
     public boolean contain(UserEmail email) {
-        return dbUserService.isExist(dbUserService.getQueryWrapper().eq(DbUser::getEmail, email.getValue()));
+        return dbUserService.isExist(dbUserService.getQueryWrapper()
+                .select(BaseEntity::getId)
+                .eq(DbUser::getEmail, email.getValue()));
     }
 }

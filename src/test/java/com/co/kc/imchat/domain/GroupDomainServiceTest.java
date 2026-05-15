@@ -38,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Optional;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -332,13 +333,13 @@ class GroupDomainServiceTest {
         private final List<ImGroupChat> groupChats = new java.util.ArrayList<>();
 
         @Override
-        public ImGroupChat find(ImChatId chatId) {
-            return null;
+        public Optional<ImGroupChat> find(ImChatId chatId) {
+            return Optional.empty();
         }
 
         @Override
-        public ImGroupChat find(GroupId groupId, UserId userId) {
-            return null;
+        public Optional<ImGroupChat> find(GroupId groupId, UserId userId) {
+            return Optional.empty();
         }
 
         @Override
@@ -369,11 +370,6 @@ class GroupDomainServiceTest {
         }
 
         @Override
-        public List<ImGroupChat> findByUserIdAndChatIds(UserId userId, List<ImChatId> chatIds) {
-            return Collections.emptyList();
-        }
-
-        @Override
         public List<ImGroupChat> findByUserIdsAndGroupId(GroupId groupId, List<UserId> userIds) {
             return Collections.emptyList();
         }
@@ -401,11 +397,10 @@ class GroupDomainServiceTest {
         private final List<Group> groups = new java.util.ArrayList<>();
 
         @Override
-        public Group find(GroupId groupId) {
+        public Optional<Group> find(GroupId groupId) {
             return groups.stream()
                     .filter(group -> group.getId().equals(groupId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
@@ -427,13 +422,13 @@ class GroupDomainServiceTest {
 
     private static class EmptyPrivateChatRepository implements com.co.kc.imchat.domain.chat.ImPrivateChatRepository {
         @Override
-        public com.co.kc.imchat.domain.chat.ImPrivateChat find(ImChatId chatId) {
-            return null;
+        public Optional<com.co.kc.imchat.domain.chat.ImPrivateChat> find(ImChatId chatId) {
+            return Optional.empty();
         }
 
         @Override
-        public com.co.kc.imchat.domain.chat.ImPrivateChat find(UserId userId, UserId friendUserId) {
-            return null;
+        public Optional<com.co.kc.imchat.domain.chat.ImPrivateChat> find(UserId userId, UserId friendUserId) {
+            return Optional.empty();
         }
 
         @Override
@@ -469,8 +464,13 @@ class GroupDomainServiceTest {
         }
 
         @Override
-        public com.co.kc.imchat.domain.friend.Friend find(UserId userId, UserId friendUserId) {
-            return null;
+        public Optional<com.co.kc.imchat.domain.friend.Friend> find(UserId userId, UserId friendUserId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public boolean contain(UserId userId, UserId friendUserId) {
+            return false;
         }
 
         @Override
@@ -483,7 +483,7 @@ class GroupDomainServiceTest {
         }
 
         @Override
-        public void remove(com.co.kc.imchat.domain.friend.Friend friend) {
+        public void remove(UserId userId, UserId friendUserId) {
         }
     }
 
@@ -498,11 +498,15 @@ class GroupDomainServiceTest {
         }
 
         @Override
-        public Friend find(UserId userId, UserId friendUserId) {
+        public Optional<Friend> find(UserId userId, UserId friendUserId) {
             return find(userId).stream()
                     .filter(friend -> friend.getFriendUserId().equals(friendUserId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
+        }
+
+        @Override
+        public boolean contain(UserId userId, UserId friendUserId) {
+            return find(userId, friendUserId).isPresent();
         }
 
         @Override
@@ -517,7 +521,7 @@ class GroupDomainServiceTest {
         }
 
         @Override
-        public void remove(Friend friend) {
+        public void remove(UserId userId, UserId friendUserId) {
         }
     }
 
@@ -525,11 +529,10 @@ class GroupDomainServiceTest {
         private final List<User> users = new java.util.ArrayList<>();
 
         @Override
-        public User find(UserId userId) {
+        public Optional<User> find(UserId userId) {
             return users.stream()
                     .filter(user -> user.getId().equals(userId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
@@ -540,8 +543,8 @@ class GroupDomainServiceTest {
         }
 
         @Override
-        public User find(com.co.kc.imchat.domain.user.UserEmail email) {
-            return null;
+        public Optional<User> find(com.co.kc.imchat.domain.user.UserEmail email) {
+            return Optional.empty();
         }
 
         @Override

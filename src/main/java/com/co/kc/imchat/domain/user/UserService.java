@@ -23,10 +23,8 @@ public class UserService {
     }
 
     public User authenticate(UserEmail email, UserRawPassword rawPassword) {
-        User user = userRepository.find(email);
-        if (user == null) {
-            throw new AuthException("user is not exist");
-        }
+        User user = userRepository.find(email)
+                .orElseThrow(() -> new AuthException("user is not exist"));
 
         boolean hasPassed = user.validateRawPassword(rawPassword, passwordService);
         if (!hasPassed) {
@@ -37,19 +35,15 @@ public class UserService {
     }
 
     public boolean isChatting(ImChatId chatId, UserId receiverId) {
-        Session session = sessionRepository.find(receiverId);
-        if (session == null) {
-            return false;
-        }
-        return SessionStatus.ONLINE.equals(session.getStatus()) && chatId.equals(session.getChatId());
+        return sessionRepository.find(receiverId)
+                .map(session -> SessionStatus.ONLINE.equals(session.getStatus()) && chatId.equals(session.getChatId()))
+                .orElse(false);
     }
 
     public boolean isOnline(UserId userId) {
-        Session session = sessionRepository.find(userId);
-        if (session == null) {
-            return false;
-        }
-        return SessionStatus.ONLINE.equals(session.getStatus());
+        return sessionRepository.find(userId)
+                .map(session -> SessionStatus.ONLINE.equals(session.getStatus()))
+                .orElse(false);
     }
 
     /**

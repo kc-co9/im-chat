@@ -11,6 +11,7 @@ import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.infrastructure.mybatis.entity.BaseEntity;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupInboxMessage;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupInboxMessageService;
 import com.co.kc.imchat.support.utils.FunctionUtils;
@@ -49,8 +50,11 @@ public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRe
 
     @Override
     public boolean contain(ImChatId chatId, UserId userId, ImMessageToken token) {
-        return dbImGroupInboxMessageService.getByChatUserToken(chatId.getValue(), userId.getValue(), token.getValue())
-                .isPresent();
+        return dbImGroupInboxMessageService.isExist(dbImGroupInboxMessageService.getQueryWrapper()
+                .select(BaseEntity::getId)
+                .eq(DbImGroupInboxMessage::getChatId, chatId.getValue())
+                .eq(DbImGroupInboxMessage::getUserId, userId.getValue())
+                .eq(DbImGroupInboxMessage::getToken, token.getValue()));
     }
 
     @Override

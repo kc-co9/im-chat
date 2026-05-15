@@ -37,6 +37,14 @@ public class ImMessageNotifierFactory {
 
     @SuppressWarnings("unchecked")
     public <T> ImMessageNotifier<T> getNotifier(NotifierTaskType taskType) {
+        return (ImMessageNotifier<T>) findNotifier(taskType);
+    }
+
+    public Class<?> getCommandType(NotifierTaskType taskType) {
+        return resolveCommandType(findNotifier(taskType));
+    }
+
+    private ImMessageNotifier<?> findNotifier(NotifierTaskType taskType) {
         if (taskType == null) {
             throw new IllegalArgumentException("Unsupported IM notify taskType: null");
         }
@@ -44,22 +52,27 @@ public class ImMessageNotifierFactory {
         if (notifier == null) {
             throw new IllegalArgumentException("Unsupported IM notify command: " + taskType);
         }
-        return (ImMessageNotifier<T>) notifier;
+        return notifier;
     }
 
     private void registerCommand(ImMessageNotifier<?> notifier) {
+        commandNotifierMap.put(resolveCommandType(notifier), notifier);
+    }
+
+    private void registerTask(ImMessageNotifier<?> notifier) {
+        if (notifier instanceof ImMessageConfirmable) {
+            NotifierTaskType taskType = ((ImMessageConfirmable) notifier).task();
+            typeNotifierMapping.put(taskType, notifier);
+        }
+    }
+
+    private Class<?> resolveCommandType(ImMessageNotifier<?> notifier) {
         Class<?> notifierClass = AopUtils.getTargetClass(notifier);
         Class<?> commandType = ReflectUtils.resolveFirstGenericTypeArgument(notifierClass, ImMessageNotifier.class);
         if (commandType == null) {
             throw new IllegalArgumentException("Cannot resolve ImMessageNotifier generic command type: "
                     + notifierClass.getName());
         }
-        commandNotifierMap.put(commandType, notifier);
-    }
-
-    private void registerTask(ImMessageNotifier<?> notifier) {
-        if (notifier instanceof ImMessageConfirmable) {
-            typeNotifierMapping.put(((ImMessageConfirmable) notifier).task(), notifier);
-        }
+        return commandType;
     }
 }

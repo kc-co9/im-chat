@@ -531,10 +531,10 @@ class GroupAppServiceTest {
         private Session session;
 
         @Override
-        public Session find(UserId userId) {
+        public Optional<Session> find(UserId userId) {
             session = new Session(userId);
             session.onSignIn();
-            return session;
+            return Optional.of(session);
         }
 
         @Override
@@ -549,14 +549,13 @@ class GroupAppServiceTest {
         private int findByUserIdCount;
 
         @Override
-        public Group find(GroupId groupId) {
+        public Optional<Group> find(GroupId groupId) {
             if (savedGroup != null && savedGroup.getId().equals(groupId)) {
-                return savedGroup;
+                return Optional.of(savedGroup);
             }
             return groups.stream()
                     .filter(group -> group.getId().equals(groupId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
@@ -588,20 +587,18 @@ class GroupAppServiceTest {
         private int saveAllCount;
 
         @Override
-        public ImGroupChat find(ImChatId chatId) {
+        public Optional<ImGroupChat> find(ImChatId chatId) {
             return groupChats.stream()
                     .filter(groupChat -> groupChat.getId().equals(chatId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
-        public ImGroupChat find(GroupId groupId, UserId userId) {
+        public Optional<ImGroupChat> find(GroupId groupId, UserId userId) {
             return groupChats.stream()
                     .filter(groupChat -> groupChat.getGroupId().equals(groupId))
                     .filter(groupChat -> groupChat.getUserId().equals(userId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
@@ -634,11 +631,6 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public List<ImGroupChat> findByUserIdAndChatIds(UserId userId, List<ImChatId> chatIds) {
-            return Collections.emptyList();
-        }
-
-        @Override
         public List<ImGroupChat> findByUserIdsAndGroupId(GroupId groupId, List<UserId> userIds) {
             return Collections.emptyList();
         }
@@ -661,7 +653,7 @@ class GroupAppServiceTest {
 
         @Override
         public boolean contain(ImChatId chatId, UserId userId) {
-            return find(chatId) != null && find(chatId).contain(userId);
+            return find(chatId).map(chat -> chat.belongsTo(userId)).orElse(false);
         }
     }
 
@@ -680,12 +672,16 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public GroupMember find(GroupId groupId, UserId userId) {
+        public Optional<GroupMember> find(GroupId groupId, UserId userId) {
             return members.stream()
                     .filter(member -> member.getGroupId().equals(groupId))
                     .filter(member -> member.getUserId().equals(userId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
+        }
+
+        @Override
+        public boolean contain(GroupId groupId, UserId userId) {
+            return find(groupId, userId).isPresent();
         }
 
         @Override
@@ -781,11 +777,15 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public Friend find(UserId userId, UserId friendUserId) {
+        public Optional<Friend> find(UserId userId, UserId friendUserId) {
             return find(userId).stream()
                     .filter(friend -> friend.getFriendUserId().equals(friendUserId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
+        }
+
+        @Override
+        public boolean contain(UserId userId, UserId friendUserId) {
+            return find(userId, friendUserId).isPresent();
         }
 
         @Override
@@ -793,7 +793,7 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public void remove(Friend friend) {
+        public void remove(UserId userId, UserId friendUserId) {
         }
     }
 
@@ -801,11 +801,10 @@ class GroupAppServiceTest {
         private final List<User> users = new ArrayList<>();
 
         @Override
-        public User find(UserId userId) {
+        public Optional<User> find(UserId userId) {
             return users.stream()
                     .filter(user -> user.getId().equals(userId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
@@ -816,8 +815,8 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public User find(com.co.kc.imchat.domain.user.UserEmail email) {
-            return null;
+        public Optional<User> find(com.co.kc.imchat.domain.user.UserEmail email) {
+            return Optional.empty();
         }
 
         @Override

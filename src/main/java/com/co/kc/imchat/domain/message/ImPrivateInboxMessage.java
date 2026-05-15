@@ -44,6 +44,14 @@ public class ImPrivateInboxMessage extends ImMessage {
     }
 
     @Override
+    public String getVisibleContent() {
+        if (status == ImPrivateMessageStatus.REVOKED) {
+            return null;
+        }
+        return super.getVisibleContent();
+    }
+
+    @Override
     public void validate() {
         super.validate();
         if (chatId == null || userId == null || status == null) {

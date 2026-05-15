@@ -30,7 +30,7 @@ public class ImMessageService {
                 new ImMessageContent(ImMessageType.SYSTEM, "群聊已创建"));
         ImMessageSender sender = new ImMessageSender(ownerChat, ownerId);
         List<ImMessageRecipient> recipients = groupChats.stream()
-                .map(chat -> new ImMessageRecipient(chat, chat.getUserId().equals(ownerId)))
+                .map(chat -> new ImMessageRecipient(chat, chat.belongsTo(ownerId)))
                 .collect(Collectors.toList());
         return this.transmitGroupMessage(outboundMessage, sender, recipients);
     }
@@ -45,7 +45,7 @@ public class ImMessageService {
                 new ImMessageContent(ImMessageType.SYSTEM, "群聊已解散"));
         ImMessageSender sender = new ImMessageSender(ownerChat, ownerId);
         List<ImMessageRecipient> recipients = groupChats.stream()
-                .map(chat -> new ImMessageRecipient(chat, chat.getUserId().equals(ownerId)))
+                .map(chat -> new ImMessageRecipient(chat, chat.belongsTo(ownerId)))
                 .collect(Collectors.toList());
         return this.transmitGroupMessage(outboundMessage, sender, recipients);
     }
@@ -71,7 +71,7 @@ public class ImMessageService {
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("群聊消息不存在"));
 
-        boolean isSender = receiverChat.getUserId().equals(sender.getUserId());
+        boolean isSender = receiverChat.belongsTo(sender.getUserId());
         receiverChat.receiveLatestMessage(imGroupInboxMessage, isSender);
         return receiverChat;
     }
@@ -80,7 +80,7 @@ public class ImMessageService {
                                                        ImMessageSender sender, ImMessageRecipient recipient) {
         ImGroupChat senderChat = (ImGroupChat) sender.getChat();
         ImGroupChat receiverChat = (ImGroupChat) recipient.getChat();
-        boolean isSender = receiverChat.getUserId().equals(sender.getUserId());
+        boolean isSender = receiverChat.belongsTo(sender.getUserId());
         return ImGroupInboxMessage.builder()
                 .id(outboundMessage.getId())
                 .token(outboundMessage.getToken())

@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Repository
@@ -38,23 +39,16 @@ public class MysqlImPrivateChatRepository implements ImPrivateChatRepository {
     }
 
     @Override
-    public ImPrivateChat find(ImChatId chatId) {
-        DbImPrivateChat dbImPrivateChat = dbImPrivateChatService.getByChatId(chatId.getValue()).orElse(null);
-        if (dbImPrivateChat == null) {
-            return null;
-        }
-        return ImChatDomainTransformer.INSTANCE.imPrivateChatFrom(dbImPrivateChat);
+    public Optional<ImPrivateChat> find(ImChatId chatId) {
+        return dbImPrivateChatService.getByChatId(chatId.getValue())
+                .map(ImChatDomainTransformer.INSTANCE::imPrivateChatFrom);
     }
 
     @Override
-    public ImPrivateChat find(UserId userId, UserId peerUserId) {
-        DbImPrivateChat dbImPrivateChat = dbImPrivateChatService
+    public Optional<ImPrivateChat> find(UserId userId, UserId peerUserId) {
+        return dbImPrivateChatService
                 .getByUserIdAndPeerUserId(userId.getValue(), peerUserId.getValue())
-                .orElse(null);
-        if (dbImPrivateChat == null) {
-            return null;
-        }
-        return ImChatDomainTransformer.INSTANCE.imPrivateChatFrom(dbImPrivateChat);
+                .map(ImChatDomainTransformer.INSTANCE::imPrivateChatFrom);
     }
 
     @Override

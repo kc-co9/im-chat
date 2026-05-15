@@ -8,6 +8,7 @@ import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessageRepository;
 import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.infrastructure.mybatis.entity.BaseEntity;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImPrivateInboxMessage;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImPrivateInboxMessageService;
 import com.co.kc.imchat.support.utils.FunctionUtils;
@@ -94,6 +95,7 @@ public class MysqlImPrivateInboxMessageRepository implements ImPrivateInboxMessa
     public boolean contain(ImChatId chatId, ImMessageToken messageToken) {
         return dbImPrivateInboxMessageService.isExist(
                 dbImPrivateInboxMessageService.getQueryWrapper()
+                        .select(BaseEntity::getId)
                         .eq(DbImPrivateInboxMessage::getChatId, chatId.getValue())
                         .eq(DbImPrivateInboxMessage::getToken, messageToken.getValue()));
     }

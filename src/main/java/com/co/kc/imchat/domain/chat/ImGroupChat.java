@@ -21,10 +21,6 @@ public class ImGroupChat extends ImChat {
     private LocalDateTime readTime;
     private Integer unreadMessageCount;
 
-    public boolean contain(UserId userId) {
-        return getUserId() != null && getUserId().equals(userId);
-    }
-
     public void receiveLatestMessage(ImGroupInboxMessage message, boolean isChatting) {
         activate(message.getSendTime());
         this.lastMessageId = message.getId();

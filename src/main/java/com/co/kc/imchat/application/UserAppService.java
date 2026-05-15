@@ -67,29 +67,25 @@ public class UserAppService {
     public void signOut(UserSignOutCmd command) {
         UserId userId = new UserId(command.getUserId());
 
-        Session session = sessionRepository.find(userId);
-        if (session == null) {
-            return;
-        }
-
-        session.onSignOut();
-        sessionRepository.save(session);
+        sessionRepository.find(userId).ifPresent(session -> {
+            session.onSignOut();
+            sessionRepository.save(session);
+        });
     }
 
     public UserDetailDTO userDetail(UserDetailQuery query) {
         UserId userId = new UserId(query.getUserId());
 
-        User user = userRepository.find(userId);
-        if (user == null) {
-            throw new NotFoundException("用户不存在");
-        }
+        User user = userRepository.find(userId)
+                .orElseThrow(() -> new NotFoundException("用户不存在"));
 
         return new UserDetailDTO(user.getId().getValue(), user.getEmail().getValue(), user.getUsername().getValue());
     }
 
     public boolean isAuthenticated(UserAuthQuery query) {
         UserId userId = new UserId(query.getUserId());
-        Session session = sessionRepository.find(userId);
-        return session != null && session.isSignIn();
+        return sessionRepository.find(userId)
+                .map(Session::isSignIn)
+                .orElse(false);
     }
 }

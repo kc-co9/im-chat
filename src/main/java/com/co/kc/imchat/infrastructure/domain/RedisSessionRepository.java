@@ -10,6 +10,8 @@ import com.co.kc.imchat.transformer.domain.UserDomainTransformer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 @RequiredArgsConstructor
 public class RedisSessionRepository implements SessionRepository {
@@ -22,8 +24,8 @@ public class RedisSessionRepository implements SessionRepository {
     }
 
     @Override
-    public Session find(UserId userId) {
+    public Optional<Session> find(UserId userId) {
         SessionDTO sessionDTO = userSessionCache.get(userId.getValue());
-        return UserDomainTransformer.INSTANCE.sessionFrom(sessionDTO);
+        return Optional.ofNullable(UserDomainTransformer.INSTANCE.sessionFrom(sessionDTO));
     }
 }

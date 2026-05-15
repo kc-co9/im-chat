@@ -46,6 +46,14 @@ public class ImGroupInboxMessage extends ImMessage {
     }
 
     @Override
+    public String getVisibleContent() {
+        if (status == ImGroupMessageStatus.REVOKED) {
+            return null;
+        }
+        return super.getVisibleContent();
+    }
+
+    @Override
     public void validate() {
         super.validate();
         if (groupId == null || chatId == null || userId == null || status == null) {

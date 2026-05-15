@@ -17,6 +17,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -25,10 +26,9 @@ public class MysqlImGroupRepository implements GroupRepository {
     private final DbImGroupChatService dbImGroupChatService;
 
     @Override
-    public Group find(GroupId groupId) {
+    public Optional<Group> find(GroupId groupId) {
         return dbImGroupService.getByGroupId(groupId.getValue())
-                .map(ImChatDomainTransformer.INSTANCE::imGroupFrom)
-                .orElse(null);
+                .map(ImChatDomainTransformer.INSTANCE::imGroupFrom);
     }
 
     @Override

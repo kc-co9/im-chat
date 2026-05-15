@@ -5,6 +5,7 @@ import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.group.GroupMember;
 import com.co.kc.imchat.domain.group.GroupMemberRepository;
 import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.infrastructure.mybatis.entity.BaseEntity;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupMember;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupMemberService;
 import com.co.kc.imchat.transformer.db.ImChatDbTransformer;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Repository;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Repository
@@ -29,10 +31,17 @@ public class MysqlImGroupMemberRepository implements GroupMemberRepository {
     }
 
     @Override
-    public GroupMember find(GroupId groupId, UserId userId) {
+    public Optional<GroupMember> find(GroupId groupId, UserId userId) {
         return dbImGroupMemberService.getByGroupIdAndUserId(groupId.getValue(), userId.getValue())
-                .map(ImChatDomainTransformer.INSTANCE::imGroupMemberFrom)
-                .orElse(null);
+                .map(ImChatDomainTransformer.INSTANCE::imGroupMemberFrom);
+    }
+
+    @Override
+    public boolean contain(GroupId groupId, UserId userId) {
+        return dbImGroupMemberService.isExist(dbImGroupMemberService.getQueryWrapper()
+                .select(BaseEntity::getId)
+                .eq(DbImGroupMember::getGroupId, groupId.getValue())
+                .eq(DbImGroupMember::getUserId, userId.getValue()));
     }
 
     @Override

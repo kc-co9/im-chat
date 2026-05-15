@@ -33,6 +33,10 @@ public class ImChat extends Identification implements Validator {
         return status == ImChatStatus.NORMAL;
     }
 
+    public boolean belongsTo(UserId userId) {
+        return this.userId != null && this.userId.equals(userId);
+    }
+
     @Override
     public void validate() {
         if (id == null || type == null || userId == null) {

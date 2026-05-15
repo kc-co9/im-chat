@@ -17,6 +17,7 @@ import com.co.kc.imchat.domain.group.GroupStatus;
 import com.co.kc.imchat.domain.group.MemberId;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
+import com.co.kc.imchat.domain.message.ImGroupMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.ImGroupMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessage;
@@ -37,6 +38,7 @@ import com.co.kc.imchat.model.cqrs.command.group.GroupMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageSendCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupSentNotifyCmd;
 import com.co.kc.imchat.model.cqrs.dto.group.GroupChatOpenDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupMessageDTO;
 import com.co.kc.imchat.model.cqrs.query.group.GroupMessageDetailQuery;
 import com.co.kc.imchat.model.cqrs.query.group.GroupMessageHistoryQuery;
 import com.co.kc.imchat.support.auth.PasswordService;
@@ -147,7 +149,6 @@ class GroupChatAppServiceTest {
         groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
 
         ChatAppService appService = new ChatAppService(
-                null,
                 null,
                 groupChatRepository,
                 null,
@@ -352,6 +353,35 @@ class GroupChatAppServiceTest {
     }
 
     @Test
+    void revokeGroupMessageRevokesAllInboxCopiesWhenRepositoryReturnsDetachedInstances() {
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        MemoryGroupInboxRepository inboxRepository = new MemoryGroupInboxRepository();
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
+        inboxRepository.messages.add(groupInboxMessage(900L, 101L, 1001L, 1L, 1L));
+        inboxRepository.groupMessageCopies.add(groupInboxMessage(900L, 101L, 1001L, 1L, 1L));
+        inboxRepository.groupMessageCopies.add(groupInboxMessage(900L, 102L, 1001L, 2L, 1L));
+        GroupMessageAppService appService = groupMessageAppService(
+                groupChatRepository, groupMemberRepository, inboxRepository, normalGroupRepository(1001L), eventPublisher);
+
+        appService.revokeMessage(groupMessageRevokeCmd(101L, 1L, 900L));
+
+        assertThat(inboxRepository.savedMessages).hasSize(2);
+        assertThat(inboxRepository.savedMessages)
+                .extracting(message -> message.getUserId().getValue(), ImGroupInboxMessage::getStatus)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(1L, ImGroupMessageStatus.REVOKED),
+                        org.assertj.core.groups.Tuple.tuple(2L, ImGroupMessageStatus.REVOKED));
+        assertThat(inboxRepository.savedMessages)
+                .allSatisfy(message -> assertThat(message.getRevokeTime()).isNotNull());
+        ImGroupMessageRevokedEvent event = (ImGroupMessageRevokedEvent) eventPublisher.events.get(0);
+        assertThat(event.getRevokeTime()).isNotNull();
+    }
+
+    @Test
     void revokeGroupMessageRejectsOtherMemberChatId() {
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
@@ -528,6 +558,32 @@ class GroupChatAppServiceTest {
     }
 
     @Test
+    void queryGroupHistoryKeepsRevokedMessagesWithHiddenContent() {
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        MemoryGroupInboxRepository inboxRepository = new MemoryGroupInboxRepository();
+        inboxRepository.messages.add(groupInboxMessage(902L, 101L, 1001L, 1L, 2L, ImGroupMessageStatus.SENT));
+        inboxRepository.messages.add(groupInboxMessage(
+                901L, 101L, 1001L, 1L, 2L, ImGroupMessageStatus.REVOKED, LocalDateTime.now().minusMinutes(1)));
+        inboxRepository.messages.add(groupInboxMessage(
+                900L, 101L, 1001L, 1L, 2L, ImGroupMessageStatus.REVOKED, LocalDateTime.now().minusMinutes(3)));
+        GroupMessageAppService appService = groupMessageAppService(
+                groupChatRepository, groupMemberRepository, inboxRepository, normalGroupRepository(1001L));
+        GroupMessageHistoryQuery query = new GroupMessageHistoryQuery(101L, 1L, null, 20);
+
+        List<GroupMessageDTO> messages = appService.queryHistoryMessage(query);
+
+        assertThat(messages)
+                .extracting(GroupMessageDTO::getMessageId)
+                .containsExactly(902L, 901L, 900L);
+        assertThat(messages)
+                .extracting(GroupMessageDTO::getContent)
+                .containsExactly("hello", null, null);
+    }
+
+    @Test
     void queryGroupMessageDetailThrowsWhenMessageMissing() {
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
@@ -594,6 +650,17 @@ class GroupChatAppServiceTest {
 
     private ImGroupInboxMessage groupInboxMessage(
             Long messageId, Long chatId, Long groupId, Long userId, Long senderId) {
+        return groupInboxMessage(messageId, chatId, groupId, userId, senderId, ImGroupMessageStatus.SENT);
+    }
+
+    private ImGroupInboxMessage groupInboxMessage(
+            Long messageId, Long chatId, Long groupId, Long userId, Long senderId, ImGroupMessageStatus status) {
+        return groupInboxMessage(messageId, chatId, groupId, userId, senderId, status, null);
+    }
+
+    private ImGroupInboxMessage groupInboxMessage(
+            Long messageId, Long chatId, Long groupId, Long userId, Long senderId,
+            ImGroupMessageStatus status, LocalDateTime revokeTime) {
         return ImGroupInboxMessage.builder()
                 .id(new ImMessageId(messageId))
                 .token(new ImMessageToken("token-" + messageId))
@@ -602,8 +669,9 @@ class GroupChatAppServiceTest {
                 .groupId(new GroupId(groupId))
                 .userId(new UserId(userId))
                 .senderId(new UserId(senderId))
-                .status(ImGroupMessageStatus.SENT)
-                .sendTime(java.time.LocalDateTime.now())
+                .status(status)
+                .sendTime(LocalDateTime.now())
+                .revokeTime(revokeTime)
                 .build();
     }
 
@@ -640,7 +708,6 @@ class GroupChatAppServiceTest {
                                           SessionRepository sessionRepository) {
         return new ChatAppService(
                 null,
-                null,
                 groupChatRepository,
                 groupMemberRepository,
                 inboxRepository,
@@ -653,6 +720,15 @@ class GroupChatAppServiceTest {
                                                           MemoryGroupMemberRepository groupMemberRepository,
                                                           MemoryGroupInboxRepository inboxRepository,
                                                           MemoryGroupRepository groupRepository) {
+        return groupMessageAppService(
+                groupChatRepository, groupMemberRepository, inboxRepository, groupRepository, new NoopDomainEventPublisher());
+    }
+
+    private GroupMessageAppService groupMessageAppService(MemoryGroupChatRepository groupChatRepository,
+                                                          MemoryGroupMemberRepository groupMemberRepository,
+                                                          MemoryGroupInboxRepository inboxRepository,
+                                                          MemoryGroupRepository groupRepository,
+                                                          DomainEventPublisher eventPublisher) {
         return new GroupMessageAppService(
                 new FixedSnowflakeId(900L),
                 groupChatRepository,
@@ -663,7 +739,7 @@ class GroupChatAppServiceTest {
                 new GroupService(groupMemberRepository, groupChatRepository, null, null),
                 new ImMessageService(new FixedSnowflakeId(1L)),
                 null,
-                new NoopDomainEventPublisher());
+                eventPublisher);
     }
 
     private GroupMessageSendCmd groupMessageSendCmd(Long chatId, Long senderId) {
@@ -765,8 +841,8 @@ class GroupChatAppServiceTest {
 
     private static class EmptySessionRepository implements SessionRepository {
         @Override
-        public com.co.kc.imchat.domain.session.Session find(UserId userId) {
-            return null;
+        public Optional<com.co.kc.imchat.domain.session.Session> find(UserId userId) {
+            return Optional.empty();
         }
 
         @Override
@@ -778,10 +854,10 @@ class GroupChatAppServiceTest {
         private Session session;
 
         @Override
-        public Session find(UserId userId) {
+        public Optional<Session> find(UserId userId) {
             session = new Session(userId);
             session.onSignIn();
-            return session;
+            return Optional.of(session);
         }
 
         @Override
@@ -797,6 +873,20 @@ class GroupChatAppServiceTest {
 
         @Override
         public void publish(List<com.co.kc.imchat.domain.shared.DomainEvent> eventList) {
+        }
+    }
+
+    private static class MemoryDomainEventPublisher implements DomainEventPublisher {
+        private final List<com.co.kc.imchat.domain.shared.DomainEvent> events = new ArrayList<>();
+
+        @Override
+        public void publish(com.co.kc.imchat.domain.shared.DomainEvent event) {
+            events.add(event);
+        }
+
+        @Override
+        public void publish(List<com.co.kc.imchat.domain.shared.DomainEvent> eventList) {
+            events.addAll(eventList);
         }
     }
 
@@ -819,11 +909,10 @@ class GroupChatAppServiceTest {
         private final List<Group> groups = new ArrayList<>();
 
         @Override
-        public Group find(GroupId groupId) {
+        public Optional<Group> find(GroupId groupId) {
             return groups.stream()
                     .filter(group -> group.getId().equals(groupId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
@@ -848,20 +937,18 @@ class GroupChatAppServiceTest {
         private List<ImGroupChat> savedGroupChats = new ArrayList<>();
 
         @Override
-        public ImGroupChat find(ImChatId chatId) {
+        public Optional<ImGroupChat> find(ImChatId chatId) {
             return groupChats.stream()
                     .filter(groupChat -> groupChat.getId().getValue().equals(chatId.getValue()))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
-        public ImGroupChat find(GroupId groupId, UserId userId) {
+        public Optional<ImGroupChat> find(GroupId groupId, UserId userId) {
             return groupChats.stream()
                     .filter(groupChat -> groupChat.getGroupId().equals(groupId))
                     .filter(groupChat -> groupChat.getUserId().equals(userId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
@@ -892,11 +979,6 @@ class GroupChatAppServiceTest {
         }
 
         @Override
-        public List<ImGroupChat> findByUserIdAndChatIds(UserId userId, List<ImChatId> chatIds) {
-            return Collections.emptyList();
-        }
-
-        @Override
         public List<ImGroupChat> findByUserIdsAndGroupId(GroupId groupId, List<UserId> userIds) {
             return groupChats.stream()
                     .filter(groupChat -> groupChat.getGroupId().equals(groupId))
@@ -921,7 +1003,7 @@ class GroupChatAppServiceTest {
 
         @Override
         public boolean contain(ImChatId chatId, UserId userId) {
-            return find(chatId) != null && find(chatId).contain(userId);
+            return find(chatId).map(chat -> chat.belongsTo(userId)).orElse(false);
         }
 
         private ImGroupChat findSavedByUserId(Long userId) {
@@ -944,12 +1026,16 @@ class GroupChatAppServiceTest {
         }
 
         @Override
-        public GroupMember find(GroupId groupId, UserId userId) {
+        public Optional<GroupMember> find(GroupId groupId, UserId userId) {
             return members.stream()
                     .filter(member -> member.getGroupId().equals(groupId))
                     .filter(member -> member.getUserId().equals(userId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
+        }
+
+        @Override
+        public boolean contain(GroupId groupId, UserId userId) {
+            return find(groupId, userId).isPresent();
         }
 
         @Override
@@ -967,6 +1053,7 @@ class GroupChatAppServiceTest {
 
     private static class MemoryGroupInboxRepository implements ImGroupInboxMessageRepository {
         private final List<ImGroupInboxMessage> messages = new ArrayList<>();
+        private final List<ImGroupInboxMessage> groupMessageCopies = new ArrayList<>();
         private List<ImGroupInboxMessage> savedMessages = new ArrayList<>();
         private final List<ImGroupInboxMessage> unreadMessages = new ArrayList<>();
 
@@ -996,7 +1083,8 @@ class GroupChatAppServiceTest {
 
         @Override
         public List<ImGroupInboxMessage> findByGroupIdAndMessageId(GroupId groupId, ImMessageId messageId) {
-            return messages.stream()
+            List<ImGroupInboxMessage> source = groupMessageCopies.isEmpty() ? messages : groupMessageCopies;
+            return source.stream()
                     .filter(message -> message.getGroupId().equals(groupId))
                     .filter(message -> message.getId().getValue().equals(messageId.getValue()))
                     .collect(Collectors.toList());
@@ -1013,7 +1101,13 @@ class GroupChatAppServiceTest {
         @Override
         public List<ImGroupInboxMessage> queryHistory(
                 ImChatId chatId, UserId userId, ImMessageId lastMessageId, Integer count) {
-            return Collections.emptyList();
+            return messages.stream()
+                    .filter(message -> message.getChatId().equals(chatId))
+                    .filter(message -> message.getUserId().equals(userId))
+                    .filter(message -> lastMessageId == null || message.getId().getValue() < lastMessageId.getValue())
+                    .sorted((left, right) -> right.getId().getValue().compareTo(left.getId().getValue()))
+                    .limit(count)
+                    .collect(Collectors.toList());
         }
 
         @Override

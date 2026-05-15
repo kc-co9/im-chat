@@ -3,10 +3,11 @@ package com.co.kc.imchat.domain.group;
 import com.co.kc.imchat.domain.user.UserId;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface GroupRepository {
 
-    Group find(GroupId groupId);
+    Optional<Group> find(GroupId groupId);
 
     List<Group> find(UserId userId);
 

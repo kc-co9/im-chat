@@ -28,7 +28,10 @@ import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatOpenDTO;
+import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
+import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
+import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.support.notifier.ImMessageNotifierInvoker;
 import org.junit.jupiter.api.Test;
@@ -38,17 +41,24 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PrivateChatAppServiceTest {
 
     @Test
-    void openPrivateChatCreatesBothSidesAndEntersCurrentUserChat() {
+    void openPrivateChatActivatesExistingCurrentUserChatOnly() {
         MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        ImPrivateChat userChat = privateChat(101L, 1L, 2L);
+        userChat.hide();
+        ImPrivateChat peerChat = privateChat(102L, 2L, 1L);
+        peerChat.hide();
+        privateChatRepository.chats.add(userChat);
+        privateChatRepository.chats.add(peerChat);
         SignedInSessionRepository sessionRepository = new SignedInSessionRepository();
         ChatAppService appService = new ChatAppService(
-                new FixedSnowflakeId(3000L),
                 privateChatRepository,
                 null,
                 null,
@@ -60,24 +70,31 @@ class PrivateChatAppServiceTest {
 
         ImPrivateChatOpenDTO result = appService.openPrivateChat(command);
 
-        assertThat(result.getChatId()).isEqualTo(3000L);
+        assertThat(result.getChatId()).isEqualTo(101L);
         assertThat(result.getPeerUserId()).isEqualTo(2L);
 
-        assertThat(privateChatRepository.savedChats)
-                .extracting(chat -> chat.getUserId().getValue())
-                .containsExactly(1L, 2L);
-        assertThat(privateChatRepository.savedChats)
-                .extracting(chat -> chat.getPeerUserId().getValue())
-                .containsExactly(2L, 1L);
-        assertThat(privateChatRepository.savedChats)
-                .extracting(chat -> chat.getId().getValue())
-                .containsExactly(3000L, 3001L);
-        assertThat(privateChatRepository.savedChats)
-                .extracting(ImPrivateChat::getStatus)
-                .containsExactly(ImChatStatus.NORMAL, ImChatStatus.NORMAL);
-        assertThat(privateChatRepository.savedChats)
-                .allSatisfy(chat -> assertThat(chat.getActiveTime()).isNotNull());
-        assertThat(sessionRepository.session.getChatId().getValue()).isEqualTo(3000L);
+        assertThat(privateChatRepository.savedChats).containsExactly(userChat);
+        assertThat(userChat.getStatus()).isEqualTo(ImChatStatus.NORMAL);
+        assertThat(userChat.getActiveTime()).isNotNull();
+        assertThat(peerChat.getStatus()).isEqualTo(ImChatStatus.HIDDEN);
+        assertThat(sessionRepository.session.getChatId().getValue()).isEqualTo(101L);
+    }
+
+    @Test
+    void openPrivateChatRejectsMissingChat() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        ChatAppService appService = new ChatAppService(
+                privateChatRepository,
+                null,
+                null,
+                null,
+                null,
+                new NormalFriendRepository(),
+                new ImChatService(null, null, privateChatRepository, null, null, new SignedInSessionRepository()));
+
+        assertThatThrownBy(() -> appService.openPrivateChat(new ImPrivateChatOpenCmd(1L, 2L)))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("聊天不存在");
     }
 
     @Test
@@ -92,7 +109,6 @@ class PrivateChatAppServiceTest {
         privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
 
         ChatAppService appService = new ChatAppService(
-                new FixedSnowflakeId(3000L),
                 privateChatRepository,
                 null,
                 null,
@@ -117,7 +133,6 @@ class PrivateChatAppServiceTest {
         privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
 
         ChatAppService appService = new ChatAppService(
-                null,
                 privateChatRepository,
                 null,
                 null,
@@ -164,6 +179,39 @@ class PrivateChatAppServiceTest {
         assertThat(inboxRepository.savedMessages)
                 .extracting(ImPrivateInboxMessage::getStatus)
                 .containsExactly(ImPrivateMessageStatus.REVOKED, ImPrivateMessageStatus.REVOKED);
+    }
+
+    @Test
+    void queryPrivateHistoryKeepsRevokedMessagesWithHiddenContent() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
+
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        inboxRepository.messages.add(privateMessage(902L, 101L, 1L, 2L, ImPrivateMessageStatus.SENT));
+        inboxRepository.messages.add(privateMessage(
+                901L, 101L, 1L, 2L, ImPrivateMessageStatus.REVOKED, LocalDateTime.now().minusMinutes(1)));
+        inboxRepository.messages.add(privateMessage(
+                900L, 101L, 1L, 2L, ImPrivateMessageStatus.REVOKED, LocalDateTime.now().minusMinutes(3)));
+
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                new FixedSnowflakeId(900L),
+                privateChatRepository,
+                inboxRepository,
+                null,
+                new ImChatService(null, null, privateChatRepository, null, null, null),
+                new ImMessageService(new FixedSnowflakeId(1L)),
+                null,
+                new MemoryDomainEventPublisher());
+
+        List<ImPrivateMessageDTO> messages = appService.queryHistoryMessage(
+                new ImPrivateMessageHistoryQuery(101L, 1L, null, 20));
+
+        assertThat(messages)
+                .extracting(ImPrivateMessageDTO::getMessageId)
+                .containsExactly(902L, 901L, 900L);
+        assertThat(messages)
+                .extracting(ImPrivateMessageDTO::getContent)
+                .containsExactly("hello", null, null);
     }
 
     @Test
@@ -240,6 +288,12 @@ class PrivateChatAppServiceTest {
 
     private ImPrivateInboxMessage privateMessage(
             Long messageId, Long chatId, Long userId, Long senderId, ImPrivateMessageStatus status) {
+        return privateMessage(messageId, chatId, userId, senderId, status, null);
+    }
+
+    private ImPrivateInboxMessage privateMessage(
+            Long messageId, Long chatId, Long userId, Long senderId,
+            ImPrivateMessageStatus status, LocalDateTime revokeTime) {
         return ImPrivateInboxMessage.builder()
                 .id(new ImMessageId(messageId))
                 .token(new ImMessageToken("token-" + messageId))
@@ -249,6 +303,7 @@ class PrivateChatAppServiceTest {
                 .senderId(new UserId(senderId))
                 .status(status)
                 .sendTime(LocalDateTime.now())
+                .revokeTime(revokeTime)
                 .build();
     }
 
@@ -272,20 +327,18 @@ class PrivateChatAppServiceTest {
         }
 
         @Override
-        public ImPrivateChat find(ImChatId chatId) {
+        public Optional<ImPrivateChat> find(ImChatId chatId) {
             return chats.stream()
                     .filter(chat -> chat.getId().equals(chatId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
-        public ImPrivateChat find(UserId userId, UserId peerUserId) {
+        public Optional<ImPrivateChat> find(UserId userId, UserId peerUserId) {
             return chats.stream()
                     .filter(chat -> chat.getUserId().equals(userId))
                     .filter(chat -> chat.getPeerUserId().equals(peerUserId))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
         }
 
         @Override
@@ -330,7 +383,13 @@ class PrivateChatAppServiceTest {
         @Override
         public List<ImPrivateInboxMessage> queryHistory(
                 ImChatId imChatId, ImMessageId imLastMessageId, int count, UserId viewer) {
-            return Collections.emptyList();
+            return messages.stream()
+                    .filter(message -> message.getChatId().equals(imChatId))
+                    .filter(message -> message.getUserId().equals(viewer))
+                    .filter(message -> imLastMessageId == null || message.getId().getValue() < imLastMessageId.getValue())
+                    .sorted((left, right) -> right.getId().getValue().compareTo(left.getId().getValue()))
+                    .limit(count)
+                    .collect(Collectors.toList());
         }
 
         @Override
@@ -357,8 +416,13 @@ class PrivateChatAppServiceTest {
         }
 
         @Override
-        public Friend find(UserId userId, UserId friendUserId) {
-            return new Friend();
+        public Optional<Friend> find(UserId userId, UserId friendUserId) {
+            return Optional.of(new Friend());
+        }
+
+        @Override
+        public boolean contain(UserId userId, UserId friendUserId) {
+            return true;
         }
 
         @Override
@@ -366,7 +430,7 @@ class PrivateChatAppServiceTest {
         }
 
         @Override
-        public void remove(Friend friend) {
+        public void remove(UserId userId, UserId friendUserId) {
         }
     }
 
@@ -374,10 +438,10 @@ class PrivateChatAppServiceTest {
         private Session session;
 
         @Override
-        public Session find(UserId userId) {
+        public Optional<Session> find(UserId userId) {
             session = new Session(userId);
             session.onSignIn();
-            return session;
+            return Optional.of(session);
         }
 
         @Override

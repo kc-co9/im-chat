@@ -3,19 +3,15 @@ package com.co.kc.imchat.application;
 import com.co.kc.imchat.domain.chat.ImUserChatDescriptor;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
-import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatService;
-import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.group.Group;
-import com.co.kc.imchat.domain.group.GroupMember;
 import com.co.kc.imchat.domain.group.GroupMemberRepository;
 import com.co.kc.imchat.domain.group.GroupRepository;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.chat.ImPrivateChatRepository;
-import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendRepository;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
@@ -32,6 +28,7 @@ import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
 import com.co.kc.imchat.transformer.application.ImChatAppTransformer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -43,7 +40,6 @@ import java.util.List;
 @Slf4j
 @RequiredArgsConstructor
 public class ChatAppService {
-    private final SnowflakeId snowflakeId;
     private final ImPrivateChatRepository imPrivateChatRepository;
     private final ImGroupChatRepository imGroupChatRepository;
     private final GroupMemberRepository groupMemberRepository;
@@ -53,69 +49,42 @@ public class ChatAppService {
 
     private final ImChatService imChatService;
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public ImPrivateChatOpenDTO openPrivateChat(ImPrivateChatOpenCmd command) {
         UserId userId = new UserId(command.getUserId());
         UserId peerUserId = new UserId(command.getPeerUserId());
 
-        Friend friend = friendRepository.find(userId, peerUserId);
-        if (friend == null) {
+        if (!friendRepository.contain(userId, peerUserId)) {
             throw new NotFoundException("好友不存在");
         }
 
-        ImPrivateChat userChat = imPrivateChatRepository.find(userId, peerUserId);
-        if (userChat == null) {
-            userChat = ImPrivateChat.builder()
-                    .id(new ImChatId(snowflakeId.next()))
-                    .userId(userId)
-                    .peerUserId(peerUserId)
-                    .type(ImChatType.PRIVATE)
-                    .build();
-        }
+        ImPrivateChat userChat = imPrivateChatRepository.find(userId, peerUserId)
+                .orElseThrow(() -> new NotFoundException("聊天不存在"));
         userChat.activate(LocalDateTime.now());
         imPrivateChatRepository.save(userChat);
-
-        ImPrivateChat peerChat = imPrivateChatRepository.find(peerUserId, userId);
-        if (peerChat == null) {
-            peerChat = ImPrivateChat.builder()
-                    .id(new ImChatId(snowflakeId.next()))
-                    .userId(peerUserId)
-                    .peerUserId(userId)
-                    .type(ImChatType.PRIVATE)
-                    .build();
-            peerChat.activate(LocalDateTime.now());
-            imPrivateChatRepository.save(peerChat);
-        }
 
         imChatService.enterChat(userChat);
         return new ImPrivateChatOpenDTO(userChat.getId().getValue(), peerUserId.getValue());
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public GroupChatOpenDTO openGroupChat(ImGroupChatOpenCmd command) {
         UserId userId = new UserId(command.getUserId());
         ImChatId chatId = new ImChatId(command.getChatId());
 
-        ImGroupChat groupChat = imGroupChatRepository.find(chatId);
-        if (groupChat == null) {
-            throw new NotFoundException("聊天不存在");
-        }
-        if (!groupChat.getUserId().equals(userId)) {
+        ImGroupChat groupChat = imGroupChatRepository.find(chatId)
+                .orElseThrow(() -> new NotFoundException("聊天不存在"));
+        if (!groupChat.belongsTo(userId)) {
             throw new BusinessException("用户无此群聊权限");
         }
 
-        GroupMember member = groupMemberRepository.find(groupChat.getGroupId(), userId);
-        if (member == null) {
+        if (!groupMemberRepository.contain(groupChat.getGroupId(), userId)) {
             throw new BusinessException("用户无此群聊权限");
         }
 
-        Group group = groupRepository.find(groupChat.getGroupId());
-        if (group == null) {
-            throw new NotFoundException("群组不存在");
-        }
-        if (group.isDismissed()) {
-            throw new BusinessException("群聊已解散");
-        }
+        Group group = groupRepository.find(groupChat.getGroupId())
+                .orElseThrow(() -> new NotFoundException("群组不存在"));
+        group.ensureActive();
 
         groupChat.activate(LocalDateTime.now());
         groupChat.readToLatest();
@@ -135,32 +104,28 @@ public class ChatAppService {
         imChatService.exitChat(userId);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void hidePrivateChat(PrivateChatHideCmd command) {
         UserId userId = new UserId(command.getUserId());
         ImChatId chatId = new ImChatId(command.getChatId());
 
-        ImPrivateChat privateChat = imPrivateChatRepository.find(chatId);
-        if (privateChat == null) {
-            throw new NotFoundException("聊天不存在");
-        }
-        if (!privateChat.getUserId().equals(userId)) {
+        ImPrivateChat privateChat = imPrivateChatRepository.find(chatId)
+                .orElseThrow(() -> new NotFoundException("聊天不存在"));
+        if (!privateChat.belongsTo(userId)) {
             throw new BusinessException("用户无此聊天权限");
         }
         privateChat.hide();
         imPrivateChatRepository.save(privateChat);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void hideGroupChat(GroupChatHideCmd command) {
         UserId userId = new UserId(command.getUserId());
         ImChatId chatId = new ImChatId(command.getChatId());
 
-        ImGroupChat groupChat = imGroupChatRepository.find(chatId);
-        if (groupChat == null) {
-            throw new NotFoundException("聊天不存在");
-        }
-        if (!groupChat.getUserId().equals(userId)) {
+        ImGroupChat groupChat = imGroupChatRepository.find(chatId)
+                .orElseThrow(() -> new NotFoundException("聊天不存在"));
+        if (!groupChat.belongsTo(userId)) {
             throw new BusinessException("用户无此聊天权限");
         }
         groupChat.hide();

@@ -18,6 +18,10 @@ public class ImMessage extends Identification implements Validator {
     protected LocalDateTime sendTime;
     protected LocalDateTime revokeTime;
 
+    public String getVisibleContent() {
+        return content.getValue();
+    }
+
     @Override
     public void validate() {
         if (id == null || token == null || content == null || senderId == null || sendTime == null) {

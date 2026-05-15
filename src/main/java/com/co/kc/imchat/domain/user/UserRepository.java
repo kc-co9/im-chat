@@ -1,6 +1,7 @@
 package com.co.kc.imchat.domain.user;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface UserRepository {
     /**
@@ -9,7 +10,7 @@ public interface UserRepository {
      * @param userId 用户ID
      * @return 用户
      */
-    User find(UserId userId);
+    Optional<User> find(UserId userId);
 
     List<User> find(List<UserId> userId);
 
@@ -19,7 +20,7 @@ public interface UserRepository {
      * @param email 邮箱
      * @return 用户
      */
-    User find(UserEmail email);
+    Optional<User> find(UserEmail email);
 
     /**
      * 保存用户

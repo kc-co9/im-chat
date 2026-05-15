@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -39,7 +40,7 @@ public class ImChatService {
     private final ImGroupChatRepository imGroupChatRepository;
     private final SessionRepository sessionRepository;
 
-    public ImPrivateChat getPeerChat(ImPrivateChat imChat) {
+    public Optional<ImPrivateChat> getPeerChat(ImPrivateChat imChat) {
         if (imChat == null) {
             throw new IllegalArgumentException("聊天会话传入为空");
         }
@@ -73,10 +74,22 @@ public class ImChatService {
                 .collect(Collectors.toList());
     }
 
+    public ImPrivateChat createHiddenPrivateChat(UserId userId, UserId peerUserId) {
+        ImPrivateChat privateChat = ImPrivateChat.builder()
+                .id(new ImChatId(snowflakeId.next()))
+                .userId(userId)
+                .peerUserId(peerUserId)
+                .type(ImChatType.PRIVATE)
+                .build();
+        privateChat.hide();
+        return privateChat;
+    }
+
     public void enterChat(ImChat chat) {
         UserId userId = chat.getUserId();
-        Session session = sessionRepository.find(userId);
-        if (session == null || !session.isSignIn()) {
+        Session session = sessionRepository.find(userId)
+                .orElseThrow(() -> new AuthException("用户尚未登陆"));
+        if (!session.isSignIn()) {
             throw new AuthException("用户尚未登陆");
         }
 
@@ -85,8 +98,9 @@ public class ImChatService {
     }
 
     public void exitChat(UserId userId) {
-        Session session = sessionRepository.find(userId);
-        if (session == null || !session.isSignIn()) {
+        Session session = sessionRepository.find(userId)
+                .orElseThrow(() -> new AuthException("用户尚未登陆"));
+        if (!session.isSignIn()) {
             throw new AuthException("用户尚未登陆");
         }
 
@@ -154,14 +168,15 @@ public class ImChatService {
                     return group != null && !group.isDismissed();
                 })
                 .map(imGroupChat -> {
-            ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
-            descriptor.setChatId(imGroupChat.getId());
-            descriptor.setChatName(obtainGroupChatName(groupMap.get(imGroupChat.getGroupId()), imGroupChat.getGroupAlias()));
-            descriptor.setChatType(imGroupChat.getType());
-            descriptor.setActiveTime(imGroupChat.getActiveTime());
-            descriptor.setChatLastMessage(chatLastMessageMap.get(imGroupChat.getId()));
-            return descriptor;
-        }).collect(Collectors.toList());
+                    Group group = groupMap.get(imGroupChat.getGroupId());
+                    ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
+                    descriptor.setChatId(imGroupChat.getId());
+                    descriptor.setChatName(obtainGroupChatName(group, imGroupChat.getGroupAlias()));
+                    descriptor.setChatType(imGroupChat.getType());
+                    descriptor.setActiveTime(imGroupChat.getActiveTime());
+                    descriptor.setChatLastMessage(chatLastMessageMap.get(imGroupChat.getId()));
+                    return descriptor;
+                }).collect(Collectors.toList());
     }
 
     /**

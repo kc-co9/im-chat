@@ -3,6 +3,7 @@ package com.co.kc.imchat.infrastructure.domain;
 import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendRepository;
 import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.infrastructure.mybatis.entity.BaseEntity;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbFriend;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbUser;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbFriendService;
@@ -16,6 +17,7 @@ import org.springframework.util.CollectionUtils;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -40,16 +42,18 @@ public class MysqlFriendRepository implements FriendRepository {
     }
 
     @Override
-    public Friend find(UserId userId, UserId friendUserId) {
-        DbFriend dbFriend = dbFriendService.getByUserIdAndFriendUserId(userId.getValue(), friendUserId.getValue()).orElse(null);
-        if (dbFriend == null) {
-            return null;
-        }
-        DbUser dbFriendUser = dbUserService.getByUserId(dbFriend.getFriendUserId()).orElse(null);
-        if (dbFriendUser == null) {
-            return null;
-        }
-        return FriendDomainTransformer.INSTANCE.friendFrom(dbFriend, dbFriendUser);
+    public Optional<Friend> find(UserId userId, UserId friendUserId) {
+        return dbFriendService.getByUserIdAndFriendUserId(userId.getValue(), friendUserId.getValue())
+                .flatMap(dbFriend -> dbUserService.getByUserId(dbFriend.getFriendUserId())
+                        .map(dbFriendUser -> FriendDomainTransformer.INSTANCE.friendFrom(dbFriend, dbFriendUser)));
+    }
+
+    @Override
+    public boolean contain(UserId userId, UserId friendUserId) {
+        return dbFriendService.isExist(dbFriendService.getQueryWrapper()
+                .select(BaseEntity::getId)
+                .eq(DbFriend::getUserId, userId.getValue())
+                .eq(DbFriend::getFriendUserId, friendUserId.getValue()));
     }
 
     @Override
@@ -59,8 +63,8 @@ public class MysqlFriendRepository implements FriendRepository {
     }
 
     @Override
-    public void remove(Friend friend) {
-        dbFriendService.removeByUserIdAndFriendUserId(friend.getUserId().getValue(), friend.getFriendUserId().getValue());
+    public void remove(UserId userId, UserId friendUserId) {
+        dbFriendService.removeByUserIdAndFriendUserId(userId.getValue(), friendUserId.getValue());
     }
 
     private List<Friend> buildFriends(List<DbFriend> dbFriendList) {

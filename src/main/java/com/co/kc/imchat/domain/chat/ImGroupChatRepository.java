@@ -6,12 +6,13 @@ import com.co.kc.imchat.domain.user.UserId;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface ImGroupChatRepository {
 
-    ImGroupChat find(ImChatId chatId);
+    Optional<ImGroupChat> find(ImChatId chatId);
 
-    ImGroupChat find(GroupId groupId, UserId userId);
+    Optional<ImGroupChat> find(GroupId groupId, UserId userId);
 
     List<ImGroupChat> find(GroupId groupId);
 
@@ -20,8 +21,6 @@ public interface ImGroupChatRepository {
     List<ImGroupChat> find(UserId userId);
 
     List<ImGroupChat> find(UserId userId, Collection<GroupId> groupIds);
-
-    List<ImGroupChat> findByUserIdAndChatIds(UserId userId, List<ImChatId> chatIds);
 
     List<ImGroupChat> findByUserIdsAndGroupId(GroupId groupId, List<UserId> userIds);
 

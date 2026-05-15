@@ -25,7 +25,8 @@ public class ImMessageNotifierInvoker {
     }
 
     public <T> void retry(NotifierTaskType type, T payload) {
-        imMessageNotifierFactory.<T>getNotifier(type).notify(payload);
+        T command = deserializeIfNecessary(type, payload);
+        imMessageNotifierFactory.<T>getNotifier(type).notify(command);
     }
 
     private <T> void scheduleIfNecessary(ImMessageNotifier<T> notifier, T command) {
@@ -48,5 +49,17 @@ public class ImMessageNotifierInvoker {
         task.setCreatedAtMillis(now);
         task.setNextAtMillis(now + confirmable.delay());
         return task;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T deserializeIfNecessary(NotifierTaskType type, T payload) {
+        if (!(payload instanceof String)) {
+            return payload;
+        }
+        Class<?> commandType = imMessageNotifierFactory.getCommandType(type);
+        if (String.class.equals(commandType)) {
+            return payload;
+        }
+        return (T) JsonUtils.fromJson((String) payload, commandType);
     }
 }

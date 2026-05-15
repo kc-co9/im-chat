@@ -2,8 +2,9 @@ package com.co.kc.imchat.support.notifier;
 
 import com.co.kc.imchat.support.notifier.task.NotifierTask;
 import com.co.kc.imchat.support.notifier.task.NotifierTaskType;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -40,6 +41,18 @@ class ImMessageNotifierInvokerTest {
         assertThat(scheduler.scheduleCount.get()).isEqualTo(0);
     }
 
+    @Test
+    void retryDeserializesJsonCommandBeforeNotifying() {
+        RecordingNotifier notifier = new RecordingNotifier();
+        RecordingScheduler scheduler = new RecordingScheduler();
+        ImMessageNotifierInvoker invoker = newInvoker(notifier, scheduler);
+
+        invoker.retry(NotifierTaskType.PRIVATE_MESSAGE_SEND, "{\"value\":\"retry\"}");
+
+        assertThat(notifier.notifiedCommand.getValue()).isEqualTo("retry");
+        assertThat(scheduler.scheduleCount.get()).isEqualTo(0);
+    }
+
     private ImMessageNotifierInvoker newInvoker(RecordingNotifier notifier, RecordingScheduler scheduler) {
         return new ImMessageNotifierInvoker(
                 new ImMessageNotifierFactory(Collections.singletonList(notifier)),
@@ -71,9 +84,10 @@ class ImMessageNotifierInvokerTest {
         }
     }
 
-    @Getter
-    @RequiredArgsConstructor
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
     private static class TestCommand {
-        private final String value;
+        private String value;
     }
 }

@@ -85,13 +85,14 @@ public class BeanConfig {
     @Bean
     public FriendAppService friendAppService(UserRepository userRepository,
                                              FriendRepository friendRepository,
-                                             FriendService friendService) {
-        return new FriendAppService(userRepository, friendRepository, friendService);
+                                             ImPrivateChatRepository imPrivateChatRepository,
+                                             FriendService friendService,
+                                             ImChatService imChatService) {
+        return new FriendAppService(userRepository, friendRepository, imPrivateChatRepository, friendService, imChatService);
     }
 
     @Bean
-    public ChatAppService chatAppService(SnowflakeId snowflakeId,
-                                         ImPrivateChatRepository imPrivateChatRepository,
+    public ChatAppService chatAppService(ImPrivateChatRepository imPrivateChatRepository,
                                          ImGroupChatRepository imGroupChatRepository,
                                          GroupMemberRepository groupMemberRepository,
                                          ImGroupInboxMessageRepository imGroupInboxMessageRepository,
@@ -99,7 +100,7 @@ public class BeanConfig {
                                          FriendRepository friendRepository,
                                          ImChatService imChatService) {
         return new ChatAppService(
-                snowflakeId, imPrivateChatRepository, imGroupChatRepository,
+                imPrivateChatRepository, imGroupChatRepository,
                 groupMemberRepository, imGroupInboxMessageRepository, groupRepository,
                 friendRepository, imChatService);
     }

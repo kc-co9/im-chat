@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
@@ -26,7 +27,7 @@ public class BaseMybatisService<M extends BaseMapper<T>, T> extends ServiceImpl<
         return Wrappers.lambdaUpdate();
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public boolean saveBatchIgnoreEmpty(Collection<T> entityList) {
         if (CollectionUtils.isEmpty(entityList)) {
             return false;
@@ -34,7 +35,7 @@ public class BaseMybatisService<M extends BaseMapper<T>, T> extends ServiceImpl<
         return this.saveBatch(entityList);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public boolean saveOrUpdateBatchIgnoreEmpty(Collection<T> entityList) {
         if (CollectionUtils.isEmpty(entityList)) {
             return false;
@@ -42,7 +43,7 @@ public class BaseMybatisService<M extends BaseMapper<T>, T> extends ServiceImpl<
         return this.saveOrUpdateBatch(entityList);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public boolean updateBatchByIdIgnoreEmpty(Collection<T> entityList) {
         if (CollectionUtils.isEmpty(entityList)) {
             return false;
