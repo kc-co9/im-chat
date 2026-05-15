@@ -44,6 +44,14 @@ public class UserService {
         return SessionStatus.ONLINE.equals(session.getStatus()) && chatId.equals(session.getChatId());
     }
 
+    public boolean isOnline(UserId userId) {
+        Session session = sessionRepository.find(userId);
+        if (session == null) {
+            return false;
+        }
+        return SessionStatus.ONLINE.equals(session.getStatus());
+    }
+
     /**
      * 会话归属用户是否正在该私聊会话界面（用于未读等策略）。
      */

@@ -132,7 +132,7 @@ class GroupAppServiceTest {
                 });
         assertThat(groupInboxMessageRepository.savedMessages)
                 .extracting(ImGroupInboxMessage::getStatus)
-                .containsExactly(ImGroupMessageStatus.READ, ImGroupMessageStatus.RECEIVED);
+                .containsExactly(ImGroupMessageStatus.READ, ImGroupMessageStatus.SENT);
 
         assertThat(groupChatRepository.savedGroupChats)
                 .extracting(chat -> chat.getLastMessageId().getValue())
@@ -251,7 +251,7 @@ class GroupAppServiceTest {
                 });
         assertThat(groupInboxMessageRepository.savedMessages)
                 .extracting(ImGroupInboxMessage::getStatus)
-                .containsExactly(ImGroupMessageStatus.READ, ImGroupMessageStatus.RECEIVED);
+                .containsExactly(ImGroupMessageStatus.READ, ImGroupMessageStatus.SENT);
 
         assertThat(groupChatRepository.savedGroupChats)
                 .extracting(chat -> chat.getLastMessageId().getValue())

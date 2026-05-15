@@ -7,6 +7,7 @@ import com.co.kc.imchat.domain.message.ImPrivateMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImMessageType;
 import com.co.kc.imchat.domain.message.ImPrivateInboxMessage;
+import com.co.kc.imchat.model.cqrs.command.group.GroupMessageReceiveCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageReadCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageSendCmd;
@@ -21,6 +22,7 @@ import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateRevokedNotifyCmd;
 import com.co.kc.imchat.model.cqrs.dto.group.GroupMessageDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.model.enums.ImMessageTypeEnum;
+import com.co.kc.imchat.model.io.group.GroupMessageReceiveRequest;
 import com.co.kc.imchat.model.io.group.GroupMessageReadRequest;
 import com.co.kc.imchat.model.io.group.GroupMessageRevokeRequest;
 import com.co.kc.imchat.model.io.group.GroupMessageSendRequest;
@@ -109,6 +111,13 @@ public interface ImMessageAppTransformer {
             @Mapping(target = "messageContent", source = "request.messageContent")
     })
     GroupMessageSendCmd groupMessageSendCmdFrom(Long userId, GroupMessageSendRequest request);
+
+    @Mappings(value = {
+            @Mapping(target = "chatId", source = "request.chatId"),
+            @Mapping(target = "userId", source = "userId"),
+            @Mapping(target = "messageId", source = "request.messageId"),
+    })
+    GroupMessageReceiveCmd groupMessageReceiveCmdFrom(Long userId, GroupMessageReceiveRequest request);
 
     @Mappings(value = {
             @Mapping(target = "chatId", source = "request.chatId"),

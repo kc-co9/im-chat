@@ -31,6 +31,7 @@ import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.user.UserService;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatOpenCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupChatHideCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupMessageReceiveCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageReadCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageSendCmd;
@@ -215,10 +216,10 @@ class GroupChatAppServiceTest {
 
         assertThat(senderMessage.getStatus()).isEqualTo(ImGroupMessageStatus.READ);
         assertThat(senderMessage.getReadTime()).isNotNull();
-        assertThat(senderMessage.getReceivedTime()).isNull();
+        assertThat(senderMessage.getReceivedTime()).isNotNull();
 
-        assertThat(receiverMessage.getStatus()).isEqualTo(ImGroupMessageStatus.RECEIVED);
-        assertThat(receiverMessage.getReceivedTime()).isNotNull();
+        assertThat(receiverMessage.getStatus()).isEqualTo(ImGroupMessageStatus.SENT);
+        assertThat(receiverMessage.getReceivedTime()).isNull();
         assertThat(receiverMessage.getChatId().getValue()).isEqualTo(102L);
 
         assertThat(senderChat.getUnreadMessageCount()).isZero();
@@ -254,9 +255,11 @@ class GroupChatAppServiceTest {
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
         groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+        groupChatRepository.groupChats.add(groupChat(103L, 1001L, 3L));
         MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
         groupMemberRepository.members.add(groupMember(1001L, 1L));
         groupMemberRepository.members.add(groupMember(1001L, 2L));
+        groupMemberRepository.members.add(groupMember(1001L, 3L));
         RecordingNotifierInvoker notifierInvoker = new RecordingNotifierInvoker();
         GroupMessageAppService appService = new GroupMessageAppService(
                 null,
@@ -264,7 +267,7 @@ class GroupChatAppServiceTest {
                 groupMemberRepository,
                 null,
                 null,
-                null,
+                new OnlineUserService(2L),
                 null,
                 null,
                 notifierInvoker,
@@ -381,6 +384,57 @@ class GroupChatAppServiceTest {
         assertThatThrownBy(() -> appService.revokeMessage(command))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("群聊已解散");
+        assertThat(inboxRepository.savedMessages).isEmpty();
+    }
+
+    @Test
+    void receiveGroupMessageMarksInboxMessageReceivedOnly() {
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L, 900L, 1));
+
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+
+        MemoryGroupInboxRepository inboxRepository = new MemoryGroupInboxRepository();
+        inboxRepository.messages.add(groupInboxMessage(900L, 101L, 1001L, 1L, 2L));
+
+        GroupMessageAppService appService = groupMessageAppService(
+                groupChatRepository,
+                groupMemberRepository,
+                inboxRepository,
+                normalGroupRepository(1001L));
+        GroupMessageReceiveCmd command = groupMessageReceiveCmd(101L, 1L, 900L);
+
+        appService.receiveMessage(command);
+
+        ImGroupInboxMessage savedMessage = inboxRepository.findSavedByUserId(1L);
+        assertThat(savedMessage.getStatus()).isEqualTo(ImGroupMessageStatus.RECEIVED);
+        assertThat(savedMessage.getReceivedTime()).isNotNull();
+        assertThat(groupChatRepository.savedGroupChats).isEmpty();
+    }
+
+    @Test
+    void receiveGroupMessageRejectsOtherMemberChatId() {
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L, 900L, 1));
+
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+
+        MemoryGroupInboxRepository inboxRepository = new MemoryGroupInboxRepository();
+        inboxRepository.messages.add(groupInboxMessage(900L, 102L, 1001L, 2L, 1L));
+
+        GroupMessageAppService appService = groupMessageAppService(
+                groupChatRepository,
+                groupMemberRepository,
+                inboxRepository,
+                normalGroupRepository(1001L));
+        GroupMessageReceiveCmd command = groupMessageReceiveCmd(102L, 1L, 900L);
+
+        assertThatThrownBy(() -> appService.receiveMessage(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请使用本人群聊会话的 chatId 接收消息");
         assertThat(inboxRepository.savedMessages).isEmpty();
     }
 
@@ -548,9 +602,8 @@ class GroupChatAppServiceTest {
                 .groupId(new GroupId(groupId))
                 .userId(new UserId(userId))
                 .senderId(new UserId(senderId))
-                .status(ImGroupMessageStatus.RECEIVED)
+                .status(ImGroupMessageStatus.SENT)
                 .sendTime(java.time.LocalDateTime.now())
-                .receivedTime(java.time.LocalDateTime.now())
                 .build();
     }
 
@@ -631,6 +684,14 @@ class GroupChatAppServiceTest {
         return command;
     }
 
+    private GroupMessageReceiveCmd groupMessageReceiveCmd(Long chatId, Long userId, Long messageId) {
+        GroupMessageReceiveCmd command = new GroupMessageReceiveCmd();
+        command.setChatId(chatId);
+        command.setUserId(userId);
+        command.setMessageId(messageId);
+        return command;
+    }
+
     private GroupMessageReadCmd groupMessageReadCmd(Long chatId, Long userId, Long messageId) {
         GroupMessageReadCmd command = new GroupMessageReadCmd();
         command.setChatId(chatId);
@@ -685,6 +746,20 @@ class GroupChatAppServiceTest {
         @Override
         public boolean isChatting(ImChatId chatId, UserId receiverId) {
             return false;
+        }
+    }
+
+    private static class OnlineUserService extends UserService {
+        private final List<Long> onlineUserIds;
+
+        OnlineUserService(Long... onlineUserIds) {
+            super(null, null, new EmptySessionRepository(), (PasswordService) null);
+            this.onlineUserIds = java.util.Arrays.asList(onlineUserIds);
+        }
+
+        @Override
+        public boolean isOnline(UserId userId) {
+            return onlineUserIds.contains(userId.getValue());
         }
     }
 

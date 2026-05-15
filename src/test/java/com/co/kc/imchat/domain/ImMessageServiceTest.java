@@ -46,13 +46,13 @@ class ImMessageServiceTest {
         assertThat(senderMessage.getChatId().getValue()).isEqualTo(101L);
         assertThat(senderMessage.getStatus()).isEqualTo(ImGroupMessageStatus.READ);
         assertThat(senderMessage.getReadTime()).isNotNull();
-        assertThat(senderMessage.getReceivedTime()).isNull();
+        assertThat(senderMessage.getReceivedTime()).isNotNull();
         ImGroupInboxMessage receiverMessage = transmission.getInboxMessages().stream()
                 .filter(message -> message.getUserId().equals(new UserId(2L)))
                 .findFirst()
                 .orElseThrow(AssertionError::new);
-        assertThat(receiverMessage.getStatus()).isEqualTo(ImGroupMessageStatus.RECEIVED);
-        assertThat(receiverMessage.getReceivedTime()).isNotNull();
+        assertThat(receiverMessage.getStatus()).isEqualTo(ImGroupMessageStatus.SENT);
+        assertThat(receiverMessage.getReceivedTime()).isNull();
         assertThat(senderChat.getUnreadMessageCount()).isZero();
         assertThat(senderChat.getReadMessageId().getValue()).isEqualTo(900L);
         assertThat(receiverChat.getUnreadMessageCount()).isEqualTo(1);
@@ -85,9 +85,37 @@ class ImMessageServiceTest {
                 .filter(message -> message.getUserId().equals(new UserId(2L)))
                 .findFirst()
                 .orElseThrow(AssertionError::new);
-        assertThat(memberMessage.getStatus()).isEqualTo(ImGroupMessageStatus.RECEIVED);
+        assertThat(memberMessage.getStatus()).isEqualTo(ImGroupMessageStatus.SENT);
         assertThat(ownerChat.getUnreadMessageCount()).isZero();
         assertThat(memberChat.getUnreadMessageCount()).isEqualTo(1);
+    }
+
+    @Test
+    void buildGroupInboxMessageKeepsReceiverSentEvenWhenReceiverIsChatting() {
+        ImMessageService service = new ImMessageService(new FixedSnowflakeId(1L));
+        UserId senderId = new UserId(1L);
+        ImGroupChat senderChat = groupChat(101L, 1001L, 1L);
+        ImGroupChat receiverChat = groupChat(102L, 1001L, 2L);
+
+        ImGroupMessageTransmission transmission = service.transmitGroupMessage(
+                new ImOutboundMessage(
+                        new ImMessageId(900L),
+                        new ImMessageToken("token-1"),
+                        new ImMessageContent(ImMessageType.TEXT, "hello")),
+                new ImMessageSender(senderChat, senderId),
+                Arrays.asList(
+                        new ImMessageRecipient(senderChat, true),
+                        new ImMessageRecipient(receiverChat, true)));
+
+        ImGroupInboxMessage receiverMessage = transmission.getInboxMessages().stream()
+                .filter(message -> message.getUserId().equals(new UserId(2L)))
+                .findFirst()
+                .orElseThrow(AssertionError::new);
+        assertThat(receiverMessage.getStatus()).isEqualTo(ImGroupMessageStatus.SENT);
+        assertThat(receiverMessage.getReceivedTime()).isNull();
+        assertThat(receiverMessage.getReadTime()).isNull();
+        assertThat(receiverChat.getUnreadMessageCount()).isEqualTo(1);
+        assertThat(receiverChat.getReadMessageId()).isNull();
     }
 
     private ImGroupChat groupChat(Long chatId, Long groupId, Long userId) {

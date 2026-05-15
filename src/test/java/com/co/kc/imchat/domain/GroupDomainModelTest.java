@@ -83,6 +83,39 @@ class GroupDomainModelTest {
 
         assertThat(message.getStatus()).isEqualTo(ImGroupMessageStatus.READ);
         assertThat(message.getReadTime()).isNotNull();
+        assertThat(message.getReceivedTime()).isNotNull();
+    }
+
+    @Test
+    void groupInboxMessageReceiveIsIdempotent() {
+        ImGroupInboxMessage message = groupMessage(900L, 101L, 1001L, 2L, 1L);
+
+        message.receive(new UserId(2L));
+
+        assertThat(message.getStatus()).isEqualTo(ImGroupMessageStatus.RECEIVED);
+        assertThat(message.getReceivedTime()).isNotNull();
+    }
+
+    @Test
+    void groupInboxMessageReadIsIdempotent() {
+        ImGroupInboxMessage message = groupMessage(900L, 101L, 1001L, 2L, 1L);
+        message.read(new UserId(2L));
+
+        message.read(new UserId(2L));
+
+        assertThat(message.getStatus()).isEqualTo(ImGroupMessageStatus.READ);
+        assertThat(message.getReadTime()).isNotNull();
+    }
+
+    @Test
+    void groupInboxMessageKeepsReadWhenReceiveAfterRead() {
+        ImGroupInboxMessage message = groupMessage(900L, 101L, 1001L, 2L, 1L);
+        message.read(new UserId(2L));
+
+        message.receive(new UserId(2L));
+
+        assertThat(message.getStatus()).isEqualTo(ImGroupMessageStatus.READ);
+        assertThat(message.getReceivedTime()).isNotNull();
     }
 
     @Test
@@ -107,9 +140,8 @@ class GroupDomainModelTest {
                 .chatId(new ImChatId(chatId))
                 .userId(new UserId(userId))
                 .senderId(new UserId(senderId))
-                .status(ImGroupMessageStatus.RECEIVED)
+                .status(ImGroupMessageStatus.SENT)
                 .sendTime(LocalDateTime.now())
-                .receivedTime(LocalDateTime.now())
                 .build();
     }
 }

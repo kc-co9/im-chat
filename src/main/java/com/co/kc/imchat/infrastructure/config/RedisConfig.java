@@ -35,11 +35,9 @@ public class RedisConfig {
         redisTemplate.setHashKeySerializer(stringRedisSerializer);
         
         // 设置Value的序列化器
-        Jackson2JsonRedisSerializer<Object> jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer<>(Object.class);
-        jackson2JsonRedisSerializer.setObjectMapper(JsonUtils.getMapper());
-        
-        redisTemplate.setValueSerializer(jackson2JsonRedisSerializer);
-        redisTemplate.setHashValueSerializer(jackson2JsonRedisSerializer);
+        RedisSerializer<Object> messageSerializer = redisMessageSerializer();
+        redisTemplate.setValueSerializer(messageSerializer);
+        redisTemplate.setHashValueSerializer(messageSerializer);
         
         redisTemplate.afterPropertiesSet();
         return redisTemplate;
@@ -69,7 +67,13 @@ public class RedisConfig {
         return new ChannelTopic(subscriber.topic().getValue());
     }
 
-    private RedisSerializer<?> redisSerializer(RedisSubscriber<?> subscriber) {
+    RedisSerializer<Object> redisMessageSerializer() {
+        Jackson2JsonRedisSerializer<Object> jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer<>(Object.class);
+        jackson2JsonRedisSerializer.setObjectMapper(JsonUtils.getMapper());
+        return jackson2JsonRedisSerializer;
+    }
+
+    RedisSerializer<?> redisSerializer(RedisSubscriber<?> subscriber) {
         // 1. 获取具体的泛型类型
         Class<?> messageType = resolveMessageGenericType(subscriber);
         // 2. 创建针对该类型 T 的序列化器

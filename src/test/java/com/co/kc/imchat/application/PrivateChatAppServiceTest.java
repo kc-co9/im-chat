@@ -19,14 +19,18 @@ import com.co.kc.imchat.domain.message.ImPrivateInboxMessageRepository;
 import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.domain.session.Session;
 import com.co.kc.imchat.domain.session.SessionRepository;
+import com.co.kc.imchat.domain.user.UserService;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatOpenCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.PrivateChatHideCmd;
+import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageSendCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
+import com.co.kc.imchat.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatOpenDTO;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.support.notifier.ImMessageNotifierInvoker;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -193,6 +197,38 @@ class PrivateChatAppServiceTest {
         assertThat(eventPublisher.events).isEmpty();
     }
 
+    @Test
+    void sendPrivateMessageNotifiesOnlineReceiverAndKeepsUnreadWhenReceiverNotChatting() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
+        RecordingNotifierInvoker notifierInvoker = new RecordingNotifierInvoker();
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                new FixedSnowflakeId(900L),
+                privateChatRepository,
+                inboxRepository,
+                new OnlineNonChattingUserService(),
+                new ImChatService(null, null, privateChatRepository, null, null, null),
+                new ImMessageService(new FixedSnowflakeId(1L)),
+                notifierInvoker,
+                eventPublisher);
+
+        appService.sendMessage(privateMessageSendCmd(101L, 1L));
+        appService.onMessageSent((com.co.kc.imchat.domain.message.ImPrivateMessageSentEvent) eventPublisher.events.get(0));
+
+        ImPrivateChat receiverChat = privateChatRepository.savedChats.stream()
+                .filter(chat -> chat.getUserId().getValue().equals(2L))
+                .findFirst()
+                .orElseThrow(AssertionError::new);
+        assertThat(receiverChat.getUnreadMessageCount()).isEqualTo(1);
+        assertThat(notifierInvoker.privateSentCommands)
+                .extracting(ImPrivateSentNotifyCmd::getReceiverId)
+                .containsExactly(2L);
+    }
+
     private ImPrivateChat privateChat(Long chatId, Long userId, Long peerUserId) {
         return ImPrivateChat.builder()
                 .id(new ImChatId(chatId))
@@ -214,6 +250,16 @@ class PrivateChatAppServiceTest {
                 .status(status)
                 .sendTime(LocalDateTime.now())
                 .build();
+    }
+
+    private ImPrivateMessageSendCmd privateMessageSendCmd(Long chatId, Long userId) {
+        ImPrivateMessageSendCmd command = new ImPrivateMessageSendCmd();
+        command.setChatId(chatId);
+        command.setUserId(userId);
+        command.setMessageToken("token-1");
+        command.setMessageType(ImMessageType.TEXT);
+        command.setMessageContent("hello");
+        return command;
     }
 
     private static class MemoryPrivateChatRepository implements ImPrivateChatRepository {
@@ -351,6 +397,37 @@ class PrivateChatAppServiceTest {
         @Override
         public void publish(List<com.co.kc.imchat.domain.shared.DomainEvent> eventList) {
             events.addAll(eventList);
+        }
+    }
+
+    private static class OnlineNonChattingUserService extends UserService {
+        OnlineNonChattingUserService() {
+            super(null, null, null, null);
+        }
+
+        @Override
+        public boolean isChatting(ImChatId chatId, UserId receiverId) {
+            return false;
+        }
+
+        @Override
+        public boolean isOnline(UserId userId) {
+            return true;
+        }
+    }
+
+    private static class RecordingNotifierInvoker extends ImMessageNotifierInvoker {
+        private final List<ImPrivateSentNotifyCmd> privateSentCommands = new ArrayList<>();
+
+        RecordingNotifierInvoker() {
+            super(null, null);
+        }
+
+        @Override
+        public <T> void invoke(T command) {
+            if (command instanceof ImPrivateSentNotifyCmd) {
+                privateSentCommands.add((ImPrivateSentNotifyCmd) command);
+            }
         }
     }
 

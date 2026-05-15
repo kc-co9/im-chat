@@ -42,9 +42,11 @@ public enum ImGroupMessageStatus {
             putTransition(ImGroupMessageStatus.SENT, ImMessageEvent.RECEIVE, ImGroupMessageStatus.RECEIVED);
             putTransition(ImGroupMessageStatus.SENT, ImMessageEvent.READ, ImGroupMessageStatus.READ);
 
+            putTransition(ImGroupMessageStatus.RECEIVED, ImMessageEvent.RECEIVE, ImGroupMessageStatus.RECEIVED);
             putTransition(ImGroupMessageStatus.RECEIVED, ImMessageEvent.READ, ImGroupMessageStatus.READ);
             putTransition(ImGroupMessageStatus.RECEIVED, ImMessageEvent.REVOKE, ImGroupMessageStatus.REVOKED);
 
+            putTransition(ImGroupMessageStatus.READ, ImMessageEvent.RECEIVE, ImGroupMessageStatus.READ);
             putTransition(ImGroupMessageStatus.READ, ImMessageEvent.READ, ImGroupMessageStatus.READ);
             putTransition(ImGroupMessageStatus.READ, ImMessageEvent.REVOKE, ImGroupMessageStatus.REVOKED);
         }

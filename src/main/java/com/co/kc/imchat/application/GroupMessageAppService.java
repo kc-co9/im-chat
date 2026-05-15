@@ -23,6 +23,7 @@ import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.message.ImOutboundMessage;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.user.UserService;
+import com.co.kc.imchat.model.cqrs.command.group.GroupMessageReceiveCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageRevokeCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageReadCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupMessageSendCmd;
@@ -113,6 +114,9 @@ public class GroupMessageAppService {
             if (memberChat.getUserId().getValue().equals(event.getSenderId())) {
                 continue;
             }
+            if (!userService.isOnline(memberChat.getUserId())) {
+                continue;
+            }
             GroupSentNotifyCmd notifyCmd =
                     ImMessageAppTransformer.INSTANCE.groupSentNotifyCmdFrom(
                             memberChat.getUserId().getValue(), memberChat.getId().getValue(), event);
@@ -175,6 +179,37 @@ public class GroupMessageAppService {
                             memberChat.getUserId().getValue(), memberChat.getId().getValue(), event);
             imMessageNotifierInvoker.invoke(notifyCmd);
         }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void receiveMessage(GroupMessageReceiveCmd command) {
+        UserId userId = new UserId(command.getUserId());
+        ImChatId chatId = new ImChatId(command.getChatId());
+        ImMessageId messageId = new ImMessageId(command.getMessageId());
+
+        ImGroupChat groupChat = imGroupChatRepository.find(chatId);
+        if (groupChat == null) {
+            throw new NotFoundException("聊天不存在");
+        }
+        if (!groupChat.contain(userId)) {
+            throw new BusinessException("请使用本人群聊会话的 chatId 接收消息");
+        }
+        GroupMember groupMember = groupMemberRepository.find(groupChat.getGroupId(), userId);
+        if (groupMember == null) {
+            throw new BusinessException("请使用本人群聊会话的 chatId 接收消息");
+        }
+        Group group = groupRepository.find(groupChat.getGroupId());
+        if (group == null) {
+            throw new NotFoundException("群组不存在");
+        }
+        if (group.isDismissed()) {
+            throw new BusinessException("群聊已解散");
+        }
+
+        ImGroupInboxMessage message = imGroupInboxMessageRepository.find(chatId, userId, messageId)
+                .orElseThrow(() -> new NotFoundException("消息不存在"));
+        message.receive(userId);
+        imGroupInboxMessageRepository.save(message);
     }
 
     @Transactional(rollbackFor = Exception.class)

@@ -42,9 +42,11 @@ public enum ImPrivateMessageStatus {
             putTransition(ImPrivateMessageStatus.SENT, ImMessageEvent.RECEIVE, ImPrivateMessageStatus.RECEIVED);
             putTransition(ImPrivateMessageStatus.SENT, ImMessageEvent.REVOKE, ImPrivateMessageStatus.REVOKED);
 
+            putTransition(ImPrivateMessageStatus.RECEIVED, ImMessageEvent.RECEIVE, ImPrivateMessageStatus.RECEIVED);
             putTransition(ImPrivateMessageStatus.RECEIVED, ImMessageEvent.READ, ImPrivateMessageStatus.READ);
             putTransition(ImPrivateMessageStatus.RECEIVED, ImMessageEvent.REVOKE, ImPrivateMessageStatus.REVOKED);
 
+            putTransition(ImPrivateMessageStatus.READ, ImMessageEvent.RECEIVE, ImPrivateMessageStatus.READ);
             putTransition(ImPrivateMessageStatus.READ, ImMessageEvent.READ, ImPrivateMessageStatus.READ);
             putTransition(ImPrivateMessageStatus.READ, ImMessageEvent.REVOKE, ImPrivateMessageStatus.REVOKED);
         }

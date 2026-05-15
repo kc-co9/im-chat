@@ -115,12 +115,11 @@ public class PrivateMessageAppService {
 
     public void onMessageSent(ImPrivateMessageSentEvent event) {
         UserId receiverId = new UserId(event.getReceiverId());
-        ImChatId receiverChatId = new ImChatId(event.getReceiverChatId());
-
-        boolean isChatting = userService.isChatting(receiverChatId, receiverId);
-        if (isChatting) {
-            imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateSentNotifyCmdFrom(event));
+        boolean isOnline = userService.isOnline(receiverId);
+        if (!isOnline) {
+            return;
         }
+        imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateSentNotifyCmdFrom(event));
     }
 
     public void receiveMessage(ImPrivateMessageReceiveCmd command) {

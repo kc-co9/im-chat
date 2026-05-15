@@ -3,6 +3,7 @@ package com.co.kc.imchat.domain.chat;
 import com.co.kc.imchat.domain.group.GroupAlias;
 import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
+import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.user.UserId;
 import lombok.Data;
@@ -38,7 +39,9 @@ public class ImGroupChat extends ImChat {
         this.readMessageId = message.getId();
         this.readTime = LocalDateTime.now();
         this.unreadMessageCount = 0;
-        message.read(getUserId());
+        if (message.getStatus() != ImGroupMessageStatus.READ) {
+            message.read(getUserId());
+        }
     }
 
     public void readToLatest() {

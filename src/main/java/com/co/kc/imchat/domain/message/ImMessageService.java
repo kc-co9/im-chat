@@ -20,7 +20,6 @@ public class ImMessageService {
 
     private final SnowflakeId snowflakeId;
 
-
     public ImGroupMessageTransmission transmitGroupCreated(GroupId groupId,
                                                            UserId ownerId,
                                                            ImGroupChat ownerChat,
@@ -57,9 +56,24 @@ public class ImMessageService {
                 .map(recipient -> this.buildGroupInboxMessage(outboundMessage, sender, recipient))
                 .collect(Collectors.toList());
         List<ImGroupChat> groupChats = recipients.stream()
-                .map(recipient -> (ImGroupChat) recipient.getChat())
+                .map(recipient -> this.receiveGroupMessage(recipient, inboxMessages, sender))
                 .collect(Collectors.toList());
         return new ImGroupMessageTransmission(inboxMessages, groupChats);
+    }
+
+    private ImGroupChat receiveGroupMessage(ImMessageRecipient recipient,
+                                            List<ImGroupInboxMessage> inboxMessages,
+                                            ImMessageSender sender) {
+        ImGroupChat receiverChat = (ImGroupChat) recipient.getChat();
+        ImGroupInboxMessage imGroupInboxMessage = inboxMessages.stream()
+                .filter(message -> message.getChatId().equals(receiverChat.getId()))
+                .filter(message -> message.getUserId().equals(receiverChat.getUserId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("群聊消息不存在"));
+
+        boolean isSender = receiverChat.getUserId().equals(sender.getUserId());
+        receiverChat.receiveLatestMessage(imGroupInboxMessage, isSender);
+        return receiverChat;
     }
 
     private ImGroupInboxMessage buildGroupInboxMessage(ImOutboundMessage outboundMessage,
@@ -67,7 +81,7 @@ public class ImMessageService {
         ImGroupChat senderChat = (ImGroupChat) sender.getChat();
         ImGroupChat receiverChat = (ImGroupChat) recipient.getChat();
         boolean isSender = receiverChat.getUserId().equals(sender.getUserId());
-        ImGroupInboxMessage inboxMessage = ImGroupInboxMessage.builder()
+        return ImGroupInboxMessage.builder()
                 .id(outboundMessage.getId())
                 .token(outboundMessage.getToken())
                 .content(outboundMessage.getContent())
@@ -75,12 +89,11 @@ public class ImMessageService {
                 .chatId(receiverChat.getId())
                 .userId(receiverChat.getUserId())
                 .senderId(sender.getUserId())
-                .status(isSender ? ImGroupMessageStatus.SENT : ImGroupMessageStatus.RECEIVED)
+                .status(isSender ? ImGroupMessageStatus.READ : ImGroupMessageStatus.SENT)
                 .sendTime(outboundMessage.getSendTime())
-                .receivedTime(isSender ? null : outboundMessage.getSendTime())
+                .receivedTime(isSender ? outboundMessage.getSendTime() : null)
+                .readTime(isSender ? outboundMessage.getSendTime() : null)
                 .build();
-        receiverChat.receiveLatestMessage(inboxMessage, isSender || recipient.isChatting());
-        return inboxMessage;
     }
 
     public ImPrivateMessageSentEvent newImMessageSentEvent(ImPrivateInboxMessage imMessage) {

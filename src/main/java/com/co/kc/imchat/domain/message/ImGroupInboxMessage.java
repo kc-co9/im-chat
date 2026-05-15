@@ -32,6 +32,9 @@ public class ImGroupInboxMessage extends ImMessage {
         }
         this.status = this.status.transition(ImMessageEvent.READ);
         this.readTime = LocalDateTime.now();
+        if (this.receivedTime == null) {
+            this.receivedTime = this.readTime;
+        }
     }
 
     public void revoke(UserId senderId) {
