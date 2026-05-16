@@ -71,7 +71,8 @@ public class GroupService {
 
         Map<GroupId, ImGroupChat> groupChatMap = FunctionUtils.mappingMap(groupChats, ImGroupChat::getGroupId, Function.identity());
         return groups.stream()
-                .map(group -> new UserGroupDescriptor(group.getId(), group.getName(), groupChatMap.get(group.getId())))
+                .map(group -> new UserGroupDescriptor(
+                        group.getId(), group.getName(), groupChatMap.get(group.getId()), group.getMemberCount()))
                 .filter(descriptor -> descriptor.getChat() != null)
                 .collect(Collectors.toList());
     }

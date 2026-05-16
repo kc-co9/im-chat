@@ -13,13 +13,20 @@ import lombok.EqualsAndHashCode;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class DbFriend extends BaseEntity {
-    //用户ID
+    /**
+     * 用户ID。
+     */
     private Long userId;
-    //好友ID
+    /**
+     * 好友ID。
+     */
     private Long friendUserId;
-    //好友别名
+    /**
+     * 好友别名。
+     */
     private String friendAlias;
-    //好友状态 0-未知, 1-正常, 2-拉黑 3-删除
+    /**
+     * 好友状态：0-未知，1-正常，2-拉黑，3-删除。
+     */
     private DbFriendStatus friendStatus;
 }
-

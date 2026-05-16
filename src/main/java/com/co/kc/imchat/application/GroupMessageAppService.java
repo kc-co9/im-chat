@@ -37,6 +37,8 @@ import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.exception.RepeatException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.support.lock.DistributeLockScene;
+import com.co.kc.imchat.support.lock.annotation.DistributeLock;
 import com.co.kc.imchat.support.notifier.ImMessageNotifierInvoker;
 import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
@@ -62,6 +64,7 @@ public class GroupMessageAppService {
     private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
 
+    @DistributeLock(scene = DistributeLockScene.GROUP_MESSAGE_SEND, key = "#command.chatId + ':' + #command.messageToken")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void sendMessage(GroupMessageSendCmd command) {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
@@ -92,11 +95,12 @@ public class GroupMessageAppService {
 
     public void onMessageSent(ImGroupMessageSentEvent event) {
         GroupId groupId = new GroupId(event.getGroupId());
+        UserId senderId = new UserId(event.getSenderId());
         List<GroupMember> memberList = groupMemberRepository.find(groupId);
         List<UserId> memberUserIds = FunctionUtils.mappingList(memberList, GroupMember::getUserId);
         List<ImGroupChat> memberChats = imGroupChatRepository.findByUserIdsAndGroupId(groupId, memberUserIds);
         for (ImGroupChat memberChat : memberChats) {
-            if (memberChat.getUserId().getValue().equals(event.getSenderId())) {
+            if (memberChat.belongsTo(senderId)) {
                 continue;
             }
             if (!userService.isOnline(memberChat.getUserId())) {
@@ -109,6 +113,7 @@ public class GroupMessageAppService {
         }
     }
 
+    @DistributeLock(scene = DistributeLockScene.GROUP_MESSAGE_REVOKE, key = "#command.chatId + ':' + #command.messageId")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void revokeMessage(GroupMessageRevokeCmd command) {
         UserId userId = new UserId(command.getUserId());
@@ -116,7 +121,6 @@ public class GroupMessageAppService {
         ImMessageId messageId = new ImMessageId(command.getMessageId());
 
         ImGroupChat senderChat = requireUsableGroupChat(chatId, userId, "请使用本人群聊会话的 chatId 撤回消息");
-
         ImGroupInboxMessage senderInboxMessage = imGroupInboxMessageRepository.find(chatId, userId, messageId)
                 .orElseThrow(() -> new NotFoundException("消息不存在"));
 

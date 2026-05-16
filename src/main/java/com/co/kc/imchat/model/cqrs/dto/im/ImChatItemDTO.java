@@ -4,6 +4,8 @@ import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.model.enums.ImMessageTypeEnum;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 public class ImChatItemDTO {
     private Long chatId;
@@ -11,4 +13,5 @@ public class ImChatItemDTO {
     private ImChatType chatType;
     private ImMessageTypeEnum lastMessageType;
     private String lastMessageContent;
+    private LocalDateTime lastMessageTime;
 }

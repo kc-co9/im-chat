@@ -20,7 +20,8 @@ public interface ImChatAppTransformer {
             @Mapping(target = "chatName", source = "chatName.value"),
             @Mapping(target = "chatType", source = "chatType"),
             @Mapping(target = "lastMessageType", source = "chatLastMessage.content.type"),
-            @Mapping(target = "lastMessageContent", source = "chatLastMessage.content.value"),
+            @Mapping(target = "lastMessageContent", source = "chatLastMessage.visibleContent"),
+            @Mapping(target = "lastMessageTime", source = "chatLastMessage.sendTime"),
     })
     ImChatItemDTO imChatItemDtoFrom(ImUserChatDescriptor imUserChatDescriptors);
 }

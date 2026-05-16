@@ -13,4 +13,5 @@ public class UserGroupDescriptor {
     private final GroupId id;
     private final GroupName name;
     private final ImGroupChat chat;
+    private final MemberCount memberCount;
 }

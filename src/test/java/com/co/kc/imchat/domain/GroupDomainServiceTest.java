@@ -13,6 +13,7 @@ import com.co.kc.imchat.domain.group.Group;
 import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.group.GroupMember;
 import com.co.kc.imchat.domain.group.GroupName;
+import com.co.kc.imchat.domain.group.GroupMemberRepository;
 import com.co.kc.imchat.domain.group.GroupRepository;
 import com.co.kc.imchat.domain.group.GroupRoster;
 import com.co.kc.imchat.domain.group.GroupService;
@@ -22,6 +23,7 @@ import com.co.kc.imchat.domain.group.GroupUserAlias;
 import com.co.kc.imchat.domain.group.MemberDescriptor;
 import com.co.kc.imchat.domain.group.MemberDisplayName;
 import com.co.kc.imchat.domain.group.MemberId;
+import com.co.kc.imchat.domain.group.MemberCount;
 import com.co.kc.imchat.domain.group.UserGroupDescriptor;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.message.ImMessage;
@@ -40,6 +42,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -143,8 +146,9 @@ class GroupDomainServiceTest {
     @Test
     void describeUserGroupsCombinesGroupsWithUserGroupChats() {
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
-        GroupService service = new GroupService(null, groupChatRepository, null, null);
-        Group alpha = group(1001L, 1L, "alpha");
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        GroupService service = new GroupService(groupMemberRepository, groupChatRepository, null, null);
+        Group alpha = group(1001L, 1L, "alpha", new MemberCount(2));
         Group beta = group(1002L, 1L, "beta");
         Group missingChat = group(1003L, 1L, "missing");
         ImGroupChat alphaChat = groupChat(101L, 1001L, 1L);
@@ -167,6 +171,10 @@ class GroupDomainServiceTest {
         assertThat(descriptors)
                 .extracting(descriptor -> descriptor.getName().getValue())
                 .containsExactly("alpha", "beta");
+        assertThat(descriptors)
+                .extracting(UserGroupDescriptor::getMemberCount)
+                .extracting(MemberCount::getValue)
+                .containsExactly(2, 1);
     }
 
     @Test
@@ -197,9 +205,7 @@ class GroupDomainServiceTest {
     void getUserChatListSkipsDismissedGroupChats() {
         MemoryGroupRepository groupRepository = new MemoryGroupRepository();
         groupRepository.groups.add(group(1001L, 1L, "alpha"));
-        Group dismissedGroup = group(1002L, 1L, "beta");
-        dismissedGroup.setStatus(GroupStatus.DISMISSED);
-        groupRepository.groups.add(dismissedGroup);
+        groupRepository.groups.add(group(1002L, 1L, "beta", GroupStatus.DISMISSED));
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
         groupChatRepository.groupChats.add(groupChat(102L, 1002L, 1L));
@@ -300,11 +306,25 @@ class GroupDomainServiceTest {
     }
 
     private Group group(Long groupId, Long ownerId, String name) {
+        return group(groupId, ownerId, name, new MemberCount(1), GroupStatus.NORMAL);
+    }
+
+    private Group group(Long groupId, Long ownerId, String name, MemberCount memberCount) {
+        return group(groupId, ownerId, name, memberCount, GroupStatus.NORMAL);
+    }
+
+    private Group group(Long groupId, Long ownerId, String name, GroupStatus status) {
+        return group(groupId, ownerId, name, new MemberCount(1), status);
+    }
+
+    private Group group(Long groupId, Long ownerId, String name, MemberCount memberCount, GroupStatus status) {
         return Group.builder()
                 .id(new GroupId(groupId))
                 .type(ImChatType.GROUP)
                 .ownerId(new UserId(ownerId))
                 .name(new GroupName(name))
+                .memberCount(memberCount)
+                .status(status)
                 .build();
     }
 
@@ -454,6 +474,34 @@ class GroupDomainServiceTest {
             return privateChats.stream()
                     .filter(chat -> chat.getUserId().equals(userId))
                     .collect(java.util.stream.Collectors.toList());
+        }
+    }
+
+    private static class MemoryGroupMemberRepository implements GroupMemberRepository {
+        private final List<GroupMember> members = new java.util.ArrayList<>();
+
+        @Override
+        public List<GroupMember> find(GroupId groupId) {
+            return members.stream()
+                    .filter(member -> member.getGroupId().equals(groupId))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public Optional<GroupMember> find(GroupId groupId, UserId userId) {
+            return find(groupId).stream()
+                    .filter(member -> member.getUserId().equals(userId))
+                    .findFirst();
+        }
+
+        @Override
+        public boolean contain(GroupId groupId, UserId userId) {
+            return find(groupId, userId).isPresent();
+        }
+
+        @Override
+        public void saveAll(List<GroupMember> members) {
+            this.members.addAll(members);
         }
     }
 

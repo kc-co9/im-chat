@@ -14,6 +14,7 @@ import com.co.kc.imchat.domain.group.GroupName;
 import com.co.kc.imchat.domain.group.GroupRepository;
 import com.co.kc.imchat.domain.group.GroupRoster;
 import com.co.kc.imchat.domain.group.GroupService;
+import com.co.kc.imchat.domain.group.MemberCount;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.message.ImGroupMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImGroupMessageTransmission;
@@ -31,6 +32,8 @@ import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.support.lock.DistributeLockScene;
+import com.co.kc.imchat.support.lock.annotation.DistributeLock;
 import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.application.GroupAppTransformer;
 import lombok.RequiredArgsConstructor;
@@ -55,22 +58,24 @@ public class GroupAppService {
     private final ImMessageService imMessageService;
     private final DomainEventPublisher imMessageEventPublisher;
 
+    @DistributeLock(scene = DistributeLockScene.GROUP_CREATE, key = "#command.ownerId + ':' + #command.groupName")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public GroupCreateDTO createGroup(GroupCreateCmd command) {
         UserId ownerId = new UserId(command.getOwnerId());
         GroupId groupId = new GroupId(snowflakeId.next());
         GroupName groupName = new GroupName(command.getGroupName());
         List<UserId> memberIds = FunctionUtils.mappingList(command.getMemberIds(), UserId::new);
+        GroupRoster groupRoster = groupService.createRoster(groupId, ownerId, memberIds);
 
         Group imGroup = Group.builder()
                 .id(groupId)
                 .type(ImChatType.GROUP)
                 .ownerId(ownerId)
                 .name(groupName)
+                .memberCount(new MemberCount(groupRoster.getMembers().size()))
                 .build();
         groupRepository.save(imGroup);
 
-        GroupRoster groupRoster = groupService.createRoster(groupId, ownerId, memberIds);
         groupMemberRepository.saveAll(groupRoster.getMembers());
 
         List<ImGroupChat> groupChats = imChatService.createGroupChats(groupRoster.getMembers());
@@ -92,6 +97,7 @@ public class GroupAppService {
         return new GroupCreateDTO(groupId.getValue(), ownerChat.getId().getValue());
     }
 
+    @DistributeLock(scene = DistributeLockScene.GROUP_DISMISS, key = "#command.groupId")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void dismissGroup(GroupDismissCmd command) {
         UserId userId = new UserId(command.getUserId());
@@ -117,6 +123,7 @@ public class GroupAppService {
         imMessageEventPublisher.publish(event);
     }
 
+    @DistributeLock(scene = DistributeLockScene.GROUP_MEMBER_INVITE, key = "#command.groupId")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void inviteGroupMembers(GroupInviteMembersCmd command) {
         UserId userId = new UserId(command.getUserId());
@@ -129,6 +136,12 @@ public class GroupAppService {
 
         GroupRoster groupRoster = groupService.findGroup(group.getId());
         List<GroupMember> newInvitees = groupRoster.invite(userId, inviteeIds);
+        if (CollectionUtils.isEmpty(newInvitees)) {
+            return;
+        }
+        MemberCount memberCount = group.getMemberCount().increase(newInvitees.size());
+        group.changeMemberCount(memberCount);
+        groupRepository.save(group);
         groupMemberRepository.saveAll(newInvitees);
 
         List<ImGroupChat> newMemberChatList = imChatService.createGroupChats(newInvitees);

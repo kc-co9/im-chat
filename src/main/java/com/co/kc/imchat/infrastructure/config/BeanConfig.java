@@ -23,9 +23,13 @@ import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.UserRepository;
 import com.co.kc.imchat.domain.user.UserService;
 import com.co.kc.imchat.infrastructure.support.SpringEventPublisher;
+import com.co.kc.imchat.support.lock.aspect.DistributeLockAspect;
+import com.co.kc.imchat.support.lock.client.RedisLockClient;
+import com.co.kc.imchat.support.lock.template.DistributeLockTemplate;
 import com.co.kc.imchat.support.notifier.ImMessageNotifierInvoker;
 import com.co.kc.imchat.support.auth.PasswordService;
 import com.co.kc.imchat.support.auth.TokenService;
+import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -152,4 +156,20 @@ public class BeanConfig {
                 groupRepository, userService, groupService, imMessageService, imMessageNotifierInvoker,
                 imMessageEventPublisher);
     }
+
+    @Bean
+    public RedisLockClient redisLockClient(RedissonClient redissonClient) {
+        return new RedisLockClient(redissonClient);
+    }
+
+    @Bean
+    public DistributeLockTemplate distributeLockTemplate(RedisLockClient redisLockClient) {
+        return new DistributeLockTemplate(redisLockClient);
+    }
+
+    @Bean
+    public DistributeLockAspect distributeLockAspect(DistributeLockTemplate distributeLockTemplate) {
+        return new DistributeLockAspect(distributeLockTemplate);
+    }
+
 }

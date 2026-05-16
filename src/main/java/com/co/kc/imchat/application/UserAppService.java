@@ -20,7 +20,11 @@ import com.co.kc.imchat.model.cqrs.dto.user.SignInDTO;
 import com.co.kc.imchat.model.cqrs.dto.user.UserDetailDTO;
 import com.co.kc.imchat.model.cqrs.query.user.UserDetailQuery;
 import com.co.kc.imchat.support.auth.TokenService;
+import com.co.kc.imchat.support.lock.DistributeLockScene;
+import com.co.kc.imchat.support.lock.annotation.DistributeLock;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -35,6 +39,8 @@ public class UserAppService {
     private final UserService userService;
     private final TokenService tokenService;
 
+    @DistributeLock(scene = DistributeLockScene.USER_SIGN_UP, key = "#command.email")
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void signUp(UserSignUpCmd command) {
         UserEmail email = new UserEmail(command.getEmail());
         UserName username = new UserName(command.getUsername());
@@ -50,6 +56,7 @@ public class UserAppService {
     }
 
 
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public SignInDTO signIn(UserSignInCmd command) {
         UserEmail email = new UserEmail(command.getEmail());
         UserRawPassword rawPassword = new UserRawPassword(command.getPassword());
@@ -64,6 +71,7 @@ public class UserAppService {
         return new SignInDTO(user.getId().getValue(), token);
     }
 
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void signOut(UserSignOutCmd command) {
         UserId userId = new UserId(command.getUserId());
 

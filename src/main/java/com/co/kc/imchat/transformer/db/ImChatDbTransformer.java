@@ -47,6 +47,7 @@ public interface ImChatDbTransformer {
         dbGroup.setOwnerId(group.getOwnerId().getValue());
         dbGroup.setName(group.getName().getValue());
         dbGroup.setNotification(group.getNotification() == null ? "" : group.getNotification().getValue());
+        dbGroup.setMemberCount(group.getMemberCount().getValue());
         dbGroup.setStatus(dbImGroupStatusFrom(group.getStatus()));
         return dbGroup;
     }

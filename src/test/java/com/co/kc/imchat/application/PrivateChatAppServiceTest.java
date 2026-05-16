@@ -33,9 +33,12 @@ import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.support.lock.DistributeLockScene;
+import com.co.kc.imchat.support.lock.annotation.DistributeLock;
 import com.co.kc.imchat.support.notifier.ImMessageNotifierInvoker;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,6 +50,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PrivateChatAppServiceTest {
+
+    @Test
+    void openPrivateChatUsesStableUserPairLockKey() throws NoSuchMethodException {
+        Method method = ChatAppService.class.getMethod("openPrivateChat", ImPrivateChatOpenCmd.class);
+        DistributeLock lock = method.getAnnotation(DistributeLock.class);
+
+        assertThat(lock.scene()).isEqualTo(DistributeLockScene.PRIVATE_CHAT_OPEN);
+        assertThat(lock.key()).isEqualTo(
+                "T(com.co.kc.imchat.support.lock.LockKeys).userPair(#command.userId, #command.peerUserId)");
+    }
 
     @Test
     void openPrivateChatActivatesExistingCurrentUserChatOnly() {
@@ -267,8 +280,9 @@ class PrivateChatAppServiceTest {
         appService.sendMessage(privateMessageSendCmd(101L, 1L));
         appService.onMessageSent((com.co.kc.imchat.domain.message.ImPrivateMessageSentEvent) eventPublisher.events.get(0));
 
+        UserId receiverId = new UserId(2L);
         ImPrivateChat receiverChat = privateChatRepository.savedChats.stream()
-                .filter(chat -> chat.getUserId().getValue().equals(2L))
+                .filter(chat -> chat.belongsTo(receiverId))
                 .findFirst()
                 .orElseThrow(AssertionError::new);
         assertThat(receiverChat.getUnreadMessageCount()).isEqualTo(1);

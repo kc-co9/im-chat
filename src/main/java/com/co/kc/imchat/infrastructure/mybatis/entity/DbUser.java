@@ -12,13 +12,20 @@ import lombok.EqualsAndHashCode;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class DbUser extends BaseEntity {
-    //用户ID
+    /**
+     * 用户ID。
+     */
     private Long userId;
-    //用户名
+    /**
+     * 用户名。
+     */
     private String username;
-    //邮箱
+    /**
+     * 邮箱。
+     */
     private String email;
-    //密码
+    /**
+     * 密码。
+     */
     private String password;
 }
-

@@ -25,6 +25,8 @@ import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
 import com.co.kc.imchat.model.cqrs.dto.group.GroupChatOpenDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatOpenDTO;
 import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
+import com.co.kc.imchat.support.lock.DistributeLockScene;
+import com.co.kc.imchat.support.lock.annotation.DistributeLock;
 import com.co.kc.imchat.transformer.application.ImChatAppTransformer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +51,7 @@ public class ChatAppService {
 
     private final ImChatService imChatService;
 
+    @DistributeLock(scene = DistributeLockScene.PRIVATE_CHAT_OPEN, key = "T(com.co.kc.imchat.support.lock.LockKeys).userPair(#command.userId, #command.peerUserId)")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public ImPrivateChatOpenDTO openPrivateChat(ImPrivateChatOpenCmd command) {
         UserId userId = new UserId(command.getUserId());

@@ -28,10 +28,14 @@ import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
 import com.co.kc.imchat.domain.message.ImPrivateMessageReceivedEvent;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
+import com.co.kc.imchat.support.lock.DistributeLockScene;
+import com.co.kc.imchat.support.lock.annotation.DistributeLock;
 import com.co.kc.imchat.support.notifier.ImMessageNotifierInvoker;
 import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.application.ImMessageAppTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -50,6 +54,8 @@ public class PrivateMessageAppService {
     private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
 
+    @DistributeLock(scene = DistributeLockScene.PRIVATE_MESSAGE_SEND, key = "#command.chatId + ':' + #command.messageToken")
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void sendMessage(ImPrivateMessageSendCmd command) {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
         UserId userId = new UserId(command.getUserId());
@@ -118,6 +124,7 @@ public class PrivateMessageAppService {
         imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateSentNotifyCmdFrom(event));
     }
 
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void receiveMessage(ImPrivateMessageReceiveCmd command) {
         UserId userId = new UserId(command.getUserId());
         ImChatId chatId = new ImChatId(command.getChatId());
@@ -143,6 +150,8 @@ public class PrivateMessageAppService {
     }
 
 
+    @DistributeLock(scene = DistributeLockScene.PRIVATE_MESSAGE_REVOKE, key = "#command.chatId + ':' + #command.messageId")
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void revokeMessage(ImPrivateMessageRevokeCmd command) {
         UserId userId = new UserId(command.getUserId());
         ImChatId chatId = new ImChatId(command.getChatId());
@@ -181,6 +190,7 @@ public class PrivateMessageAppService {
         imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateRevokedNotifyCmdFrom(event));
     }
 
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void readMessage(ImPrivateMessageReadCmd command) {
         UserId userId = new UserId(command.getUserId());
         ImChatId chatId = new ImChatId(command.getChatId());

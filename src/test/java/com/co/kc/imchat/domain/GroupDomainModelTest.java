@@ -4,6 +4,10 @@ import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
+import com.co.kc.imchat.domain.group.Group;
+import com.co.kc.imchat.domain.group.GroupName;
+import com.co.kc.imchat.domain.group.GroupRoster;
+import com.co.kc.imchat.domain.group.MemberCount;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessageContent;
@@ -19,6 +23,50 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GroupDomainModelTest {
+
+    @Test
+    void groupChangesMemberCount() {
+        Group group = Group.builder()
+                .id(new GroupId(1001L))
+                .type(ImChatType.GROUP)
+                .ownerId(new UserId(1L))
+                .name(new GroupName("group"))
+                .memberCount(new MemberCount(1))
+                .build();
+
+        group.changeMemberCount(new MemberCount(3));
+
+        assertThat(group.getMemberCount().getValue()).isEqualTo(3);
+    }
+
+    @Test
+    void groupRejectsNullMemberCountChange() {
+        Group group = Group.builder()
+                .id(new GroupId(1001L))
+                .type(ImChatType.GROUP)
+                .ownerId(new UserId(1L))
+                .name(new GroupName("group"))
+                .memberCount(new MemberCount(1))
+                .build();
+
+        assertThatThrownBy(() -> group.changeMemberCount(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("群人数不能为空");
+    }
+
+    @Test
+    void memberCountRejectsNegativeValue() {
+        assertThatThrownBy(() -> new MemberCount(-1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("群人数不能小于0");
+    }
+
+    @Test
+    void memberCountRejectsTooLargeValue() {
+        assertThatThrownBy(() -> new MemberCount(GroupRoster.MAX_MEMBER_COUNT + 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("群人数不能超过 500 人");
+    }
 
     @Test
     void groupChatReceivesUnreadMessageWhenUserIsNotChatting() {

@@ -24,7 +24,10 @@ public interface ImChatHttpIoTransformer {
     @Mappings(value = {
             @Mapping(target = "chatId", source = "chatId"),
             @Mapping(target = "chatName", source = "chatName"),
-            @Mapping(target = "chatType", source = "chatType")
+            @Mapping(target = "chatType", source = "chatType"),
+            @Mapping(target = "lastMessageType", source = "lastMessageType"),
+            @Mapping(target = "lastMessageContent", source = "lastMessageContent"),
+            @Mapping(target = "lastMessageTime", source = "lastMessageTime")
     })
     ImChatListResponse.ImChatItem imChatItemFrom(ImChatItemDTO imChatItem);
 

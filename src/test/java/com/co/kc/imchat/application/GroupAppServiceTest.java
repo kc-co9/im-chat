@@ -18,6 +18,7 @@ import com.co.kc.imchat.domain.group.GroupService;
 import com.co.kc.imchat.domain.group.GroupStatus;
 import com.co.kc.imchat.domain.group.GroupUserAlias;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
+import com.co.kc.imchat.domain.group.MemberCount;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessage;
@@ -48,7 +49,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -167,6 +167,7 @@ class GroupAppServiceTest {
 
         appService.inviteGroupMembers(command);
 
+        assertThat(groupRepository.savedGroup.getMemberCount().getValue()).isEqualTo(2);
         assertThat(groupMemberRepository.savedMembers)
                 .extracting(member -> member.getUserId().getValue())
                 .containsExactly(2L);
@@ -174,6 +175,39 @@ class GroupAppServiceTest {
         assertThat(groupChatRepository.savedGroupChats)
                 .extracting(chat -> chat.getUserId().getValue())
                 .containsExactly(2L);
+    }
+
+    @Test
+    void inviteGroupMembersSkipsExistingMembersWithoutChangingMemberCount() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        Group group = group(1001L, 1L, "group", new MemberCount(2));
+        groupRepository.groups.add(group);
+
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
+        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+
+        GroupAppService appService = new GroupAppService(
+                new FixedSnowflakeId(3000L),
+                groupRepository,
+                groupChatRepository,
+                groupMemberRepository,
+                new GroupService(groupMemberRepository, groupChatRepository, null, null),
+                new ImChatService(new FixedSnowflakeId(3000L), null, null, null, null, null),
+                null,
+                null,
+                null);
+
+        appService.inviteGroupMembers(new GroupInviteMembersCmd(1L, 1001L, Collections.singletonList(2L)));
+
+        assertThat(group.getMemberCount().getValue()).isEqualTo(2);
+        assertThat(groupRepository.savedGroup).isNull();
+        assertThat(groupMemberRepository.savedMembers).isEmpty();
+        assertThat(groupChatRepository.savedGroupChats).isEmpty();
     }
 
     @Test
@@ -264,7 +298,7 @@ class GroupAppServiceTest {
     @Test
     void getGroupListReturnsGroupsJoinedByUser() {
         MemoryGroupRepository groupRepository = new MemoryGroupRepository();
-        groupRepository.groups.add(group(1001L, 1L, "alpha"));
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
         groupRepository.groups.add(group(1002L, 2L, "beta"));
 
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
@@ -299,13 +333,16 @@ class GroupAppServiceTest {
         assertThat(groupList)
                 .extracting(GroupItemDTO::getUnreadMessageCount)
                 .containsExactly(2, 0);
+        assertThat(groupList)
+                .extracting(GroupItemDTO::getMemberCount)
+                .containsExactly(2, 1);
         assertThat(groupRepository.findByUserIdCount).isEqualTo(1);
     }
 
     @Test
     void getGroupListSkipsDismissedGroups() {
         MemoryGroupRepository groupRepository = new MemoryGroupRepository();
-        groupRepository.groups.add(group(1001L, 1L, "alpha"));
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(3)));
         groupRepository.groups.add(dismissedGroup(1002L, 1L, "beta"));
 
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
@@ -328,7 +365,7 @@ class GroupAppServiceTest {
     @Test
     void getGroupDetailReturnsGroupAndMembersForMember() {
         MemoryGroupRepository groupRepository = new MemoryGroupRepository();
-        groupRepository.groups.add(group(1001L, 1L, "alpha"));
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(3)));
 
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
@@ -459,18 +496,26 @@ class GroupAppServiceTest {
     }
 
     private Group group(Long groupId, Long ownerId, String name) {
+        return group(groupId, ownerId, name, new MemberCount(1), GroupStatus.NORMAL);
+    }
+
+    private Group group(Long groupId, Long ownerId, String name, MemberCount memberCount) {
+        return group(groupId, ownerId, name, memberCount, GroupStatus.NORMAL);
+    }
+
+    private Group group(Long groupId, Long ownerId, String name, MemberCount memberCount, GroupStatus status) {
         return Group.builder()
                 .id(new GroupId(groupId))
                 .type(ImChatType.GROUP)
                 .ownerId(new UserId(ownerId))
                 .name(new GroupName(name))
+                .memberCount(memberCount)
+                .status(status)
                 .build();
     }
 
     private Group dismissedGroup(Long groupId, Long ownerId, String name) {
-        Group group = group(groupId, ownerId, name);
-        group.setStatus(GroupStatus.DISMISSED);
-        return group;
+        return group(groupId, ownerId, name, new MemberCount(1), GroupStatus.DISMISSED);
     }
 
     private GroupAppService groupAppService(MemoryGroupRepository groupRepository,
@@ -661,7 +706,6 @@ class GroupAppServiceTest {
         private final List<GroupMember> members = new ArrayList<>();
         private List<GroupMember> savedMembers = new ArrayList<>();
         private int findByGroupIdCount;
-        private int countByGroupIdsCount;
 
         @Override
         public List<GroupMember> find(GroupId groupId) {
@@ -690,13 +734,6 @@ class GroupAppServiceTest {
             this.members.addAll(members);
         }
 
-        @Override
-        public Map<GroupId, Integer> countByGroupIds(List<GroupId> groupIds) {
-            countByGroupIdsCount++;
-            return members.stream()
-                    .filter(member -> groupIds.contains(member.getGroupId()))
-                    .collect(Collectors.groupingBy(GroupMember::getGroupId, Collectors.summingInt(member -> 1)));
-        }
     }
 
     private static class MemoryGroupInboxMessageRepository implements ImGroupInboxMessageRepository {

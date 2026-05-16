@@ -60,6 +60,7 @@ CREATE TABLE `db_im_group`
     `owner_id`     BIGINT          NOT NULL DEFAULT 0 COMMENT '群主ID',
     `name`         VARCHAR(20)     NOT NULL DEFAULT '' COMMENT '群名称',
     `notification` VARCHAR(255)    NOT NULL DEFAULT '' COMMENT '群公告',
+    `member_count` INT             NOT NULL DEFAULT 0 COMMENT '群人数',
     `status`       TINYINT         NOT NULL DEFAULT 0 COMMENT '群状态 0-未知,1-正常,2-已解散',
     `create_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

@@ -7,6 +7,8 @@ import com.co.kc.imchat.model.cqrs.dto.friend.FriendSearchDTO;
 import com.co.kc.imchat.model.cqrs.query.friend.FriendSearchQuery;
 import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
+import com.co.kc.imchat.support.lock.DistributeLockScene;
+import com.co.kc.imchat.support.lock.annotation.DistributeLock;
 import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendRepository;
 import com.co.kc.imchat.domain.friend.FriendService;
@@ -38,6 +40,7 @@ public class FriendAppService {
     private final FriendService friendService;
     private final ImChatService imChatService;
 
+    @DistributeLock(scene = DistributeLockScene.FRIEND_ADD, key = "T(com.co.kc.imchat.support.lock.LockKeys).userPair(#command.userId, #command.friendUserId)")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void addFriend(FriendAddCmd command) {
         UserId userId = new UserId(command.getUserId());
@@ -64,6 +67,7 @@ public class FriendAppService {
         imPrivateChatRepository.save(imChatService.createHiddenPrivateChat(friendUserId, userId));
     }
 
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void blockFriend(FriendBlockCmd command) {
         UserId userId = new UserId(command.getUserId());
         UserId friendUserId = new UserId(command.getFriendUserId());
@@ -78,6 +82,7 @@ public class FriendAppService {
         friendRepository.save(friend);
     }
 
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void unblockFriend(FriendUnblockCmd command) {
         UserId userId = new UserId(command.getUserId());
         UserId friendUserId = new UserId(command.getFriendUserId());
@@ -92,6 +97,7 @@ public class FriendAppService {
         friendRepository.save(friend);
     }
 
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void deleteFriend(FriendDeleteCmd command) {
         UserId userId = new UserId(command.getUserId());
         UserId friendUserId = new UserId(command.getFriendUserId());

@@ -14,6 +14,7 @@ import com.co.kc.imchat.domain.group.GroupName;
 import com.co.kc.imchat.domain.group.GroupRepository;
 import com.co.kc.imchat.domain.group.GroupService;
 import com.co.kc.imchat.domain.group.GroupStatus;
+import com.co.kc.imchat.domain.group.MemberCount;
 import com.co.kc.imchat.domain.group.MemberId;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
@@ -52,7 +53,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
@@ -687,18 +687,22 @@ class GroupChatAppServiceTest {
     }
 
     private Group group(Long groupId, Long ownerId, String name) {
+        return group(groupId, ownerId, name, GroupStatus.NORMAL);
+    }
+
+    private Group group(Long groupId, Long ownerId, String name, GroupStatus status) {
         return Group.builder()
                 .id(new GroupId(groupId))
                 .type(ImChatType.GROUP)
                 .ownerId(new UserId(ownerId))
                 .name(new GroupName(name))
+                .memberCount(new MemberCount(1))
+                .status(status)
                 .build();
     }
 
     private Group dismissedGroup(Long groupId, Long ownerId, String name) {
-        Group group = group(groupId, ownerId, name);
-        group.setStatus(GroupStatus.DISMISSED);
-        return group;
+        return group(groupId, ownerId, name, GroupStatus.DISMISSED);
     }
 
     private ChatAppService chatAppService(MemoryGroupChatRepository groupChatRepository,
@@ -1008,7 +1012,7 @@ class GroupChatAppServiceTest {
 
         private ImGroupChat findSavedByUserId(Long userId) {
             return savedGroupChats.stream()
-                    .filter(groupChat -> groupChat.getUserId().getValue().equals(userId))
+                    .filter(groupChat -> groupChat.belongsTo(new UserId(userId)))
                     .findFirst()
                     .orElseThrow(AssertionError::new);
         }
@@ -1036,13 +1040,6 @@ class GroupChatAppServiceTest {
         @Override
         public boolean contain(GroupId groupId, UserId userId) {
             return find(groupId, userId).isPresent();
-        }
-
-        @Override
-        public Map<GroupId, Integer> countByGroupIds(List<GroupId> groupIds) {
-            return members.stream()
-                    .filter(member -> groupIds.contains(member.getGroupId()))
-                    .collect(Collectors.groupingBy(GroupMember::getGroupId, Collectors.summingInt(member -> 1)));
         }
 
         @Override

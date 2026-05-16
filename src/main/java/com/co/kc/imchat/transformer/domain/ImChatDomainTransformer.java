@@ -13,6 +13,7 @@ import com.co.kc.imchat.domain.group.GroupName;
 import com.co.kc.imchat.domain.group.GroupNotification;
 import com.co.kc.imchat.domain.group.GroupStatus;
 import com.co.kc.imchat.domain.group.GroupUserAlias;
+import com.co.kc.imchat.domain.group.MemberCount;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.user.UserId;
@@ -65,6 +66,7 @@ public interface ImChatDomainTransformer {
                 .ownerId(new UserId(dbImGroup.getOwnerId()))
                 .name(new GroupName(dbImGroup.getName()))
                 .notification(new GroupNotification(dbImGroup.getNotification()))
+                .memberCount(new MemberCount(dbImGroup.getMemberCount() == null ? 0 : dbImGroup.getMemberCount()))
                 .status(imGroupStatusFrom(dbImGroup.getStatus()))
                 .build();
         group.setPkId(dbImGroup.getId());

@@ -27,16 +27,18 @@ public interface GroupAppTransformer {
         dto.setGroupId(descriptor.getId().getValue());
         dto.setChatId(descriptor.getChat().getId().getValue());
         dto.setGroupName(descriptor.getName().getValue());
+        dto.setMemberCount(descriptor.getMemberCount().getValue());
         dto.setUnreadMessageCount(descriptor.getChat().getUnreadMessageCount());
         return dto;
     }
 
-    default GroupItemDTO groupItemDtoFrom(Group group, ImGroupChat groupChat, int memberCount) {
+    default GroupItemDTO groupItemDtoFrom(Group group, ImGroupChat groupChat) {
         GroupItemDTO dto = new GroupItemDTO();
         dto.setGroupId(groupChat.getGroupId().getValue());
         dto.setChatId(groupChat.getId().getValue());
         if (group != null) {
             dto.setGroupName(group.getName().getValue());
+            dto.setMemberCount(group.getMemberCount().getValue());
         }
         dto.setUnreadMessageCount(groupChat.getUnreadMessageCount());
         return dto;
@@ -49,7 +51,7 @@ public interface GroupAppTransformer {
         dto.setGroupName(group.getName().getValue());
         dto.setOwnerId(group.getOwnerId().getValue());
         dto.setNotification(group.getNotification() == null ? null : group.getNotification().getValue());
-        dto.setMemberCount(members.size());
+        dto.setMemberCount(group.getMemberCount().getValue());
         dto.setMembers(members.stream().map(this::groupMemberDtoFrom).collect(Collectors.toList()));
         return dto;
     }

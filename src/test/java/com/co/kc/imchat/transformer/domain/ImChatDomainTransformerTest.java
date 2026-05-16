@@ -1,12 +1,29 @@
 package com.co.kc.imchat.transformer.domain;
 
+import com.co.kc.imchat.domain.group.Group;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroup;
 import com.co.kc.imchat.infrastructure.mybatis.enums.DbImGroupStatus;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ImChatDomainTransformerTest {
+
+    @Test
+    void imGroupFromMapsMemberCount() {
+        DbImGroup row = new DbImGroup();
+        row.setId(1L);
+        row.setGroupId(1001L);
+        row.setOwnerId(1L);
+        row.setName("group");
+        row.setMemberCount(3);
+        row.setStatus(DbImGroupStatus.NORMAL);
+
+        Group group = ImChatDomainTransformer.INSTANCE.imGroupFrom(row);
+
+        assertThat(group.getMemberCount().getValue()).isEqualTo(3);
+    }
 
     @Test
     void imGroupFromRejectsUnknownGroupStatus() {
