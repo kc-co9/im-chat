@@ -71,6 +71,19 @@ class DistributeLockAspectTest {
         assertThat(lockClient.unlocked).isFalse();
     }
 
+    @Test
+    void annotatedMethodCanUseLockKeysAlias() {
+        RecordingLockClient lockClient = new RecordingLockClient(true);
+        DemoService target = new DemoService();
+        DemoService proxy = proxy(target, lockClient);
+
+        String result = proxy.invokeWithLockKeys(new DemoCommand(2L, "token-1"));
+
+        assertThat(result).isEqualTo("ok");
+        assertThat(target.invoked).isEqualTo(1);
+        assertThat(lockClient.lockKey).isEqualTo("im:friend:add:1:2");
+    }
+
     private DemoService proxy(DemoService target, RecordingLockClient lockClient) {
         AspectJProxyFactory proxyFactory = new AspectJProxyFactory(target);
         proxyFactory.addAspect(new DistributeLockAspect(new DistributeLockTemplate(lockClient)));
@@ -94,6 +107,12 @@ class DistributeLockAspectTest {
 
         @DistributeLock(scene = DistributeLockScene.PRIVATE_MESSAGE_SEND, key = "#command.nullValue")
         public String invokeNullKey(DemoCommand command) {
+            invoked++;
+            return "ok";
+        }
+
+        @DistributeLock(scene = DistributeLockScene.FRIEND_ADD, key = "#LockKeys.userPair(#command.id, 1L)")
+        public String invokeWithLockKeys(DemoCommand command) {
             invoked++;
             return "ok";
         }

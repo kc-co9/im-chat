@@ -2,12 +2,18 @@ package com.co.kc.imchat.endpoint.http;
 
 import com.co.kc.imchat.application.FriendAppService;
 import com.co.kc.imchat.model.cqrs.command.friend.FriendAddCmd;
+import com.co.kc.imchat.model.cqrs.command.friend.FriendAliasChangeCmd;
+import com.co.kc.imchat.model.cqrs.command.friend.FriendBlockCmd;
 import com.co.kc.imchat.model.cqrs.command.friend.FriendDeleteCmd;
+import com.co.kc.imchat.model.cqrs.command.friend.FriendUnblockCmd;
 import com.co.kc.imchat.model.cqrs.dto.friend.FriendSearchDTO;
 import com.co.kc.imchat.model.cqrs.query.friend.FriendSearchQuery;
 import com.co.kc.imchat.model.io.friend.FriendAddRequest;
+import com.co.kc.imchat.model.io.friend.FriendAliasChangeRequest;
+import com.co.kc.imchat.model.io.friend.FriendBlockRequest;
 import com.co.kc.imchat.model.io.friend.FriendDeleteRequest;
 import com.co.kc.imchat.model.io.friend.FriendSearchResponse;
+import com.co.kc.imchat.model.io.friend.FriendUnblockRequest;
 import com.co.kc.imchat.support.context.UserContextUtils;
 import com.co.kc.imchat.model.cqrs.dto.friend.FriendDetailDTO;
 import com.co.kc.imchat.model.cqrs.query.friend.FriendDetailQuery;
@@ -76,5 +82,28 @@ public class FriendController {
         friendAppService.deleteFriend(command);
     }
 
+    @ApiOperation("拉黑好友")
+    @PostMapping("/blockFriend")
+    public void blockFriend(@RequestBody @Validated FriendBlockRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        FriendBlockCmd command = new FriendBlockCmd(userId, request.getFriendUserId());
+        friendAppService.blockFriend(command);
+    }
+
+    @ApiOperation("取消拉黑好友")
+    @PostMapping("/unblockFriend")
+    public void unblockFriend(@RequestBody @Validated FriendUnblockRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        FriendUnblockCmd command = new FriendUnblockCmd(userId, request.getFriendUserId());
+        friendAppService.unblockFriend(command);
+    }
+
+    @ApiOperation("修改好友备注")
+    @PostMapping("/changeFriendAlias")
+    public void changeFriendAlias(@RequestBody @Validated FriendAliasChangeRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        FriendAliasChangeCmd command = new FriendAliasChangeCmd(userId, request.getFriendUserId(), request.getFriendAlias());
+        friendAppService.changeFriendAlias(command);
+    }
 
 }

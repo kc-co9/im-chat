@@ -13,4 +13,8 @@ public final class ImSystemMessageTokenFactory {
     public static ImMessageToken createSystemGroupDismissed(GroupId groupId) {
         return ImSystemMessageType.GROUP_DISMISSED.token(groupId.getValue());
     }
+
+    public static ImMessageToken createSystemGroupMemberJoined(GroupId groupId, ImMessageId messageId) {
+        return ImSystemMessageType.GROUP_MEMBER_JOINED.token(groupId.getValue() + ":" + messageId.getValue());
+    }
 }

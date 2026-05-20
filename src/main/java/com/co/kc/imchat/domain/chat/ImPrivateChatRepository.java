@@ -17,7 +17,11 @@ public interface ImPrivateChatRepository {
      */
     Optional<ImPrivateChat> find(UserId userId, UserId peerUserId);
 
+    boolean contain(UserId userId, UserId peerUserId);
+
     List<ImMessage> findLastMessageList(List<ImChatId> chatIds, UserId viewer);
 
     void save(ImPrivateChat imPrivateChat);
+
+    void remove(UserId userId, UserId peerUserId);
 }

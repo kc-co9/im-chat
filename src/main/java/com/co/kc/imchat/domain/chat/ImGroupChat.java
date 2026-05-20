@@ -18,7 +18,6 @@ public class ImGroupChat extends ImChat {
     private GroupAlias groupAlias;
     private ImMessageId lastMessageId;
     private ImMessageId readMessageId;
-    private LocalDateTime readTime;
     private Integer unreadMessageCount;
 
     public void receiveLatestMessage(ImGroupInboxMessage message, boolean isChatting) {
@@ -33,7 +32,6 @@ public class ImGroupChat extends ImChat {
 
     public void readMessage(ImGroupInboxMessage message) {
         this.readMessageId = message.getId();
-        this.readTime = LocalDateTime.now();
         this.unreadMessageCount = 0;
         if (message.getStatus() != ImGroupMessageStatus.READ) {
             message.read(getUserId());
@@ -43,9 +41,12 @@ public class ImGroupChat extends ImChat {
     public void readToLatest() {
         if (lastMessageId != null) {
             this.readMessageId = lastMessageId;
-            this.readTime = LocalDateTime.now();
         }
         this.unreadMessageCount = 0;
+    }
+
+    public void changeGroupAlias(GroupAlias alias) {
+        groupAlias = alias;
     }
 
     @Override
@@ -112,11 +113,6 @@ public class ImGroupChat extends ImChat {
 
         public Builder readMessageId(ImMessageId readMessageId) {
             chat.setReadMessageId(readMessageId);
-            return this;
-        }
-
-        public Builder readTime(LocalDateTime readTime) {
-            chat.setReadTime(readTime);
             return this;
         }
 

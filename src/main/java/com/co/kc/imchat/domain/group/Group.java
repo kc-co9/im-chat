@@ -20,13 +20,45 @@ public class Group extends Identification implements Validator {
     private GroupStatus status;
 
     public void dismiss(UserId operatorId) {
-        if (!ownerId.equals(operatorId)) {
-            throw new BusinessException("只有群主可以解散群聊");
-        }
+        ensureActive();
+        ensureOwner(operatorId);
         if (status == GroupStatus.DISMISSED) {
             throw new BusinessException("群聊已解散");
         }
         status = GroupStatus.DISMISSED;
+    }
+
+    public void transferOwner(UserId operatorId, UserId newOwnerId) {
+        ensureActive();
+        if (!ownerId.equals(operatorId)) {
+            throw new BusinessException("只有群主才能转让群主");
+        }
+        if (ownerId.equals(newOwnerId)) {
+            throw new BusinessException("新群主不能是当前群主");
+        }
+        ownerId = newOwnerId;
+    }
+
+    public void memberLeave(UserId userId) {
+        ensureActive();
+        ensureCanLeave(userId);
+        decreaseMemberCount(1);
+    }
+
+    public void kickMember(UserId operatorId, UserId memberUserId) {
+        ensureActive();
+        ensureCanKick(operatorId, memberUserId);
+        decreaseMemberCount(1);
+    }
+
+    public void decreaseMemberCount(int count) {
+        changeMemberCount(new MemberCount(memberCount.getValue() - count));
+    }
+
+    public void changeNotification(UserId operatorId, GroupNotification notification) {
+        ensureActive();
+        ensureOwner(operatorId);
+        this.notification = notification;
     }
 
     public boolean isDismissed() {
@@ -38,6 +70,26 @@ public class Group extends Identification implements Validator {
             throw new BusinessException("群聊已解散");
         }
     }
+
+    public void ensureOwner(UserId operatorId) {
+        if (!ownerId.equals(operatorId)) {
+            throw new BusinessException("只有群主可以操作");
+        }
+    }
+
+    public void ensureCanLeave(UserId userId) {
+        if (ownerId.equals(userId)) {
+            throw new BusinessException("群主不能直接退群，请先转让群主");
+        }
+    }
+
+    public void ensureCanKick(UserId operatorId, UserId memberId) {
+        ensureOwner(operatorId);
+        if (memberId.equals(operatorId)) {
+            throw new BusinessException("不能踢出群主");
+        }
+    }
+
 
     public void changeMemberCount(MemberCount memberCount) {
         if (memberCount == null) {
@@ -97,7 +149,7 @@ public class Group extends Identification implements Validator {
 
         public Group build() {
             if (group.getStatus() == null) {
-                group.status = GroupStatus.NORMAL;
+                group.status = GroupStatus.ACTIVE;
             }
             if (group.getMemberCount() == null) {
                 group.memberCount = new MemberCount(1);

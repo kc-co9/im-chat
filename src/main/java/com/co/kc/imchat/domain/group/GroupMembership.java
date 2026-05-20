@@ -11,13 +11,13 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Getter
-public class GroupRoster {
+public class GroupMembership {
     public static final int MAX_MEMBER_COUNT = 500;
 
     private final GroupId groupId;
     private final List<GroupMember> members;
 
-    public GroupRoster(GroupId groupId, List<GroupMember> members) {
+    public GroupMembership(GroupId groupId, List<GroupMember> members) {
         if (groupId == null) {
             throw new IllegalArgumentException("群组 ID 不能为空");
         }
@@ -36,15 +36,18 @@ public class GroupRoster {
             throw new BusinessException("用户无此群组权限");
         }
 
-        Set<UserId> existingUserIds = members.stream()
+        Set<UserId> groupMemberIds = members.stream()
                 .map(GroupMember::getUserId)
                 .collect(Collectors.toSet());
         List<UserId> newInviteeIds = CollectionUtils.emptyIfNull(inviteeIds).stream()
-                .filter(userId -> !existingUserIds.contains(userId))
+                .filter(userId -> !groupMemberIds.contains(userId))
                 .distinct()
                 .collect(Collectors.toList());
+        if (newInviteeIds.isEmpty()) {
+            throw new BusinessException("没有可邀请的成员");
+        }
         if (members.size() + newInviteeIds.size() > MAX_MEMBER_COUNT) {
-            throw new BusinessException("群成员数量不能超过 500 人");
+            throw new BusinessException(String.format("群成员数量不能超过 %d 人", MAX_MEMBER_COUNT));
         }
 
         return newInviteeIds.stream()

@@ -4,10 +4,24 @@ import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImChatStatus;
 import com.co.kc.imchat.domain.chat.ImChatType;
+import com.co.kc.imchat.domain.chat.ImGroupChat;
+import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.chat.ImPrivateChatRepository;
 import com.co.kc.imchat.domain.friend.Friend;
+import com.co.kc.imchat.domain.friend.FriendEdge;
 import com.co.kc.imchat.domain.friend.FriendRepository;
+import com.co.kc.imchat.domain.friend.FriendService;
+import com.co.kc.imchat.domain.group.Group;
+import com.co.kc.imchat.domain.group.GroupId;
+import com.co.kc.imchat.domain.group.GroupMember;
+import com.co.kc.imchat.domain.group.GroupMemberRepository;
+import com.co.kc.imchat.domain.group.GroupName;
+import com.co.kc.imchat.domain.group.GroupRepository;
+import com.co.kc.imchat.domain.group.GroupService;
+import com.co.kc.imchat.domain.group.GroupStatus;
+import com.co.kc.imchat.domain.group.MemberCount;
+import com.co.kc.imchat.domain.group.MemberId;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.domain.message.ImMessageContent;
 import com.co.kc.imchat.domain.message.ImMessageId;
@@ -22,6 +36,7 @@ import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.UserService;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatOpenCmd;
+import com.co.kc.imchat.model.cqrs.command.chat.GroupAliasChangeCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.PrivateChatHideCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageSendCmd;
 import com.co.kc.imchat.model.cqrs.command.im.ImPrivateMessageReadCmd;
@@ -58,7 +73,7 @@ class PrivateChatAppServiceTest {
 
         assertThat(lock.scene()).isEqualTo(DistributeLockScene.PRIVATE_CHAT_OPEN);
         assertThat(lock.key()).isEqualTo(
-                "T(com.co.kc.imchat.support.lock.LockKeys).userPair(#command.userId, #command.peerUserId)");
+                "#LockKeys.userPair(#command.userId, #command.peerUserId)");
     }
 
     @Test
@@ -77,8 +92,9 @@ class PrivateChatAppServiceTest {
                 null,
                 null,
                 null,
-                new NormalFriendRepository(),
-                new ImChatService(null, null, privateChatRepository, null, null, sessionRepository));
+                new ImChatService(new NormalFriendRepository(), privateChatRepository, null, null, sessionRepository, null),
+                new FriendService(new NormalFriendRepository()),
+                null);
         ImPrivateChatOpenCmd command = new ImPrivateChatOpenCmd(1L, 2L);
 
         ImPrivateChatOpenDTO result = appService.openPrivateChat(command);
@@ -102,12 +118,32 @@ class PrivateChatAppServiceTest {
                 null,
                 null,
                 null,
-                new NormalFriendRepository(),
-                new ImChatService(null, null, privateChatRepository, null, null, new SignedInSessionRepository()));
+                new ImChatService(new NormalFriendRepository(), privateChatRepository, null, null, new SignedInSessionRepository(), null),
+                new FriendService(new NormalFriendRepository()),
+                null);
 
         assertThatThrownBy(() -> appService.openPrivateChat(new ImPrivateChatOpenCmd(1L, 2L)))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessageContaining("聊天不存在");
+    }
+
+    @Test
+    void openPrivateChatRequiresMutualNormalFriends() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
+        ChatAppService appService = new ChatAppService(
+                privateChatRepository,
+                null,
+                null,
+                null,
+                null,
+                new ImChatService(new OneWayNormalFriendRepository(1L, 2L), privateChatRepository, null, null, new SignedInSessionRepository(), null),
+                new FriendService(new OneWayNormalFriendRepository(1L, 2L)),
+                null);
+
+        assertThatThrownBy(() -> appService.openPrivateChat(new ImPrivateChatOpenCmd(1L, 2L)))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("好友不存在");
     }
 
     @Test
@@ -127,8 +163,9 @@ class PrivateChatAppServiceTest {
                 null,
                 null,
                 null,
-                new NormalFriendRepository(),
-                new ImChatService(null, null, privateChatRepository, null, null, new SignedInSessionRepository()));
+                new ImChatService(new NormalFriendRepository(), privateChatRepository, null, null, new SignedInSessionRepository(), null),
+                new FriendService(new NormalFriendRepository()),
+                null);
 
         ImPrivateChatOpenDTO result = appService.openPrivateChat(new ImPrivateChatOpenCmd(1L, 2L));
 
@@ -151,8 +188,9 @@ class PrivateChatAppServiceTest {
                 null,
                 null,
                 null,
+                new ImChatService(null, privateChatRepository, null, null, null, null),
                 null,
-                new ImChatService(null, null, privateChatRepository, null, null, null));
+                null);
 
         appService.hidePrivateChat(new PrivateChatHideCmd(1L, 101L));
 
@@ -160,6 +198,38 @@ class PrivateChatAppServiceTest {
 
         ImPrivateChat savedChat = privateChatRepository.savedChats.get(0);
         assertThat(savedChat.getStatus()).isEqualTo(ImChatStatus.HIDDEN);
+    }
+
+    @Test
+    void changeGroupAliasUpdatesOnlyCurrentUsersGroupChat() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        ImGroupChat userChat = ImGroupChat.builder()
+                .id(new ImChatId(201L))
+                .groupId(new com.co.kc.imchat.domain.group.GroupId(1001L))
+                .userId(new UserId(1L))
+                .type(ImChatType.GROUP)
+                .unreadMessageCount(0)
+                .build();
+        groupChatRepository.groupChats.add(userChat);
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "group"));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        ChatAppService appService = new ChatAppService(
+                privateChatRepository,
+                groupChatRepository,
+                groupRepository,
+                new GroupService(groupMemberRepository, groupChatRepository, groupRepository, null, null),
+                null,
+                new ImChatService(null, null, null, groupChatRepository, null, null),
+                null,
+                null);
+
+        appService.changeGroupAlias(new GroupAliasChangeCmd(1L, 201L, "work"));
+
+        assertThat(groupChatRepository.savedGroupChats).containsExactly(userChat);
+        assertThat(userChat.getGroupAlias().getValue()).isEqualTo("work");
     }
 
     @Test
@@ -173,12 +243,13 @@ class PrivateChatAppServiceTest {
         inboxRepository.messages.add(privateMessage(900L, 102L, 2L, 1L, ImPrivateMessageStatus.RECEIVED));
 
         PrivateMessageAppService appService = new PrivateMessageAppService(
-                new FixedSnowflakeId(900L),
                 privateChatRepository,
                 inboxRepository,
                 null,
-                new ImChatService(null, null, privateChatRepository, null, null, null),
-                new ImMessageService(new FixedSnowflakeId(1L)),
+                new ImChatService(null, privateChatRepository, null, null, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                null,
+                new FixedSnowflakeId(900L),
                 null,
                 new MemoryDomainEventPublisher());
 
@@ -207,12 +278,13 @@ class PrivateChatAppServiceTest {
                 900L, 101L, 1L, 2L, ImPrivateMessageStatus.REVOKED, LocalDateTime.now().minusMinutes(3)));
 
         PrivateMessageAppService appService = new PrivateMessageAppService(
-                new FixedSnowflakeId(900L),
                 privateChatRepository,
                 inboxRepository,
                 null,
-                new ImChatService(null, null, privateChatRepository, null, null, null),
-                new ImMessageService(new FixedSnowflakeId(1L)),
+                new ImChatService(null, privateChatRepository, null, null, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                null,
+                new FixedSnowflakeId(900L),
                 null,
                 new MemoryDomainEventPublisher());
 
@@ -237,12 +309,13 @@ class PrivateChatAppServiceTest {
 
         MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
         PrivateMessageAppService appService = new PrivateMessageAppService(
-                new FixedSnowflakeId(900L),
                 privateChatRepository,
                 inboxRepository,
                 null,
-                new ImChatService(null, null, privateChatRepository, null, null, null),
-                new ImMessageService(new FixedSnowflakeId(1L)),
+                new ImChatService(null, privateChatRepository, null, null, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                null,
+                new FixedSnowflakeId(900L),
                 null,
                 eventPublisher);
 
@@ -268,12 +341,13 @@ class PrivateChatAppServiceTest {
         MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
         RecordingNotifierInvoker notifierInvoker = new RecordingNotifierInvoker();
         PrivateMessageAppService appService = new PrivateMessageAppService(
-                new FixedSnowflakeId(900L),
                 privateChatRepository,
                 inboxRepository,
                 new OnlineNonChattingUserService(),
-                new ImChatService(null, null, privateChatRepository, null, null, null),
-                new ImMessageService(new FixedSnowflakeId(1L)),
+                new ImChatService(new NormalFriendRepository(), privateChatRepository, null, null, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                new FriendService(new NormalFriendRepository()),
+                new FixedSnowflakeId(900L),
                 notifierInvoker,
                 eventPublisher);
 
@@ -289,6 +363,52 @@ class PrivateChatAppServiceTest {
         assertThat(notifierInvoker.privateSentCommands)
                 .extracting(ImPrivateSentNotifyCmd::getReceiverId)
                 .containsExactly(2L);
+    }
+
+    @Test
+    void sendPrivateMessageRequiresSenderNormalFriendRelation() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                privateChatRepository,
+                inboxRepository,
+                new OnlineNonChattingUserService(),
+                new ImChatService(new MissingFriendRepository(), privateChatRepository, null, null, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                new FriendService(new MissingFriendRepository()),
+                new FixedSnowflakeId(900L),
+                new RecordingNotifierInvoker(),
+                new MemoryDomainEventPublisher());
+
+        assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("好友不存在");
+        assertThat(inboxRepository.savedMessages).isEmpty();
+    }
+
+    @Test
+    void sendPrivateMessageRequiresReceiverNormalFriendRelation() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                privateChatRepository,
+                inboxRepository,
+                new OnlineNonChattingUserService(),
+                new ImChatService(new OneWayNormalFriendRepository(1L, 2L), privateChatRepository, null, null, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                new FriendService(new OneWayNormalFriendRepository(1L, 2L)),
+                new FixedSnowflakeId(900L),
+                new RecordingNotifierInvoker(),
+                new MemoryDomainEventPublisher());
+
+        assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("好友不存在");
+        assertThat(inboxRepository.savedMessages).isEmpty();
     }
 
     private ImPrivateChat privateChat(Long chatId, Long userId, Long peerUserId) {
@@ -331,6 +451,26 @@ class PrivateChatAppServiceTest {
         return command;
     }
 
+    private Group group(Long groupId, Long ownerId, String name) {
+        return Group.builder()
+                .id(new GroupId(groupId))
+                .type(ImChatType.GROUP)
+                .ownerId(new UserId(ownerId))
+                .name(new GroupName(name))
+                .memberCount(new MemberCount(1))
+                .status(GroupStatus.ACTIVE)
+                .build();
+    }
+
+    private GroupMember groupMember(Long groupId, Long userId) {
+        return GroupMember.builder()
+                .id(new MemberId(new GroupId(groupId), new UserId(userId)))
+                .groupId(new GroupId(groupId))
+                .userId(new UserId(userId))
+                .joinTime(LocalDateTime.now())
+                .build();
+    }
+
     private static class MemoryPrivateChatRepository implements ImPrivateChatRepository {
         private final List<ImPrivateChat> chats = new ArrayList<>();
         private final List<ImPrivateChat> savedChats = new ArrayList<>();
@@ -356,6 +496,13 @@ class PrivateChatAppServiceTest {
         }
 
         @Override
+        public boolean contain(UserId userId, UserId peerUserId) {
+            return chats.stream()
+                    .anyMatch(chat -> chat.getUserId().equals(userId)
+                            && chat.getPeerUserId().equals(peerUserId));
+        }
+
+        @Override
         public List<ImMessage> findLastMessageList(List<ImChatId> chatIds, UserId viewer) {
             return Collections.emptyList();
         }
@@ -364,6 +511,12 @@ class PrivateChatAppServiceTest {
         public void save(ImPrivateChat imPrivateChat) {
             chats.add(imPrivateChat);
             savedChats.add(imPrivateChat);
+        }
+
+        @Override
+        public void remove(UserId userId, UserId peerUserId) {
+            chats.removeIf(chat -> chat.getUserId().equals(userId)
+                    && chat.getPeerUserId().equals(peerUserId));
         }
     }
 
@@ -418,6 +571,140 @@ class PrivateChatAppServiceTest {
         }
     }
 
+    private static class MemoryGroupChatRepository implements ImGroupChatRepository {
+        private final List<ImGroupChat> groupChats = new ArrayList<>();
+        private final List<ImGroupChat> savedGroupChats = new ArrayList<>();
+
+        @Override
+        public Optional<ImGroupChat> find(ImChatId chatId) {
+            return groupChats.stream()
+                    .filter(chat -> chat.getId().equals(chatId))
+                    .findFirst();
+        }
+
+        @Override
+        public Optional<ImGroupChat> find(com.co.kc.imchat.domain.group.GroupId groupId, UserId userId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<ImGroupChat> find(com.co.kc.imchat.domain.group.GroupId groupId) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public List<ImGroupChat> find(java.util.Collection<com.co.kc.imchat.domain.group.GroupId> groupIds) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public List<ImGroupChat> find(UserId userId) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public List<ImGroupChat> find(UserId userId, java.util.Collection<com.co.kc.imchat.domain.group.GroupId> groupIds) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public List<ImGroupChat> find(
+                com.co.kc.imchat.domain.group.GroupId groupId, List<UserId> memberIds) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public List<ImMessage> findLastMessageList(List<ImChatId> chatIds, UserId viewer) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public void save(ImGroupChat groupChat) {
+            savedGroupChats.add(groupChat);
+        }
+
+        @Override
+        public void save(List<ImGroupChat> groupChats) {
+            savedGroupChats.addAll(groupChats);
+        }
+
+        @Override
+        public boolean contain(ImChatId chatId, UserId userId) {
+            return find(chatId).map(chat -> chat.belongsTo(userId)).orElse(false);
+        }
+
+        @Override
+        public void remove(com.co.kc.imchat.domain.group.GroupId groupId, UserId userId) {
+            groupChats.removeIf(chat -> chat.getGroupId().equals(groupId)
+                    && chat.getUserId().equals(userId));
+        }
+    }
+
+    private static class MemoryGroupRepository implements GroupRepository {
+        private final List<Group> groups = new ArrayList<>();
+
+        @Override
+        public Optional<Group> find(GroupId groupId) {
+            return groups.stream()
+                    .filter(group -> group.getId().equals(groupId))
+                    .findFirst();
+        }
+
+        @Override
+        public List<Group> find(UserId userId) {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public List<Group> find(List<GroupId> groupIds) {
+            return groups.stream()
+                    .filter(group -> groupIds.contains(group.getId()))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public void save(Group group) {
+        }
+    }
+
+    private static class MemoryGroupMemberRepository implements GroupMemberRepository {
+        private final List<GroupMember> members = new ArrayList<>();
+
+        @Override
+        public List<GroupMember> find(GroupId groupId) {
+            return members.stream()
+                    .filter(member -> member.getGroupId().equals(groupId))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public Optional<GroupMember> find(GroupId groupId, UserId userId) {
+            return members.stream()
+                    .filter(member -> member.getGroupId().equals(groupId))
+                    .filter(member -> member.getUserId().equals(userId))
+                    .findFirst();
+        }
+
+        @Override
+        public boolean contain(GroupId groupId, UserId userId) {
+            return find(groupId, userId).isPresent();
+        }
+
+        @Override
+        public void save(List<GroupMember> members) {
+        }
+
+        @Override
+        public void save(GroupMember member) {
+        }
+
+        @Override
+        public void remove(GroupMember groupMember) {
+            members.removeIf(member -> member.getGroupId().equals(groupMember.getGroupId())
+                    && member.getUserId().equals(groupMember.getUserId()));
+        }
+    }
+
     private static class NormalFriendRepository implements FriendRepository {
         @Override
         public List<Friend> find(UserId userId) {
@@ -430,7 +717,7 @@ class PrivateChatAppServiceTest {
         }
 
         @Override
-        public Optional<Friend> find(UserId userId, UserId friendUserId) {
+        public Optional<Friend> find(FriendEdge edge) {
             return Optional.of(new Friend());
         }
 
@@ -440,11 +727,48 @@ class PrivateChatAppServiceTest {
         }
 
         @Override
+        public boolean isFriendshipActive(UserId userId, UserId friendUserId) {
+            return true;
+        }
+
+        @Override
         public void save(Friend friend) {
         }
 
         @Override
-        public void remove(UserId userId, UserId friendUserId) {
+        public void remove(Friend friend) {
+        }
+    }
+
+    private static class MissingFriendRepository extends NormalFriendRepository {
+        @Override
+        public boolean contain(UserId userId, UserId friendUserId) {
+            return false;
+        }
+
+        @Override
+        public boolean isFriendshipActive(UserId userId, UserId friendUserId) {
+            return false;
+        }
+    }
+
+    private static class OneWayNormalFriendRepository extends NormalFriendRepository {
+        private final UserId userId;
+        private final UserId friendUserId;
+
+        private OneWayNormalFriendRepository(Long userId, Long friendUserId) {
+            this.userId = new UserId(userId);
+            this.friendUserId = new UserId(friendUserId);
+        }
+
+        @Override
+        public boolean contain(UserId userId, UserId friendUserId) {
+            return isFriendshipActive(userId, friendUserId);
+        }
+
+        @Override
+        public boolean isFriendshipActive(UserId userId, UserId friendUserId) {
+            return this.userId.equals(userId) && this.friendUserId.equals(friendUserId);
         }
     }
 

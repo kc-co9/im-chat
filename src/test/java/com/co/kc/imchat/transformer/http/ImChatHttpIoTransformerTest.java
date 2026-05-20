@@ -1,11 +1,13 @@
 package com.co.kc.imchat.transformer.http;
 
 import com.co.kc.imchat.model.cqrs.dto.group.GroupChatOpenDTO;
+import com.co.kc.imchat.model.cqrs.dto.group.GroupCreateDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImChatItemDTO;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatOpenDTO;
 import com.co.kc.imchat.model.enums.ImMessageTypeEnum;
 import com.co.kc.imchat.model.io.chat.ImChatListResponse;
 import com.co.kc.imchat.model.io.group.GroupChatOpenResponse;
+import com.co.kc.imchat.model.io.group.GroupCreateResponse;
 import com.co.kc.imchat.model.io.chat.ImPrivateChatOpenResponse;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +32,14 @@ class ImChatHttpIoTransformerTest {
                 .groupChatOpenResponseFrom(new GroupChatOpenDTO(102L, 1001L));
 
         assertThat(response.getChatId()).isEqualTo(102L);
+        assertThat(response.getGroupId()).isEqualTo(1001L);
+    }
+
+    @Test
+    void groupCreateResponseContainsOnlyGroupId() {
+        GroupCreateResponse response = ImChatHttpIoTransformer.INSTANCE
+                .groupCreateResponseFrom(new GroupCreateDTO(1001L));
+
         assertThat(response.getGroupId()).isEqualTo(1001L);
     }
 

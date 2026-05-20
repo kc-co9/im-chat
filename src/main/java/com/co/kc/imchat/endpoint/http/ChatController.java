@@ -1,6 +1,7 @@
 package com.co.kc.imchat.endpoint.http;
 
 import com.co.kc.imchat.application.ChatAppService;
+import com.co.kc.imchat.model.cqrs.command.chat.GroupAliasChangeCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImChatExitCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImGroupChatOpenCmd;
 import com.co.kc.imchat.model.cqrs.command.chat.ImPrivateChatOpenCmd;
@@ -12,6 +13,7 @@ import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateChatOpenDTO;
 import com.co.kc.imchat.model.cqrs.query.ImChatListQuery;
 import com.co.kc.imchat.model.io.chat.ImChatListResponse;
 import com.co.kc.imchat.model.io.chat.PrivateChatHideRequest;
+import com.co.kc.imchat.model.io.group.GroupAliasChangeRequest;
 import com.co.kc.imchat.model.io.group.GroupChatHideRequest;
 import com.co.kc.imchat.model.io.group.GroupChatOpenRequest;
 import com.co.kc.imchat.model.io.group.GroupChatOpenResponse;
@@ -75,6 +77,12 @@ public class ChatController {
     public void hideGroupChat(@RequestBody @Validated GroupChatHideRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         chatAppService.hideGroupChat(new GroupChatHideCmd(userId, request.getChatId()));
+    }
+
+    @PostMapping(value = "/changeGroupAlias")
+    public void changeGroupAlias(@RequestBody @Validated GroupAliasChangeRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        chatAppService.changeGroupAlias(new GroupAliasChangeCmd(userId, request.getChatId(), request.getGroupAlias()));
     }
 
 }

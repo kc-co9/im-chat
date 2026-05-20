@@ -14,6 +14,9 @@ public enum DistributeLockScene {
     GROUP_CREATE("im:group:create"),
     GROUP_DISMISS("im:group:dismiss"),
     GROUP_MEMBER_INVITE("im:group:member:invite"),
+    GROUP_OWNER_TRANSFER("im:group:owner:transfer"),
+    GROUP_MEMBER_LEAVE("im:group:member:leave"),
+    GROUP_MEMBER_KICK("im:group:member:kick"),
     GROUP_MESSAGE_SEND("im:group:message:send"),
     GROUP_MESSAGE_REVOKE("im:group:message:revoke");
 

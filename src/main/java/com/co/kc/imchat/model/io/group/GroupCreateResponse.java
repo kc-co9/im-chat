@@ -9,5 +9,4 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class GroupCreateResponse {
     private Long groupId;
-    private Long chatId;
 }

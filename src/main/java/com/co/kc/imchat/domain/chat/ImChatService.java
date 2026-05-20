@@ -15,6 +15,7 @@ import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.session.Session;
 import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.UserId;
+import com.co.kc.imchat.support.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.ListUtils;
@@ -33,12 +34,12 @@ import java.util.stream.Collectors;
  */
 @RequiredArgsConstructor
 public class ImChatService {
-    private final SnowflakeId snowflakeId;
     private final FriendRepository friendRepository;
     private final ImPrivateChatRepository imPrivateChatRepository;
     private final GroupRepository groupRepository;
     private final ImGroupChatRepository imGroupChatRepository;
     private final SessionRepository sessionRepository;
+    private final SnowflakeId snowflakeId;
 
     public Optional<ImPrivateChat> getPeerChat(ImPrivateChat imChat) {
         if (imChat == null) {
@@ -49,10 +50,10 @@ public class ImChatService {
 
     public List<ImUserChatDescriptor> getUserChatList(UserId userId) {
         List<ImPrivateChat> imPrivateChatList = imPrivateChatRepository.find(userId);
-        List<ImUserChatDescriptor> imPrivateChatDescriptors = buildPrivateChatDescriptors(userId, imPrivateChatList);
+        List<ImUserChatDescriptor> imPrivateChatDescriptors = this.buildPrivateChatDescriptors(userId, imPrivateChatList);
 
         List<ImGroupChat> imGroupChatList = imGroupChatRepository.find(userId);
-        List<ImUserChatDescriptor> imGroupChatDescriptors = buildGroupChatDescriptors(userId, imGroupChatList);
+        List<ImUserChatDescriptor> imGroupChatDescriptors = this.buildGroupChatDescriptors(userId, imGroupChatList);
 
         return ListUtils.union(imPrivateChatDescriptors, imGroupChatDescriptors).stream()
                 .sorted(Comparator.comparing(
@@ -74,6 +75,25 @@ public class ImChatService {
                 .collect(Collectors.toList());
     }
 
+    public GroupChatMembership createGroupChatMembership(List<GroupMember> newMembers) {
+        List<ImGroupChat> groupChats = this.createGroupChats(newMembers);
+        GroupId groupId = CollectionUtils.emptyIfNull(newMembers).stream()
+                .findFirst()
+                .map(GroupMember::getGroupId)
+                .orElseThrow(() -> new IllegalArgumentException("群成员不能为空"));
+        return new GroupChatMembership(groupId, groupChats);
+    }
+
+    public GroupChatMembership findGroupChatMembership(GroupId groupId) {
+        return new GroupChatMembership(groupId, imGroupChatRepository.find(groupId));
+    }
+
+    public GroupChatJoin joinGroupChat(GroupId groupId, List<GroupMember> newMembers) {
+        List<ImGroupChat> newChats = this.createGroupChats(newMembers);
+        List<ImGroupChat> groupChats = ListUtils.union(imGroupChatRepository.find(groupId), newChats);
+        return new GroupChatJoin(groupId, groupChats, newChats);
+    }
+
     public ImPrivateChat createHiddenPrivateChat(UserId userId, UserId peerUserId) {
         ImPrivateChat privateChat = ImPrivateChat.builder()
                 .id(new ImChatId(snowflakeId.next()))
@@ -83,6 +103,13 @@ public class ImChatService {
                 .build();
         privateChat.hide();
         return privateChat;
+    }
+
+    public Optional<ImPrivateChat> prepareHiddenPrivateChat(UserId userId, UserId peerUserId) {
+        if (imPrivateChatRepository.contain(userId, peerUserId)) {
+            return Optional.empty();
+        }
+        return Optional.of(this.createHiddenPrivateChat(userId, peerUserId));
     }
 
     public void enterChat(ImChat chat) {
@@ -133,7 +160,7 @@ public class ImChatService {
                     UserId friendUserId = imPrivateChat.getPeerUserId();
                     ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
                     descriptor.setChatId(imPrivateChat.getId());
-                    descriptor.setChatName(obtainFriendChatName(friendMap.get(friendUserId)));
+                    descriptor.setChatName(this.obtainFriendChatName(friendMap.get(friendUserId)));
                     descriptor.setChatType(imPrivateChat.getType());
                     descriptor.setActiveTime(imPrivateChat.getActiveTime());
                     Long lastMessageId = FunctionUtils.mappingOrNull(imPrivateChat.getLastMessageId(), ImMessageId::getValue);
@@ -171,7 +198,7 @@ public class ImChatService {
                     Group group = groupMap.get(imGroupChat.getGroupId());
                     ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
                     descriptor.setChatId(imGroupChat.getId());
-                    descriptor.setChatName(obtainGroupChatName(group, imGroupChat.getGroupAlias()));
+                    descriptor.setChatName(this.obtainGroupChatName(group, imGroupChat.getGroupAlias()));
                     descriptor.setChatType(imGroupChat.getType());
                     descriptor.setActiveTime(imGroupChat.getActiveTime());
                     descriptor.setChatLastMessage(chatLastMessageMap.get(imGroupChat.getId()));
@@ -204,4 +231,9 @@ public class ImChatService {
     }
 
 
+    public void ensureBelongsTo(ImChat chat, UserId userId) {
+        if (!chat.belongsTo(userId)) {
+            throw new BusinessException("非法开启聊天");
+        }
+    }
 }

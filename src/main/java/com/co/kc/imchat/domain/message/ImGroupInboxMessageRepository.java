@@ -11,7 +11,7 @@ public interface ImGroupInboxMessageRepository {
 
     void save(ImGroupInboxMessage message);
 
-    void saveAll(List<ImGroupInboxMessage> messages);
+    void save(List<ImGroupInboxMessage> messages);
 
     boolean contain(ImChatId chatId, UserId userId, ImMessageToken token);
 

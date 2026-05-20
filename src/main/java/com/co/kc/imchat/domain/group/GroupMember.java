@@ -32,6 +32,10 @@ public class GroupMember extends Identification implements Validator {
         return this.userId != null && this.userId.equals(userId);
     }
 
+    public void changeUserAlias(GroupUserAlias alias) {
+        userAlias = alias;
+    }
+
     public static Builder builder() {
         return new Builder();
     }

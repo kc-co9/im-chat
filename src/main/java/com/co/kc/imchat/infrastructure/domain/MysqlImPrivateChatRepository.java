@@ -52,6 +52,11 @@ public class MysqlImPrivateChatRepository implements ImPrivateChatRepository {
     }
 
     @Override
+    public boolean contain(UserId userId, UserId peerUserId) {
+        return dbImPrivateChatService.contain(userId.getValue(), peerUserId.getValue());
+    }
+
+    @Override
     public List<ImMessage> findLastMessageList(List<ImChatId> chatIds, UserId viewer) {
         if (CollectionUtils.isEmpty(chatIds) || viewer == null) {
             return Collections.emptyList();
@@ -76,6 +81,11 @@ public class MysqlImPrivateChatRepository implements ImPrivateChatRepository {
         DbImPrivateChat dbImPrivateChat = ImChatDbTransformer.INSTANCE.dbImPrivateChatFrom(imPrivateChat);
         // save() 仅为 INSERT；已持久化行需带主键并走 saveOrUpdate / updateById
         dbImPrivateChatService.saveOrUpdate(dbImPrivateChat);
+    }
+
+    @Override
+    public void remove(UserId userId, UserId peerUserId) {
+        dbImPrivateChatService.removeByUserIdAndPeerUserId(userId.getValue(), peerUserId.getValue());
     }
 
     /** 发送方会话内副本行 user_id == sender_id，需从会话解析真实接收方。 */

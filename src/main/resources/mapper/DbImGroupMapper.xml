@@ -5,6 +5,8 @@
         SELECT db_im_group.*
         FROM db_im_group
                  INNER JOIN db_im_group_member ON db_im_group_member.group_id = db_im_group.group_id
-        WHERE user_id = #{userId}
+        WHERE db_im_group_member.user_id = #{userId}
+          AND db_im_group.is_deleted = 0
+          AND db_im_group_member.is_deleted = 0
     </select>
 </mapper>

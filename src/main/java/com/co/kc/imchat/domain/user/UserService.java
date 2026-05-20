@@ -13,10 +13,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class UserService {
 
-    private final SnowflakeId snowflakeId;
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
     private final PasswordService passwordService;
+    private final SnowflakeId snowflakeId;
 
     public User newUser(UserEmail email, UserName username, UserRawPassword rawPassword) {
         return new User(new UserId(snowflakeId.next()), email, username, passwordService.encrypt(rawPassword));

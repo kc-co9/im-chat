@@ -1,6 +1,7 @@
 package com.co.kc.imchat.support.lock.aspect;
 
 import com.co.kc.imchat.support.lock.annotation.DistributeLock;
+import com.co.kc.imchat.support.lock.LockKeys;
 import com.co.kc.imchat.support.lock.template.DistributeLockTemplate;
 import lombok.RequiredArgsConstructor;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -53,6 +54,7 @@ public class DistributeLockAspect {
 
     private String parseKey(String keyExpression, Method method, Object[] args) {
         EvaluationContext context = new StandardEvaluationContext();
+        context.setVariable("LockKeys", LockKeys.class);
         String[] parameterNames = parameterNameDiscoverer.getParameterNames(method);
         if (parameterNames != null) {
             for (int i = 0; i < parameterNames.length; i++) {

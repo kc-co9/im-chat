@@ -8,7 +8,6 @@ import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.domain.user.UserId;
-import com.co.kc.imchat.infrastructure.mybatis.entity.BaseEntity;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupChatService;
 import com.co.kc.imchat.support.utils.FunctionUtils;
@@ -75,11 +74,11 @@ public class MysqlImGroupChatRepository implements ImGroupChatRepository {
     }
 
     @Override
-    public List<ImGroupChat> findByUserIdsAndGroupId(GroupId groupId, List<UserId> userIds) {
-        if (CollectionUtils.isEmpty(userIds)) {
+    public List<ImGroupChat> find(GroupId groupId, List<UserId> memberIds) {
+        if (CollectionUtils.isEmpty(memberIds)) {
             return Collections.emptyList();
         }
-        List<Long> userIdValues = FunctionUtils.mappingList(userIds, UserId::getValue);
+        List<Long> userIdValues = FunctionUtils.mappingList(memberIds, UserId::getValue);
         List<DbImGroupChat> rows = dbImGroupChatService.getListByGroupIdAndUserIds(groupId.getValue(), userIdValues);
         return ImChatDomainTransformer.INSTANCE.imGroupChatListFrom(rows);
     }
@@ -97,7 +96,7 @@ public class MysqlImGroupChatRepository implements ImGroupChatRepository {
 
     @Override
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
-    public void saveAll(List<ImGroupChat> groupChats) {
+    public void save(List<ImGroupChat> groupChats) {
         List<DbImGroupChat> rows = ImChatDbTransformer.INSTANCE.dbImGroupChatListFrom(groupChats);
         dbImGroupChatService.saveOrUpdateBatch(rows);
     }
@@ -105,8 +104,13 @@ public class MysqlImGroupChatRepository implements ImGroupChatRepository {
     @Override
     public boolean contain(ImChatId chatId, UserId userId) {
         return dbImGroupChatService.isExist(dbImGroupChatService.getQueryWrapper()
-                .select(BaseEntity::getId)
+                .select(DbImGroupChat::getId)
                 .eq(DbImGroupChat::getChatId, chatId.getValue())
                 .eq(DbImGroupChat::getUserId, userId.getValue()));
+    }
+
+    @Override
+    public void remove(GroupId groupId, UserId userId) {
+        dbImGroupChatService.removeByGroupIdAndUserId(groupId.getValue(), userId.getValue());
     }
 }

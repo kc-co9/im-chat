@@ -10,12 +10,14 @@ public interface FriendRepository {
 
     List<Friend> find(UserId userId, List<UserId> friendUserIds);
 
-    Optional<Friend> find(UserId userId, UserId friendUserId);
+    Optional<Friend> find(FriendEdge edge);
 
     boolean contain(UserId userId, UserId friendUserId);
 
+    boolean isFriendshipActive(UserId userId, UserId friendUserId);
+
     void save(Friend friend);
 
-    void remove(UserId userId, UserId friendUserId);
+    void remove(Friend friend);
 
 }

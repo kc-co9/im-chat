@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class ImGroupMessageListener {
+public class GroupMessageListener {
     private final GroupMessageAppService groupMessageAppService;
 
     @EventListener

@@ -36,10 +36,6 @@ public class DbImGroupChat extends BaseEntity {
      */
     private Long readMessageId;
     /**
-     * 已读时间。
-     */
-    private LocalDateTime readTime;
-    /**
      * 未读消息数量。
      */
     private Integer unreadMessageCount;

@@ -10,7 +10,7 @@ public class MemberCount {
         if (value == null || value < 0) {
             throw new IllegalArgumentException("群人数不能小于0");
         }
-        if (value > GroupRoster.MAX_MEMBER_COUNT) {
+        if (value > GroupMembership.MAX_MEMBER_COUNT) {
             throw new IllegalArgumentException("群人数不能超过 500 人");
         }
         this.value = value;

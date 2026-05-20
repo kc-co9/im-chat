@@ -11,8 +11,9 @@ import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.domain.message.ImMessageId;
 import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.user.UserId;
-import com.co.kc.imchat.infrastructure.mybatis.entity.BaseEntity;
+import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupInboxMessage;
+import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupChatService;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupInboxMessageService;
 import com.co.kc.imchat.support.utils.FunctionUtils;
 import com.co.kc.imchat.transformer.db.ImMessageDbTransformer;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 @Repository
 @RequiredArgsConstructor
 public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRepository {
+    private final DbImGroupChatService dbImGroupChatService;
     private final DbImGroupInboxMessageService dbImGroupInboxMessageService;
 
     @Override
@@ -38,7 +40,7 @@ public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRe
     }
 
     @Override
-    public void saveAll(List<ImGroupInboxMessage> messages) {
+    public void save(List<ImGroupInboxMessage> messages) {
         if (CollectionUtils.isEmpty(messages)) {
             return;
         }
@@ -51,7 +53,7 @@ public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRe
     @Override
     public boolean contain(ImChatId chatId, UserId userId, ImMessageToken token) {
         return dbImGroupInboxMessageService.isExist(dbImGroupInboxMessageService.getQueryWrapper()
-                .select(BaseEntity::getId)
+                .select(DbImGroupInboxMessage::getId)
                 .eq(DbImGroupInboxMessage::getChatId, chatId.getValue())
                 .eq(DbImGroupInboxMessage::getUserId, userId.getValue())
                 .eq(DbImGroupInboxMessage::getToken, token.getValue()));
@@ -110,15 +112,21 @@ public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRe
             return Collections.emptyList();
         }
         List<Long> chatIdValues = FunctionUtils.mappingList(chatIds, ImChatId::getValue);
+        List<DbImGroupChat> dbImGroupChatList = dbImGroupChatService.getListByUserIdAndChatIds(userId.getValue(), chatIdValues);
+        if (CollectionUtils.isEmpty(dbImGroupChatList)) {
+            return Collections.emptyList();
+        }
+        List<Long> lastMessageIds = FunctionUtils.mappingNonNullList(dbImGroupChatList, DbImGroupChat::getLastMessageId);
+        if (CollectionUtils.isEmpty(lastMessageIds)) {
+            return Collections.emptyList();
+        }
         List<DbImGroupInboxMessage> rows = dbImGroupInboxMessageService.list(
                 dbImGroupInboxMessageService.getQueryWrapper()
                         .eq(DbImGroupInboxMessage::getUserId, userId.getValue())
-                        .in(DbImGroupInboxMessage::getChatId, chatIdValues)
-                        .inSql(DbImGroupInboxMessage::getMessageId,
-                                "select max(message_id) from db_im_group_inbox_message group by chat_id"));
+                        .in(DbImGroupInboxMessage::getMessageId, lastMessageIds));
         return ImMessageDomainTransformer.INSTANCE.imGroupInboxMessageListFrom(rows)
                 .stream()
-                .map(message -> (ImMessage) message)
+                .map(ImMessage.class::cast)
                 .collect(Collectors.toList());
     }
 }

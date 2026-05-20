@@ -34,6 +34,12 @@ public class DbImPrivateChatService extends BaseMybatisService<DbImPrivateChatMa
                 .eq(DbImPrivateChat::getPeerUserId, peerUserId));
     }
 
+    public boolean contain(Long userId, Long peerUserId) {
+        return count(getQueryWrapper()
+                .eq(DbImPrivateChat::getUserId, userId)
+                .eq(DbImPrivateChat::getPeerUserId, peerUserId)) > 0;
+    }
+
     public List<DbImPrivateChat> listByChatIdsAndUserId(List<Long> chatIds, Long userId) {
         if (chatIds == null || chatIds.isEmpty() || userId == null) {
             return Collections.emptyList();
@@ -41,5 +47,11 @@ public class DbImPrivateChatService extends BaseMybatisService<DbImPrivateChatMa
         return list(getQueryWrapper()
                 .eq(DbImPrivateChat::getUserId, userId)
                 .in(DbImPrivateChat::getChatId, chatIds));
+    }
+
+    public void removeByUserIdAndPeerUserId(Long userId, Long peerUserId) {
+        remove(getQueryWrapper()
+                .eq(DbImPrivateChat::getUserId, userId)
+                .eq(DbImPrivateChat::getPeerUserId, peerUserId));
     }
 }

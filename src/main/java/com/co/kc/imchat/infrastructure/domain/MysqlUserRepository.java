@@ -5,7 +5,6 @@ import com.co.kc.imchat.domain.user.User;
 import com.co.kc.imchat.domain.user.UserEmail;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.domain.user.UserRepository;
-import com.co.kc.imchat.infrastructure.mybatis.entity.BaseEntity;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbUser;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbUserService;
 import com.co.kc.imchat.transformer.db.UserDbTransformer;
@@ -59,7 +58,7 @@ public class MysqlUserRepository implements UserRepository {
     @Override
     public boolean contain(UserEmail email) {
         return dbUserService.isExist(dbUserService.getQueryWrapper()
-                .select(BaseEntity::getId)
+                .select(DbUser::getId)
                 .eq(DbUser::getEmail, email.getValue()));
     }
 }

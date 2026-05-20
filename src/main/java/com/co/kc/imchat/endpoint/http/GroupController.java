@@ -4,6 +4,11 @@ import com.co.kc.imchat.application.GroupAppService;
 import com.co.kc.imchat.model.cqrs.command.group.GroupCreateCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupDismissCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupInviteMembersCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupKickMemberCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupLeaveCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupMemberAliasChangeCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupNotificationChangeCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupTransferOwnerCmd;
 import com.co.kc.imchat.model.cqrs.dto.group.GroupCreateDTO;
 import com.co.kc.imchat.model.cqrs.dto.group.GroupDetailDTO;
 import com.co.kc.imchat.model.cqrs.dto.group.GroupItemDTO;
@@ -14,7 +19,12 @@ import com.co.kc.imchat.model.io.group.GroupCreateResponse;
 import com.co.kc.imchat.model.io.group.GroupDismissRequest;
 import com.co.kc.imchat.model.io.group.GroupDetailResponse;
 import com.co.kc.imchat.model.io.group.GroupInviteMembersRequest;
+import com.co.kc.imchat.model.io.group.GroupKickMemberRequest;
+import com.co.kc.imchat.model.io.group.GroupLeaveRequest;
 import com.co.kc.imchat.model.io.group.GroupListResponse;
+import com.co.kc.imchat.model.io.group.GroupMemberAliasChangeRequest;
+import com.co.kc.imchat.model.io.group.GroupNotificationChangeRequest;
+import com.co.kc.imchat.model.io.group.GroupTransferOwnerRequest;
 import com.co.kc.imchat.support.context.UserContextUtils;
 import com.co.kc.imchat.transformer.http.GroupHttpIoTransformer;
 import com.co.kc.imchat.transformer.http.ImChatHttpIoTransformer;
@@ -53,6 +63,36 @@ public class GroupController {
     public void dismissGroup(@RequestBody @Validated GroupDismissRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         groupAppService.dismissGroup(new GroupDismissCmd(userId, request.getGroupId()));
+    }
+
+    @PostMapping(value = "/kickGroupMember")
+    public void kickGroupMember(@RequestBody @Validated GroupKickMemberRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        groupAppService.kickGroupMember(new GroupKickMemberCmd(userId, request.getGroupId(), request.getMemberUserId()));
+    }
+
+    @PostMapping(value = "/leaveGroup")
+    public void leaveGroup(@RequestBody @Validated GroupLeaveRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        groupAppService.leaveGroup(new GroupLeaveCmd(userId, request.getGroupId()));
+    }
+
+    @PostMapping(value = "/transferGroupOwner")
+    public void transferGroupOwner(@RequestBody @Validated GroupTransferOwnerRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        groupAppService.transferGroupOwner(new GroupTransferOwnerCmd(userId, request.getGroupId(), request.getNewOwnerId()));
+    }
+
+    @PostMapping(value = "/changeGroupNotification")
+    public void changeGroupNotification(@RequestBody @Validated GroupNotificationChangeRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        groupAppService.changeGroupNotification(new GroupNotificationChangeCmd(userId, request.getGroupId(), request.getNotification()));
+    }
+
+    @PostMapping(value = "/changeGroupMemberAlias")
+    public void changeGroupMemberAlias(@RequestBody @Validated GroupMemberAliasChangeRequest request) {
+        Long userId = UserContextUtils.get().getUserId();
+        groupAppService.changeGroupMemberAlias(new GroupMemberAliasChangeCmd(userId, request.getGroupId(), request.getUserAlias()));
     }
 
     @GetMapping("/getGroupList")

@@ -35,6 +35,18 @@ public class Friend extends Identification implements Validator {
         status = FriendStatus.NORMAL;
     }
 
+    public boolean isNormal() {
+        return status == FriendStatus.NORMAL;
+    }
+
+    public boolean isBlocked() {
+        return status == FriendStatus.BLOCKED;
+    }
+
+    public void changeAlias(FriendAlias alias) {
+        friendAlias = alias;
+    }
+
     public FriendDisplayName displayName() {
         if (friendAlias != null) {
             return new FriendDisplayName(friendAlias.getValue());

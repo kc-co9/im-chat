@@ -29,7 +29,7 @@ class MysqlImGroupChatRepositoryTest {
                 .unreadMessageCount(1)
                 .build();
 
-        repository.saveAll(Collections.singletonList(groupChat));
+        repository.save(Collections.singletonList(groupChat));
 
         assertThat(groupChatService.saveOrUpdateBatchCalled).isTrue();
         assertThat(groupChatService.saveBatchCalled).isFalse();

@@ -6,7 +6,6 @@ import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.group.GroupRepository;
 import com.co.kc.imchat.domain.user.UserId;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroup;
-import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupChatService;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupService;
 import com.co.kc.imchat.support.utils.FunctionUtils;
@@ -21,7 +20,7 @@ import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
-public class MysqlImGroupRepository implements GroupRepository {
+public class MysqlGroupRepository implements GroupRepository {
     private final DbImGroupService dbImGroupService;
     private final DbImGroupChatService dbImGroupChatService;
 

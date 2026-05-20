@@ -1,10 +1,17 @@
 package com.co.kc.imchat.domain.group;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
 
 @Getter
-@AllArgsConstructor
 public class GroupNotification {
-    private String value;
+    private final String value;
+
+    public GroupNotification(String value) {
+        if (StringUtils.isBlank(value)) {
+            this.value = "";
+        } else {
+            this.value = value;
+        }
+    }
 }

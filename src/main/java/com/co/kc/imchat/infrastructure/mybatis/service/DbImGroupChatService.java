@@ -63,4 +63,10 @@ public class DbImGroupChatService extends BaseMybatisService<DbImGroupChatMapper
                 .eq(DbImGroupChat::getGroupId, groupId)
                 .in(DbImGroupChat::getUserId, userIds));
     }
+
+    public void removeByGroupIdAndUserId(Long groupId, Long userId) {
+        remove(getQueryWrapper()
+                .eq(DbImGroupChat::getGroupId, groupId)
+                .eq(DbImGroupChat::getUserId, userId));
+    }
 }

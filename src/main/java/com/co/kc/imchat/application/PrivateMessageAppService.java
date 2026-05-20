@@ -1,16 +1,16 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.domain.friend.FriendService;
 import com.co.kc.imchat.domain.message.ImPrivateMessageStatus;
 import com.co.kc.imchat.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.model.cqrs.query.ImPrivateMessageDetailQuery;
-import com.co.kc.imchat.support.exception.BusinessException;
 import com.co.kc.imchat.support.exception.NotFoundException;
-import com.co.kc.imchat.support.exception.RepeatException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.domain.chat.ImChatId;
 import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImPrivateChat;
 import com.co.kc.imchat.domain.chat.ImPrivateChatRepository;
+import com.co.kc.imchat.domain.message.ImPrivateMessageRevocation;
 import com.co.kc.imchat.domain.message.ImPrivateMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.ImPrivateMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImMessageService;
@@ -43,14 +43,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PrivateMessageAppService {
 
-    private final SnowflakeId snowflakeId;
     private final ImPrivateChatRepository imPrivateChatRepository;
     private final ImPrivateInboxMessageRepository imPrivateInboxMessageRepository;
 
     private final UserService userService;
     private final ImChatService imChatService;
     private final ImMessageService imMessageService;
+    private final FriendService friendService;
 
+    private final SnowflakeId snowflakeId;
     private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
 
@@ -63,22 +64,14 @@ public class PrivateMessageAppService {
         ImMessageToken messageToken = new ImMessageToken(command.getMessageToken());
         ImMessageContent messageContent = new ImMessageContent(command.getMessageType(), command.getMessageContent());
 
-        ImPrivateChat senderChat = imPrivateChatRepository.find(chatId)
-                .orElseThrow(() -> new NotFoundException("聊天不存在"));
-        if (!senderChat.belongsTo(userId)) {
-            throw new BusinessException("请使用本人私聊会话的 chatId 发送消息");
-        }
+        ImPrivateChat senderChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
+        imChatService.ensureBelongsTo(senderChat, userId);
 
-        ImPrivateChat receiverChat = imChatService.getPeerChat(senderChat)
-                .orElseThrow(() -> new NotFoundException("接收方会话不存在"));
-        if (!receiverChat.belongsTo(senderChat.getPeerUserId())) {
-            throw new BusinessException("请使用本人私聊会话的 chatId 获取消息");
-        }
+        ImPrivateChat receiverChat = imChatService.getPeerChat(senderChat).orElseThrow(() -> new NotFoundException("接收方会话不存在"));
+        imChatService.ensureBelongsTo(receiverChat, senderChat.getPeerUserId());
 
-        boolean hasContained = imPrivateInboxMessageRepository.contain(chatId, messageToken);
-        if (hasContained) {
-            throw new RepeatException("消息已存在");
-        }
+        friendService.ensureFriendshipActive(senderChat.getUserId(), receiverChat.getUserId());
+        imMessageService.ensurePrivateMessageUnique(chatId, messageToken);
 
         ImPrivateInboxMessage senderInboxMessage = ImPrivateInboxMessage.builder()
                 .id(messageId)
@@ -130,11 +123,8 @@ public class PrivateMessageAppService {
         ImChatId chatId = new ImChatId(command.getChatId());
         ImMessageId messageId = new ImMessageId(command.getMessageId());
 
-        ImPrivateChat receiverChat = imPrivateChatRepository.find(chatId)
-                .orElseThrow(() -> new NotFoundException("聊天不存在"));
-        if (!receiverChat.belongsTo(userId)) {
-            throw new BusinessException("请使用本人私聊会话的 chatId");
-        }
+        ImPrivateChat privateChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
+        imChatService.ensureBelongsTo(privateChat, userId);
 
         ImPrivateInboxMessage imMessage = imPrivateInboxMessageRepository.find(chatId, messageId)
                 .orElseThrow(() -> new NotFoundException("消息不存在"));
@@ -157,17 +147,11 @@ public class PrivateMessageAppService {
         ImChatId chatId = new ImChatId(command.getChatId());
         ImMessageId messageId = new ImMessageId(command.getMessageId());
 
-        ImPrivateChat senderChat = imPrivateChatRepository.find(chatId)
-                .orElseThrow(() -> new NotFoundException("聊天不存在"));
-        if (!senderChat.belongsTo(userId)) {
-            throw new BusinessException("请使用本人私聊会话的 chatId");
-        }
+        ImPrivateChat senderChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
+        imChatService.ensureBelongsTo(senderChat, userId);
 
-        ImPrivateChat receiverChat = imChatService.getPeerChat(senderChat)
-                .orElseThrow(() -> new NotFoundException("接收方会话不存在"));
-        if (!receiverChat.belongsTo(senderChat.getPeerUserId())) {
-            throw new BusinessException("请使用本人私聊会话的 chatId 获取消息");
-        }
+        ImPrivateChat receiverChat = imChatService.getPeerChat(senderChat).orElseThrow(() -> new NotFoundException("接收方会话不存在"));
+        imChatService.ensureBelongsTo(receiverChat, senderChat.getPeerUserId());
 
         ImPrivateInboxMessage senderInboxMessage = imPrivateInboxMessageRepository
                 .find(senderChat.getId(), messageId)
@@ -176,13 +160,12 @@ public class PrivateMessageAppService {
                 .find(receiverChat.getId(), messageId)
                 .orElseThrow(() -> new NotFoundException("消息不存在"));
 
-        senderInboxMessage.revoke(senderChat.getUserId());
-        receiverInboxMessage.revoke(senderChat.getUserId());
-        imPrivateInboxMessageRepository.save(senderInboxMessage);
-        imPrivateInboxMessageRepository.save(receiverInboxMessage);
+        ImPrivateMessageRevocation revocation =
+                imMessageService.revokePrivateMessage(senderInboxMessage, receiverInboxMessage, senderChat.getUserId());
+        imPrivateInboxMessageRepository.saveBatch(revocation.getMessages());
 
         ImPrivateMessageRevokedEvent imMessageRevokedEvent =
-                imMessageService.newImMessageRevokedEvent(senderInboxMessage, receiverChat.getUserId());
+                imMessageService.newImMessageRevokedEvent(revocation.getSenderMessage(), receiverChat.getUserId());
         imMessageEventPublisher.publish(imMessageRevokedEvent);
     }
 
@@ -196,11 +179,8 @@ public class PrivateMessageAppService {
         ImChatId chatId = new ImChatId(command.getChatId());
         ImMessageId messageId = new ImMessageId(command.getMessageId());
 
-        ImPrivateChat imPrivateChat = imPrivateChatRepository.find(chatId)
-                .orElseThrow(() -> new NotFoundException("聊天不存在"));
-        if (!imPrivateChat.belongsTo(userId)) {
-            throw new BusinessException("请使用本人私聊会话的 chatId");
-        }
+        ImPrivateChat imPrivateChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
+        imChatService.ensureBelongsTo(imPrivateChat, userId);
 
         ImPrivateInboxMessage imMessage = imPrivateInboxMessageRepository.find(chatId, messageId)
                 .orElseThrow(() -> new NotFoundException("消息不存在"));
@@ -218,11 +198,8 @@ public class PrivateMessageAppService {
         ImMessageId imLastMessageId = FunctionUtils.mappingOrNull(query.getLastMessageId(), ImMessageId::new);
         Integer count = query.getCount();
 
-        ImPrivateChat imPrivateChat = imPrivateChatRepository.find(imChatId)
-                .orElseThrow(() -> new NotFoundException("聊天不存在"));
-        if (!imPrivateChat.belongsTo(userId)) {
-            throw new BusinessException("请使用本人私聊会话的 chatId 查询记录");
-        }
+        ImPrivateChat imPrivateChat = imPrivateChatRepository.find(imChatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
+        imChatService.ensureBelongsTo(imPrivateChat, userId);
 
         List<ImPrivateInboxMessage> messageList = imPrivateInboxMessageRepository.queryHistory(imChatId, imLastMessageId, count, userId);
         return ImMessageAppTransformer.INSTANCE.imPrivateMessageDtoListFrom(messageList);
@@ -233,11 +210,8 @@ public class PrivateMessageAppService {
         ImChatId chatId = new ImChatId(query.getChatId());
         ImMessageToken messageToken = new ImMessageToken(query.getMessageToken());
 
-        ImPrivateChat imPrivateChat = imPrivateChatRepository.find(chatId)
-                .orElseThrow(() -> new NotFoundException("聊天不存在"));
-        if (!imPrivateChat.belongsTo(userId)) {
-            throw new BusinessException("请使用本人私聊会话的 chatId 查询消息");
-        }
+        ImPrivateChat imPrivateChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
+        imChatService.ensureBelongsTo(imPrivateChat, userId);
 
         ImPrivateInboxMessage imPrivateMessage = imPrivateInboxMessageRepository
                 .queryDetail(chatId, messageToken, userId)

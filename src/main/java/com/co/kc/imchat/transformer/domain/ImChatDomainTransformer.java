@@ -51,8 +51,8 @@ public interface ImChatDomainTransformer {
                 .type(ImChatType.PRIVATE)
                 .status(imChatStatusFrom(dbImPrivateChat.getStatus()))
                 .activeTime(dbImPrivateChat.getActiveTime())
-                .lastMessageId(new ImMessageId(dbImPrivateChat.getLastMessageId()))
-                .readMessageId(new ImMessageId(dbImPrivateChat.getReadMessageId()))
+                .lastMessageId(messageIdFrom(dbImPrivateChat.getLastMessageId()))
+                .readMessageId(messageIdFrom(dbImPrivateChat.getReadMessageId()))
                 .unreadMessageCount(dbImPrivateChat.getUnreadMessageCount())
                 .build();
     }
@@ -85,11 +85,17 @@ public interface ImChatDomainTransformer {
                 .groupAlias(StringUtils.isBlank(dbImGroupChat.getGroupAlias()) ? null : new GroupAlias(dbImGroupChat.getGroupAlias()))
                 .status(imChatStatusFrom(dbImGroupChat.getStatus()))
                 .activeTime(dbImGroupChat.getActiveTime())
-                .lastMessageId(new ImMessageId(dbImGroupChat.getLastMessageId()))
-                .readMessageId(new ImMessageId(dbImGroupChat.getReadMessageId()))
-                .readTime(dbImGroupChat.getReadTime())
+                .lastMessageId(messageIdFrom(dbImGroupChat.getLastMessageId()))
+                .readMessageId(messageIdFrom(dbImGroupChat.getReadMessageId()))
                 .unreadMessageCount(dbImGroupChat.getUnreadMessageCount())
                 .build();
+    }
+
+    default ImMessageId messageIdFrom(Long value) {
+        if (value == null || value <= 0) {
+            return null;
+        }
+        return new ImMessageId(value);
     }
 
     List<GroupMember> imGroupMemberListFrom(List<DbImGroupMember> dbImGroupMembers);
@@ -135,7 +141,7 @@ public interface ImChatDomainTransformer {
         }
         switch (status) {
             case NORMAL:
-                return GroupStatus.NORMAL;
+                return GroupStatus.ACTIVE;
             case DISMISSED:
                 return GroupStatus.DISMISSED;
             default:

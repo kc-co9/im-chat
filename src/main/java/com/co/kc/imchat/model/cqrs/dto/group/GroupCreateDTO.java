@@ -7,5 +7,4 @@ import lombok.Data;
 @AllArgsConstructor
 public class GroupCreateDTO {
     private Long groupId;
-    private Long chatId;
 }

@@ -20,4 +20,10 @@ public class DbImGroupMemberService extends BaseMybatisService<DbImGroupMemberMa
                 .eq(DbImGroupMember::getUserId, userId));
     }
 
+    public void removeByGroupIdAndUserId(Long groupId, Long userId) {
+        remove(getQueryWrapper()
+                .eq(DbImGroupMember::getGroupId, groupId)
+                .eq(DbImGroupMember::getUserId, userId));
+    }
+
 }

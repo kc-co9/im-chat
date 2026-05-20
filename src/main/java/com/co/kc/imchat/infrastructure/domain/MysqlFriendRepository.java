@@ -1,9 +1,10 @@
 package com.co.kc.imchat.infrastructure.domain;
 
 import com.co.kc.imchat.domain.friend.Friend;
+import com.co.kc.imchat.domain.friend.FriendEdge;
 import com.co.kc.imchat.domain.friend.FriendRepository;
+import com.co.kc.imchat.infrastructure.mybatis.enums.DbFriendStatus;
 import com.co.kc.imchat.domain.user.UserId;
-import com.co.kc.imchat.infrastructure.mybatis.entity.BaseEntity;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbFriend;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbUser;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbFriendService;
@@ -42,8 +43,8 @@ public class MysqlFriendRepository implements FriendRepository {
     }
 
     @Override
-    public Optional<Friend> find(UserId userId, UserId friendUserId) {
-        return dbFriendService.getByUserIdAndFriendUserId(userId.getValue(), friendUserId.getValue())
+    public Optional<Friend> find(FriendEdge edge) {
+        return dbFriendService.getByUserIdAndFriendUserId(edge.getUserId().getValue(), edge.getFriendUserId().getValue())
                 .flatMap(dbFriend -> dbUserService.getByUserId(dbFriend.getFriendUserId())
                         .map(dbFriendUser -> FriendDomainTransformer.INSTANCE.friendFrom(dbFriend, dbFriendUser)));
     }
@@ -51,9 +52,18 @@ public class MysqlFriendRepository implements FriendRepository {
     @Override
     public boolean contain(UserId userId, UserId friendUserId) {
         return dbFriendService.isExist(dbFriendService.getQueryWrapper()
-                .select(BaseEntity::getId)
+                .select(DbFriend::getId)
                 .eq(DbFriend::getUserId, userId.getValue())
                 .eq(DbFriend::getFriendUserId, friendUserId.getValue()));
+    }
+
+    @Override
+    public boolean isFriendshipActive(UserId userId, UserId friendUserId) {
+        return dbFriendService.isExist(dbFriendService.getQueryWrapper()
+                .select(DbFriend::getId)
+                .eq(DbFriend::getUserId, userId.getValue())
+                .eq(DbFriend::getFriendUserId, friendUserId.getValue())
+                .eq(DbFriend::getFriendStatus, DbFriendStatus.NORMAL));
     }
 
     @Override
@@ -63,8 +73,9 @@ public class MysqlFriendRepository implements FriendRepository {
     }
 
     @Override
-    public void remove(UserId userId, UserId friendUserId) {
-        dbFriendService.removeByUserIdAndFriendUserId(userId.getValue(), friendUserId.getValue());
+    public void remove(Friend friend) {
+        dbFriendService.removeByUserIdAndFriendUserId(
+                friend.getUserId().getValue(), friend.getFriendUserId().getValue());
     }
 
     private List<Friend> buildFriends(List<DbFriend> dbFriendList) {

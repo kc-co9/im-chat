@@ -22,13 +22,15 @@ public interface ImGroupChatRepository {
 
     List<ImGroupChat> find(UserId userId, Collection<GroupId> groupIds);
 
-    List<ImGroupChat> findByUserIdsAndGroupId(GroupId groupId, List<UserId> userIds);
+    List<ImGroupChat> find(GroupId groupId, List<UserId> memberIds);
 
     List<ImMessage> findLastMessageList(List<ImChatId> chatIds, UserId viewer);
 
     void save(ImGroupChat groupChat);
 
-    void saveAll(List<ImGroupChat> groupChats);
+    void save(List<ImGroupChat> groupChats);
 
     boolean contain(ImChatId chatId, UserId userId);
+
+    void remove(GroupId groupId, UserId userId);
 }

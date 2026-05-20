@@ -13,5 +13,9 @@ public interface GroupMemberRepository {
 
     boolean contain(GroupId groupId, UserId userId);
 
-    void saveAll(List<GroupMember> members);
+    void save(GroupMember member);
+
+    void save(List<GroupMember> members);
+
+    void remove(GroupMember groupMember);
 }

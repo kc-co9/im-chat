@@ -5,14 +5,20 @@ import com.co.kc.imchat.domain.chat.ImChatService;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
+import com.co.kc.imchat.domain.group.GroupCreatedEvent;
 import com.co.kc.imchat.domain.friend.Friend;
 import com.co.kc.imchat.domain.friend.FriendAlias;
+import com.co.kc.imchat.domain.friend.FriendEdge;
 import com.co.kc.imchat.domain.friend.FriendRepository;
 import com.co.kc.imchat.domain.group.Group;
 import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.group.GroupMember;
 import com.co.kc.imchat.domain.group.GroupMemberRepository;
+import com.co.kc.imchat.domain.group.GroupDismissedEvent;
+import com.co.kc.imchat.domain.group.GroupMemberJoinedEvent;
+import com.co.kc.imchat.domain.group.GroupMemberRemovedEvent;
 import com.co.kc.imchat.domain.group.GroupName;
+import com.co.kc.imchat.domain.group.GroupNotification;
 import com.co.kc.imchat.domain.group.GroupRepository;
 import com.co.kc.imchat.domain.group.GroupService;
 import com.co.kc.imchat.domain.group.GroupStatus;
@@ -20,6 +26,7 @@ import com.co.kc.imchat.domain.group.GroupUserAlias;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessage;
 import com.co.kc.imchat.domain.group.MemberCount;
 import com.co.kc.imchat.domain.message.ImGroupInboxMessageRepository;
+import com.co.kc.imchat.domain.message.ImGroupMessageSentEvent;
 import com.co.kc.imchat.domain.message.ImGroupMessageStatus;
 import com.co.kc.imchat.domain.message.ImMessage;
 import com.co.kc.imchat.domain.message.ImMessageId;
@@ -28,6 +35,7 @@ import com.co.kc.imchat.domain.message.ImMessageToken;
 import com.co.kc.imchat.domain.message.ImMessageType;
 import com.co.kc.imchat.domain.group.MemberId;
 import com.co.kc.imchat.domain.session.Session;
+import com.co.kc.imchat.domain.shared.DomainEvent;
 import com.co.kc.imchat.domain.session.SessionRepository;
 import com.co.kc.imchat.domain.user.User;
 import com.co.kc.imchat.domain.user.UserId;
@@ -36,6 +44,11 @@ import com.co.kc.imchat.domain.user.UserRepository;
 import com.co.kc.imchat.model.cqrs.command.group.GroupCreateCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupDismissCmd;
 import com.co.kc.imchat.model.cqrs.command.group.GroupInviteMembersCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupKickMemberCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupLeaveCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupMemberAliasChangeCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupNotificationChangeCmd;
+import com.co.kc.imchat.model.cqrs.command.group.GroupTransferOwnerCmd;
 import com.co.kc.imchat.model.cqrs.dto.group.GroupCreateDTO;
 import com.co.kc.imchat.model.cqrs.dto.group.GroupDetailDTO;
 import com.co.kc.imchat.model.cqrs.dto.group.GroupItemDTO;
@@ -43,10 +56,15 @@ import com.co.kc.imchat.model.cqrs.query.group.GroupDetailQuery;
 import com.co.kc.imchat.model.cqrs.query.group.GroupListQuery;
 import com.co.kc.imchat.support.event.DomainEventPublisher;
 import com.co.kc.imchat.support.exception.BusinessException;
+import com.co.kc.imchat.support.exception.NotFoundException;
 import com.co.kc.imchat.support.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.support.lock.DistributeLockScene;
+import com.co.kc.imchat.support.lock.annotation.DistributeLock;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -58,65 +76,98 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class GroupAppServiceTest {
 
     @Test
-    void createGroupPersistsMembersAndCreatesChatForEachMember() {
+    void groupMemberMutationMethodsShareGroupIdLock() throws NoSuchMethodException {
+        assertGroupMemberLock(
+                GroupAppService.class.getMethod("inviteGroupMembers", GroupInviteMembersCmd.class),
+                DistributeLockScene.GROUP_MEMBER_INVITE);
+        assertGroupMemberLock(
+                GroupAppService.class.getMethod("transferGroupOwner", GroupTransferOwnerCmd.class),
+                DistributeLockScene.GROUP_OWNER_TRANSFER);
+        assertGroupMemberLock(
+                GroupAppService.class.getMethod("leaveGroup", GroupLeaveCmd.class),
+                DistributeLockScene.GROUP_MEMBER_LEAVE);
+        assertGroupMemberLock(
+                GroupAppService.class.getMethod("kickGroupMember", GroupKickMemberCmd.class),
+                DistributeLockScene.GROUP_MEMBER_KICK);
+    }
+
+    @Test
+    void createGroupPersistsGroupAndMembersThenPublishesEvent() {
         MemoryGroupRepository groupRepository = new MemoryGroupRepository();
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
         MemoryGroupInboxMessageRepository groupInboxMessageRepository = new MemoryGroupInboxMessageRepository();
-        SignedInSessionRepository sessionRepository = new SignedInSessionRepository();
         FixedSnowflakeId snowflakeId = new FixedSnowflakeId(1000L);
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
         GroupAppService appService = new GroupAppService(
-                snowflakeId,
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
-                new GroupService(groupMemberRepository, groupChatRepository, null, null),
-                new ImChatService(snowflakeId, null, null, null, null, sessionRepository),
                 groupInboxMessageRepository,
-                new ImMessageService(snowflakeId),
-                new NoopDomainEventPublisher());
+                new GroupService(groupMemberRepository, groupChatRepository, groupRepository, null, null),
+                new ImChatService(null, null, null, null, null, snowflakeId),
+                new ImMessageService(groupInboxMessageRepository, null, snowflakeId),
+                snowflakeId,
+                eventPublisher);
         GroupCreateCmd command = new GroupCreateCmd(1L, Collections.singletonList(2L), "group");
 
         GroupCreateDTO result = appService.createGroup(command);
 
         assertThat(result.getGroupId()).isEqualTo(1000L);
-        assertThat(result.getChatId()).isEqualTo(1001L);
         assertThat(groupRepository.savedGroup.getId().getValue()).isEqualTo(1000L);
 
         assertThat(groupMemberRepository.savedMembers)
                 .extracting(member -> member.getUserId().getValue())
                 .containsExactly(1L, 2L);
 
-        assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getUserId().getValue())
+        assertThat(groupChatRepository.savedGroupChats).isEmpty();
+        assertThat(groupInboxMessageRepository.savedMessages).isEmpty();
+        GroupCreatedEvent groupCreatedEvent = firstEvent(eventPublisher, GroupCreatedEvent.class);
+        assertThat(groupCreatedEvent.getGroupId().getValue()).isEqualTo(1000L);
+        assertThat(groupCreatedEvent.getOwnerId().getValue()).isEqualTo(1L);
+        assertThat(groupCreatedEvent.getMembers())
+                .extracting(member -> member.getUserId().getValue())
                 .containsExactly(1L, 2L);
-        assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getId().getValue())
-                .containsExactly(1001L, 1002L);
-        assertThat(groupChatRepository.saveAllCount).isEqualTo(1);
-        assertThat(sessionRepository.session.getChatId().getValue()).isEqualTo(1001L);
+    }
+
+    private void assertGroupMemberLock(Method method, DistributeLockScene scene) {
+        DistributeLock lock = method.getAnnotation(DistributeLock.class);
+
+        assertThat(lock).isNotNull();
+        assertThat(lock.scene()).isEqualTo(scene);
+        assertThat(lock.key()).isEqualTo("#command.groupId");
+    }
+
+    private <T extends DomainEvent> T firstEvent(MemoryDomainEventPublisher eventPublisher, Class<T> eventType) {
+        return eventPublisher.events.stream()
+                .filter(eventType::isInstance)
+                .map(eventType::cast)
+                .findFirst()
+                .orElseThrow(AssertionError::new);
     }
 
     @Test
-    void createGroupStoresSystemMessageForEachMemberAndUpdatesChats() {
+    void onGroupCreatedCreatesChatsSystemMessageAndUpdatesChats() {
         MemoryGroupRepository groupRepository = new MemoryGroupRepository();
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
         MemoryGroupInboxMessageRepository groupInboxMessageRepository = new MemoryGroupInboxMessageRepository();
         FixedSnowflakeId snowflakeId = new FixedSnowflakeId(1000L);
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
         GroupAppService appService = new GroupAppService(
-                snowflakeId,
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
-                new GroupService(groupMemberRepository, groupChatRepository, null, null),
-                new ImChatService(snowflakeId, null, null, null, null, new SignedInSessionRepository()),
                 groupInboxMessageRepository,
-                new ImMessageService(snowflakeId),
-                new NoopDomainEventPublisher());
-        GroupCreateCmd command = new GroupCreateCmd(1L, Collections.singletonList(2L), "group");
-
-        appService.createGroup(command);
+                new GroupService(groupMemberRepository, groupChatRepository, groupRepository, null, null),
+                new ImChatService(null, null, null, null, new SignedInSessionRepository(), snowflakeId),
+                new ImMessageService(groupInboxMessageRepository, null, snowflakeId),
+                snowflakeId,
+                eventPublisher);
+        appService.onGroupCreated(new GroupCreatedEvent(
+                new GroupId(1000L),
+                new UserId(1L),
+                Arrays.asList(groupMember(1000L, 1L), groupMember(1000L, 2L))));
 
         assertThat(groupInboxMessageRepository.savedMessages).hasSize(2);
         assertThat(groupInboxMessageRepository.savedMessages)
@@ -125,7 +176,7 @@ class GroupAppServiceTest {
 
         assertThat(groupInboxMessageRepository.savedMessages)
                 .allSatisfy(message -> {
-                    assertThat(message.getId().getValue()).isEqualTo(1003L);
+                    assertThat(message.getId().getValue()).isEqualTo(1002L);
                     assertThat(message.getSenderId().getValue()).isEqualTo(1L);
                     assertThat(message.getContent().getType()).isEqualTo(ImMessageType.SYSTEM);
                     assertThat(message.getContent().getValue()).isEqualTo("群聊已创建");
@@ -135,15 +186,25 @@ class GroupAppServiceTest {
                 .containsExactly(ImGroupMessageStatus.READ, ImGroupMessageStatus.SENT);
 
         assertThat(groupChatRepository.savedGroupChats)
+                .extracting(chat -> chat.getUserId().getValue())
+                .containsExactly(1L, 2L);
+        assertThat(groupChatRepository.savedGroupChats)
                 .extracting(chat -> chat.getLastMessageId().getValue())
-                .containsExactly(1003L, 1003L);
+                .containsExactly(1002L, 1002L);
         assertThat(groupChatRepository.savedGroupChats)
                 .extracting(ImGroupChat::getUnreadMessageCount)
                 .containsExactly(0, 1);
+        assertThat(eventPublisher.events)
+                .singleElement()
+                .isInstanceOfSatisfying(ImGroupMessageSentEvent.class, event -> {
+                    assertThat(event.getGroupId()).isEqualTo(1000L);
+                    assertThat(event.getSenderId()).isEqualTo(1L);
+                    assertThat(event.getMessageContent()).isEqualTo("群聊已创建");
+                });
     }
 
     @Test
-    void inviteGroupMembersCreatesMemberAndChatRowsForNewMembers() {
+    void inviteGroupMembersNotifiesAllMembersAfterCreatingNewMemberChats() {
         MemoryGroupRepository groupRepository = new MemoryGroupRepository();
         groupRepository.groups.add(group(1001L, 1L, "group"));
 
@@ -153,16 +214,24 @@ class GroupAppServiceTest {
         MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
         groupMemberRepository.members.add(groupMember(1001L, 1L));
 
+        MemoryUserRepository userRepository = new MemoryUserRepository();
+        userRepository.users.add(user(1L, "alice"));
+        userRepository.users.add(user(2L, "bob"));
+
+        MemoryGroupInboxMessageRepository groupInboxMessageRepository = new MemoryGroupInboxMessageRepository();
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
         GroupAppService appService = new GroupAppService(
-                new FixedSnowflakeId(3000L),
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
-                new GroupService(groupMemberRepository, groupChatRepository, null, null),
-                new ImChatService(new FixedSnowflakeId(3000L), null, null, null, null, null),
-                null,
-                null,
-                null);
+                groupInboxMessageRepository,
+                new GroupService(
+                        groupMemberRepository, groupChatRepository, groupRepository,
+                        new MemoryFriendRepository(), userRepository),
+                new ImChatService(null, null, null, groupChatRepository, null, new FixedSnowflakeId(3000L)),
+                new ImMessageService(groupInboxMessageRepository, null, new FixedSnowflakeId(4000L)),
+                new FixedSnowflakeId(3000L),
+                eventPublisher);
         GroupInviteMembersCmd command = new GroupInviteMembersCmd(1L, 1001L, Collections.singletonList(2L));
 
         appService.inviteGroupMembers(command);
@@ -172,42 +241,47 @@ class GroupAppServiceTest {
                 .extracting(member -> member.getUserId().getValue())
                 .containsExactly(2L);
 
+        assertThat(groupChatRepository.savedGroupChats).isEmpty();
+        assertThat(eventPublisher.events)
+                .singleElement()
+                .isInstanceOfSatisfying(GroupMemberJoinedEvent.class, event -> {
+                    assertThat(event.getInviterId().getValue()).isEqualTo(1L);
+                    assertThat(event.getGroupId().getValue()).isEqualTo(1001L);
+                    assertThat(event.getMembers())
+                            .extracting(member -> member.getUserId().getValue())
+                            .containsExactly(2L);
+                });
+
+        appService.onGroupMemberJoined((GroupMemberJoinedEvent) eventPublisher.events.get(0));
+
+        assertThat(groupInboxMessageRepository.savedMessages)
+                .extracting(message -> message.getUserId().getValue())
+                .containsExactly(1L, 2L);
+        assertThat(groupInboxMessageRepository.savedMessages)
+                .allSatisfy(message -> {
+                    assertThat(message.getId().getValue()).isEqualTo(4000L);
+                    assertThat(message.getSenderId().getValue()).isEqualTo(1L);
+                    assertThat(message.getContent().getType()).isEqualTo(ImMessageType.SYSTEM);
+                    assertThat(message.getContent().getValue()).isEqualTo("bob 加入群聊");
+                });
+
         assertThat(groupChatRepository.savedGroupChats)
                 .extracting(chat -> chat.getUserId().getValue())
-                .containsExactly(2L);
-    }
-
-    @Test
-    void inviteGroupMembersSkipsExistingMembersWithoutChangingMemberCount() {
-        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
-        Group group = group(1001L, 1L, "group", new MemberCount(2));
-        groupRepository.groups.add(group);
-
-        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
-        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
-        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
-
-        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
-        groupMemberRepository.members.add(groupMember(1001L, 1L));
-        groupMemberRepository.members.add(groupMember(1001L, 2L));
-
-        GroupAppService appService = new GroupAppService(
-                new FixedSnowflakeId(3000L),
-                groupRepository,
-                groupChatRepository,
-                groupMemberRepository,
-                new GroupService(groupMemberRepository, groupChatRepository, null, null),
-                new ImChatService(new FixedSnowflakeId(3000L), null, null, null, null, null),
-                null,
-                null,
-                null);
-
-        appService.inviteGroupMembers(new GroupInviteMembersCmd(1L, 1001L, Collections.singletonList(2L)));
-
-        assertThat(group.getMemberCount().getValue()).isEqualTo(2);
-        assertThat(groupRepository.savedGroup).isNull();
-        assertThat(groupMemberRepository.savedMembers).isEmpty();
-        assertThat(groupChatRepository.savedGroupChats).isEmpty();
+                .containsExactly(1L, 2L);
+        assertThat(groupChatRepository.savedGroupChats)
+                .extracting(chat -> chat.getLastMessageId().getValue())
+                .containsExactly(4000L, 4000L);
+        assertThat(groupChatRepository.savedGroupChats)
+                .extracting(ImGroupChat::getUnreadMessageCount)
+                .containsExactly(0, 1);
+        assertThat(eventPublisher.events)
+                .filteredOn(ImGroupMessageSentEvent.class::isInstance)
+                .singleElement()
+                .isInstanceOfSatisfying(ImGroupMessageSentEvent.class, event -> {
+                    assertThat(event.getGroupId()).isEqualTo(1001L);
+                    assertThat(event.getSenderId()).isEqualTo(1L);
+                    assertThat(event.getMessageContent()).isEqualTo("bob 加入群聊");
+                });
     }
 
     @Test
@@ -247,7 +321,7 @@ class GroupAppServiceTest {
     }
 
     @Test
-    void dismissGroupMarksGroupDismissedAndStoresSystemMessage() {
+    void dismissGroupMarksGroupDismissedAndPublishesEvent() {
         MemoryGroupRepository groupRepository = new MemoryGroupRepository();
         groupRepository.groups.add(group(1001L, 1L, "group"));
 
@@ -260,16 +334,47 @@ class GroupAppServiceTest {
         groupMemberRepository.members.add(groupMember(1001L, 2L));
 
         MemoryGroupInboxMessageRepository groupInboxMessageRepository = new MemoryGroupInboxMessageRepository();
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
         GroupAppService appService = groupAppService(
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
                 groupInboxMessageRepository,
-                new FixedSnowflakeId(4000L));
+                new FixedSnowflakeId(4000L),
+                eventPublisher);
 
         appService.dismissGroup(new GroupDismissCmd(1L, 1001L));
 
         assertThat(groupRepository.savedGroup.getStatus()).isEqualTo(GroupStatus.DISMISSED);
+        assertThat(groupInboxMessageRepository.savedMessages).isEmpty();
+        assertThat(groupChatRepository.savedGroupChats).isEmpty();
+        assertThat(eventPublisher.events)
+                .singleElement()
+                .isInstanceOfSatisfying(GroupDismissedEvent.class, event -> {
+                    assertThat(event.getGroupId().getValue()).isEqualTo(1001L);
+                    assertThat(event.getOwnerId().getValue()).isEqualTo(1L);
+                });
+    }
+
+    @Test
+    void onGroupDismissedStoresSystemMessageAndUpdatesChats() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
+        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        MemoryGroupInboxMessageRepository groupInboxMessageRepository = new MemoryGroupInboxMessageRepository();
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
+        GroupAppService appService = groupAppService(
+                groupRepository,
+                groupChatRepository,
+                groupMemberRepository,
+                groupInboxMessageRepository,
+                new FixedSnowflakeId(4000L),
+                eventPublisher);
+
+        appService.onGroupDismissed(new GroupDismissedEvent(new GroupId(1001L), new UserId(1L)));
+
         assertThat(groupInboxMessageRepository.savedMessages).hasSize(2);
 
         assertThat(groupInboxMessageRepository.savedMessages)
@@ -293,6 +398,13 @@ class GroupAppServiceTest {
         assertThat(groupChatRepository.savedGroupChats)
                 .extracting(ImGroupChat::getUnreadMessageCount)
                 .containsExactly(0, 1);
+        assertThat(eventPublisher.events)
+                .singleElement()
+                .isInstanceOfSatisfying(ImGroupMessageSentEvent.class, event -> {
+                    assertThat(event.getGroupId()).isEqualTo(1001L);
+                    assertThat(event.getSenderId()).isEqualTo(1L);
+                    assertThat(event.getMessageContent()).isEqualTo("群聊已解散");
+                });
     }
 
     @Test
@@ -311,11 +423,11 @@ class GroupAppServiceTest {
         groupMemberRepository.members.add(groupMember(1002L, 1L));
 
         GroupAppService appService = new GroupAppService(
-                null,
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
-                new GroupService(groupMemberRepository, groupChatRepository, null, null),
+                null,
+                new GroupService(groupMemberRepository, groupChatRepository, groupRepository, null, null),
                 null,
                 null,
                 null,
@@ -384,11 +496,11 @@ class GroupAppServiceTest {
         userRepository.users.add(user(3L, "another-member"));
 
         GroupAppService appService = new GroupAppService(
-                null,
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
-                new GroupService(groupMemberRepository, groupChatRepository, friendRepository, userRepository),
+                null,
+                new GroupService(groupMemberRepository, groupChatRepository, groupRepository, friendRepository, userRepository),
                 null,
                 null,
                 null,
@@ -437,11 +549,11 @@ class GroupAppServiceTest {
         groupMemberRepository.members.add(groupMember(1001L, 1L));
 
         GroupAppService appService = new GroupAppService(
-                null,
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
                 null,
+                new GroupService(groupMemberRepository, groupChatRepository, groupRepository, null, null),
                 null,
                 null,
                 null,
@@ -449,6 +561,170 @@ class GroupAppServiceTest {
 
         assertThatThrownBy(() -> appService.getGroupDetail(new GroupDetailQuery(2L, 1001L)))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void getGroupDetailReturnsNotFoundBeforeCheckingMembership() {
+        GroupAppService appService = groupAppService(
+                new MemoryGroupRepository(),
+                new MemoryGroupChatRepository(),
+                new MemoryGroupMemberRepository());
+
+        assertThatThrownBy(() -> appService.getGroupDetail(new GroupDetailQuery(2L, 1001L)))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("群组不存在");
+    }
+
+    @Test
+    void transferGroupOwnerChangesOwnerWhenOperatorIsCurrentOwner() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        GroupAppService appService = groupAppService(groupRepository, new MemoryGroupChatRepository(), groupMemberRepository);
+
+        appService.transferGroupOwner(new GroupTransferOwnerCmd(1L, 1001L, 2L));
+
+        assertThat(groupRepository.savedGroup.getOwnerId().getValue()).isEqualTo(2L);
+    }
+
+    @Test
+    void memberLeaveCount() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
+        GroupAppService appService = groupAppService(
+                groupRepository, groupChatRepository, groupMemberRepository, eventPublisher);
+
+        appService.leaveGroup(new GroupLeaveCmd(2L, 1001L));
+
+        assertThat(groupRepository.savedGroup.getMemberCount().getValue()).isEqualTo(1);
+        assertThat(groupMemberRepository.removedPairs).containsExactly("1001:2");
+        assertThat(groupChatRepository.removedPairs).isEmpty();
+        assertThat(eventPublisher.events)
+                .singleElement()
+                .isInstanceOfSatisfying(GroupMemberRemovedEvent.class, event -> {
+                    assertThat(event.getGroupId().getValue()).isEqualTo(1001L);
+                    assertThat(event.getUserId().getValue()).isEqualTo(2L);
+                });
+
+        appService.onGroupMemberRemoved((GroupMemberRemovedEvent) eventPublisher.events.get(0));
+
+        assertThat(groupChatRepository.removedPairs).containsExactly("1001:2");
+    }
+
+    @Test
+    void ownerCannotMemberLeaveGroupBeforeTransfer() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        GroupAppService appService = groupAppService(groupRepository, new MemoryGroupChatRepository(), groupMemberRepository);
+
+        assertThatThrownBy(() -> appService.leaveGroup(new GroupLeaveCmd(1L, 1001L)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("群主不能直接退群");
+    }
+
+    @Test
+    void kickGroupMemberLogicallyDeletesMemberAndChatAndDecreasesMemberCount() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
+        GroupAppService appService = groupAppService(
+                groupRepository, groupChatRepository, groupMemberRepository, eventPublisher);
+
+        appService.kickGroupMember(new GroupKickMemberCmd(1L, 1001L, 2L));
+
+        assertThat(groupRepository.savedGroup.getMemberCount().getValue()).isEqualTo(1);
+        assertThat(groupMemberRepository.removedPairs).containsExactly("1001:2");
+        assertThat(groupChatRepository.removedPairs).isEmpty();
+        assertThat(eventPublisher.events)
+                .singleElement()
+                .isInstanceOfSatisfying(GroupMemberRemovedEvent.class, event -> {
+                    assertThat(event.getGroupId().getValue()).isEqualTo(1001L);
+                    assertThat(event.getUserId().getValue()).isEqualTo(2L);
+                });
+
+        appService.onGroupMemberRemoved((GroupMemberRemovedEvent) eventPublisher.events.get(0));
+
+        assertThat(groupChatRepository.removedPairs).containsExactly("1001:2");
+    }
+
+    @Test
+    void nonOwnerCannotKickGroupMember() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        GroupAppService appService = groupAppService(groupRepository, new MemoryGroupChatRepository(), groupMemberRepository);
+
+        assertThatThrownBy(() -> appService.kickGroupMember(new GroupKickMemberCmd(2L, 1001L, 1L)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只有群主");
+    }
+
+    @Test
+    void nonOwnerCannotProbeMissingGroupMemberWhenKicking() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        GroupAppService appService = groupAppService(groupRepository, new MemoryGroupChatRepository(), groupMemberRepository);
+
+        assertThatThrownBy(() -> appService.kickGroupMember(new GroupKickMemberCmd(2L, 1001L, 99L)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只有群主");
+    }
+
+    @Test
+    void groupOwnerCanChangeNotification() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
+        GroupAppService appService = groupAppService(groupRepository, new MemoryGroupChatRepository(), new MemoryGroupMemberRepository());
+
+        appService.changeGroupNotification(new GroupNotificationChangeCmd(1L, 1001L, "new notice"));
+
+        assertThat(groupRepository.savedGroup.getNotification().getValue()).isEqualTo("new notice");
+    }
+
+    @Test
+    void nonOwnerCannotChangeNotification() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
+        GroupAppService appService = groupAppService(groupRepository, new MemoryGroupChatRepository(), new MemoryGroupMemberRepository());
+
+        assertThatThrownBy(() -> appService.changeGroupNotification(new GroupNotificationChangeCmd(2L, 1001L, "new notice")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只有群主");
+    }
+
+    @Test
+    void memberCanChangeOwnGroupMemberAlias() {
+        MemoryGroupRepository groupRepository = new MemoryGroupRepository();
+        groupRepository.groups.add(group(1001L, 1L, "alpha", new MemberCount(2)));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        GroupAppService appService = groupAppService(groupRepository, new MemoryGroupChatRepository(), groupMemberRepository);
+
+        appService.changeGroupMemberAlias(new GroupMemberAliasChangeCmd(2L, 1001L, "member-name"));
+
+        assertThat(groupMemberRepository.savedMembers).hasSize(1);
+        assertThat(groupMemberRepository.savedMembers.get(0).getUserAlias().getValue()).isEqualTo("member-name");
     }
 
     private ImGroupChat groupChat(Long chatId, Long groupId, Long userId) {
@@ -496,11 +772,11 @@ class GroupAppServiceTest {
     }
 
     private Group group(Long groupId, Long ownerId, String name) {
-        return group(groupId, ownerId, name, new MemberCount(1), GroupStatus.NORMAL);
+        return group(groupId, ownerId, name, new MemberCount(1), GroupStatus.ACTIVE);
     }
 
     private Group group(Long groupId, Long ownerId, String name, MemberCount memberCount) {
-        return group(groupId, ownerId, name, memberCount, GroupStatus.NORMAL);
+        return group(groupId, ownerId, name, memberCount, GroupStatus.ACTIVE);
     }
 
     private Group group(Long groupId, Long ownerId, String name, MemberCount memberCount, GroupStatus status) {
@@ -509,6 +785,7 @@ class GroupAppServiceTest {
                 .type(ImChatType.GROUP)
                 .ownerId(new UserId(ownerId))
                 .name(new GroupName(name))
+                .notification(new GroupNotification(""))
                 .memberCount(memberCount)
                 .status(status)
                 .build();
@@ -521,12 +798,20 @@ class GroupAppServiceTest {
     private GroupAppService groupAppService(MemoryGroupRepository groupRepository,
                                             MemoryGroupChatRepository groupChatRepository,
                                             MemoryGroupMemberRepository groupMemberRepository) {
+        return groupAppService(groupRepository, groupChatRepository, groupMemberRepository, new NoopDomainEventPublisher());
+    }
+
+    private GroupAppService groupAppService(MemoryGroupRepository groupRepository,
+                                            MemoryGroupChatRepository groupChatRepository,
+                                            MemoryGroupMemberRepository groupMemberRepository,
+                                            DomainEventPublisher eventPublisher) {
         return groupAppService(
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
                 null,
-                new FixedSnowflakeId(3000L));
+                new FixedSnowflakeId(3000L),
+                eventPublisher);
     }
 
     private GroupAppService groupAppService(MemoryGroupRepository groupRepository,
@@ -535,15 +820,35 @@ class GroupAppServiceTest {
                                             MemoryGroupInboxMessageRepository groupInboxMessageRepository,
                                             FixedSnowflakeId snowflakeId) {
         return new GroupAppService(
-                snowflakeId,
                 groupRepository,
                 groupChatRepository,
                 groupMemberRepository,
-                new GroupService(groupMemberRepository, groupChatRepository, null, null),
-                new ImChatService(snowflakeId, null, null, null, null, null),
                 groupInboxMessageRepository,
-                new ImMessageService(snowflakeId),
+                new GroupService(
+                        groupMemberRepository, groupChatRepository, groupRepository, null, null),
+                new ImChatService(null, null, null, groupChatRepository, null, snowflakeId),
+                new ImMessageService(groupInboxMessageRepository, null, snowflakeId),
+                snowflakeId,
                 new NoopDomainEventPublisher());
+    }
+
+    private GroupAppService groupAppService(MemoryGroupRepository groupRepository,
+                                            MemoryGroupChatRepository groupChatRepository,
+                                            MemoryGroupMemberRepository groupMemberRepository,
+                                            MemoryGroupInboxMessageRepository groupInboxMessageRepository,
+                                            FixedSnowflakeId snowflakeId,
+                                            DomainEventPublisher eventPublisher) {
+        return new GroupAppService(
+                groupRepository,
+                groupChatRepository,
+                groupMemberRepository,
+                groupInboxMessageRepository,
+                new GroupService(
+                        groupMemberRepository, groupChatRepository, groupRepository, null, null),
+                new ImChatService(null, null, null, groupChatRepository, null, snowflakeId),
+                new ImMessageService(groupInboxMessageRepository, null, snowflakeId),
+                snowflakeId,
+                eventPublisher);
     }
 
     private static class FixedSnowflakeId extends SnowflakeId {
@@ -629,6 +934,7 @@ class GroupAppServiceTest {
     private static class MemoryGroupChatRepository implements ImGroupChatRepository {
         private final List<ImGroupChat> groupChats = new ArrayList<>();
         private List<ImGroupChat> savedGroupChats = new ArrayList<>();
+        private final List<String> removedPairs = new ArrayList<>();
         private int saveAllCount;
 
         @Override
@@ -676,7 +982,7 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public List<ImGroupChat> findByUserIdsAndGroupId(GroupId groupId, List<UserId> userIds) {
+        public List<ImGroupChat> find(GroupId groupId, List<UserId> memberIds) {
             return Collections.emptyList();
         }
 
@@ -691,20 +997,31 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public void saveAll(List<ImGroupChat> groupChats) {
+        public void save(List<ImGroupChat> groupChats) {
             saveAllCount++;
             savedGroupChats = new ArrayList<>(groupChats);
+            for (ImGroupChat groupChat : groupChats) {
+                this.groupChats.removeIf(savedChat -> savedChat.getGroupId().equals(groupChat.getGroupId())
+                        && savedChat.getUserId().equals(groupChat.getUserId()));
+                this.groupChats.add(groupChat);
+            }
         }
 
         @Override
         public boolean contain(ImChatId chatId, UserId userId) {
             return find(chatId).map(chat -> chat.belongsTo(userId)).orElse(false);
         }
+
+        @Override
+        public void remove(GroupId groupId, UserId userId) {
+            removedPairs.add(groupId.getValue() + ":" + userId.getValue());
+        }
     }
 
     private static class MemoryGroupMemberRepository implements GroupMemberRepository {
         private final List<GroupMember> members = new ArrayList<>();
         private List<GroupMember> savedMembers = new ArrayList<>();
+        private final List<String> removedPairs = new ArrayList<>();
         private int findByGroupIdCount;
 
         @Override
@@ -729,9 +1046,19 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public void saveAll(List<GroupMember> members) {
+        public void save(List<GroupMember> members) {
             savedMembers = new ArrayList<>(members);
             this.members.addAll(members);
+        }
+
+        @Override
+        public void save(GroupMember member) {
+            savedMembers = Collections.singletonList(member);
+        }
+
+        @Override
+        public void remove(GroupMember groupMember) {
+            removedPairs.add(groupMember.getGroupId().getValue() + ":" + groupMember.getUserId().getValue());
         }
 
     }
@@ -745,7 +1072,7 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public void saveAll(List<ImGroupInboxMessage> messages) {
+        public void save(List<ImGroupInboxMessage> messages) {
             savedMessages = new ArrayList<>(messages);
         }
 
@@ -796,6 +1123,20 @@ class GroupAppServiceTest {
         }
     }
 
+    private static class MemoryDomainEventPublisher implements DomainEventPublisher {
+        private final List<DomainEvent> events = new ArrayList<>();
+
+        @Override
+        public void publish(DomainEvent event) {
+            events.add(event);
+        }
+
+        @Override
+        public void publish(List<DomainEvent> eventList) {
+            events.addAll(eventList);
+        }
+    }
+
     private static class MemoryFriendRepository implements FriendRepository {
         private final List<Friend> friends = new ArrayList<>();
 
@@ -814,15 +1155,22 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public Optional<Friend> find(UserId userId, UserId friendUserId) {
-            return find(userId).stream()
-                    .filter(friend -> friend.getFriendUserId().equals(friendUserId))
+        public Optional<Friend> find(FriendEdge edge) {
+            return find(edge.getUserId()).stream()
+                    .filter(friend -> friend.getFriendUserId().equals(edge.getFriendUserId()))
                     .findFirst();
         }
 
         @Override
         public boolean contain(UserId userId, UserId friendUserId) {
-            return find(userId, friendUserId).isPresent();
+            return find(new FriendEdge(userId, friendUserId)).isPresent();
+        }
+
+        @Override
+        public boolean isFriendshipActive(UserId userId, UserId friendUserId) {
+            return find(new FriendEdge(userId, friendUserId))
+                    .map(Friend::isNormal)
+                    .orElse(false);
         }
 
         @Override
@@ -830,7 +1178,9 @@ class GroupAppServiceTest {
         }
 
         @Override
-        public void remove(UserId userId, UserId friendUserId) {
+        public void remove(Friend friend) {
+            friends.removeIf(savedFriend -> savedFriend.getUserId().equals(friend.getUserId())
+                    && savedFriend.getFriendUserId().equals(friend.getFriendUserId()));
         }
     }
 

@@ -65,7 +65,6 @@ public interface ImChatDbTransformer {
         dbGroupChat.setGroupAlias(groupChat.getGroupAlias() == null ? "" : groupChat.getGroupAlias().getValue());
         dbGroupChat.setLastMessageId(groupChat.getLastMessageId() == null ? 0L : groupChat.getLastMessageId().getValue());
         dbGroupChat.setReadMessageId(groupChat.getReadMessageId() == null ? 0L : groupChat.getReadMessageId().getValue());
-        dbGroupChat.setReadTime(groupChat.getReadTime());
         dbGroupChat.setUnreadMessageCount(groupChat.getUnreadMessageCount() == null ? 0 : groupChat.getUnreadMessageCount());
         dbGroupChat.setStatus(dbImChatStatusFrom(groupChat.getStatus()));
         dbGroupChat.setActiveTime(groupChat.getActiveTime());
@@ -104,7 +103,7 @@ public interface ImChatDbTransformer {
     }
 
     @ValueMappings(value = {
-            @ValueMapping(source = "NORMAL", target = "NORMAL"),
+            @ValueMapping(source = "ACTIVE", target = "NORMAL"),
             @ValueMapping(source = "DISMISSED", target = "DISMISSED")
     })
     DbImGroupStatus dbImGroupStatusFrom(GroupStatus status);

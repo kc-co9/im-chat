@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class ImPrivateMessageListener {
+public class PrivateMessageListener {
     private final PrivateMessageAppService privateMessageAppService;
 
     @EventListener

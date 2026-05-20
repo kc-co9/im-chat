@@ -6,6 +6,7 @@ import com.co.kc.imchat.domain.chat.ImChatStatus;
 import com.co.kc.imchat.domain.chat.ImChatType;
 import com.co.kc.imchat.domain.chat.ImGroupChat;
 import com.co.kc.imchat.domain.chat.ImGroupChatRepository;
+import com.co.kc.imchat.domain.friend.FriendService;
 import com.co.kc.imchat.domain.group.Group;
 import com.co.kc.imchat.domain.group.GroupId;
 import com.co.kc.imchat.domain.group.GroupMember;
@@ -147,15 +148,19 @@ class GroupChatAppServiceTest {
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
         groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+        MemoryGroupRepository groupRepository = normalGroupRepository(1001L);
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
 
         ChatAppService appService = new ChatAppService(
                 null,
                 groupChatRepository,
+                groupRepository,
+                new GroupService(groupMemberRepository, groupChatRepository, groupRepository, null, null),
                 null,
+                new ImChatService(null, null, null, groupChatRepository, null, null),
                 null,
-                null,
-                null,
-                new ImChatService(null, null, null, null, groupChatRepository, null));
+                null);
 
         appService.hideGroupChat(new GroupChatHideCmd(1L, 101L));
 
@@ -190,6 +195,23 @@ class GroupChatAppServiceTest {
                 .hasMessageContaining("群聊已解散");
         assertThat(groupChatRepository.savedGroupChats).isEmpty();
         assertThat(inboxRepository.savedMessages).isEmpty();
+    }
+
+    @Test
+    void openGroupChatReturnsNotFoundBeforeCheckingMembership() {
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+
+        ChatAppService appService = chatAppService(
+                groupChatRepository,
+                new MemoryGroupMemberRepository(),
+                new MemoryGroupInboxRepository(),
+                new MemoryGroupRepository(),
+                new SignedInSessionRepository());
+
+        assertThatThrownBy(() -> appService.openGroupChat(new ImGroupChatOpenCmd(2L, 102L)))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("群组不存在");
     }
 
     @Test
@@ -263,13 +285,14 @@ class GroupChatAppServiceTest {
         groupMemberRepository.members.add(groupMember(1001L, 3L));
         RecordingNotifierInvoker notifierInvoker = new RecordingNotifierInvoker();
         GroupMessageAppService appService = new GroupMessageAppService(
-                null,
                 groupChatRepository,
+                new MemoryGroupRepository(),
                 groupMemberRepository,
-                null,
                 null,
                 new OnlineUserService(2L),
                 null,
+                null,
+                new ImChatService(null, null, null, groupChatRepository, null, null),
                 null,
                 notifierInvoker,
                 null);
@@ -319,7 +342,6 @@ class GroupChatAppServiceTest {
         ImGroupChat savedChat = groupChatRepository.findSavedByUserId(1L);
         assertThat(savedChat.getUnreadMessageCount()).isZero();
         assertThat(savedChat.getReadMessageId().getValue()).isEqualTo(902L);
-        assertThat(savedChat.getReadTime()).isNotNull();
 
         assertThat(inboxRepository.savedMessages).hasSize(2);
         assertThat(inboxRepository.savedMessages)
@@ -395,7 +417,7 @@ class GroupChatAppServiceTest {
 
         assertThatThrownBy(() -> appService.revokeMessage(command))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("请使用本人群聊会话的 chatId 撤回消息");
+                .hasMessageContaining("非法开启聊天");
         assertThat(inboxRepository.savedMessages).isEmpty();
     }
 
@@ -464,7 +486,7 @@ class GroupChatAppServiceTest {
 
         assertThatThrownBy(() -> appService.receiveMessage(command))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("请使用本人群聊会话的 chatId 接收消息");
+                .hasMessageContaining("非法开启聊天");
         assertThat(inboxRepository.savedMessages).isEmpty();
     }
 
@@ -494,7 +516,6 @@ class GroupChatAppServiceTest {
 
         ImGroupChat savedChat = groupChatRepository.findSavedByUserId(1L);
         assertThat(savedChat.getReadMessageId().getValue()).isEqualTo(900L);
-        assertThat(savedChat.getReadTime()).isNotNull();
         assertThat(savedChat.getUnreadMessageCount()).isZero();
     }
 
@@ -519,7 +540,7 @@ class GroupChatAppServiceTest {
 
         assertThatThrownBy(() -> appService.readMessage(command))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("请使用本人群聊会话的 chatId 读取消息");
+                .hasMessageContaining("非法开启聊天");
         assertThat(inboxRepository.savedMessages).isEmpty();
         assertThat(groupChatRepository.savedGroupChats).isEmpty();
     }
@@ -554,7 +575,23 @@ class GroupChatAppServiceTest {
 
         assertThatThrownBy(() -> appService.queryHistoryMessage(query))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("无法查看别人的聊天记录");
+                .hasMessageContaining("非法开启聊天");
+    }
+
+    @Test
+    void queryGroupHistoryReturnsNotFoundBeforeCheckingMembership() {
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
+
+        GroupMessageAppService appService = groupMessageAppService(
+                groupChatRepository,
+                new MemoryGroupMemberRepository(),
+                new MemoryGroupInboxRepository(),
+                new MemoryGroupRepository());
+
+        assertThatThrownBy(() -> appService.queryHistoryMessage(new GroupMessageHistoryQuery(101L, 1L, null, 20)))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("群组不存在");
     }
 
     @Test
@@ -630,7 +667,7 @@ class GroupChatAppServiceTest {
 
         assertThatThrownBy(() -> appService.queryMessageDetail(query))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("无法查看别人的聊天记录");
+                .hasMessageContaining("非法开启聊天");
     }
 
     private ImGroupChat groupChat(Long chatId, Long groupId, Long userId) {
@@ -687,7 +724,7 @@ class GroupChatAppServiceTest {
     }
 
     private Group group(Long groupId, Long ownerId, String name) {
-        return group(groupId, ownerId, name, GroupStatus.NORMAL);
+        return group(groupId, ownerId, name, GroupStatus.ACTIVE);
     }
 
     private Group group(Long groupId, Long ownerId, String name, GroupStatus status) {
@@ -713,11 +750,12 @@ class GroupChatAppServiceTest {
         return new ChatAppService(
                 null,
                 groupChatRepository,
-                groupMemberRepository,
-                inboxRepository,
                 groupRepository,
+                new GroupService(groupMemberRepository, groupChatRepository, groupRepository, null, null),
+                inboxRepository,
+                new ImChatService(null, null, null, null, sessionRepository, null),
                 null,
-                new ImChatService(null, null, null, null, null, sessionRepository));
+                new ImMessageService(inboxRepository, null, null));
     }
 
     private GroupMessageAppService groupMessageAppService(MemoryGroupChatRepository groupChatRepository,
@@ -734,14 +772,15 @@ class GroupChatAppServiceTest {
                                                           MemoryGroupRepository groupRepository,
                                                           DomainEventPublisher eventPublisher) {
         return new GroupMessageAppService(
-                new FixedSnowflakeId(900L),
                 groupChatRepository,
+                groupRepository,
                 groupMemberRepository,
                 inboxRepository,
-                groupRepository,
                 new NonChattingUserService(),
-                new GroupService(groupMemberRepository, groupChatRepository, null, null),
-                new ImMessageService(new FixedSnowflakeId(1L)),
+                new GroupService(groupMemberRepository, groupChatRepository, groupRepository, null, null),
+                new ImMessageService(inboxRepository, null, new FixedSnowflakeId(1L)),
+                new ImChatService(null, null, null, groupChatRepository, null, null),
+                new FixedSnowflakeId(900L),
                 null,
                 eventPublisher);
     }
@@ -820,7 +859,7 @@ class GroupChatAppServiceTest {
 
     private static class NonChattingUserService extends UserService {
         NonChattingUserService() {
-            super(null, null, new EmptySessionRepository(), (PasswordService) null);
+            super(null, new EmptySessionRepository(), (PasswordService) null, null);
         }
 
         @Override
@@ -833,7 +872,7 @@ class GroupChatAppServiceTest {
         private final List<Long> onlineUserIds;
 
         OnlineUserService(Long... onlineUserIds) {
-            super(null, null, new EmptySessionRepository(), (PasswordService) null);
+            super(null, new EmptySessionRepository(), (PasswordService) null, null);
             this.onlineUserIds = java.util.Arrays.asList(onlineUserIds);
         }
 
@@ -983,10 +1022,10 @@ class GroupChatAppServiceTest {
         }
 
         @Override
-        public List<ImGroupChat> findByUserIdsAndGroupId(GroupId groupId, List<UserId> userIds) {
+        public List<ImGroupChat> find(GroupId groupId, List<UserId> memberIds) {
             return groupChats.stream()
                     .filter(groupChat -> groupChat.getGroupId().equals(groupId))
-                    .filter(groupChat -> userIds.contains(groupChat.getUserId()))
+                    .filter(groupChat -> memberIds.contains(groupChat.getUserId()))
                     .collect(Collectors.toList());
         }
 
@@ -1001,13 +1040,19 @@ class GroupChatAppServiceTest {
         }
 
         @Override
-        public void saveAll(List<ImGroupChat> groupChats) {
+        public void save(List<ImGroupChat> groupChats) {
             savedGroupChats = new ArrayList<>(groupChats);
         }
 
         @Override
         public boolean contain(ImChatId chatId, UserId userId) {
             return find(chatId).map(chat -> chat.belongsTo(userId)).orElse(false);
+        }
+
+        @Override
+        public void remove(GroupId groupId, UserId userId) {
+            groupChats.removeIf(groupChat -> groupChat.getGroupId().equals(groupId)
+                    && groupChat.getUserId().equals(userId));
         }
 
         private ImGroupChat findSavedByUserId(Long userId) {
@@ -1043,8 +1088,19 @@ class GroupChatAppServiceTest {
         }
 
         @Override
-        public void saveAll(List<GroupMember> members) {
+        public void save(List<GroupMember> members) {
             savedMembers = new ArrayList<>(members);
+        }
+
+        @Override
+        public void save(GroupMember member) {
+            savedMembers = Collections.singletonList(member);
+        }
+
+        @Override
+        public void remove(GroupMember groupMember) {
+            members.removeIf(member -> member.getGroupId().equals(groupMember.getGroupId())
+                    && member.getUserId().equals(groupMember.getUserId()));
         }
     }
 
@@ -1060,7 +1116,7 @@ class GroupChatAppServiceTest {
         }
 
         @Override
-        public void saveAll(List<ImGroupInboxMessage> messages) {
+        public void save(List<ImGroupInboxMessage> messages) {
             savedMessages = new ArrayList<>(messages);
         }
 
