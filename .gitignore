@@ -1,6 +1,6 @@
 # Maven 项目构建
 HELP.md
-/target/
+target/
 !.mvn/wrapper/maven-wrapper.jar
 
 # 编辑器配置文件
