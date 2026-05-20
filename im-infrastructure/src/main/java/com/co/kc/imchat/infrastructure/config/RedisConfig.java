@@ -68,18 +68,14 @@ public class RedisConfig {
     }
 
     RedisSerializer<Object> redisMessageSerializer() {
-        Jackson2JsonRedisSerializer<Object> jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer<>(Object.class);
-        jackson2JsonRedisSerializer.setObjectMapper(JsonUtils.getMapper());
-        return jackson2JsonRedisSerializer;
+        return new Jackson2JsonRedisSerializer<>(JsonUtils.getMapper(), Object.class);
     }
 
     RedisSerializer<?> redisSerializer(RedisSubscriber<?> subscriber) {
         // 1. 获取具体的泛型类型
         Class<?> messageType = resolveMessageGenericType(subscriber);
         // 2. 创建针对该类型 T 的序列化器
-        Jackson2JsonRedisSerializer<?> jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer<>(messageType);
-        jackson2JsonRedisSerializer.setObjectMapper(JsonUtils.getMapper());
-        return jackson2JsonRedisSerializer;
+        return new Jackson2JsonRedisSerializer<>(JsonUtils.getMapper(), messageType);
     }
 
     private Class<?> resolveMessageGenericType(RedisSubscriber<?> subscriber) {

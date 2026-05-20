@@ -39,12 +39,12 @@ public class UserAppService {
     private final UserService userService;
     private final TokenService tokenService;
 
-    @DistributeLock(scene = DistributeLockScene.USER_SIGN_UP, key = "#command.email")
+    @DistributeLock(scene = DistributeLockScene.USER_SIGN_UP, key = "#command.email()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void signUp(UserSignUpCmd command) {
-        UserEmail email = new UserEmail(command.getEmail());
-        UserName username = new UserName(command.getUsername());
-        UserRawPassword rawPassword = new UserRawPassword(command.getPassword());
+        UserEmail email = new UserEmail(command.email());
+        UserName username = new UserName(command.username());
+        UserRawPassword rawPassword = new UserRawPassword(command.password());
 
         boolean existEmail = userRepository.contain(email);
         if (existEmail) {
@@ -58,8 +58,8 @@ public class UserAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public SignInDTO signIn(UserSignInCmd command) {
-        UserEmail email = new UserEmail(command.getEmail());
-        UserRawPassword rawPassword = new UserRawPassword(command.getPassword());
+        UserEmail email = new UserEmail(command.email());
+        UserRawPassword rawPassword = new UserRawPassword(command.password());
 
         User user = userService.authenticate(email, rawPassword);
 
@@ -73,7 +73,7 @@ public class UserAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void signOut(UserSignOutCmd command) {
-        UserId userId = new UserId(command.getUserId());
+        UserId userId = new UserId(command.userId());
 
         sessionRepository.find(userId).ifPresent(session -> {
             session.onSignOut();
@@ -82,7 +82,7 @@ public class UserAppService {
     }
 
     public UserDetailDTO userDetail(UserDetailQuery query) {
-        UserId userId = new UserId(query.getUserId());
+        UserId userId = new UserId(query.userId());
 
         User user = userRepository.find(userId)
                 .orElseThrow(() -> new NotFoundException("用户不存在"));
@@ -91,7 +91,7 @@ public class UserAppService {
     }
 
     public boolean isAuthenticated(UserAuthQuery query) {
-        UserId userId = new UserId(query.getUserId());
+        UserId userId = new UserId(query.userId());
         return sessionRepository.find(userId)
                 .map(Session::isSignIn)
                 .orElse(false);

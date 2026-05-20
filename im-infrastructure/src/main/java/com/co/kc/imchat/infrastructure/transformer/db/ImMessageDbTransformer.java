@@ -37,7 +37,10 @@ public interface ImMessageDbTransformer {
             @Mapping(target = "sendTime", source = "sendTime"),
             @Mapping(target = "receiveTime", source = "receivedTime"),
             @Mapping(target = "readTime", source = "readTime"),
-            @Mapping(target = "revokeTime", source = "revokeTime")
+            @Mapping(target = "revokeTime", source = "revokeTime"),
+            @Mapping(target = "createTime", ignore = true),
+            @Mapping(target = "updateTime", ignore = true),
+            @Mapping(target = "isDeleted", ignore = true)
     })
     DbImGroupInboxMessage dbImGroupInboxMessageFrom(ImGroupInboxMessage message);
 
@@ -101,7 +104,10 @@ public interface ImMessageDbTransformer {
             @Mapping(target = "sendTime", source = "sendTime"),
             @Mapping(target = "receiveTime", source = "receivedTime"),
             @Mapping(target = "readTime", source = "readTime"),
-            @Mapping(target = "revokeTime", source = "revokeTime")
+            @Mapping(target = "revokeTime", source = "revokeTime"),
+            @Mapping(target = "createTime", ignore = true),
+            @Mapping(target = "updateTime", ignore = true),
+            @Mapping(target = "isDeleted", ignore = true)
     })
     DbImPrivateInboxMessage dbImPrivateInboxMessageFrom(ImPrivateInboxMessage message);
 }

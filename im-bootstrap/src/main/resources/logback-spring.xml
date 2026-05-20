@@ -3,10 +3,10 @@
     <!-- log base path -->
     <springProperty scope="context" name="logPath" source="log.path" defaultValue="./logs"/>
     <appender name="consoleLog" class="ch.qos.logback.core.ConsoleAppender">
-
-        <layout class="ch.qos.logback.classic.PatternLayout">
+        <encoder>
             <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{traceId}] %logger - %msg%n</pattern>
-        </layout>
+            <charset>UTF-8</charset>
+        </encoder>
     </appender>
 
     <appender name="fileInfoLog" class="ch.qos.logback.core.rolling.RollingFileAppender">
@@ -66,6 +66,9 @@
 
     <root level="INFO">
         <appender-ref ref="consoleLog"/>
+        <appender-ref ref="fileInfoLog"/>
+        <appender-ref ref="fileWarnLog"/>
+        <appender-ref ref="fileErrorLog"/>
     </root>
 
 </configuration>

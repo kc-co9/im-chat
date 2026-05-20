@@ -137,7 +137,7 @@ class GroupAppServiceTest {
 
         assertThat(lock).isNotNull();
         assertThat(lock.scene()).isEqualTo(scene);
-        assertThat(lock.key()).isEqualTo("#command.groupId");
+        assertThat(lock.key()).isEqualTo("#command.groupId()");
     }
 
     private <T extends DomainEvent> T firstEvent(MemoryDomainEventPublisher eventPublisher, Class<T> eventType) {

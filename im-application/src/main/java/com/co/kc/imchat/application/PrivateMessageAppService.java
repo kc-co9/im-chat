@@ -55,14 +55,14 @@ public class PrivateMessageAppService {
     private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
 
-    @DistributeLock(scene = DistributeLockScene.PRIVATE_MESSAGE_SEND, key = "#command.chatId + ':' + #command.messageToken")
+    @DistributeLock(scene = DistributeLockScene.PRIVATE_MESSAGE_SEND, key = "#command.chatId() + ':' + #command.messageToken()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void sendMessage(ImPrivateMessageSendCmd command) {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
-        ImMessageToken messageToken = new ImMessageToken(command.getMessageToken());
-        ImMessageContent messageContent = new ImMessageContent(command.getMessageType(), command.getMessageContent());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
+        ImMessageToken messageToken = new ImMessageToken(command.messageToken());
+        ImMessageContent messageContent = new ImMessageContent(command.messageType(), command.messageContent());
 
         ImPrivateChat senderChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(senderChat, userId);
@@ -119,9 +119,9 @@ public class PrivateMessageAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void receiveMessage(ImPrivateMessageReceiveCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
-        ImMessageId messageId = new ImMessageId(command.getMessageId());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
+        ImMessageId messageId = new ImMessageId(command.messageId());
 
         ImPrivateChat privateChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(privateChat, userId);
@@ -140,12 +140,12 @@ public class PrivateMessageAppService {
     }
 
 
-    @DistributeLock(scene = DistributeLockScene.PRIVATE_MESSAGE_REVOKE, key = "#command.chatId + ':' + #command.messageId")
+    @DistributeLock(scene = DistributeLockScene.PRIVATE_MESSAGE_REVOKE, key = "#command.chatId() + ':' + #command.messageId()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void revokeMessage(ImPrivateMessageRevokeCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
-        ImMessageId messageId = new ImMessageId(command.getMessageId());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
+        ImMessageId messageId = new ImMessageId(command.messageId());
 
         ImPrivateChat senderChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(senderChat, userId);
@@ -175,9 +175,9 @@ public class PrivateMessageAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void readMessage(ImPrivateMessageReadCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
-        ImMessageId messageId = new ImMessageId(command.getMessageId());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
+        ImMessageId messageId = new ImMessageId(command.messageId());
 
         ImPrivateChat imPrivateChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(imPrivateChat, userId);
@@ -193,10 +193,10 @@ public class PrivateMessageAppService {
     }
 
     public List<ImPrivateMessageDTO> queryHistoryMessage(ImPrivateMessageHistoryQuery query) {
-        UserId userId = new UserId(query.getUserId());
-        ImChatId imChatId = new ImChatId(query.getChatId());
-        ImMessageId imLastMessageId = FunctionUtils.mappingOrNull(query.getLastMessageId(), ImMessageId::new);
-        Integer count = query.getCount();
+        UserId userId = new UserId(query.userId());
+        ImChatId imChatId = new ImChatId(query.chatId());
+        ImMessageId imLastMessageId = FunctionUtils.mappingOrNull(query.lastMessageId(), ImMessageId::new);
+        Integer count = query.count();
 
         ImPrivateChat imPrivateChat = imPrivateChatRepository.find(imChatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(imPrivateChat, userId);
@@ -206,9 +206,9 @@ public class PrivateMessageAppService {
     }
 
     public ImPrivateMessageDTO queryMessageDetail(ImPrivateMessageDetailQuery query) {
-        UserId userId = new UserId(query.getUserId());
-        ImChatId chatId = new ImChatId(query.getChatId());
-        ImMessageToken messageToken = new ImMessageToken(query.getMessageToken());
+        UserId userId = new UserId(query.userId());
+        ImChatId chatId = new ImChatId(query.chatId());
+        ImMessageToken messageToken = new ImMessageToken(query.messageToken());
 
         ImPrivateChat imPrivateChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(imPrivateChat, userId);

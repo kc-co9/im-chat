@@ -6,7 +6,6 @@ import com.co.kc.imchat.interfaces.support.utils.LoggingUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.StopWatch;
-import org.apache.tomcat.util.http.fileupload.servlet.ServletFileUpload;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -16,12 +15,13 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
 import org.springframework.web.util.ContentCachingResponseWrapper;
 import org.springframework.web.util.WebUtils;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.annotation.WebFilter;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.WebFilter;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -56,7 +56,7 @@ public class LoggingFilter extends OncePerRequestFilter {
         } finally {
             stopWatch.stop();
 
-            if (!ServletFileUpload.isMultipartContent(request)) {
+            if (!isMultipartContent(request)) {
                 HttpLog httpLog = HttpLog.newLog(request, response, LoggingUtils.getTraceId(), stopWatch.getTime(TimeUnit.MILLISECONDS));
                 httpLog.print(logProperties.getLogFormat());
             }
@@ -72,6 +72,11 @@ public class LoggingFilter extends OncePerRequestFilter {
     private void copyBodyToResponse(HttpServletResponse response) throws IOException {
         ContentCachingResponseWrapper responseWrapper = WebUtils.getNativeResponse(response, ContentCachingResponseWrapper.class);
         Objects.requireNonNull(responseWrapper).copyBodyToResponse();
+    }
+
+    private boolean isMultipartContent(HttpServletRequest request) {
+        String contentType = request.getContentType();
+        return contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("multipart/");
     }
 
 

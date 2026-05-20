@@ -73,13 +73,13 @@ public class GroupAppService {
     private final SnowflakeId snowflakeId;
     private final DomainEventPublisher domainEventPublisher;
 
-    @DistributeLock(scene = DistributeLockScene.GROUP_CREATE, key = "#command.ownerId + ':' + #command.groupName")
+    @DistributeLock(scene = DistributeLockScene.GROUP_CREATE, key = "#command.ownerId() + ':' + #command.groupName()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public GroupCreateDTO createGroup(GroupCreateCmd command) {
-        UserId ownerId = new UserId(command.getOwnerId());
+        UserId ownerId = new UserId(command.ownerId());
         GroupId groupId = new GroupId(snowflakeId.next());
-        GroupName groupName = new GroupName(command.getGroupName());
-        List<UserId> memberIds = FunctionUtils.mappingList(command.getMemberIds(), UserId::new);
+        GroupName groupName = new GroupName(command.groupName());
+        List<UserId> memberIds = FunctionUtils.mappingList(command.memberIds(), UserId::new);
 
         GroupCreation groupCreation = groupService.createGroup(groupId, ownerId, groupName, memberIds);
         groupRepository.save(groupCreation.getGroup());
@@ -102,11 +102,11 @@ public class GroupAppService {
         domainEventPublisher.publish(imGroupMessageSentEvent);
     }
 
-    @DistributeLock(scene = DistributeLockScene.GROUP_DISMISS, key = "#command.groupId")
+    @DistributeLock(scene = DistributeLockScene.GROUP_DISMISS, key = "#command.groupId()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void dismissGroup(GroupDismissCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        GroupId groupId = new GroupId(command.getGroupId());
+        UserId userId = new UserId(command.userId());
+        GroupId groupId = new GroupId(command.groupId());
 
         Group group = groupRepository.find(groupId).orElseThrow(() -> new NotFoundException("群组不存在"));
         group.dismiss(userId);
@@ -127,12 +127,12 @@ public class GroupAppService {
         domainEventPublisher.publish(messageSentEvent);
     }
 
-    @DistributeLock(scene = DistributeLockScene.GROUP_MEMBER_INVITE, key = "#command.groupId")
+    @DistributeLock(scene = DistributeLockScene.GROUP_MEMBER_INVITE, key = "#command.groupId()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void inviteGroupMembers(GroupInviteMembersCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        GroupId groupId = new GroupId(command.getGroupId());
-        List<UserId> inviteeIds = FunctionUtils.mappingList(command.getInviteeIds(), UserId::new);
+        UserId userId = new UserId(command.userId());
+        GroupId groupId = new GroupId(command.groupId());
+        List<UserId> inviteeIds = FunctionUtils.mappingList(command.inviteeIds(), UserId::new);
 
         GroupMemberInvitation invitation = groupService.inviteMembers(groupId, userId, inviteeIds);
 
@@ -157,22 +157,22 @@ public class GroupAppService {
         domainEventPublisher.publish(messageSentEvent);
     }
 
-    @DistributeLock(scene = DistributeLockScene.GROUP_OWNER_TRANSFER, key = "#command.groupId")
+    @DistributeLock(scene = DistributeLockScene.GROUP_OWNER_TRANSFER, key = "#command.groupId()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void transferGroupOwner(GroupTransferOwnerCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        GroupId groupId = new GroupId(command.getGroupId());
-        UserId newOwnerId = new UserId(command.getNewOwnerId());
+        UserId userId = new UserId(command.userId());
+        GroupId groupId = new GroupId(command.groupId());
+        UserId newOwnerId = new UserId(command.newOwnerId());
 
         Group group = groupService.transferOwner(groupId, userId, newOwnerId);
         groupRepository.save(group);
     }
 
-    @DistributeLock(scene = DistributeLockScene.GROUP_MEMBER_LEAVE, key = "#command.groupId")
+    @DistributeLock(scene = DistributeLockScene.GROUP_MEMBER_LEAVE, key = "#command.groupId()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void leaveGroup(GroupLeaveCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        GroupId groupId = new GroupId(command.getGroupId());
+        UserId userId = new UserId(command.userId());
+        GroupId groupId = new GroupId(command.groupId());
 
         GroupMemberDeparture departure = groupService.leaveGroup(groupId, userId);
         groupRepository.save(departure.getGroup());
@@ -181,12 +181,12 @@ public class GroupAppService {
         domainEventPublisher.publish(new GroupMemberRemovedEvent(groupId, departure.getGroupMember().getUserId()));
     }
 
-    @DistributeLock(scene = DistributeLockScene.GROUP_MEMBER_KICK, key = "#command.groupId")
+    @DistributeLock(scene = DistributeLockScene.GROUP_MEMBER_KICK, key = "#command.groupId()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void kickGroupMember(GroupKickMemberCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        GroupId groupId = new GroupId(command.getGroupId());
-        UserId memberId = new UserId(command.getMemberUserId());
+        UserId userId = new UserId(command.userId());
+        GroupId groupId = new GroupId(command.groupId());
+        UserId memberId = new UserId(command.memberUserId());
 
         GroupMemberDeparture departure = groupService.kickMember(groupId, userId, memberId);
         groupRepository.save(departure.getGroup());
@@ -201,9 +201,9 @@ public class GroupAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void changeGroupNotification(GroupNotificationChangeCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        GroupId groupId = new GroupId(command.getGroupId());
-        GroupNotification notification = new GroupNotification(command.getNotification());
+        UserId userId = new UserId(command.userId());
+        GroupId groupId = new GroupId(command.groupId());
+        GroupNotification notification = new GroupNotification(command.notification());
 
         Group group = groupRepository.find(groupId).orElseThrow(() -> new NotFoundException("群组不存在"));
         group.changeNotification(userId, notification);
@@ -212,15 +212,15 @@ public class GroupAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void changeGroupMemberAlias(GroupMemberAliasChangeCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        GroupId groupId = new GroupId(command.getGroupId());
+        UserId userId = new UserId(command.userId());
+        GroupId groupId = new GroupId(command.groupId());
 
-        GroupMember member = groupService.changeMemberAlias(groupId, userId, new GroupUserAlias(command.getUserAlias()));
+        GroupMember member = groupService.changeMemberAlias(groupId, userId, new GroupUserAlias(command.userAlias()));
         groupMemberRepository.save(member);
     }
 
     public List<GroupItemDTO> getGroupList(GroupListQuery query) {
-        UserId userId = new UserId(query.getUserId());
+        UserId userId = new UserId(query.userId());
 
         List<Group> groups = groupRepository.find(userId);
         if (CollectionUtils.isEmpty(groups)) {
@@ -242,8 +242,8 @@ public class GroupAppService {
     }
 
     public GroupDetailDTO getGroupDetail(GroupDetailQuery query) {
-        UserId userId = new UserId(query.getUserId());
-        GroupId groupId = new GroupId(query.getGroupId());
+        UserId userId = new UserId(query.userId());
+        GroupId groupId = new GroupId(query.groupId());
 
         Group group = groupRepository.find(groupId).orElseThrow(() -> new NotFoundException("群组不存在"));
         groupService.ensureGroupMember(group, userId);

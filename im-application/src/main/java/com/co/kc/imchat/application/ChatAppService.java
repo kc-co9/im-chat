@@ -54,10 +54,10 @@ public class ChatAppService {
     private final ImMessageService imMessageService;
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
-    @DistributeLock(scene = DistributeLockScene.PRIVATE_CHAT_OPEN, key = "#LockKeys.userPair(#command.userId, #command.peerUserId)")
+    @DistributeLock(scene = DistributeLockScene.PRIVATE_CHAT_OPEN, key = "#LockKeys.userPair(#command.userId(), #command.peerUserId())")
     public ImPrivateChatOpenDTO openPrivateChat(ImPrivateChatOpenCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        UserId peerUserId = new UserId(command.getPeerUserId());
+        UserId userId = new UserId(command.userId());
+        UserId peerUserId = new UserId(command.peerUserId());
 
         friendService.ensureFriendshipActive(userId, peerUserId);
 
@@ -72,8 +72,8 @@ public class ChatAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public GroupChatOpenDTO openGroupChat(ImGroupChatOpenCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
 
         ImGroupChat groupChat = imGroupChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(groupChat, userId);
@@ -94,14 +94,14 @@ public class ChatAppService {
     }
 
     public void exitChat(ImChatExitCmd command) {
-        UserId userId = new UserId(command.getUserId());
+        UserId userId = new UserId(command.userId());
         imChatService.exitChat(userId);
     }
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void hidePrivateChat(PrivateChatHideCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
 
         ImPrivateChat privateChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(privateChat, userId);
@@ -112,8 +112,8 @@ public class ChatAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void hideGroupChat(GroupChatHideCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
 
         ImGroupChat groupChat = imGroupChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(groupChat, userId);
@@ -127,9 +127,9 @@ public class ChatAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void changeGroupAlias(GroupAliasChangeCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
-        GroupAlias groupAlias = new GroupAlias(command.getGroupAlias());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
+        GroupAlias groupAlias = new GroupAlias(command.groupAlias());
 
         ImGroupChat groupChat = imGroupChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(groupChat, userId);
@@ -142,7 +142,7 @@ public class ChatAppService {
     }
 
     public List<ImChatItemDTO> getChatList(ImChatListQuery query) {
-        UserId userId = new UserId(query.getUserId());
+        UserId userId = new UserId(query.userId());
         List<ImUserChatDescriptor> imUserChatDescriptors = imChatService.getUserChatList(userId);
         return ImChatAppTransformer.INSTANCE.imChatListFrom(imUserChatDescriptors);
     }

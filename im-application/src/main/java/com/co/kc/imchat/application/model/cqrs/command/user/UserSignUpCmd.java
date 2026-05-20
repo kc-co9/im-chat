@@ -1,12 +1,11 @@
 package com.co.kc.imchat.application.model.cqrs.command.user;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-
-@Getter
-@AllArgsConstructor
-public class UserSignUpCmd {
-    private String email;
-    private String username;
-    private String password;
+public record UserSignUpCmd(
+        /* 邮箱 */
+        String email,
+        /* 用户名 */
+        String username,
+        /* 密码 */
+        String password
+) {
 }

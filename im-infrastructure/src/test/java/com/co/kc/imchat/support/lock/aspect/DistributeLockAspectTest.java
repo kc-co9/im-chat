@@ -91,7 +91,7 @@ class DistributeLockAspectTest {
         return proxyFactory.getProxy();
     }
 
-    private static class DemoService {
+    public static class DemoService {
         private int invoked;
 
         @DistributeLock(scene = DistributeLockScene.PRIVATE_MESSAGE_SEND, key = "#command.id + ':' + #command.token")

@@ -15,8 +15,8 @@ public class IntegerCodeToBaseEnumConverterFactory implements ConverterFactory<I
     private static final Map<Class<?>, Converter<Integer, ? extends BaseEnum>> CONVERTERS = new ConcurrentHashMap<>();
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T extends BaseEnum> Converter<Integer, T> getConverter(@NotNull Class<T> targetType) {
-        //noinspection unchecked
         return (Converter<Integer, T>) CONVERTERS.computeIfAbsent(targetType, k -> new IntegerCodeToBaseEnumConverter<>(targetType));
     }
 }

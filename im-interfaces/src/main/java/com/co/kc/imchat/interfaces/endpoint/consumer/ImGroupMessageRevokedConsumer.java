@@ -21,7 +21,7 @@ public class ImGroupMessageRevokedConsumer implements RedisSubscriber<GroupRevok
 
     @Override
     public void onMessage(GroupRevokedNotifyCmd message) {
-        messagingTemplate.convertAndSendToUser(String.valueOf(message.getReceiverId()), QUEUE_GROUP_MESSAGE_REVOKED, message);
+        messagingTemplate.convertAndSendToUser(String.valueOf(message.receiverId()), QUEUE_GROUP_MESSAGE_REVOKED, message);
     }
 
 }

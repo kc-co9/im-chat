@@ -21,6 +21,6 @@ public class ImPrivateMessageRevokedConsumer implements RedisSubscriber<ImPrivat
 
     @Override
     public void onMessage(ImPrivateRevokedNotifyCmd message) {
-        messagingTemplate.convertAndSendToUser(String.valueOf(message.getReceiverId()), QUEUE_PRIVATE_MESSAGE_REVOKED, message);
+        messagingTemplate.convertAndSendToUser(String.valueOf(message.receiverId()), QUEUE_PRIVATE_MESSAGE_REVOKED, message);
     }
 }

@@ -18,20 +18,14 @@ class RedisConfigTest {
         RedisConfig redisConfig = new RedisConfig();
         RedisSerializer<?> serializer = redisConfig.redisSerializer(new PrivateSentSubscriber());
 
-        ImPrivateSentNotifyCmd command = new ImPrivateSentNotifyCmd();
-        command.setMessageId(1L);
-        command.setChatId(2L);
-        command.setSenderId(3L);
-        command.setReceiverId(4L);
-        command.setMessageType(ImMessageTypeEnum.TEXT);
-        command.setMessageContent("hello");
-        command.setSendTime(LocalDateTime.now());
+        ImPrivateSentNotifyCmd command =
+                new ImPrivateSentNotifyCmd(1L, 2L, 3L, 4L, ImMessageTypeEnum.TEXT, "hello", LocalDateTime.now());
 
         byte[] bytes = redisConfig.redisMessageSerializer().serialize(command);
         Object result = serializer.deserialize(bytes);
 
         assertThat(result).isInstanceOf(ImPrivateSentNotifyCmd.class);
-        assertThat(((ImPrivateSentNotifyCmd) result).getMessageContent()).isEqualTo("hello");
+        assertThat(((ImPrivateSentNotifyCmd) result).messageContent()).isEqualTo("hello");
     }
 
     private static class PrivateSentSubscriber implements RedisSubscriber<ImPrivateSentNotifyCmd> {

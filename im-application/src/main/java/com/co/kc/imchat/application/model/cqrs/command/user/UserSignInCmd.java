@@ -1,7 +1,5 @@
 package com.co.kc.imchat.application.model.cqrs.command.user;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -9,20 +7,18 @@ import org.apache.commons.lang3.StringUtils;
  *
  * @author kc
  */
-@Getter
-@EqualsAndHashCode
-public class UserSignInCmd {
-    private final String email;
-    private final String password;
-
-    public UserSignInCmd(String email, String password) {
+public record UserSignInCmd(
+        /* 邮箱 */
+        String email,
+        /* 密码 */
+        String password
+) {
+    public UserSignInCmd {
         if (StringUtils.isBlank(email)) {
             throw new IllegalArgumentException("帐号为空");
         }
         if (StringUtils.isBlank(password)) {
             throw new IllegalArgumentException("密码为空");
         }
-        this.email = email;
-        this.password = password;
     }
 }

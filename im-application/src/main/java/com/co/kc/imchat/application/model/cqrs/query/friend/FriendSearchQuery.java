@@ -1,12 +1,7 @@
 package com.co.kc.imchat.application.model.cqrs.query.friend;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class FriendSearchQuery {
-    private String email;
+public record FriendSearchQuery(
+        /* 邮箱 */
+        String email
+) {
 }

@@ -309,10 +309,10 @@ class GroupChatAppServiceTest {
         appService.onMessageSent(event);
 
         assertThat(notifierInvoker.groupSentCommands)
-                .extracting(GroupSentNotifyCmd::getReceiverId)
+                .extracting(GroupSentNotifyCmd::receiverId)
                 .containsExactly(2L);
         assertThat(notifierInvoker.groupSentCommands)
-                .extracting(GroupSentNotifyCmd::getChatId)
+                .extracting(GroupSentNotifyCmd::chatId)
                 .containsExactly(102L);
     }
 
@@ -788,37 +788,19 @@ class GroupChatAppServiceTest {
     }
 
     private GroupMessageSendCmd groupMessageSendCmd(Long chatId, Long senderId) {
-        GroupMessageSendCmd command = new GroupMessageSendCmd();
-        command.setChatId(chatId);
-        command.setSenderId(senderId);
-        command.setMessageToken("token-1");
-        command.setMessageType(ImMessageType.TEXT);
-        command.setMessageContent("hello");
-        return command;
+        return new GroupMessageSendCmd(chatId, senderId, "token-1", ImMessageType.TEXT, "hello");
     }
 
     private GroupMessageRevokeCmd groupMessageRevokeCmd(Long chatId, Long userId, Long messageId) {
-        GroupMessageRevokeCmd command = new GroupMessageRevokeCmd();
-        command.setChatId(chatId);
-        command.setUserId(userId);
-        command.setMessageId(messageId);
-        return command;
+        return new GroupMessageRevokeCmd(userId, chatId, messageId);
     }
 
     private GroupMessageReceiveCmd groupMessageReceiveCmd(Long chatId, Long userId, Long messageId) {
-        GroupMessageReceiveCmd command = new GroupMessageReceiveCmd();
-        command.setChatId(chatId);
-        command.setUserId(userId);
-        command.setMessageId(messageId);
-        return command;
+        return new GroupMessageReceiveCmd(userId, chatId, messageId);
     }
 
     private GroupMessageReadCmd groupMessageReadCmd(Long chatId, Long userId, Long messageId) {
-        GroupMessageReadCmd command = new GroupMessageReadCmd();
-        command.setChatId(chatId);
-        command.setUserId(userId);
-        command.setMessageId(messageId);
-        return command;
+        return new GroupMessageReadCmd(userId, chatId, messageId);
     }
 
     private MemoryGroupRepository normalGroupRepository(Long groupId) {

@@ -2,7 +2,6 @@ package com.co.kc.imchat.infrastructure.config;
 
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.BlockAttackInnerInterceptor;
-import com.baomidou.mybatisplus.extension.plugins.inner.IllegalSQLInnerInterceptor;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,6 +17,7 @@ class DatasourceConfigTest {
                         .isInstanceOf(BlockAttackInnerInterceptor.class));
         assertThat(interceptor.getInterceptors())
                 .noneSatisfy(innerInterceptor -> assertThat(innerInterceptor)
-                        .isInstanceOf(IllegalSQLInnerInterceptor.class));
+                        .extracting(inner -> inner.getClass().getName())
+                        .isEqualTo("com.baomidou.mybatisplus.extension.plugins.inner.IllegalSQLInnerInterceptor"));
     }
 }

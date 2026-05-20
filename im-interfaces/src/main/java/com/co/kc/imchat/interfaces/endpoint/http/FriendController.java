@@ -22,23 +22,23 @@ import com.co.kc.imchat.interfaces.model.io.friend.FriendListResponse;
 import com.co.kc.imchat.application.model.cqrs.dto.friend.FriendItemDTO;
 import com.co.kc.imchat.application.model.cqrs.query.friend.FriendListQuery;
 import com.co.kc.imchat.interfaces.transformer.FriendHttpIoTransformer;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Api("好友接口")
+@Tag(name = "好友接口")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(value = "/friend")
 public class FriendController {
     private final FriendAppService friendAppService;
 
-    @ApiOperation("好友列表")
-    @GetMapping("/friendList")
+    @Operation(summary = "好友列表")
+    @GetMapping(value = "/friendList")
     public FriendListResponse friendList() {
         Long userId = UserContextUtils.get().getUserId();
         FriendListQuery query = new FriendListQuery(userId);
@@ -47,18 +47,18 @@ public class FriendController {
         return new FriendListResponse(friendItems);
     }
 
-    @ApiOperation("好友详情")
-    @GetMapping("/friendDetail")
-    public FriendDetailResponse friendDetail(@RequestParam("friendUserId") Long friendUserId) {
+    @Operation(summary = "好友详情")
+    @GetMapping(value = "/friendDetail")
+    public FriendDetailResponse friendDetail(@RequestParam(name = "friendUserId") Long friendUserId) {
         Long userId = UserContextUtils.get().getUserId();
         FriendDetailQuery query = new FriendDetailQuery(userId, friendUserId);
         FriendDetailDTO friendDetailDTO = friendAppService.getFriendDetail(query);
         return FriendHttpIoTransformer.INSTANCE.friendDetailResponseFrom(friendDetailDTO);
     }
 
-    @ApiOperation("搜索好友")
-    @GetMapping("/searchFriend")
-    public FriendSearchResponse searchFriend(@RequestParam("email") String email) {
+    @Operation(summary = "搜索好友")
+    @GetMapping(value = "/searchFriend")
+    public FriendSearchResponse searchFriend(@RequestParam(name = "email") String email) {
         FriendSearchQuery query = new FriendSearchQuery(email);
         List<FriendSearchDTO> friendSearchList = friendAppService.searchFriends(query);
         List<FriendSearchResponse.SearchItem> searchList =
@@ -66,40 +66,40 @@ public class FriendController {
         return new FriendSearchResponse(searchList);
     }
 
-    @ApiOperation("添加好友")
-    @PostMapping("/addFriend")
+    @Operation(summary = "添加好友")
+    @PostMapping(value = "/addFriend")
     public void addFriend(@RequestBody @Validated FriendAddRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         FriendAddCmd command = new FriendAddCmd(userId, request.getFriendUserId());
         friendAppService.addFriend(command);
     }
 
-    @ApiOperation("删除好友")
-    @PostMapping("/deleteFriend")
+    @Operation(summary = "删除好友")
+    @PostMapping(value = "/deleteFriend")
     public void deleteFriend(@RequestBody @Validated FriendDeleteRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         FriendDeleteCmd command = new FriendDeleteCmd(userId, request.getFriendUserId());
         friendAppService.deleteFriend(command);
     }
 
-    @ApiOperation("拉黑好友")
-    @PostMapping("/blockFriend")
+    @Operation(summary = "拉黑好友")
+    @PostMapping(value = "/blockFriend")
     public void blockFriend(@RequestBody @Validated FriendBlockRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         FriendBlockCmd command = new FriendBlockCmd(userId, request.getFriendUserId());
         friendAppService.blockFriend(command);
     }
 
-    @ApiOperation("取消拉黑好友")
-    @PostMapping("/unblockFriend")
+    @Operation(summary = "取消拉黑好友")
+    @PostMapping(value = "/unblockFriend")
     public void unblockFriend(@RequestBody @Validated FriendUnblockRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         FriendUnblockCmd command = new FriendUnblockCmd(userId, request.getFriendUserId());
         friendAppService.unblockFriend(command);
     }
 
-    @ApiOperation("修改好友备注")
-    @PostMapping("/changeFriendAlias")
+    @Operation(summary = "修改好友备注")
+    @PostMapping(value = "/changeFriendAlias")
     public void changeFriendAlias(@RequestBody @Validated FriendAliasChangeRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         FriendAliasChangeCmd command = new FriendAliasChangeCmd(userId, request.getFriendUserId(), request.getFriendAlias());

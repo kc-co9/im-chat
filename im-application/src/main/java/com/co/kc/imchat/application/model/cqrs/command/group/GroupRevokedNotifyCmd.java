@@ -1,10 +1,11 @@
 package com.co.kc.imchat.application.model.cqrs.command.group;
 
-import lombok.Data;
-
-@Data
-public class GroupRevokedNotifyCmd {
-    private Long chatId;
-    private Long messageId;
-    private Long receiverId;
+public record GroupRevokedNotifyCmd(
+        /* 接收人聊天ID */
+        Long chatId,
+        /* 消息ID */
+        Long messageId,
+        /* 接收人用户ID */
+        Long receiverId
+) {
 }

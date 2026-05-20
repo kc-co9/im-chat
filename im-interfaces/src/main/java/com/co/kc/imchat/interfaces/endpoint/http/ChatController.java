@@ -21,7 +21,7 @@ import com.co.kc.imchat.interfaces.model.io.chat.ImPrivateChatOpenRequest;
 import com.co.kc.imchat.interfaces.model.io.chat.ImPrivateChatOpenResponse;
 import com.co.kc.imchat.interfaces.support.context.UserContextUtils;
 import com.co.kc.imchat.interfaces.transformer.ImChatHttpIoTransformer;
-import io.swagger.annotations.Api;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-@Api("聊天接口")
+@Tag(name = "聊天接口")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(value = "/im/chat")

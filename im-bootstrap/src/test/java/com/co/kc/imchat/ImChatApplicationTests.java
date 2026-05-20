@@ -9,28 +9,30 @@ import org.junit.jupiter.api.Test;
 import org.redisson.api.RedissonClient;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @SpringBootTest(properties = {
         "management.health.redis.enabled=false",
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration"
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration",
+        "springdoc.api-docs.enabled=false",
+        "springdoc.swagger-ui.enabled=false"
 })
 public class ImChatApplicationTests {
 
-    @MockBean
+    @MockitoBean
     private RedisConnectionFactory redisConnectionFactory;
 
-    @MockBean
+    @MockitoBean
     private RedissonClient redissonClient;
 
-    @MockBean
+    @MockitoBean
     private RedisMessageListenerContainer redisMessageListenerContainer;
 
     @Test

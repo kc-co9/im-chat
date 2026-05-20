@@ -1,12 +1,11 @@
 package com.co.kc.imchat.application.model.cqrs.command.group;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-
-@Getter
-@AllArgsConstructor
-public class GroupKickMemberCmd {
-    private Long userId;
-    private Long groupId;
-    private Long memberUserId;
+public record GroupKickMemberCmd(
+        /* 操作用户ID */
+        Long userId,
+        /* 群ID */
+        Long groupId,
+        /* 被移出成员用户ID */
+        Long memberUserId
+) {
 }

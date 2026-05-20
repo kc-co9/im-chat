@@ -76,7 +76,7 @@ class PrivateChatAppServiceTest {
 
         assertThat(lock.scene()).isEqualTo(DistributeLockScene.PRIVATE_CHAT_OPEN);
         assertThat(lock.key()).isEqualTo(
-                "#LockKeys.userPair(#command.userId, #command.peerUserId)");
+                "#LockKeys.userPair(#command.userId(), #command.peerUserId())");
     }
 
     @Test
@@ -256,10 +256,7 @@ class PrivateChatAppServiceTest {
                 null,
                 new MemoryDomainEventPublisher());
 
-        ImPrivateMessageRevokeCmd command = new ImPrivateMessageRevokeCmd();
-        command.setChatId(101L);
-        command.setUserId(1L);
-        command.setMessageId(900L);
+        ImPrivateMessageRevokeCmd command = new ImPrivateMessageRevokeCmd(1L, 101L, 900L);
 
         appService.revokeMessage(command);
 
@@ -364,7 +361,7 @@ class PrivateChatAppServiceTest {
                 .orElseThrow(AssertionError::new);
         assertThat(receiverChat.getUnreadMessageCount()).isEqualTo(1);
         assertThat(notifierInvoker.privateSentCommands)
-                .extracting(ImPrivateSentNotifyCmd::getReceiverId)
+                .extracting(ImPrivateSentNotifyCmd::receiverId)
                 .containsExactly(2L);
     }
 
@@ -445,13 +442,7 @@ class PrivateChatAppServiceTest {
     }
 
     private ImPrivateMessageSendCmd privateMessageSendCmd(Long chatId, Long userId) {
-        ImPrivateMessageSendCmd command = new ImPrivateMessageSendCmd();
-        command.setChatId(chatId);
-        command.setUserId(userId);
-        command.setMessageToken("token-1");
-        command.setMessageType(ImMessageType.TEXT);
-        command.setMessageContent("hello");
-        return command;
+        return new ImPrivateMessageSendCmd(userId, chatId, "token-1", ImMessageType.TEXT, "hello");
     }
 
     private Group group(Long groupId, Long ownerId, String name) {

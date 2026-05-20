@@ -1,10 +1,11 @@
 package com.co.kc.imchat.application.model.cqrs.command.im;
 
-import lombok.Data;
-
-@Data
-public class ImPrivateMessageRevokeCmd {
-    private Long userId;
-    private Long chatId;
-    private Long messageId;
+public record ImPrivateMessageRevokeCmd(
+        /* 用户ID */
+        Long userId,
+        /* 聊天ID */
+        Long chatId,
+        /* 消息ID */
+        Long messageId
+) {
 }

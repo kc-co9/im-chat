@@ -4,7 +4,7 @@
 
 `ImChat` 是一个基于 `Spring Boot` 的即时通讯服务，主要覆盖用户、好友、群组、会话、私聊消息与群聊消息等业务场景。项目按照 `DDD`（`Domain-Driven Design`，领域驱动设计）进行建模和模块拆分，将领域模型、用例编排、接口协议和基础设施实现分离，降低业务逻辑与技术细节之间的耦合。
 
-当前项目采用 `Maven` 多模块组织，根项目仍命名为 `im-chat`，业务启动模块为 `im-bootstrap`。
+当前项目采用 `Java 21`、`Spring Boot 3` 和 `Maven` 多模块组织，根项目仍命名为 `im-chat`，业务启动模块为 `im-bootstrap`。
 
 ## 设计
 
@@ -188,7 +188,7 @@ im-common          -> no business module dependency
 |------|------|----------|
 | `im-common` | 公共模块 | 通用常量、异常、基础枚举、响应模型、工具类 |
 | `im-domain` | 领域层 | 聚合根、实体、值对象、领域服务、领域事件、仓储接口 |
-| `im-application` | 应用层 | 应用服务、用例编排、事务边界、应用 DTO、应用事件发布接口、锁和通知抽象 |
+| `im-application` | 应用层 | 应用服务、用例编排、事务边界、应用 DTO、命令查询模型、应用事件发布接口、锁和通知抽象 |
 | `im-infrastructure` | 基础设施层 | MySQL 仓储实现、MyBatis 实体和 Mapper、Redis 缓存、JetCache、Redisson、JWT、BCrypt、Spring 事件发布 |
 | `im-interfaces` | 接口层 | HTTP Controller、WebSocket Controller、事件 Listener、IO 模型、接口转换器、Web 配置 |
 | `im-bootstrap` | 启动层 | `ImChatApplication`、`application.yml`、日志配置、启动测试 |
@@ -204,6 +204,13 @@ im-common          -> no business module dependency
 | 聊天会话 | `/im/chat` | 会话列表、打开私聊、打开群聊、退出和隐藏会话 |
 | 群组 | `/im/group` | 群组创建、成员管理、群设置、群详情、群消息查询 |
 | 私聊消息 | `/im/private` | 私聊消息详情和历史查询 |
+
+接口文档使用 `springdoc-openapi` 暴露：
+
+| 地址 | 说明 |
+|------|------|
+| `/swagger-ui.html` | Swagger UI |
+| `/v3/api-docs` | OpenAPI 文档 |
 
 ### WebSocket
 
@@ -224,14 +231,14 @@ WebSocket 连接入口为 `/ws`，应用消息前缀为 `/chat`，订阅代理�
 
 | 分类 | 技术 |
 |------|------|
-| 基础框架 | `Spring Boot 2.7.18` |
+| 基础框架 | `Spring Boot 3.5.14` |
 | 构建工具 | `Maven` |
-| 语言版本 | `Java 8` |
-| 持久化 | `MyBatis`、`MyBatis-Plus`、`MySQL` |
+| 语言版本 | `Java 21` |
+| 持久化 | `MyBatis`、`MyBatis-Plus`、`MySQL`、`H2` |
 | 数据源 | `Druid` |
 | 缓存 | `Redis`、`JetCache`、`Caffeine` |
 | Redis 客户端 | `Redisson`、`Spring Data Redis` |
-| 接口协议 | `Spring MVC`、`Spring WebSocket`、`STOMP` |
+| 接口协议 | `Spring MVC`、`Spring WebSocket`、`STOMP`、`Springdoc OpenAPI` |
 | 对象转换 | `MapStruct` |
 | 认证与安全 | `JWT`、`BCrypt` |
 | 测试 | `JUnit 5`、`Mockito`、`H2` |
@@ -240,7 +247,7 @@ WebSocket 连接入口为 `/ws`，应用消息前缀为 `/chat`，订阅代理�
 
 ### 环境准备
 
-1. 安装 `JDK 8+`。
+1. 安装 `JDK 21`。
 2. 安装 `Maven`。
 3. 准备 `MySQL`，默认数据库为 `im_chat`。
 4. 准备 `Redis`，默认地址为 `127.0.0.1:6379`。
@@ -305,3 +312,4 @@ com.co.kc.imchat.ImChatApplication
 4. 新增数据库、Redis、消息发布、令牌、加密、分布式锁等技术实现时放在 `im-infrastructure`。
 5. 新增通用工具、通用异常或跨模块基础类型时放在 `im-common`。
 6. 不允许领域层反向依赖应用层、接口层或基础设施层。
+7. 应用层命令、查询和通知模型优先使用 `record` 表达不可变输入输出模型。

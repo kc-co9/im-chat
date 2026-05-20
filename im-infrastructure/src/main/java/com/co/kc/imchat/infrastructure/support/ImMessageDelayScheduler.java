@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 
-import java.util.Date;
+import java.time.Instant;
 import java.util.function.Consumer;
 
 @Component
@@ -18,6 +18,6 @@ public class ImMessageDelayScheduler implements ImMessageConfirmableScheduler {
 
     @Override
     public void schedule(NotifierTask task) {
-        taskScheduler.schedule(() -> notifierTaskConsumer.accept(task), new Date(task.getNextAtMillis()));
+        taskScheduler.schedule(() -> notifierTaskConsumer.accept(task), Instant.ofEpochMilli(task.getNextAtMillis()));
     }
 }

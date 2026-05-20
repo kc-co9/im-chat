@@ -2,7 +2,7 @@ package com.co.kc.imchat.interfaces.model.io.friend;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 
 @Data
 public class FriendBlockRequest {

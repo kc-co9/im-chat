@@ -91,7 +91,7 @@ class FriendAppServiceTest {
         assertThat(lock).isNotNull();
         assertThat(lock.scene()).isEqualTo(DistributeLockScene.FRIEND_ADD);
         assertThat(lock.key()).isEqualTo(
-                "#LockKeys.userPair(#command.userId, #command.friendUserId)");
+                "#LockKeys.userPair(#command.userId(), #command.friendUserId())");
     }
 
     @Test

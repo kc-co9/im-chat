@@ -8,33 +8,33 @@ import com.co.kc.imchat.interfaces.model.io.im.ImPrivateMessageHistoryQueryRespo
 import com.co.kc.imchat.interfaces.model.io.im.ImPrivateMessageDetailQueryResponse;
 import com.co.kc.imchat.interfaces.support.context.UserContextUtils;
 import com.co.kc.imchat.interfaces.transformer.ImMessageHttpIoTransformer;
-import io.swagger.annotations.Api;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 
-@Api("用户私聊接口")
+@Tag(name = "用户私聊接口")
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/im/private")
+@RequestMapping(value = "/im/private")
 public class PrivateMessageController {
     private final PrivateMessageAppService privateMessageAppService;
 
-    @GetMapping("/queryMessageDetail")
-    public ImPrivateMessageDetailQueryResponse queryMessageDetail(@RequestParam("chatId") Long chatId,
-                                                                  @RequestParam("messageToken") String messageToken) {
+    @GetMapping(value = "/queryMessageDetail")
+    public ImPrivateMessageDetailQueryResponse queryMessageDetail(@RequestParam(name = "chatId") Long chatId,
+                                                                  @RequestParam(name = "messageToken") String messageToken) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageDetailQuery query = new ImPrivateMessageDetailQuery(chatId, userId, messageToken);
         ImPrivateMessageDTO imPrivateMessageDTO = privateMessageAppService.queryMessageDetail(query);
         return ImMessageHttpIoTransformer.INSTANCE.imPrivateMessageDetailQueryResponseFrom(imPrivateMessageDTO);
     }
 
-    @GetMapping("/queryHistoryMessage")
-    public ImPrivateMessageHistoryQueryResponse queryHistoryMessage(@RequestParam("chatId") Long chatId,
+    @GetMapping(value = "/queryHistoryMessage")
+    public ImPrivateMessageHistoryQueryResponse queryHistoryMessage(@RequestParam(name = "chatId") Long chatId,
                                                                     @RequestParam(value = "lastMessageId", required = false) Long lastMessageId,
-                                                                    @RequestParam("count") Integer count) {
+                                                                    @RequestParam(name = "count") Integer count) {
         Long userId = UserContextUtils.get().getUserId();
         ImPrivateMessageHistoryQuery query = new ImPrivateMessageHistoryQuery(chatId, userId, lastMessageId, count);
         List<ImPrivateMessageDTO> messageList = privateMessageAppService.queryHistoryMessage(query);

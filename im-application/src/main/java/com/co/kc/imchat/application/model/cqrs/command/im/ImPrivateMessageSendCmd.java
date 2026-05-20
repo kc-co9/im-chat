@@ -1,13 +1,17 @@
 package com.co.kc.imchat.application.model.cqrs.command.im;
 
 import com.co.kc.imchat.domain.message.model.ImMessageType;
-import lombok.Data;
 
-@Data
-public class ImPrivateMessageSendCmd {
-    private Long userId;
-    private Long chatId;
-    private String messageToken;
-    private ImMessageType messageType;
-    private String messageContent;
+public record ImPrivateMessageSendCmd(
+        /* 用户ID */
+        Long userId,
+        /* 聊天ID */
+        Long chatId,
+        /* 消息幂等 token */
+        String messageToken,
+        /* 消息类型 */
+        ImMessageType messageType,
+        /* 消息内容 */
+        String messageContent
+) {
 }

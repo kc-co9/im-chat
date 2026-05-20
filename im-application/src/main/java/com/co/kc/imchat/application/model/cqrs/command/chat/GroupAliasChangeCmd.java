@@ -1,12 +1,11 @@
 package com.co.kc.imchat.application.model.cqrs.command.chat;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-
-@Getter
-@AllArgsConstructor
-public class GroupAliasChangeCmd {
-    private Long userId;
-    private Long chatId;
-    private String groupAlias;
+public record GroupAliasChangeCmd(
+        /* 用户ID */
+        Long userId,
+        /* 聊天ID */
+        Long chatId,
+        /* 群聊备注 */
+        String groupAlias
+) {
 }

@@ -57,8 +57,9 @@ spring:
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
-    mode: HTML5
+    mode: HTML
     encoding: UTF-8
+    check-template-location: false
     #热部署文件，页面不产生缓存，及时更新
     cache: false
     servlet:

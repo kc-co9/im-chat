@@ -21,7 +21,7 @@ public class ImGroupMessageSentConsumer implements RedisSubscriber<GroupSentNoti
 
     @Override
     public void onMessage(GroupSentNotifyCmd message) {
-        messagingTemplate.convertAndSendToUser(String.valueOf(message.getReceiverId()), QUEUE_GROUP_MESSAGE_SENT, message);
+        messagingTemplate.convertAndSendToUser(String.valueOf(message.receiverId()), QUEUE_GROUP_MESSAGE_SENT, message);
     }
 
 }

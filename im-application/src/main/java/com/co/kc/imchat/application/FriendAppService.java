@@ -39,7 +39,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FriendAppService {
     private static final String FRIEND_PAIR_LOCK_KEY =
-            "#LockKeys.userPair(#command.userId, #command.friendUserId)";
+            "#LockKeys.userPair(#command.userId(), #command.friendUserId())";
 
     private final UserRepository userRepository;
     private final FriendRepository friendRepository;
@@ -52,8 +52,8 @@ public class FriendAppService {
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     @DistributeLock(scene = DistributeLockScene.FRIEND_ADD, key = FRIEND_PAIR_LOCK_KEY)
     public void addFriend(FriendAddCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        UserId friendUserId = new UserId(command.getFriendUserId());
+        UserId userId = new UserId(command.userId());
+        UserId friendUserId = new UserId(command.friendUserId());
 
         User user = userRepository.find(userId)
                 .orElseThrow(() -> new NotFoundException("用户不存在"));
@@ -75,8 +75,8 @@ public class FriendAppService {
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     @DistributeLock(scene = DistributeLockScene.FRIEND_ADD, key = FRIEND_PAIR_LOCK_KEY)
     public void blockFriend(FriendBlockCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        UserId friendUserId = new UserId(command.getFriendUserId());
+        UserId userId = new UserId(command.userId());
+        UserId friendUserId = new UserId(command.friendUserId());
 
         Friend friend = friendRepository.find(new FriendEdge(userId, friendUserId))
                 .orElseThrow(() -> new NotFoundException("好友不存在"));
@@ -87,8 +87,8 @@ public class FriendAppService {
     @DistributeLock(scene = DistributeLockScene.FRIEND_ADD, key = FRIEND_PAIR_LOCK_KEY)
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void unblockFriend(FriendUnblockCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        UserId friendUserId = new UserId(command.getFriendUserId());
+        UserId userId = new UserId(command.userId());
+        UserId friendUserId = new UserId(command.friendUserId());
 
         Friend friend = friendRepository.find(new FriendEdge(userId, friendUserId))
                 .orElseThrow(() -> new NotFoundException("好友不存在"));
@@ -99,8 +99,8 @@ public class FriendAppService {
     @DistributeLock(scene = DistributeLockScene.FRIEND_ADD, key = FRIEND_PAIR_LOCK_KEY)
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void deleteFriend(FriendDeleteCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        UserId friendUserId = new UserId(command.getFriendUserId());
+        UserId userId = new UserId(command.userId());
+        UserId friendUserId = new UserId(command.friendUserId());
 
         Friend friend = friendRepository.find(new FriendEdge(userId, friendUserId))
                 .orElseThrow(() -> new NotFoundException("好友不存在"));
@@ -116,9 +116,9 @@ public class FriendAppService {
     @DistributeLock(scene = DistributeLockScene.FRIEND_ADD, key = FRIEND_PAIR_LOCK_KEY)
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void changeFriendAlias(FriendAliasChangeCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        UserId friendUserId = new UserId(command.getFriendUserId());
-        FriendAlias friendAlias = new FriendAlias(command.getFriendAlias());
+        UserId userId = new UserId(command.userId());
+        UserId friendUserId = new UserId(command.friendUserId());
+        FriendAlias friendAlias = new FriendAlias(command.friendAlias());
 
         Friend friend = friendRepository.find(new FriendEdge(userId, friendUserId))
                 .orElseThrow(() -> new NotFoundException("好友不存在"));
@@ -127,14 +127,14 @@ public class FriendAppService {
     }
 
     public List<FriendItemDTO> getFriendList(FriendListQuery query) {
-        UserId userId = new UserId(query.getUserId());
+        UserId userId = new UserId(query.userId());
         List<Friend> friends = friendRepository.find(userId);
         return FriendAppTransformer.INSTANCE.friendItemListFrom(friends);
     }
 
     public FriendDetailDTO getFriendDetail(FriendDetailQuery query) {
-        UserId userId = new UserId(query.getUserId());
-        UserId friendUserId = new UserId(query.getFriendUserId());
+        UserId userId = new UserId(query.userId());
+        UserId friendUserId = new UserId(query.friendUserId());
 
         User user = userRepository.find(userId)
                 .orElseThrow(() -> new NotFoundException("用户不存在"));
@@ -144,7 +144,7 @@ public class FriendAppService {
     }
 
     public List<FriendSearchDTO> searchFriends(FriendSearchQuery query) {
-        UserEmail email = new UserEmail(query.getEmail());
+        UserEmail email = new UserEmail(query.email());
         return userRepository.find(email)
                 .map(FriendAppTransformer.INSTANCE::friendSearchDtoFrom)
                 .map(Collections::singletonList)

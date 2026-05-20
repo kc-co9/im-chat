@@ -34,6 +34,7 @@ public interface ImMessageAppTransformer {
             @Mapping(target = "content", source = "visibleContent"),
             @Mapping(target = "chatId", source = "chatId.value"),
             @Mapping(target = "senderId", source = "senderId.value"),
+            @Mapping(target = "receiverId", source = "userId.value"),
             @Mapping(target = "status", source = "status"),
             @Mapping(target = "sendTime", source = "sendTime"),
             @Mapping(target = "readTime", source = "readTime"),

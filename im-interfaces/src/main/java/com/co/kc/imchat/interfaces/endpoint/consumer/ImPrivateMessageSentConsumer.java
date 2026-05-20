@@ -21,6 +21,6 @@ public class ImPrivateMessageSentConsumer implements RedisSubscriber<ImPrivateSe
 
     @Override
     public void onMessage(ImPrivateSentNotifyCmd message) {
-        messagingTemplate.convertAndSendToUser(String.valueOf(message.getReceiverId()), QUEUE_PRIVATE_MESSAGE_SENT, message);
+        messagingTemplate.convertAndSendToUser(String.valueOf(message.receiverId()), QUEUE_PRIVATE_MESSAGE_SENT, message);
     }
 }

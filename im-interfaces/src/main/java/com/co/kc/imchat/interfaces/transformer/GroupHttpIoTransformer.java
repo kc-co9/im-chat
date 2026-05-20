@@ -5,6 +5,7 @@ import com.co.kc.imchat.application.model.cqrs.dto.group.GroupItemDTO;
 import com.co.kc.imchat.interfaces.model.io.group.GroupDetailResponse;
 import com.co.kc.imchat.interfaces.model.io.group.GroupListResponse;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 
 import java.util.List;
@@ -15,6 +16,7 @@ public interface GroupHttpIoTransformer {
 
     List<GroupListResponse.GroupItem> groupItemListFrom(List<GroupItemDTO> groupList);
 
+    @Mapping(target = "ownerId", ignore = true)
     GroupListResponse.GroupItem groupItemFrom(GroupItemDTO groupItem);
 
     GroupDetailResponse groupDetailResponseFrom(GroupDetailDTO detail);

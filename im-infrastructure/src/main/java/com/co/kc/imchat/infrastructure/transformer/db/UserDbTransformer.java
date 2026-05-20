@@ -18,7 +18,10 @@ public interface UserDbTransformer {
             @Mapping(target = "userId", source = "id.value"),
             @Mapping(target = "email", source = "email.value"),
             @Mapping(target = "username", source = "username.value"),
-            @Mapping(target = "password", source = "password.value")})
+            @Mapping(target = "password", source = "password.value"),
+            @Mapping(target = "createTime", ignore = true),
+            @Mapping(target = "updateTime", ignore = true),
+            @Mapping(target = "isDeleted", ignore = true)})
     DbUser dbUserFrom(User user);
 
 }

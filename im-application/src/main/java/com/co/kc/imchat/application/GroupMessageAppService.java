@@ -64,14 +64,14 @@ public class GroupMessageAppService {
     private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
 
-    @DistributeLock(scene = DistributeLockScene.GROUP_MESSAGE_SEND, key = "#command.chatId + ':' + #command.messageToken")
+    @DistributeLock(scene = DistributeLockScene.GROUP_MESSAGE_SEND, key = "#command.chatId() + ':' + #command.messageToken()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void sendMessage(GroupMessageSendCmd command) {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
-        ImChatId senderChatId = new ImChatId(command.getChatId());
-        UserId senderId = new UserId(command.getSenderId());
-        ImMessageToken messageToken = new ImMessageToken(command.getMessageToken());
-        ImMessageContent messageContent = new ImMessageContent(command.getMessageType(), command.getMessageContent());
+        ImChatId senderChatId = new ImChatId(command.chatId());
+        UserId senderId = new UserId(command.senderId());
+        ImMessageToken messageToken = new ImMessageToken(command.messageToken());
+        ImMessageContent messageContent = new ImMessageContent(command.messageType(), command.messageContent());
 
         ImGroupChat senderChat = imGroupChatRepository.find(senderChatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(senderChat, senderId);
@@ -116,12 +116,12 @@ public class GroupMessageAppService {
         }
     }
 
-    @DistributeLock(scene = DistributeLockScene.GROUP_MESSAGE_REVOKE, key = "#command.chatId + ':' + #command.messageId")
+    @DistributeLock(scene = DistributeLockScene.GROUP_MESSAGE_REVOKE, key = "#command.chatId() + ':' + #command.messageId()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void revokeMessage(GroupMessageRevokeCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
-        ImMessageId messageId = new ImMessageId(command.getMessageId());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
+        ImMessageId messageId = new ImMessageId(command.messageId());
 
         ImGroupChat senderChat = imGroupChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(senderChat, userId);
@@ -158,9 +158,9 @@ public class GroupMessageAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void receiveMessage(GroupMessageReceiveCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
-        ImMessageId messageId = new ImMessageId(command.getMessageId());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
+        ImMessageId messageId = new ImMessageId(command.messageId());
 
         ImGroupChat groupChat = imGroupChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(groupChat, userId);
@@ -176,9 +176,9 @@ public class GroupMessageAppService {
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void readMessage(GroupMessageReadCmd command) {
-        UserId userId = new UserId(command.getUserId());
-        ImChatId chatId = new ImChatId(command.getChatId());
-        ImMessageId messageId = new ImMessageId(command.getMessageId());
+        UserId userId = new UserId(command.userId());
+        ImChatId chatId = new ImChatId(command.chatId());
+        ImMessageId messageId = new ImMessageId(command.messageId());
 
         ImGroupChat groupChat = imGroupChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(groupChat, userId);
@@ -195,9 +195,9 @@ public class GroupMessageAppService {
     }
 
     public List<GroupMessageDTO> queryHistoryMessage(GroupMessageHistoryQuery query) {
-        UserId userId = new UserId(query.getUserId());
-        ImChatId chatId = new ImChatId(query.getChatId());
-        ImMessageId lastMessageId = FunctionUtils.mappingOrNull(query.getLastMessageId(), ImMessageId::new);
+        UserId userId = new UserId(query.userId());
+        ImChatId chatId = new ImChatId(query.chatId());
+        ImMessageId lastMessageId = FunctionUtils.mappingOrNull(query.lastMessageId(), ImMessageId::new);
 
         ImGroupChat groupChat = imGroupChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(groupChat, userId);
@@ -206,14 +206,14 @@ public class GroupMessageAppService {
         groupService.ensureGroupMember(group, userId);
 
         List<ImGroupInboxMessage> messageList =
-                imGroupInboxMessageRepository.queryHistory(chatId, userId, lastMessageId, query.getCount());
+                imGroupInboxMessageRepository.queryHistory(chatId, userId, lastMessageId, query.count());
         return ImMessageAppTransformer.INSTANCE.groupMessageDtoListFrom(messageList);
     }
 
     public GroupMessageDTO queryMessageDetail(GroupMessageDetailQuery query) {
-        UserId userId = new UserId(query.getUserId());
-        ImChatId chatId = new ImChatId(query.getChatId());
-        ImMessageToken messageToken = new ImMessageToken(query.getMessageToken());
+        UserId userId = new UserId(query.userId());
+        ImChatId chatId = new ImChatId(query.chatId());
+        ImMessageToken messageToken = new ImMessageToken(query.messageToken());
 
         ImGroupChat groupChat = imGroupChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(groupChat, userId);

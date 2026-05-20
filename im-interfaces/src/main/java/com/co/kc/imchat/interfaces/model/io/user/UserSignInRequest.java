@@ -2,7 +2,7 @@ package com.co.kc.imchat.interfaces.model.io.user;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 
 @Data
 public class UserSignInRequest {

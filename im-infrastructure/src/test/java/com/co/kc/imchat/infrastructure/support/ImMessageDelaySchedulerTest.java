@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.ScheduledFuture;
@@ -42,6 +44,11 @@ class ImMessageDelaySchedulerTest {
         }
 
         @Override
+        public ScheduledFuture<?> schedule(Runnable task, Instant startTime) {
+            return schedule(task, Date.from(startTime));
+        }
+
+        @Override
         public ScheduledFuture<?> schedule(Runnable task, Trigger trigger) {
             throw new UnsupportedOperationException();
         }
@@ -57,12 +64,32 @@ class ImMessageDelaySchedulerTest {
         }
 
         @Override
+        public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, Instant startTime, Duration period) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, Duration period) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Date startTime, long delay) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, long delay) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Instant startTime, Duration delay) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Duration delay) {
             throw new UnsupportedOperationException();
         }
     }

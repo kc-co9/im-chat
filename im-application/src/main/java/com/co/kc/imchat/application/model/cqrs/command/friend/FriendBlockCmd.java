@@ -1,11 +1,9 @@
 package com.co.kc.imchat.application.model.cqrs.command.friend;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-
-@Getter
-@AllArgsConstructor
-public class FriendBlockCmd {
-    private Long userId;
-    private Long friendUserId;
+public record FriendBlockCmd(
+        /* 用户ID */
+        Long userId,
+        /* 好友用户ID */
+        Long friendUserId
+) {
 }

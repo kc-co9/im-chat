@@ -1,14 +1,11 @@
 package com.co.kc.imchat.application.model.cqrs.query;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class ImPrivateMessageDetailQuery {
-    private Long chatId;
-    private Long userId;
-    private String messageToken;
+public record ImPrivateMessageDetailQuery(
+        /* 聊天ID */
+        Long chatId,
+        /* 用户ID */
+        Long userId,
+        /* 消息 token */
+        String messageToken
+) {
 }
