@@ -1,9 +1,8 @@
 package com.co.kc.imchat.domain.shared.model;
 
+import com.co.kc.imchat.common.utils.AssertUtils;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
-
-import java.util.Objects;
 
 /**
  * 委托ID-共享领域对象
@@ -22,12 +21,8 @@ public class Identification {
     }
 
     public void setPkId(Long pkId) {
-        if (Objects.isNull(pkId)) {
-            throw new IllegalArgumentException("id is null");
-        }
-        if (pkId <= 0L) {
-            throw new IllegalArgumentException("id is less than or equal to 0");
-        }
+        AssertUtils.domainPropNotNull("数据库主键ID不能为空", pkId);
+        AssertUtils.domainPropTrue("数据库主键ID必须大于0", pkId > 0L);
         this.pkId = pkId;
     }
 }

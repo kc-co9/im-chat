@@ -28,8 +28,8 @@ class PrivateDomainModelTest {
         message.setStatus(ImPrivateMessageStatus.SENT);
         message.setSendTime(LocalDateTime.now());
 
-        assertThat(message.getSenderId().getValue()).isEqualTo(1L);
-        assertThat(message.getUserId().getValue()).isEqualTo(1L);
+        assertThat(message.getSenderId().value()).isEqualTo(1L);
+        assertThat(message.getUserId().value()).isEqualTo(1L);
         assertThat(message.getStatus()).isEqualTo(ImPrivateMessageStatus.SENT);
     }
 

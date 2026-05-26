@@ -25,20 +25,21 @@ class ImChatAppTransformerTest {
     @Test
     void chatItemContainsLastMessageAndSendTime() {
         LocalDateTime sendTime = LocalDateTime.of(2026, 5, 15, 18, 30);
-        ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
-        descriptor.setChatId(new ImChatId(101L));
-        descriptor.setChatName(new ImChatName("alice"));
-        descriptor.setChatType(ImChatType.PRIVATE);
-        descriptor.setChatLastMessage(ImPrivateInboxMessage.builder()
-                .id(new ImMessageId(900L))
-                .token(new ImMessageToken("token-900"))
-                .content(new ImMessageContent(ImMessageType.TEXT, "hello"))
-                .chatId(new ImChatId(101L))
-                .userId(new UserId(1L))
-                .senderId(new UserId(2L))
-                .status(ImPrivateMessageStatus.SENT)
-                .sendTime(sendTime)
-                .build());
+        ImUserChatDescriptor descriptor = new ImUserChatDescriptor(
+                new ImChatId(101L),
+                new ImChatName("alice"),
+                ImChatType.PRIVATE,
+                ImPrivateInboxMessage.builder()
+                        .id(new ImMessageId(900L))
+                        .token(new ImMessageToken("token-900"))
+                        .content(new ImMessageContent(ImMessageType.TEXT, "hello"))
+                        .chatId(new ImChatId(101L))
+                        .userId(new UserId(1L))
+                        .senderId(new UserId(2L))
+                        .status(ImPrivateMessageStatus.SENT)
+                        .sendTime(sendTime)
+                        .build(),
+                null);
 
         ImChatItemDTO dto = ImChatAppTransformer.INSTANCE.imChatItemDtoFrom(descriptor);
 
@@ -49,20 +50,21 @@ class ImChatAppTransformerTest {
 
     @Test
     void chatItemHidesRevokedLastMessageContent() {
-        ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
-        descriptor.setChatId(new ImChatId(101L));
-        descriptor.setChatName(new ImChatName("alice"));
-        descriptor.setChatType(ImChatType.PRIVATE);
-        descriptor.setChatLastMessage(ImPrivateInboxMessage.builder()
-                .id(new ImMessageId(900L))
-                .token(new ImMessageToken("token-900"))
-                .content(new ImMessageContent(ImMessageType.TEXT, "secret"))
-                .chatId(new ImChatId(101L))
-                .userId(new UserId(1L))
-                .senderId(new UserId(2L))
-                .status(ImPrivateMessageStatus.REVOKED)
-                .sendTime(LocalDateTime.now())
-                .build());
+        ImUserChatDescriptor descriptor = new ImUserChatDescriptor(
+                new ImChatId(101L),
+                new ImChatName("alice"),
+                ImChatType.PRIVATE,
+                ImPrivateInboxMessage.builder()
+                        .id(new ImMessageId(900L))
+                        .token(new ImMessageToken("token-900"))
+                        .content(new ImMessageContent(ImMessageType.TEXT, "secret"))
+                        .chatId(new ImChatId(101L))
+                        .userId(new UserId(1L))
+                        .senderId(new UserId(2L))
+                        .status(ImPrivateMessageStatus.REVOKED)
+                        .sendTime(LocalDateTime.now())
+                        .build(),
+                null);
 
         ImChatItemDTO dto = ImChatAppTransformer.INSTANCE.imChatItemDtoFrom(descriptor);
 
@@ -71,10 +73,12 @@ class ImChatAppTransformerTest {
 
     @Test
     void chatItemAllowsEmptyLastMessage() {
-        ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
-        descriptor.setChatId(new ImChatId(101L));
-        descriptor.setChatName(new ImChatName("alice"));
-        descriptor.setChatType(ImChatType.PRIVATE);
+        ImUserChatDescriptor descriptor = new ImUserChatDescriptor(
+                new ImChatId(101L),
+                new ImChatName("alice"),
+                ImChatType.PRIVATE,
+                null,
+                null);
 
         ImChatItemDTO dto = ImChatAppTransformer.INSTANCE.imChatItemDtoFrom(descriptor);
 

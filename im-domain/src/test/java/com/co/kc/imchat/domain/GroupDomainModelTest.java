@@ -42,7 +42,7 @@ class GroupDomainModelTest {
 
         group.changeMemberCount(new MemberCount(3));
 
-        assertThat(group.getMemberCount().getValue()).isEqualTo(3);
+        assertThat(group.getMemberCount().value()).isEqualTo(3);
     }
 
     @Test
@@ -56,7 +56,7 @@ class GroupDomainModelTest {
                 .build();
 
         assertThatThrownBy(() -> group.changeMemberCount(null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(IllegalStateException.class)
                 .hasMessage("群人数不能为空");
     }
 
@@ -66,7 +66,7 @@ class GroupDomainModelTest {
 
         group.transferOwner(new UserId(1L), new UserId(2L));
 
-        assertThat(group.getOwnerId().getValue()).isEqualTo(2L);
+        assertThat(group.getOwnerId().value()).isEqualTo(2L);
     }
 
     @Test
@@ -116,7 +116,7 @@ class GroupDomainModelTest {
 
         group.changeNotification(new UserId(1L), new GroupNotification("notice"));
 
-        assertThat(group.getNotification().getValue()).isEqualTo("notice");
+        assertThat(group.getNotification().value()).isEqualTo("notice");
     }
 
     @Test
@@ -134,7 +134,7 @@ class GroupDomainModelTest {
 
         member.changeUserAlias(new GroupUserAlias("in-group"));
 
-        assertThat(member.getUserAlias().getValue()).isEqualTo("in-group");
+        assertThat(member.getUserAlias().value()).isEqualTo("in-group");
     }
 
     @Test
@@ -143,20 +143,20 @@ class GroupDomainModelTest {
 
         chat.changeGroupAlias(new GroupAlias("work"));
 
-        assertThat(chat.getGroupAlias().getValue()).isEqualTo("work");
+        assertThat(chat.getGroupAlias().value()).isEqualTo("work");
     }
 
     @Test
     void memberCountRejectsNegativeValue() {
         assertThatThrownBy(() -> new MemberCount(-1))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(IllegalStateException.class)
                 .hasMessage("群人数不能小于0");
     }
 
     @Test
     void memberCountRejectsTooLargeValue() {
         assertThatThrownBy(() -> new MemberCount(GroupMembership.MAX_MEMBER_COUNT + 1))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(IllegalStateException.class)
                 .hasMessage("群人数不能超过 500 人");
     }
 
@@ -173,7 +173,7 @@ class GroupDomainModelTest {
 
         chat.receiveLatestMessage(message, false);
 
-        assertThat(chat.getLastMessageId().getValue()).isEqualTo(900L);
+        assertThat(chat.getLastMessageId().value()).isEqualTo(900L);
         assertThat(chat.getReadMessageId()).isNull();
         assertThat(chat.getUnreadMessageCount()).isEqualTo(1);
     }
@@ -191,8 +191,8 @@ class GroupDomainModelTest {
 
         chat.receiveLatestMessage(message, true);
 
-        assertThat(chat.getLastMessageId().getValue()).isEqualTo(900L);
-        assertThat(chat.getReadMessageId().getValue()).isEqualTo(900L);
+        assertThat(chat.getLastMessageId().value()).isEqualTo(900L);
+        assertThat(chat.getReadMessageId().value()).isEqualTo(900L);
         assertThat(chat.getUnreadMessageCount()).isZero();
     }
 
@@ -209,7 +209,7 @@ class GroupDomainModelTest {
 
         chat.readToLatest();
 
-        assertThat(chat.getReadMessageId().getValue()).isEqualTo(900L);
+        assertThat(chat.getReadMessageId().value()).isEqualTo(900L);
         assertThat(chat.getUnreadMessageCount()).isZero();
     }
 

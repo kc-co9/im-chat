@@ -56,9 +56,9 @@ public class GroupService {
                 .type(ImChatType.GROUP)
                 .ownerId(ownerId)
                 .name(groupName)
-                .memberCount(new MemberCount(membership.getMembers().size()))
+                .memberCount(new MemberCount(membership.members().size()))
                 .build();
-        return new GroupCreation(group, membership.getMembers());
+        return new GroupCreation(group, membership.members());
     }
 
     public GroupMembership createMembership(GroupId groupId, UserId ownerId, List<UserId> memberIds) {
@@ -149,7 +149,7 @@ public class GroupService {
         return groups.stream()
                 .map(group -> new UserGroupDescriptor(
                         group.getId(), group.getName(), groupChatMap.get(group.getId()), group.getMemberCount()))
-                .filter(descriptor -> descriptor.getChat() != null)
+                .filter(descriptor -> descriptor.chat() != null)
                 .collect(Collectors.toList());
     }
 
@@ -183,12 +183,12 @@ public class GroupService {
 
     private MemberDisplayName decideDisplayName(GroupMember member, Friend friend, User user) {
         if (friend != null) {
-            return new MemberDisplayName(friend.displayName().getValue());
+            return new MemberDisplayName(friend.displayName().value());
         }
         if (member.getUserAlias() != null) {
-            return new MemberDisplayName(member.getUserAlias().getValue());
+            return new MemberDisplayName(member.getUserAlias().value());
         }
-        return user == null || user.getUsername() == null ? null : new MemberDisplayName(user.getUsername().getValue());
+        return user == null || user.getUsername() == null ? null : new MemberDisplayName(user.getUsername().value());
     }
 
     private GroupMember newGroupMember(GroupId groupId, UserId userId, LocalDateTime joinTime) {

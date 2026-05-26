@@ -71,10 +71,10 @@ class GroupDomainServiceTest {
                 new UserId(1L),
                 Arrays.asList(new UserId(2L), new UserId(1L)));
 
-        assertThat(membership.getMembers())
-                .extracting(member -> member.getUserId().getValue())
+        assertThat(membership.members())
+                .extracting(member -> member.getUserId().value())
                 .containsExactly(1L, 2L);
-        assertThat(membership.getMembers())
+        assertThat(membership.members())
                 .allSatisfy(member -> assertThat(member.getJoinTime()).isNotNull());
     }
 
@@ -85,8 +85,8 @@ class GroupDomainServiceTest {
 
         GroupMembership membership = service.createMembership(groupId, new UserId(1L), null);
 
-        assertThat(membership.getMembers())
-                .extracting(member -> member.getUserId().getValue())
+        assertThat(membership.members())
+                .extracting(member -> member.getUserId().value())
                 .containsExactly(1L);
     }
 
@@ -102,12 +102,12 @@ class GroupDomainServiceTest {
                 new GroupName("group"),
                 Arrays.asList(new UserId(2L), ownerId));
 
-        assertThat(creation.getGroup().getId()).isEqualTo(groupId);
-        assertThat(creation.getGroup().getOwnerId()).isEqualTo(ownerId);
-        assertThat(creation.getGroup().getName().getValue()).isEqualTo("group");
-        assertThat(creation.getGroup().getMemberCount().getValue()).isEqualTo(2);
-        assertThat(creation.getMembers())
-                .extracting(member -> member.getUserId().getValue())
+        assertThat(creation.group().getId()).isEqualTo(groupId);
+        assertThat(creation.group().getOwnerId()).isEqualTo(ownerId);
+        assertThat(creation.group().getName().value()).isEqualTo("group");
+        assertThat(creation.group().getMemberCount().value()).isEqualTo(2);
+        assertThat(creation.members())
+                .extracting(member -> member.getUserId().value())
                 .containsExactly(1L, 2L);
     }
 
@@ -123,7 +123,7 @@ class GroupDomainServiceTest {
                 Arrays.asList(new UserId(1L), new UserId(2L), new UserId(2L)));
 
         assertThat(members)
-                .extracting(member -> member.getUserId().getValue())
+                .extracting(member -> member.getUserId().value())
                 .containsExactly(2L);
     }
 
@@ -171,7 +171,7 @@ class GroupDomainServiceTest {
         Optional<ImGroupChat> result = membership.findMemberChat(new UserId(2L));
 
         assertThat(result).isPresent();
-        assertThat(result.get().getId().getValue()).isEqualTo(102L);
+        assertThat(result.get().getId().value()).isEqualTo(102L);
     }
 
     @Test
@@ -182,12 +182,12 @@ class GroupDomainServiceTest {
         GroupChatMembership membership = service.createGroupChatMembership(
                 Arrays.asList(groupMember(groupId, 1L), groupMember(groupId, 2L)));
 
-        assertThat(membership.getGroupId()).isEqualTo(groupId);
-        assertThat(membership.getChats())
-                .extracting(chat -> chat.getId().getValue())
+        assertThat(membership.groupId()).isEqualTo(groupId);
+        assertThat(membership.chats())
+                .extracting(chat -> chat.getId().value())
                 .containsExactly(101L, 102L);
-        assertThat(membership.getChats())
-                .extracting(chat -> chat.getUserId().getValue())
+        assertThat(membership.chats())
+                .extracting(chat -> chat.getUserId().value())
                 .containsExactly(1L, 2L);
     }
 
@@ -200,9 +200,9 @@ class GroupDomainServiceTest {
 
         GroupChatMembership membership = service.findGroupChatMembership(new GroupId(1001L));
 
-        assertThat(membership.getGroupId().getValue()).isEqualTo(1001L);
-        assertThat(membership.getChats())
-                .extracting(chat -> chat.getId().getValue())
+        assertThat(membership.groupId().value()).isEqualTo(1001L);
+        assertThat(membership.chats())
+                .extracting(chat -> chat.getId().value())
                 .containsExactly(101L, 102L);
     }
 
@@ -216,11 +216,11 @@ class GroupDomainServiceTest {
 
         GroupChatJoin join = service.joinGroupChat(groupId, Collections.singletonList(groupMember(groupId, 2L)));
 
-        assertThat(join.getNewGroupChats())
-                .extracting(chat -> chat.getId().getValue())
+        assertThat(join.newGroupChats())
+                .extracting(chat -> chat.getId().value())
                 .containsExactly(102L);
-        assertThat(join.getGroupChats())
-                .extracting(chat -> chat.getUserId().getValue())
+        assertThat(join.groupChats())
+                .extracting(chat -> chat.getUserId().value())
                 .containsExactly(1L, 2L);
     }
 
@@ -244,17 +244,17 @@ class GroupDomainServiceTest {
                 Arrays.asList(alpha, beta, missingChat));
 
         assertThat(descriptors)
-                .extracting(descriptor -> descriptor.getId().getValue())
+                .extracting(descriptor -> descriptor.id().value())
                 .containsExactly(1001L, 1002L);
         assertThat(descriptors)
-                .extracting(descriptor -> descriptor.getChat().getId().getValue())
+                .extracting(descriptor -> descriptor.chat().getId().value())
                 .containsExactly(101L, 102L);
         assertThat(descriptors)
-                .extracting(descriptor -> descriptor.getName().getValue())
+                .extracting(descriptor -> descriptor.name().value())
                 .containsExactly("alpha", "beta");
         assertThat(descriptors)
-                .extracting(UserGroupDescriptor::getMemberCount)
-                .extracting(MemberCount::getValue)
+                .extracting(UserGroupDescriptor::memberCount)
+                .extracting(MemberCount::value)
                 .containsExactly(2, 1);
     }
 
@@ -277,8 +277,8 @@ class GroupDomainServiceTest {
                         groupMember(groupId, 4L)));
 
         assertThat(members)
-                .extracting(MemberDescriptor::getDisplayName)
-                .extracting(MemberDisplayName::getValue)
+                .extracting(MemberDescriptor::displayName)
+                .extracting(MemberDisplayName::value)
                 .containsExactly("friend-bob", "group-carol", "dave");
     }
 
@@ -297,10 +297,10 @@ class GroupDomainServiceTest {
         List<ImUserChatDescriptor> descriptors = service.getUserChatList(new UserId(1L));
 
         assertThat(descriptors)
-                .extracting(descriptor -> descriptor.getChatId().getValue())
+                .extracting(descriptor -> descriptor.chatId().value())
                 .containsExactly(101L);
         assertThat(descriptors)
-                .extracting(descriptor -> descriptor.getChatName().getValue())
+                .extracting(descriptor -> descriptor.chatName().value())
                 .containsExactly("alpha");
     }
 
@@ -328,7 +328,7 @@ class GroupDomainServiceTest {
         List<ImUserChatDescriptor> descriptors = service.getUserChatList(new UserId(1L));
 
         assertThat(descriptors)
-                .extracting(descriptor -> descriptor.getChatId().getValue())
+                .extracting(descriptor -> descriptor.chatId().value())
                 .containsExactly(201L, 101L);
     }
 
@@ -764,8 +764,8 @@ class GroupDomainServiceTest {
 
         @Override
         public Optional<Friend> find(FriendEdge edge) {
-            return find(edge.getUserId()).stream()
-                    .filter(friend -> friend.getFriendUserId().equals(edge.getFriendUserId()))
+            return find(edge.userId()).stream()
+                    .filter(friend -> friend.getFriendUserId().equals(edge.friendUserId()))
                     .findFirst();
         }
 

@@ -10,6 +10,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * 资源库：群聊会话。
+ */
 public interface ImGroupChatRepository {
 
     Optional<ImGroupChat> find(ImChatId chatId);

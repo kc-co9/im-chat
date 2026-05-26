@@ -51,23 +51,23 @@ class ImMessageServiceTest {
                         new ImMessageRecipient(senderChat, true),
                         new ImMessageRecipient(receiverChat, false)));
 
-        assertThat(transmission.getInboxMessages()).hasSize(2);
+        assertThat(transmission.inboxMessages()).hasSize(2);
         ImGroupInboxMessage senderMessage = transmission.getSenderMessage(senderId);
-        assertThat(senderMessage.getChatId().getValue()).isEqualTo(101L);
+        assertThat(senderMessage.getChatId().value()).isEqualTo(101L);
         assertThat(senderMessage.getStatus()).isEqualTo(ImGroupMessageStatus.READ);
         assertThat(senderMessage.getReadTime()).isNotNull();
         assertThat(senderMessage.getReceivedTime()).isNotNull();
-        ImGroupInboxMessage receiverMessage = transmission.getInboxMessages().stream()
+        ImGroupInboxMessage receiverMessage = transmission.inboxMessages().stream()
                 .filter(message -> message.getUserId().equals(new UserId(2L)))
                 .findFirst()
                 .orElseThrow(AssertionError::new);
         assertThat(receiverMessage.getStatus()).isEqualTo(ImGroupMessageStatus.SENT);
         assertThat(receiverMessage.getReceivedTime()).isNull();
         assertThat(senderChat.getUnreadMessageCount()).isZero();
-        assertThat(senderChat.getReadMessageId().getValue()).isEqualTo(900L);
+        assertThat(senderChat.getReadMessageId().value()).isEqualTo(900L);
         assertThat(receiverChat.getUnreadMessageCount()).isEqualTo(1);
         assertThat(receiverChat.getReadMessageId()).isNull();
-        assertThat(transmission.getGroupChats()).containsExactly(senderChat, receiverChat);
+        assertThat(transmission.groupChats()).containsExactly(senderChat, receiverChat);
     }
 
     @Test
@@ -81,17 +81,17 @@ class ImMessageServiceTest {
         ImGroupMessageTransmission transmission =
                 service.transmitGroupCreated(ownerId, new GroupChatMembership(groupId, Arrays.asList(ownerChat, memberChat)));
 
-        assertThat(transmission.getInboxMessages()).hasSize(2);
-        assertThat(transmission.getInboxMessages())
+        assertThat(transmission.inboxMessages()).hasSize(2);
+        assertThat(transmission.inboxMessages())
                 .allSatisfy(message -> {
-                    assertThat(message.getId().getValue()).isEqualTo(900L);
-                    assertThat(message.getToken().getValue()).isEqualTo("system:group_created:1001");
+                    assertThat(message.getId().value()).isEqualTo(900L);
+                    assertThat(message.getToken().value()).isEqualTo("system:group_created:1001");
                     assertThat(message.getSenderId()).isEqualTo(ownerId);
-                    assertThat(message.getContent().getType()).isEqualTo(ImMessageType.SYSTEM);
-                    assertThat(message.getContent().getValue()).isEqualTo("群聊已创建");
+                    assertThat(message.getContent().type()).isEqualTo(ImMessageType.SYSTEM);
+                    assertThat(message.getContent().value()).isEqualTo("群聊已创建");
                 });
         assertThat(transmission.getSenderMessage(ownerId).getStatus()).isEqualTo(ImGroupMessageStatus.READ);
-        ImGroupInboxMessage memberMessage = transmission.getInboxMessages().stream()
+        ImGroupInboxMessage memberMessage = transmission.inboxMessages().stream()
                 .filter(message -> message.getUserId().equals(new UserId(2L)))
                 .findFirst()
                 .orElseThrow(AssertionError::new);
@@ -117,7 +117,7 @@ class ImMessageServiceTest {
                         new ImMessageRecipient(senderChat, true),
                         new ImMessageRecipient(receiverChat, true)));
 
-        ImGroupInboxMessage receiverMessage = transmission.getInboxMessages().stream()
+        ImGroupInboxMessage receiverMessage = transmission.inboxMessages().stream()
                 .filter(message -> message.getUserId().equals(new UserId(2L)))
                 .findFirst()
                 .orElseThrow(AssertionError::new);
@@ -138,8 +138,8 @@ class ImMessageServiceTest {
                 service.revokePrivateMessage(senderMessage, receiverMessage, new UserId(1L));
 
         assertThat(revocation.getMessages()).containsExactly(senderMessage, receiverMessage);
-        assertThat(revocation.getSenderMessage()).isSameAs(senderMessage);
-        assertThat(revocation.getReceiverMessage()).isSameAs(receiverMessage);
+        assertThat(revocation.senderMessage()).isSameAs(senderMessage);
+        assertThat(revocation.receiverMessage()).isSameAs(receiverMessage);
         assertThat(senderMessage.getStatus()).isEqualTo(ImPrivateMessageStatus.REVOKED);
         assertThat(receiverMessage.getStatus()).isEqualTo(ImPrivateMessageStatus.REVOKED);
         assertThat(senderMessage.getRevokeTime()).isNotNull();
@@ -170,8 +170,8 @@ class ImMessageServiceTest {
         ImGroupMessageRevocation revocation =
                 service.revokeGroupMessage(Arrays.asList(senderMessage, receiverMessage), senderMessage, new UserId(1L));
 
-        assertThat(revocation.getMessages()).containsExactly(senderMessage, receiverMessage);
-        assertThat(revocation.getSenderMessage()).isSameAs(senderMessage);
+        assertThat(revocation.messages()).containsExactly(senderMessage, receiverMessage);
+        assertThat(revocation.senderMessage()).isSameAs(senderMessage);
         assertThat(senderMessage.getStatus()).isEqualTo(ImGroupMessageStatus.REVOKED);
         assertThat(receiverMessage.getStatus()).isEqualTo(ImGroupMessageStatus.REVOKED);
         assertThat(senderMessage.getRevokeTime()).isNotNull();

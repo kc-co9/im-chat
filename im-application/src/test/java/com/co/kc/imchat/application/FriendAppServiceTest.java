@@ -66,16 +66,16 @@ class FriendAppServiceTest {
         appService.addFriend(new FriendAddCmd(1L, 2L));
 
         assertThat(friendRepository.savedFriends)
-                .extracting(friend -> friend.getUserId().getValue())
+                .extracting(friend -> friend.getUserId().value())
                 .containsExactly(1L, 2L);
         assertThat(privateChatRepository.savedChats)
-                .extracting(chat -> chat.getId().getValue())
+                .extracting(chat -> chat.getId().value())
                 .containsExactly(3000L, 3001L);
         assertThat(privateChatRepository.savedChats)
-                .extracting(chat -> chat.getUserId().getValue())
+                .extracting(chat -> chat.getUserId().value())
                 .containsExactly(1L, 2L);
         assertThat(privateChatRepository.savedChats)
-                .extracting(chat -> chat.getPeerUserId().getValue())
+                .extracting(chat -> chat.getPeerUserId().value())
                 .containsExactly(2L, 1L);
         assertThat(privateChatRepository.savedChats)
                 .extracting(ImPrivateChat::getType)
@@ -107,7 +107,7 @@ class FriendAppServiceTest {
         appService.changeFriendAlias(new FriendAliasChangeCmd(1L, 2L, "bobby"));
 
         assertThat(friendRepository.find(new FriendEdge(new UserId(1L), new UserId(2L))).get().getFriendAlias())
-                .extracting(FriendAlias::getValue)
+                .extracting(FriendAlias::value)
                 .isEqualTo("bobby");
         assertThat(friendRepository.find(new FriendEdge(new UserId(2L), new UserId(1L))).get().getFriendAlias()).isNull();
     }
@@ -145,7 +145,7 @@ class FriendAppServiceTest {
                 .hasOnlyElementsOfType(FriendRemovedEvent.class);
         assertThat(friendRepository.findCalls).contains("1:2");
         assertThat(friendRepository.savedFriends)
-                .extracting(friend -> friend.getUserId().getValue())
+                .extracting(friend -> friend.getUserId().value())
                 .containsExactly(1L, 2L);
         assertThat(friendRepository.savedFriends)
                 .extracting(Friend::getStatus)
@@ -166,7 +166,7 @@ class FriendAppServiceTest {
         appService.addFriend(new FriendAddCmd(1L, 2L));
 
         assertThat(friendRepository.savedFriends)
-                .extracting(friend -> friend.getUserId().getValue())
+                .extracting(friend -> friend.getUserId().value())
                 .containsExactly(1L, 2L);
         assertThat(privateChatRepository.savedChats)
                 .extracting(ImPrivateChat::getStatus)
@@ -187,13 +187,13 @@ class FriendAppServiceTest {
         appService.addFriend(new FriendAddCmd(1L, 2L));
 
         assertThat(friendRepository.savedFriendWrites)
-                .extracting(friend -> friend.getUserId().getValue())
+                .extracting(friend -> friend.getUserId().value())
                 .containsExactly(1L);
         assertThat(privateChatRepository.savedChats)
-                .extracting(chat -> chat.getUserId().getValue())
+                .extracting(chat -> chat.getUserId().value())
                 .containsExactly(1L);
         assertThat(privateChatRepository.savedChats)
-                .extracting(chat -> chat.getPeerUserId().getValue())
+                .extracting(chat -> chat.getPeerUserId().value())
                 .containsExactly(2L);
     }
 
@@ -219,7 +219,7 @@ class FriendAppServiceTest {
                 service.prepareHiddenPrivateChat(new UserId(1L), new UserId(2L));
 
         assertThat(result).isPresent();
-        assertThat(result.get().getId().getValue()).isEqualTo(3000L);
+        assertThat(result.get().getId().value()).isEqualTo(3000L);
         assertThat(result.get().getStatus()).isEqualTo(ImChatStatus.HIDDEN);
     }
 
@@ -331,15 +331,15 @@ class FriendAppServiceTest {
 
         @Override
         public Optional<Friend> find(FriendEdge edge) {
-            findCalls.add(edge.getUserId().getValue() + ":" + edge.getFriendUserId().getValue());
-            return find(edge.getUserId()).stream()
-                    .filter(friend -> friend.getFriendUserId().equals(edge.getFriendUserId()))
+            findCalls.add(edge.userId().value() + ":" + edge.friendUserId().value());
+            return find(edge.userId()).stream()
+                    .filter(friend -> friend.getFriendUserId().equals(edge.friendUserId()))
                     .findFirst();
         }
 
         @Override
         public boolean contain(UserId userId, UserId friendUserId) {
-            containCalls.add(userId.getValue() + ":" + friendUserId.getValue());
+            containCalls.add(userId.value() + ":" + friendUserId.value());
             return find(new FriendEdge(userId, friendUserId)).isPresent();
         }
 
@@ -360,7 +360,7 @@ class FriendAppServiceTest {
 
         @Override
         public void remove(Friend friend) {
-            deletedPairs.add(friend.getUserId().getValue() + ":" + friend.getFriendUserId().getValue());
+            deletedPairs.add(friend.getUserId().value() + ":" + friend.getFriendUserId().value());
         }
     }
 
@@ -406,7 +406,7 @@ class FriendAppServiceTest {
 
         @Override
         public void remove(UserId userId, UserId peerUserId) {
-            deletedPairs.add(userId.getValue() + ":" + peerUserId.getValue());
+            deletedPairs.add(userId.value() + ":" + peerUserId.value());
         }
     }
 

@@ -7,10 +7,10 @@ import com.co.kc.imchat.domain.message.event.ImPrivateMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.event.ImPrivateMessageSentEvent;
 import com.co.kc.imchat.domain.message.model.ImMessageType;
 import com.co.kc.imchat.domain.message.model.ImPrivateInboxMessage;
-import com.co.kc.imchat.application.model.cqrs.command.group.GroupRevokedNotifyCmd;
-import com.co.kc.imchat.application.model.cqrs.command.group.GroupSentNotifyCmd;
-import com.co.kc.imchat.application.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
-import com.co.kc.imchat.application.model.cqrs.command.notify.ImPrivateRevokedNotifyCmd;
+import com.co.kc.imchat.application.model.notification.ImGroupRevokedNotification;
+import com.co.kc.imchat.application.model.notification.ImGroupSentNotification;
+import com.co.kc.imchat.application.model.notification.ImPrivateSentNotification;
+import com.co.kc.imchat.application.model.notification.ImPrivateRevokedNotification;
 import com.co.kc.imchat.application.model.cqrs.dto.group.GroupMessageDTO;
 import com.co.kc.imchat.application.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.domain.message.model.ImMessageTypeEnum;
@@ -65,13 +65,13 @@ public interface ImMessageAppTransformer {
             @Mapping(target = "receiverId", source = "receiverId"),
             @Mapping(target = "messageType", source = "messageType"),
             @Mapping(target = "sendTime", source = "sendTime")})
-    ImPrivateSentNotifyCmd imPrivateSentNotifyCmdFrom(ImPrivateMessageSentEvent event);
+    ImPrivateSentNotification imPrivateSentNotificationFrom(ImPrivateMessageSentEvent event);
 
     @Mappings(value = {
             @Mapping(target = "receiverChatId", source = "chatId"),
             @Mapping(target = "receiverId", source = "receiverId"),
             @Mapping(target = "messageId", source = "messageId")})
-    ImPrivateRevokedNotifyCmd imPrivateRevokedNotifyCmdFrom(ImPrivateMessageRevokedEvent event);
+    ImPrivateRevokedNotification imPrivateRevokedNotificationFrom(ImPrivateMessageRevokedEvent event);
 
     @Mappings(value = {
             @Mapping(target = "messageId", source = "event.messageId"),
@@ -80,13 +80,13 @@ public interface ImMessageAppTransformer {
             @Mapping(target = "receiverId", source = "receiverId"),
             @Mapping(target = "messageType", source = "event.messageType"),
             @Mapping(target = "sendTime", source = "event.sendTime")})
-    GroupSentNotifyCmd groupSentNotifyCmdFrom(Long receiverId, Long chatId, ImGroupMessageSentEvent event);
+    ImGroupSentNotification imGroupSentNotificationFrom(Long receiverId, Long chatId, ImGroupMessageSentEvent event);
 
     @Mappings(value = {
             @Mapping(target = "chatId", source = "chatId"),
             @Mapping(target = "receiverId", source = "receiverId"),
             @Mapping(target = "messageId", source = "event.messageId")})
-    GroupRevokedNotifyCmd groupRevokedNotifyCmdFrom(Long receiverId, Long chatId, ImGroupMessageRevokedEvent event);
+    ImGroupRevokedNotification imGroupRevokedNotificationFrom(Long receiverId, Long chatId, ImGroupMessageRevokedEvent event);
 
     ImMessageTypeEnum imMessageTypeEnumFrom(ImMessageType type);
 

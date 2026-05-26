@@ -6,11 +6,11 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public enum RedisTopic {
-    PRIVATE_MESSAGE_SEND("message:private:send"),
-    PRIVATE_MESSAGE_REVOKE("message:private:revoke"),
+    PRIVATE_MESSAGE_SEND("im:message:private:sent"),
+    PRIVATE_MESSAGE_REVOKE("im:message:private:revoked"),
 
-    GROUP_MESSAGE_SEND("message:group:send"),
-    GROUP_MESSAGE_REVOKE("message:group:revoke"),
+    GROUP_MESSAGE_SEND("im:message:group:sent"),
+    GROUP_MESSAGE_REVOKE("im:message:group:revoked"),
     ;
     private final String value;
 }

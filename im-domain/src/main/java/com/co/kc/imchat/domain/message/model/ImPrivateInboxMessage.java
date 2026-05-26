@@ -9,7 +9,7 @@ import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
 
 /**
- * 私聊收件箱消息领域模型。
+ * 聚合根：私聊收件箱消息。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

@@ -9,19 +9,19 @@ class ImSystemMessageTypeTest {
 
     @Test
     void groupCreatedBuildsTokenWithSystemPrefix() {
-        assertThat(ImSystemMessageType.GROUP_CREATED.token(1001L).getValue())
+        assertThat(ImSystemMessageType.GROUP_CREATED.token(1001L).value())
                 .isEqualTo("system:group_created:1001");
     }
 
     @Test
     void groupDismissedBuildsTokenWithSystemPrefix() {
-        assertThat(ImSystemMessageType.GROUP_DISMISSED.token(1001L).getValue())
+        assertThat(ImSystemMessageType.GROUP_DISMISSED.token(1001L).value())
                 .isEqualTo("system:group_dismissed:1001");
     }
 
     @Test
     void groupMemberJoinedBuildsTokenWithSystemPrefix() {
-        assertThat(ImSystemMessageType.GROUP_MEMBER_JOINED.token(1001L).getValue())
+        assertThat(ImSystemMessageType.GROUP_MEMBER_JOINED.token(1001L).value())
                 .isEqualTo("system:group_member_joined:1001");
     }
 

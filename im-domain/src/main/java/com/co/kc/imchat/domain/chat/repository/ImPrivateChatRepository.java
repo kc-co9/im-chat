@@ -8,6 +8,9 @@ import com.co.kc.imchat.domain.user.model.UserId;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * 资源库：私聊会话。
+ */
 public interface ImPrivateChatRepository {
 
     List<ImPrivateChat> find(UserId userId);

@@ -23,7 +23,7 @@ class FriendDomainModelTest {
         friend.changeAlias(new FriendAlias("new-alias"));
 
         FriendDisplayName displayName = friend.displayName();
-        assertThat(displayName.getValue()).isEqualTo("new-alias");
+        assertThat(displayName.value()).isEqualTo("new-alias");
     }
 
     @Test

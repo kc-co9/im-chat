@@ -1,0 +1,33 @@
+package com.co.kc.imchat.application.support.notifier.confirmable;
+
+import com.co.kc.imchat.application.support.notifier.task.ReceiptTask;
+
+import java.util.function.Consumer;
+
+/**
+ * 保存需要客户端回执的通知重投任务。
+ *
+ * <p>任务按 {@code receiptId} 定位。客户端确认后删除任务；
+ * 后续队列里残留的 {@code receiptId} 如果找不到任务内容，会被直接跳过。</p>
+ */
+public interface ImMessageConfirmableStore {
+
+    /**
+     * 将需确认的消息放入延迟重试队列。
+     */
+    void offer(ReceiptTask message);
+
+    /**
+     * 消费一条到期的重试消息。
+     *
+     * <p>consumer 正常结束后，实现方确认当前任务并按需注册下一轮延迟任务；
+     * consumer 抛异常时，实现方应尽量保留后续重试机会。</p>
+     */
+    void consume(Consumer<ReceiptTask> consumer);
+
+    /**
+     * 确认回执并删除对应的重投任务。
+     */
+    void confirm(String receiptId);
+
+}

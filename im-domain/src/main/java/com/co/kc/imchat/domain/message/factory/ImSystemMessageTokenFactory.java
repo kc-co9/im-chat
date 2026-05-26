@@ -10,14 +10,14 @@ public final class ImSystemMessageTokenFactory {
     }
 
     public static ImMessageToken createSystemGroupCreated(GroupId groupId) {
-        return ImSystemMessageType.GROUP_CREATED.token(groupId.getValue());
+        return ImSystemMessageType.GROUP_CREATED.token(groupId.value());
     }
 
     public static ImMessageToken createSystemGroupDismissed(GroupId groupId) {
-        return ImSystemMessageType.GROUP_DISMISSED.token(groupId.getValue());
+        return ImSystemMessageType.GROUP_DISMISSED.token(groupId.value());
     }
 
     public static ImMessageToken createSystemGroupMemberJoined(GroupId groupId, ImMessageId messageId) {
-        return ImSystemMessageType.GROUP_MEMBER_JOINED.token(groupId.getValue() + ":" + messageId.getValue());
+        return ImSystemMessageType.GROUP_MEMBER_JOINED.token(groupId.value() + ":" + messageId.value());
     }
 }

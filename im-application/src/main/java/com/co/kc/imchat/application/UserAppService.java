@@ -39,8 +39,8 @@ public class UserAppService {
     private final UserService userService;
     private final TokenService tokenService;
 
-    @DistributeLock(scene = DistributeLockScene.USER_SIGN_UP, key = "#command.email()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
+    @DistributeLock(scene = DistributeLockScene.USER_SIGN_UP, key = "#command.email()")
     public void signUp(UserSignUpCmd command) {
         UserEmail email = new UserEmail(command.email());
         UserName username = new UserName(command.username());
@@ -67,8 +67,8 @@ public class UserAppService {
         session.onSignIn();
         sessionRepository.save(session);
 
-        String token = tokenService.create(new TokenDTO(user.getId().getValue(), LocalDateTime.now()));
-        return new SignInDTO(user.getId().getValue(), token);
+        String token = tokenService.create(new TokenDTO(user.getId().value(), LocalDateTime.now()));
+        return new SignInDTO(user.getId().value(), token);
     }
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
@@ -87,7 +87,7 @@ public class UserAppService {
         User user = userRepository.find(userId)
                 .orElseThrow(() -> new NotFoundException("用户不存在"));
 
-        return new UserDetailDTO(user.getId().getValue(), user.getEmail().getValue(), user.getUsername().getValue());
+        return new UserDetailDTO(user.getId().value(), user.getEmail().value(), user.getUsername().value());
     }
 
     public boolean isAuthenticated(UserAuthQuery query) {

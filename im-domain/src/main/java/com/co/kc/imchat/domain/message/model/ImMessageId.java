@@ -1,15 +1,11 @@
 package com.co.kc.imchat.domain.message.model;
 
-import lombok.Getter;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
-@Getter
-public class ImMessageId {
-    private final Long value;
-
-    public ImMessageId(Long value) {
-        if (value == null) {
-            throw new IllegalArgumentException("value cannot be null");
-        }
-        this.value = value;
-    }
-}
+/**
+ * 值对象：消息ID。
+ */
+public record ImMessageId(Long value) {
+    public ImMessageId {
+        AssertUtils.domainPropNotNull("消息ID不能为空", value);
+    }}

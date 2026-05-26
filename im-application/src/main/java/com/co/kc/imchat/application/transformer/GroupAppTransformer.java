@@ -24,21 +24,21 @@ public interface GroupAppTransformer {
 
     default GroupItemDTO groupItemDtoFrom(UserGroupDescriptor descriptor) {
         GroupItemDTO dto = new GroupItemDTO();
-        dto.setGroupId(descriptor.getId().getValue());
-        dto.setChatId(descriptor.getChat().getId().getValue());
-        dto.setGroupName(descriptor.getName().getValue());
-        dto.setMemberCount(descriptor.getMemberCount().getValue());
-        dto.setUnreadMessageCount(descriptor.getChat().getUnreadMessageCount());
+        dto.setGroupId(descriptor.id().value());
+        dto.setChatId(descriptor.chat().getId().value());
+        dto.setGroupName(descriptor.name().value());
+        dto.setMemberCount(descriptor.memberCount().value());
+        dto.setUnreadMessageCount(descriptor.chat().getUnreadMessageCount());
         return dto;
     }
 
     default GroupItemDTO groupItemDtoFrom(Group group, ImGroupChat groupChat) {
         GroupItemDTO dto = new GroupItemDTO();
-        dto.setGroupId(groupChat.getGroupId().getValue());
-        dto.setChatId(groupChat.getId().getValue());
+        dto.setGroupId(groupChat.getGroupId().value());
+        dto.setChatId(groupChat.getId().value());
         if (group != null) {
-            dto.setGroupName(group.getName().getValue());
-            dto.setMemberCount(group.getMemberCount().getValue());
+            dto.setGroupName(group.getName().value());
+            dto.setMemberCount(group.getMemberCount().value());
         }
         dto.setUnreadMessageCount(groupChat.getUnreadMessageCount());
         return dto;
@@ -46,21 +46,21 @@ public interface GroupAppTransformer {
 
     default GroupDetailDTO groupDetailDtoFrom(Group group, ImGroupChat groupChat, List<MemberDescriptor> members) {
         GroupDetailDTO dto = new GroupDetailDTO();
-        dto.setGroupId(group.getId().getValue());
-        dto.setChatId(groupChat.getId().getValue());
-        dto.setGroupName(group.getName().getValue());
-        dto.setOwnerId(group.getOwnerId().getValue());
-        dto.setNotification(group.getNotification() == null ? null : group.getNotification().getValue());
-        dto.setMemberCount(group.getMemberCount().getValue());
+        dto.setGroupId(group.getId().value());
+        dto.setChatId(groupChat.getId().value());
+        dto.setGroupName(group.getName().value());
+        dto.setOwnerId(group.getOwnerId().value());
+        dto.setNotification(group.getNotification() == null ? null : group.getNotification().value());
+        dto.setMemberCount(group.getMemberCount().value());
         dto.setMembers(members.stream().map(this::groupMemberDtoFrom).collect(Collectors.toList()));
         return dto;
     }
 
     default GroupDetailDTO.Member groupMemberDtoFrom(MemberDescriptor member) {
         GroupDetailDTO.Member dto = new GroupDetailDTO.Member();
-        dto.setUserId(member.getUserId().getValue());
-        dto.setDisplayName(member.getDisplayName().getValue());
-        dto.setJoinTime(member.getJoinTime());
+        dto.setUserId(member.userId().value());
+        dto.setDisplayName(member.displayName().value());
+        dto.setJoinTime(member.joinTime());
         return dto;
     }
 }

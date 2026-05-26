@@ -9,7 +9,6 @@ import com.co.kc.imchat.domain.group.model.MemberDisplayName;
 import com.co.kc.imchat.domain.message.transformer.ImMessageDomainTransformer;
 import com.co.kc.imchat.domain.message.event.ImGroupMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.event.ImGroupMessageSentEvent;
-import com.co.kc.imchat.domain.message.event.ImPrivateMessageReceivedEvent;
 import com.co.kc.imchat.domain.message.event.ImPrivateMessageRevokedEvent;
 import com.co.kc.imchat.domain.message.event.ImPrivateMessageSentEvent;
 import com.co.kc.imchat.domain.message.factory.ImSystemMessageTokenFactory;
@@ -67,12 +66,12 @@ public class ImMessageService {
     public ImGroupMessageTransmission transmitGroupCreated(UserId ownerId, GroupChatMembership chatMembership) {
         ImOutboundMessage outboundMessage = new ImOutboundMessage(
                 new ImMessageId(snowflakeId.next()),
-                ImSystemMessageTokenFactory.createSystemGroupCreated(chatMembership.getGroupId()),
+                ImSystemMessageTokenFactory.createSystemGroupCreated(chatMembership.groupId()),
                 new ImMessageContent(ImMessageType.SYSTEM, ImSystemMessageType.GROUP_CREATED.content()));
         ImGroupChat ownerChat = chatMembership.findOwnerChat(ownerId)
                 .orElseThrow(() -> new IllegalStateException("群主会话不存在"));
         ImMessageSender sender = new ImMessageSender(ownerChat, ownerId);
-        List<ImMessageRecipient> recipients = chatMembership.getChats().stream()
+        List<ImMessageRecipient> recipients = chatMembership.chats().stream()
                 .map(chat -> new ImMessageRecipient(chat, chat.belongsTo(ownerId)))
                 .collect(Collectors.toList());
         return this.transmitGroupMessage(outboundMessage, sender, recipients);
@@ -82,12 +81,12 @@ public class ImMessageService {
                                                              GroupChatMembership chatMembership) {
         ImOutboundMessage outboundMessage = new ImOutboundMessage(
                 new ImMessageId(snowflakeId.next()),
-                ImSystemMessageTokenFactory.createSystemGroupDismissed(chatMembership.getGroupId()),
+                ImSystemMessageTokenFactory.createSystemGroupDismissed(chatMembership.groupId()),
                 new ImMessageContent(ImMessageType.SYSTEM, ImSystemMessageType.GROUP_DISMISSED.content()));
         ImGroupChat ownerChat = chatMembership.findOwnerChat(ownerId)
                 .orElseThrow(() -> new IllegalStateException("群主会话不存在"));
         ImMessageSender sender = new ImMessageSender(ownerChat, ownerId);
-        List<ImMessageRecipient> recipients = chatMembership.getChats().stream()
+        List<ImMessageRecipient> recipients = chatMembership.chats().stream()
                 .map(chat -> new ImMessageRecipient(chat, chat.belongsTo(ownerId)))
                 .collect(Collectors.toList());
         return this.transmitGroupMessage(outboundMessage, sender, recipients);
@@ -99,12 +98,12 @@ public class ImMessageService {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
         ImOutboundMessage outboundMessage = new ImOutboundMessage(
                 messageId,
-                ImSystemMessageTokenFactory.createSystemGroupMemberJoined(chatMembership.getGroupId(), messageId),
+                ImSystemMessageTokenFactory.createSystemGroupMemberJoined(chatMembership.groupId(), messageId),
                 new ImMessageContent(ImMessageType.SYSTEM, this.buildGroupMemberJoinedMessage(joinedMembers)));
         ImGroupChat inviterChat = chatMembership.findMemberChat(inviterId)
                 .orElseThrow(() -> new IllegalStateException("邀请人群聊会话不存在"));
         ImMessageSender sender = new ImMessageSender(inviterChat, inviterId);
-        List<ImMessageRecipient> recipients = chatMembership.getChats().stream()
+        List<ImMessageRecipient> recipients = chatMembership.chats().stream()
                 .map(chat -> new ImMessageRecipient(chat, chat.belongsTo(inviterId)))
                 .collect(Collectors.toList());
         return this.transmitGroupMessage(outboundMessage, sender, recipients);
@@ -115,9 +114,9 @@ public class ImMessageService {
             return ImSystemMessageType.GROUP_MEMBER_JOINED.content();
         }
         String joinedNames = joinedMembers.stream()
-                .map(MemberDescriptor::getDisplayName)
+                .map(MemberDescriptor::displayName)
                 .filter(Objects::nonNull)
-                .map(MemberDisplayName::getValue)
+                .map(MemberDisplayName::value)
                 .collect(Collectors.joining("、"));
         return ImSystemMessageType.GROUP_MEMBER_JOINED.joinedContent(joinedNames);
     }
@@ -136,48 +135,48 @@ public class ImMessageService {
     private ImGroupChat receiveGroupMessage(ImMessageRecipient recipient,
                                             List<ImGroupInboxMessage> inboxMessages,
                                             ImMessageSender sender) {
-        ImGroupChat receiverChat = (ImGroupChat) recipient.getChat();
+        ImGroupChat receiverChat = (ImGroupChat) recipient.chat();
         ImGroupInboxMessage imGroupInboxMessage = inboxMessages.stream()
                 .filter(message -> message.getChatId().equals(receiverChat.getId()))
                 .filter(message -> message.getUserId().equals(receiverChat.getUserId()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("群聊消息不存在"));
 
-        boolean isSender = receiverChat.belongsTo(sender.getUserId());
+        boolean isSender = receiverChat.belongsTo(sender.userId());
         receiverChat.receiveLatestMessage(imGroupInboxMessage, isSender);
         return receiverChat;
     }
 
     private ImGroupInboxMessage buildGroupInboxMessage(ImOutboundMessage outboundMessage,
                                                        ImMessageSender sender, ImMessageRecipient recipient) {
-        ImGroupChat senderChat = (ImGroupChat) sender.getChat();
-        ImGroupChat receiverChat = (ImGroupChat) recipient.getChat();
-        boolean isSender = receiverChat.belongsTo(sender.getUserId());
+        ImGroupChat senderChat = (ImGroupChat) sender.chat();
+        ImGroupChat receiverChat = (ImGroupChat) recipient.chat();
+        boolean isSender = receiverChat.belongsTo(sender.userId());
         return ImGroupInboxMessage.builder()
-                .id(outboundMessage.getId())
-                .token(outboundMessage.getToken())
-                .content(outboundMessage.getContent())
+                .id(outboundMessage.id())
+                .token(outboundMessage.token())
+                .content(outboundMessage.content())
                 .groupId(senderChat.getGroupId())
                 .chatId(receiverChat.getId())
                 .userId(receiverChat.getUserId())
-                .senderId(sender.getUserId())
+                .senderId(sender.userId())
                 .status(isSender ? ImGroupMessageStatus.READ : ImGroupMessageStatus.SENT)
-                .sendTime(outboundMessage.getSendTime())
-                .receivedTime(isSender ? outboundMessage.getSendTime() : null)
-                .readTime(isSender ? outboundMessage.getSendTime() : null)
+                .sendTime(outboundMessage.sendTime())
+                .receivedTime(isSender ? outboundMessage.sendTime() : null)
+                .readTime(isSender ? outboundMessage.sendTime() : null)
                 .build();
     }
 
     public ImPrivateMessageSentEvent newImMessageSentEvent(ImPrivateInboxMessage imMessage) {
         ImMessageTypeEnum imMessageTypeEnum =
-                ImMessageDomainTransformer.imMessageTypeEnumFrom(imMessage.getContent().getType());
+                ImMessageDomainTransformer.imMessageTypeEnumFrom(imMessage.getContent().type());
         ImPrivateMessageSentEvent imMessageSentEvent = new ImPrivateMessageSentEvent();
-        imMessageSentEvent.setMessageId(imMessage.getId().getValue());
-        imMessageSentEvent.setReceiverChatId(imMessage.getChatId().getValue());
-        imMessageSentEvent.setSenderId(imMessage.getSenderId().getValue());
-        imMessageSentEvent.setReceiverId(imMessage.getUserId().getValue());
+        imMessageSentEvent.setMessageId(imMessage.getId().value());
+        imMessageSentEvent.setReceiverChatId(imMessage.getChatId().value());
+        imMessageSentEvent.setSenderId(imMessage.getSenderId().value());
+        imMessageSentEvent.setReceiverId(imMessage.getUserId().value());
         imMessageSentEvent.setMessageType(imMessageTypeEnum);
-        imMessageSentEvent.setMessageContent(imMessage.getContent().getValue());
+        imMessageSentEvent.setMessageContent(imMessage.getContent().value());
         imMessageSentEvent.setSendTime(imMessage.getSendTime());
         imMessageSentEvent.setCreateTime(LocalDateTime.now());
         return imMessageSentEvent;
@@ -185,9 +184,9 @@ public class ImMessageService {
 
     public ImPrivateMessageRevokedEvent newImMessageRevokedEvent(ImPrivateInboxMessage imMessage, UserId receiverId) {
         ImPrivateMessageRevokedEvent imMessageRevokedEvent = new ImPrivateMessageRevokedEvent();
-        imMessageRevokedEvent.setChatId(imMessage.getChatId().getValue());
-        imMessageRevokedEvent.setReceiverId(receiverId.getValue());
-        imMessageRevokedEvent.setMessageId(imMessage.getId().getValue());
+        imMessageRevokedEvent.setChatId(imMessage.getChatId().value());
+        imMessageRevokedEvent.setReceiverId(receiverId.value());
+        imMessageRevokedEvent.setMessageId(imMessage.getId().value());
         imMessageRevokedEvent.setCreateTime(LocalDateTime.now());
         return imMessageRevokedEvent;
     }
@@ -202,24 +201,15 @@ public class ImMessageService {
         return new ImPrivateMessageRevocation(senderMessage, receiverMessage);
     }
 
-    public ImPrivateMessageReceivedEvent newImMessageReceivedEvent(ImPrivateInboxMessage imMessage) {
-        ImPrivateMessageReceivedEvent imMessageReceivedEvent = new ImPrivateMessageReceivedEvent();
-        imMessageReceivedEvent.setReceiverChatId(imMessage.getChatId().getValue());
-        imMessageReceivedEvent.setReceiverId(imMessage.getUserId().getValue());
-        imMessageReceivedEvent.setMessageId(imMessage.getId().getValue());
-        imMessageReceivedEvent.setCreateTime(LocalDateTime.now());
-        return imMessageReceivedEvent;
-    }
-
     public ImGroupMessageSentEvent newImMessageSentEvent(GroupId groupId, ImGroupInboxMessage imMessage) {
         ImMessageTypeEnum imMessageTypeEnum =
-                ImMessageDomainTransformer.imMessageTypeEnumFrom(imMessage.getContent().getType());
+                ImMessageDomainTransformer.imMessageTypeEnumFrom(imMessage.getContent().type());
         ImGroupMessageSentEvent event = new ImGroupMessageSentEvent();
-        event.setMessageId(imMessage.getId().getValue());
-        event.setGroupId(groupId.getValue());
-        event.setSenderId(imMessage.getSenderId().getValue());
+        event.setMessageId(imMessage.getId().value());
+        event.setGroupId(groupId.value());
+        event.setSenderId(imMessage.getSenderId().value());
         event.setMessageType(imMessageTypeEnum);
-        event.setMessageContent(imMessage.getContent().getValue());
+        event.setMessageContent(imMessage.getContent().value());
         event.setSendTime(imMessage.getSendTime());
         event.setCreateTime(LocalDateTime.now());
         return event;
@@ -227,9 +217,9 @@ public class ImMessageService {
 
     public ImGroupMessageRevokedEvent newImMessageRevokedEvent(GroupId groupId, ImGroupInboxMessage imMessage) {
         ImGroupMessageRevokedEvent event = new ImGroupMessageRevokedEvent();
-        event.setGroupId(groupId.getValue());
-        event.setMessageId(imMessage.getId().getValue());
-        event.setSenderId(imMessage.getSenderId().getValue());
+        event.setGroupId(groupId.value());
+        event.setMessageId(imMessage.getId().value());
+        event.setSenderId(imMessage.getSenderId().value());
         event.setRevokeTime(imMessage.getRevokeTime());
         event.setCreateTime(LocalDateTime.now());
         return event;

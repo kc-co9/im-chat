@@ -13,8 +13,8 @@ public abstract class AbstractRedisImMessageNotifier<T> implements ImMessageNoti
     }
 
     @Override
-    public void notify(T command) {
-        redisPublisher.publish(topic(), command);
+    public void notify(T notification) {
+        redisPublisher.publish(topic(), notification);
     }
 
     protected abstract RedisTopic topic();

@@ -122,7 +122,6 @@
 | `GroupMemberJoinedEvent` | 群组上下文 | 群成员已加入 |
 | `GroupMemberRemovedEvent` | 群组上下文 | 群成员已移除 |
 | `ImPrivateMessageSentEvent` | 消息上下文 | 私聊消息已发送 |
-| `ImPrivateMessageReceivedEvent` | 消息上下文 | 私聊消息已接收 |
 | `ImPrivateMessageRevokedEvent` | 消息上下文 | 私聊消息已撤回 |
 | `ImGroupMessageSentEvent` | 消息上下文 | 群聊消息已发送 |
 | `ImGroupMessageRevokedEvent` | 消息上下文 | 群聊消息已撤回 |
@@ -193,6 +192,103 @@ im-common          -> no business module dependency
 | `im-interfaces` | 接口层 | HTTP Controller、WebSocket Controller、事件 Listener、IO 模型、接口转换器、Web 配置 |
 | `im-bootstrap` | 启动层 | `ImChatApplication`、`application.yml`、日志配置、启动测试 |
 
+### 消息投递架构
+
+项目支持多应用实例部署。客户端 WebSocket 连接只会落到某一个应用实例，但消息发送方、接收方和群成员可能连接在不同实例上。为了解耦“消息写入”和“在线投递”，项目使用 MySQL 保存消息事实，使用 Redis Pub/Sub 在所有应用实例之间广播待推送通知，再由各实例尝试向本机 WebSocket 用户队列投递。
+
+```text
+       sender client
+            │
+            │ STOMP /chat/message/*/send
+            ▼
+┌──────────────────────┐
+│   app instance A     │
+│ WebSocket Controller │
+│ Application Service  │
+└──────────┬───────────┘
+           │
+           │ 1. validate chat/member/friend/token
+           │ 2. save inbox copies and chat state
+           ▼
+      ┌─────────┐
+      │  MySQL  │
+      └─────────┘
+           │
+           │ 3. publish domain event
+           ▼
+┌──────────────────────┐
+│ Message Listener     │
+│ ImMessageNotifier    │
+└──────────┬───────────┘
+           │
+           │ 4. Redis convertAndSend(topic, notifyCmd)
+           ▼
+      ┌─────────┐
+      │  Redis  │
+      │ Pub/Sub │
+      └────┬────┘
+           │ 5. broadcast to every app instance
+  ┌────────┴────────┬─────────────────┐
+  ▼                 ▼                 ▼
+┌────────────┐   ┌────────────┐   ┌────────────┐
+│ instance A │   │ instance B │   │ instance C │
+│ Consumer   │   │ Consumer   │   │ Consumer   │
+└─────┬──────┘   └─────┬──────┘   └─────┬──────┘
+      │                │                │
+      │ 6. convertAndSendToUser(receiverId, /queue/...)
+      ▼                ▼                ▼
+ local STOMP       local STOMP       local STOMP
+ sessions          sessions          sessions
+      │                │                │
+      └────────────── receiver clients ─┘
+```
+
+#### 投递链路
+
+1. `ImPrivateWsController` 或 `ImGroupWsController` 接收 WebSocket 命令，调用 `PrivateMessageAppService` 或 `GroupMessageAppService`。
+2. 应用服务在事务内完成权限校验、幂等校验、消息副本落库、会话状态更新，并发布领域事件。
+3. `PrivateMessageListener` 或 `GroupMessageListener` 监听领域事件，判断需要通知哪些用户，再调用 `ImMessageNotifierInvoker`。
+4. `ImMessageNotifierInvoker` 根据通知命令类型选择具体 notifier，例如 `PrivateSentNotifier`、`PrivateRevokedNotifier`、`GroupSentNotifier`、`GroupRevokedNotifier`。
+5. notifier 继承 `AbstractRedisImMessageNotifier`，通过 `RedisPublisher` 调用 `RedisTemplate.convertAndSend`，发布到 `RedisTopic` 对应频道。
+6. 每个应用实例启动时，`RedisMessageListenerContainer` 会把所有 `RedisSubscriber` 注册为 Redis 订阅者，因此同一条通知会被广播到所有实例。
+7. 每个实例上的 consumer 收到通知后调用 `SimpMessagingTemplate.convertAndSendToUser`，向本机 STOMP 用户队列推送。没有目标用户连接的实例不会产生实际客户端投递。
+8. 客户端订阅自己的 `/queue/message/private/sent`、`/queue/message/private/revoked`、`/queue/message/group/sent`、`/queue/message/group/revoked` 等队列接收推送。
+9. 需要确认的通知会在 Redis 写入 `PENDING` 状态，并注册延迟重试任务；客户端 ACK 后写为 `CONFIRMED`，重试任务触发时会跳过已确认通知。
+
+这种架构的核心是：消息事实以数据库为准，Redis 只负责跨实例广播在线通知。即使接收方当前不在线，消息副本仍已保存；接收方重新打开会话或查询历史时，从数据库读取消息。
+
+#### 通知通道
+
+| 通知场景 | Redis topic | Redis subscriber | WebSocket 用户队列 |
+|----------|-------------|------------------|--------------------|
+| 私聊发送 | `im:message:private:sent` | `ImPrivateMessageSentConsumer` | `/queue/message/private/sent` |
+| 私聊撤回 | `im:message:private:revoked` | `ImPrivateMessageRevokedConsumer` | `/queue/message/private/revoked` |
+| 群聊发送 | `im:message:group:sent` | `ImGroupMessageSentConsumer` | `/queue/message/group/sent` |
+| 群聊撤回 | `im:message:group:revoked` | `ImGroupMessageRevokedConsumer` | `/queue/message/group/revoked` |
+
+客户端需要连接 `/ws`，发送命令到 `/chat/message/...`，并订阅上表中的用户队列。`convertAndSendToUser` 使用用户 ID 字符串作为 user destination，因此 WebSocket 握手阶段需要把当前登录用户绑定为 STOMP Principal。
+
+客户端收到需要回执的通知后，统一调用 `/chat/message/notification/ack`。`receiptType` 为发送通知时，服务端会先把消息副本置为 `RECEIVED`，再确认对应发送通知任务；`receiptType` 为撤回通知时，服务端只确认对应撤回通知任务。
+
+#### 投递语义
+
+1. MySQL 中的收件箱消息副本是消息事实来源；Redis Pub/Sub 只承载在线推送通知。
+2. Redis Pub/Sub 不保存历史通知。实例重启、网络抖动或客户端离线时，客户端应通过历史查询和消息详情接口补齐数据。
+3. 发送接口使用 `messageToken` 做幂等校验，同一会话内重复提交同一 token 会被拒绝，避免客户端重试造成重复消息。
+4. 所有实例都会收到 Redis 广播。是否真正推送到客户端，取决于该实例本地是否持有目标用户的 WebSocket 会话。
+5. `ImMessageConfirmable` 通知使用 Redis 保存确认状态，回执标识由 `ReceiptType + receiverId + chatId + messageId` 组成。重试任务只负责重新广播未确认通知，不改变消息已落库这一事实。
+6. 客户端仍应按 `messageId` 或 `messageToken` 做幂等处理，因为网络超时、客户端 ACK 丢失或重试任务先于 ACK 到达时，仍可能看到重复通知。
+
+### 模块协作
+
+运行时入口集中在 `im-interfaces`。HTTP Controller 负责查询类接口和非实时命令，WebSocket Controller 负责客户端实时消息命令，Spring 事件 Listener 负责承接领域事件后的异步通知。接口层会把请求模型转换为应用层命令或查询，再调用 `im-application` 中的应用服务。
+
+`im-application` 是用例编排层，负责事务边界、分布式锁、权限校验顺序、仓储调用顺序和领域事件发布。它不直接操作数据库、Redis 或 WebSocket 连接，而是依赖领域层仓储接口、领域服务接口和应用层抽象，例如 `DomainEventPublisher`、`ImMessageNotifierInvoker`。
+
+`im-domain` 保存核心业务规则。消息发送、消息状态流转、群成员校验、好友关系校验、会话归属校验等规则在领域模型或领域服务中完成。领域层只声明仓储接口，不感知 MySQL、Redis、STOMP 或 Spring MVC。
+
+`im-infrastructure` 提供技术实现，包括 MySQL 仓储、MyBatis Mapper、Redis 会话缓存、Redis 发布订阅、分布式锁、JWT、BCrypt 和 Spring 事件发布。`im-bootstrap` 负责把接口层、应用层和基础设施层装配成可运行应用。
+
 ## 接口
 
 ### HTTP
@@ -219,13 +315,58 @@ WebSocket 连接入口为 `/ws`，应用消息前缀为 `/chat`，订阅代理�
 | 目标地址 | 说明 |
 |----------|------|
 | `/chat/message/private/send` | 发送私聊消息 |
-| `/chat/message/private/receive` | 接收私聊消息 |
 | `/chat/message/private/read` | 已读私聊消息 |
 | `/chat/message/private/revoke` | 撤回私聊消息 |
 | `/chat/message/group/send` | 发送群聊消息 |
-| `/chat/message/group/receive` | 接收群聊消息 |
 | `/chat/message/group/read` | 已读群聊消息 |
 | `/chat/message/group/revoke` | 撤回群聊消息 |
+| `/chat/message/notification/ack` | 确认通知已收到，发送通知回执也会触发消息接收 |
+
+## 消息收发核心流程
+
+### 私聊消息发送
+
+1. 客户端通过 WebSocket 向 `/chat/message/private/send` 发送 `ImPrivateMessageSendRequest`。
+2. `ImPrivateWsController` 将请求转换为 `ImPrivateMessageSendCmd`，调用 `PrivateMessageAppService.sendMessage`。
+3. 应用层按 `chatId + messageToken` 加分布式锁，避免同一会话内重复提交同一客户端消息。
+4. 应用层加载发送方私聊会话，校验当前用户拥有该会话，再加载对端会话。
+5. `FriendService` 校验双方好友关系正常，`ImMessageService.ensurePrivateMessageUnique` 校验消息 token 未写入。
+6. 应用层生成同一个 `messageId` 的两份收件箱消息：发送方副本和接收方副本。
+7. 发送方副本立即带有发送、接收、已读时间；接收方副本初始为 `SENT`。
+8. 两份消息写入 `ImPrivateInboxMessageRepository`，双方会话通过 `receiveLatestMessage` 更新最近消息、未读数和活跃时间。
+9. 应用层发布 `ImPrivateMessageSentEvent`。
+10. `PrivateMessageListener` 监听事件后调用 `onMessageSent`；如果接收方在线，则通过 `ImMessageNotifierInvoker` 创建 Redis 确认状态并发布通知，所有实例收到广播后再尝试投递到本机 WebSocket 用户队列。
+
+### 私聊消息接收、已读与撤回
+
+客户端收到私聊发送通知后，通过 `/chat/message/notification/ack` 上报 `PRIVATE_MESSAGE_SEND` 回执。`NotificationAckAppService` 会通过回执策略加载当前用户消息副本并调用 `ImPrivateInboxMessage.receive`，只更新本地副本的接收状态，然后统一确认对应发送通知任务。私聊已读入口 `/chat/message/private/read` 会调用消息副本的 `read`，再更新当前用户私聊会话的 `readMessageId` 和未读数。
+
+私聊撤回入口 `/chat/message/private/revoke` 会加载发送方和接收方两份副本。`ImMessageService.revokePrivateMessage` 先确认两份副本的原始发送人都是当前用户，再同时撤回两份副本。持久化后发布 `ImPrivateMessageRevokedEvent`，事件监听器负责推送撤回通知。客户端收到撤回通知后通过 `/chat/message/notification/ack` 确认。
+
+### 群聊消息发送
+
+1. 客户端通过 WebSocket 向 `/chat/message/group/send` 发送 `GroupMessageSendRequest`。
+2. `ImGroupWsController` 转换为 `GroupMessageSendCmd`，调用 `GroupMessageAppService.sendMessage`。
+3. 应用层按 `chatId + messageToken` 加分布式锁，加载发送方群聊会话并校验会话归属。
+4. 应用层加载群组，`GroupService.ensureGroupMember` 校验发送方仍是有效群成员。
+5. `ImMessageService.ensureGroupMessageUnique` 按发送方会话、用户和 token 做幂等校验。
+6. `GroupService.findMessageRecipients` 找到群内所有接收者会话，并结合 `UserService.isChatting` 标记在线会话状态。
+7. `ImMessageService.transmitGroupMessage` 为每个群成员生成一份 `ImGroupInboxMessage`。发送方副本直接为 `READ`，其他成员副本为 `SENT`。
+8. 每个成员的群聊会话通过 `receiveLatestMessage` 更新最近消息、未读数、已读位点和活跃时间。
+9. 应用层批量保存群消息副本和群聊会话，并发布 `ImGroupMessageSentEvent`。
+10. `GroupMessageListener` 监听发送事件后加载群成员会话，跳过发送者和离线用户，为每个在线成员创建 Redis 确认状态并发布通知；所有实例收到广播后再尝试投递到本机 WebSocket 用户队列。
+
+### 群聊消息接收、已读与撤回
+
+客户端收到群聊发送通知后，通过 `/chat/message/notification/ack` 上报 `GROUP_MESSAGE_SEND` 回执。`NotificationAckAppService` 会通过回执策略校验会话归属和群成员身份，只更新当前成员消息副本的接收状态，然后统一确认对应发送通知任务。群聊已读入口 `/chat/message/group/read` 会更新当前成员的消息副本和群聊会话读位点，不影响其他成员副本。
+
+群聊撤回入口 `/chat/message/group/revoke` 会先校验当前用户拥有发送方会话且仍是群成员，再加载同一 `groupId + messageId` 下的全部消息副本。`ImMessageService.revokeGroupMessage` 要求待撤回集合中包含当前用户的发送方副本，然后撤回全部副本。持久化后发布 `ImGroupMessageRevokedEvent`，监听器为群内所有成员会话发布 Redis 撤回通知。客户端收到撤回通知后通过 `/chat/message/notification/ack` 确认。
+
+### 状态与投递边界
+
+消息状态保存在每个用户自己的收件箱副本中。私聊有两份副本，群聊按群成员数量生成多份副本，因此接收、已读和撤回都可以在用户维度表达。会话上的 `lastMessageId`、`readMessageId`、`unreadMessageCount` 和 `activeTime` 用于会话列表展示，不作为消息明细的唯一事实来源。
+
+消息写入与事件发布由应用服务在事务内编排，实时推送通过领域事件之后的监听流程完成。这样可以把核心写模型与在线通知解耦：用户离线时消息仍然落库，用户在线时再通过 Redis Pub/Sub 和 STOMP 用户队列推送通知。
 
 ## 技术栈
 

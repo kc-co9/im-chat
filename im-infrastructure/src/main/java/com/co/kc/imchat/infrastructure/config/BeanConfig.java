@@ -4,6 +4,7 @@ import com.co.kc.imchat.application.ChatAppService;
 import com.co.kc.imchat.application.FriendAppService;
 import com.co.kc.imchat.application.GroupAppService;
 import com.co.kc.imchat.application.GroupMessageAppService;
+import com.co.kc.imchat.application.NotificationAckAppService;
 import com.co.kc.imchat.application.PrivateMessageAppService;
 import com.co.kc.imchat.application.UserAppService;
 import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
@@ -23,15 +24,23 @@ import com.co.kc.imchat.domain.session.repository.SessionRepository;
 import com.co.kc.imchat.domain.user.repository.UserRepository;
 import com.co.kc.imchat.domain.user.service.UserService;
 import com.co.kc.imchat.infrastructure.support.SpringEventPublisher;
-import com.co.kc.imchat.infrastructure.support.lock.aspect.DistributeLockAspect;
-import com.co.kc.imchat.infrastructure.support.lock.client.RedisLockClient;
-import com.co.kc.imchat.infrastructure.support.lock.template.DistributeLockTemplate;
+import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmableStore;
+import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmableService;
+import com.co.kc.imchat.application.support.notifier.ImMessageNotifier;
+import com.co.kc.imchat.application.support.notifier.ImMessageNotifierFactory;
 import com.co.kc.imchat.application.support.notifier.ImMessageNotifierInvoker;
+import com.co.kc.imchat.application.support.notifier.receiver.NotificationAckReceiver;
 import com.co.kc.imchat.domain.user.service.PasswordService;
 import com.co.kc.imchat.application.support.auth.TokenService;
-import org.redisson.api.RedissonClient;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 public class BeanConfig {
@@ -172,18 +181,37 @@ public class BeanConfig {
     }
 
     @Bean
-    public RedisLockClient redisLockClient(RedissonClient redissonClient) {
-        return new RedisLockClient(redissonClient);
+    public NotificationAckAppService notificationAckAppService(ImMessageConfirmableService imMessageConfirmableService,
+                                                               List<NotificationAckReceiver> notificationAckReceivers) {
+        return new NotificationAckAppService(imMessageConfirmableService, notificationAckReceivers);
     }
 
     @Bean
-    public DistributeLockTemplate distributeLockTemplate(RedisLockClient redisLockClient) {
-        return new DistributeLockTemplate(redisLockClient);
+    public ImMessageNotifierInvoker imMessageNotifierInvoker(ImMessageNotifierFactory imMessageNotifierFactory,
+                                                             ImMessageConfirmableService imMessageConfirmableService) {
+        return new ImMessageNotifierInvoker(imMessageNotifierFactory, imMessageConfirmableService);
+    }
+
+    @Bean(initMethod = "init", destroyMethod = "destroy")
+    public ImMessageConfirmableService imMessageConfirmableService(ImMessageNotifierFactory imMessageNotifierFactory,
+                                                                   ImMessageConfirmableStore imMessageConfirmableStore,
+                                                                   ScheduledExecutorService imMessageConfirmableExecutor) {
+        return new ImMessageConfirmableService(imMessageNotifierFactory, imMessageConfirmableStore, imMessageConfirmableExecutor);
     }
 
     @Bean
-    public DistributeLockAspect distributeLockAspect(DistributeLockTemplate distributeLockTemplate) {
-        return new DistributeLockAspect(distributeLockTemplate);
+    public ScheduledExecutorService imMessageConfirmableExecutor() {
+        ThreadFactory threadFactory = new ThreadFactoryBuilder()
+                .setNameFormat("im-message-confirmable-service-%d")
+                .setDaemon(false)
+                .setPriority(Thread.NORM_PRIORITY)
+                .build();
+        return new ScheduledThreadPoolExecutor(1, threadFactory, new ThreadPoolExecutor.DiscardPolicy());
+    }
+
+    @Bean
+    public ImMessageNotifierFactory imMessageNotifierFactory(List<ImMessageNotifier<?>> notifiers) {
+        return new ImMessageNotifierFactory(notifiers);
     }
 
 }

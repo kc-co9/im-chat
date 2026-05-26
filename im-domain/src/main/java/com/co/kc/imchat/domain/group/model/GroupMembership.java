@@ -2,7 +2,7 @@ package com.co.kc.imchat.domain.group.model;
 
 import com.co.kc.imchat.domain.user.model.UserId;
 import com.co.kc.imchat.common.exception.BusinessException;
-import lombok.Getter;
+import com.co.kc.imchat.common.utils.AssertUtils;
 import org.apache.commons.collections4.CollectionUtils;
 
 import java.time.LocalDateTime;
@@ -10,25 +10,16 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@Getter
-public class GroupMembership {
+/**
+ * 值对象：群成员集合。
+ */
+public record GroupMembership(GroupId groupId, List<GroupMember> members) {
     public static final int MAX_MEMBER_COUNT = 500;
 
-    private final GroupId groupId;
-    private final List<GroupMember> members;
-
-    public GroupMembership(GroupId groupId, List<GroupMember> members) {
-        if (groupId == null) {
-            throw new IllegalArgumentException("群组 ID 不能为空");
-        }
-        if (CollectionUtils.isEmpty(members)) {
-            throw new IllegalArgumentException("群组成员不能为空");
-        }
-        if (members.size() > MAX_MEMBER_COUNT) {
-            throw new IllegalArgumentException("群组成员数量不能超过 500 人");
-        }
-        this.groupId = groupId;
-        this.members = members;
+    public GroupMembership {
+        AssertUtils.domainPropNotNull("群组 ID 不能为空", groupId);
+        AssertUtils.domainPropNotEmpty("群组成员不能为空", members);
+        AssertUtils.domainPropTrue("群组成员数量不能超过 500 人", members.size() <= MAX_MEMBER_COUNT);
     }
 
     public List<GroupMember> invite(UserId inviterId, List<UserId> inviteeIds) {

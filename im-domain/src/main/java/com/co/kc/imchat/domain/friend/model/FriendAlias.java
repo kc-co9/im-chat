@@ -1,18 +1,11 @@
 package com.co.kc.imchat.domain.friend.model;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import org.apache.commons.lang3.StringUtils;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
-@Getter
-@EqualsAndHashCode
-public class FriendAlias {
-    private final String value;
-
-    public FriendAlias(String value) {
-        if (StringUtils.isBlank(value)) {
-            throw new IllegalArgumentException("alias can not be blank");
-        }
-        this.value = value;
-    }
-}
+/**
+ * 值对象：好友备注。
+ */
+public record FriendAlias(String value) {
+    public FriendAlias {
+        AssertUtils.domainPropNotBlank("好友备注不能为空", value);
+    }}

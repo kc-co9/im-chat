@@ -14,14 +14,14 @@ class ImSystemMessageTokenFactoryTest {
     void groupCreatedBuildsStableTokenFromCreateSystemGroupId() {
         ImMessageToken token = ImSystemMessageTokenFactory.createSystemGroupCreated(new GroupId(1001L));
 
-        assertThat(token.getValue()).isEqualTo("system:group_created:1001");
+        assertThat(token.value()).isEqualTo("system:group_created:1001");
     }
 
     @Test
     void groupDismissedBuildsStableTokenFromGroupId() {
         ImMessageToken token = ImSystemMessageTokenFactory.createSystemGroupDismissed(new GroupId(1001L));
 
-        assertThat(token.getValue()).isEqualTo("system:group_dismissed:1001");
+        assertThat(token.value()).isEqualTo("system:group_dismissed:1001");
     }
 
     @Test
@@ -29,6 +29,6 @@ class ImSystemMessageTokenFactoryTest {
         ImMessageToken token = ImSystemMessageTokenFactory.createSystemGroupMemberJoined(
                 new GroupId(1001L), new ImMessageId(9001L));
 
-        assertThat(token.getValue()).isEqualTo("system:group_member_joined:1001:9001");
+        assertThat(token.value()).isEqualTo("system:group_member_joined:1001:9001");
     }
 }

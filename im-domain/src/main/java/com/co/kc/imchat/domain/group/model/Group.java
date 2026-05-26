@@ -1,5 +1,6 @@
 package com.co.kc.imchat.domain.group.model;
 
+import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.domain.chat.model.ImChatType;
 import com.co.kc.imchat.domain.user.model.UserId;
 import com.co.kc.imchat.domain.shared.model.Identification;
@@ -8,6 +9,9 @@ import com.co.kc.imchat.common.exception.BusinessException;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
+/**
+ * 聚合根：群组。
+ */
 @Getter
 @EqualsAndHashCode(callSuper = true)
 public class Group extends Identification implements Validator {
@@ -52,7 +56,7 @@ public class Group extends Identification implements Validator {
     }
 
     public void decreaseMemberCount(int count) {
-        changeMemberCount(new MemberCount(memberCount.getValue() - count));
+        changeMemberCount(new MemberCount(memberCount.value() - count));
     }
 
     public void changeNotification(UserId operatorId, GroupNotification notification) {
@@ -92,9 +96,7 @@ public class Group extends Identification implements Validator {
 
 
     public void changeMemberCount(MemberCount memberCount) {
-        if (memberCount == null) {
-            throw new IllegalArgumentException("群人数不能为空");
-        }
+        AssertUtils.domainPropNotNull("群人数不能为空", memberCount);
         this.memberCount = memberCount;
     }
 

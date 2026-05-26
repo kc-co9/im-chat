@@ -5,6 +5,7 @@ import com.co.kc.imchat.domain.chat.model.ImChatType;
 import com.co.kc.imchat.domain.chat.model.ImGroupChat;
 import com.co.kc.imchat.domain.group.model.GroupId;
 import com.co.kc.imchat.domain.user.model.UserId;
+import com.co.kc.imchat.infrastructure.domain.repository.MysqlImGroupChatRepository;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroupChat;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupChatService;
 import org.junit.jupiter.api.Test;

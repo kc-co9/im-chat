@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * 朋友
+ * 聚合根：好友关系。
  */
 @Data
 @NoArgsConstructor
@@ -49,9 +49,9 @@ public class Friend extends Identification implements Validator {
 
     public FriendDisplayName displayName() {
         if (friendAlias != null) {
-            return new FriendDisplayName(friendAlias.getValue());
+            return new FriendDisplayName(friendAlias.value());
         } else {
-            return new FriendDisplayName(friendName.getValue());
+            return new FriendDisplayName(friendName.value());
         }
     }
 

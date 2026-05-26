@@ -1,6 +1,6 @@
 package com.co.kc.imchat.interfaces.endpoint.consumer;
 
-import com.co.kc.imchat.application.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
+import com.co.kc.imchat.application.model.notification.ImPrivateSentNotification;
 import com.co.kc.imchat.application.model.enums.RedisTopic;
 import com.co.kc.imchat.application.support.redis.RedisSubscriber;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +11,7 @@ import static com.co.kc.imchat.interfaces.support.websocket.PushQueue.QUEUE_PRIV
 
 @Component
 @RequiredArgsConstructor
-public class ImPrivateMessageSentConsumer implements RedisSubscriber<ImPrivateSentNotifyCmd> {
+public class ImPrivateMessageSentConsumer implements RedisSubscriber<ImPrivateSentNotification> {
     private final SimpMessagingTemplate messagingTemplate;
 
     @Override
@@ -20,7 +20,7 @@ public class ImPrivateMessageSentConsumer implements RedisSubscriber<ImPrivateSe
     }
 
     @Override
-    public void onMessage(ImPrivateSentNotifyCmd message) {
+    public void onMessage(ImPrivateSentNotification message) {
         messagingTemplate.convertAndSendToUser(String.valueOf(message.receiverId()), QUEUE_PRIVATE_MESSAGE_SENT, message);
     }
 }

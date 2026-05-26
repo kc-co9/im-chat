@@ -44,12 +44,18 @@ import com.co.kc.imchat.application.model.cqrs.command.chat.PrivateChatHideCmd;
 import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageSendCmd;
 import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
-import com.co.kc.imchat.application.model.cqrs.command.notify.ImPrivateSentNotifyCmd;
+import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageReceiveCmd;
+import com.co.kc.imchat.application.model.notification.ImPrivateRevokedNotification;
+import com.co.kc.imchat.application.model.notification.ImPrivateSentNotification;
 import com.co.kc.imchat.application.model.cqrs.dto.im.ImPrivateChatOpenDTO;
 import com.co.kc.imchat.application.model.cqrs.dto.im.ImPrivateMessageDTO;
+import com.co.kc.imchat.application.model.cqrs.query.ImPrivateMessageDetailQuery;
 import com.co.kc.imchat.application.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.application.support.event.DomainEventPublisher;
+import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmableStore;
+import com.co.kc.imchat.application.support.notifier.task.ReceiptTask;
 import com.co.kc.imchat.common.exception.NotFoundException;
+import com.co.kc.imchat.common.exception.RepeatException;
 import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.application.support.lock.DistributeLockScene;
 import com.co.kc.imchat.application.support.lock.annotation.DistributeLock;
@@ -62,6 +68,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -109,7 +116,7 @@ class PrivateChatAppServiceTest {
         assertThat(userChat.getStatus()).isEqualTo(ImChatStatus.NORMAL);
         assertThat(userChat.getActiveTime()).isNotNull();
         assertThat(peerChat.getStatus()).isEqualTo(ImChatStatus.HIDDEN);
-        assertThat(sessionRepository.session.getChatId().getValue()).isEqualTo(101L);
+        assertThat(sessionRepository.session.getChatId().value()).isEqualTo(101L);
     }
 
     @Test
@@ -174,7 +181,7 @@ class PrivateChatAppServiceTest {
 
         assertThat(result.getChatId()).isEqualTo(101L);
 
-        ImPrivateChat savedChat = privateChatRepository.savedChats.get(0);
+        ImPrivateChat savedChat = privateChatRepository.savedChats.getFirst();
         assertThat(savedChat.getStatus()).isEqualTo(ImChatStatus.NORMAL);
         assertThat(savedChat.getActiveTime()).isAfter(oldActiveTime);
     }
@@ -199,7 +206,7 @@ class PrivateChatAppServiceTest {
 
         assertThat(privateChatRepository.savedChats).hasSize(1);
 
-        ImPrivateChat savedChat = privateChatRepository.savedChats.get(0);
+        ImPrivateChat savedChat = privateChatRepository.savedChats.getFirst();
         assertThat(savedChat.getStatus()).isEqualTo(ImChatStatus.HIDDEN);
     }
 
@@ -232,7 +239,7 @@ class PrivateChatAppServiceTest {
         appService.changeGroupAlias(new GroupAliasChangeCmd(1L, 201L, "work"));
 
         assertThat(groupChatRepository.savedGroupChats).containsExactly(userChat);
-        assertThat(userChat.getGroupAlias().getValue()).isEqualTo("work");
+        assertThat(userChat.getGroupAlias().value()).isEqualTo("work");
     }
 
     @Test
@@ -321,13 +328,42 @@ class PrivateChatAppServiceTest {
 
         appService.readMessage(new ImPrivateMessageReadCmd(102L, 2L, 900L));
 
-        ImPrivateInboxMessage savedMessage = inboxRepository.savedMessages.get(0);
+        ImPrivateInboxMessage savedMessage = inboxRepository.savedMessages.getFirst();
         assertThat(savedMessage.getStatus()).isEqualTo(ImPrivateMessageStatus.READ);
         assertThat(savedMessage.getReadTime()).isNotNull();
 
-        ImPrivateChat savedChat = privateChatRepository.savedChats.get(0);
-        assertThat(savedChat.getReadMessageId().getValue()).isEqualTo(900L);
+        ImPrivateChat savedChat = privateChatRepository.savedChats.getFirst();
+        assertThat(savedChat.getReadMessageId().value()).isEqualTo(900L);
         assertThat(savedChat.getUnreadMessageCount()).isZero();
+        assertThat(eventPublisher.events).isEmpty();
+    }
+
+    @Test
+    void receivePrivateMessageMarksOnlyReceiverInbox() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        inboxRepository.messages.add(privateMessage(900L, 102L, 2L, 1L, ImPrivateMessageStatus.SENT));
+
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                privateChatRepository,
+                inboxRepository,
+                null,
+                new ImChatService(null, privateChatRepository, null, null, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                null,
+                new FixedSnowflakeId(900L),
+                null,
+                eventPublisher);
+
+        appService.receiveMessage(new ImPrivateMessageReceiveCmd(2L, 102L, 900L));
+
+        ImPrivateInboxMessage savedMessage = inboxRepository.savedMessages.getFirst();
+        assertThat(savedMessage.getStatus()).isEqualTo(ImPrivateMessageStatus.RECEIVED);
+        assertThat(savedMessage.getReceivedTime()).isNotNull();
+        assertThat(privateChatRepository.savedChats).isEmpty();
         assertThat(eventPublisher.events).isEmpty();
     }
 
@@ -352,7 +388,7 @@ class PrivateChatAppServiceTest {
                 eventPublisher);
 
         appService.sendMessage(privateMessageSendCmd(101L, 1L));
-        appService.onMessageSent((ImPrivateMessageSentEvent) eventPublisher.events.get(0));
+        appService.onMessageSent((ImPrivateMessageSentEvent) eventPublisher.events.getFirst());
 
         UserId receiverId = new UserId(2L);
         ImPrivateChat receiverChat = privateChatRepository.savedChats.stream()
@@ -361,7 +397,113 @@ class PrivateChatAppServiceTest {
                 .orElseThrow(AssertionError::new);
         assertThat(receiverChat.getUnreadMessageCount()).isEqualTo(1);
         assertThat(notifierInvoker.privateSentCommands)
-                .extracting(ImPrivateSentNotifyCmd::receiverId)
+                .extracting(ImPrivateSentNotification::receiverId)
+                .containsExactly(2L);
+    }
+
+    @Test
+    void sendPrivateMessageRejectsDuplicateTokenBeforeSavingMessages() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        inboxRepository.messages.add(privateMessage(899L, 101L, 1L, 1L, ImPrivateMessageStatus.SENT, null, "token-1"));
+
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                privateChatRepository,
+                inboxRepository,
+                new OnlineNonChattingUserService(),
+                new ImChatService(new NormalFriendRepository(), privateChatRepository, null, null, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                new FriendService(new NormalFriendRepository()),
+                new FixedSnowflakeId(900L),
+                new RecordingNotifierInvoker(),
+                new MemoryDomainEventPublisher());
+
+        assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
+                .isInstanceOf(RepeatException.class)
+                .hasMessageContaining("消息已存在");
+        assertThat(inboxRepository.savedMessages).isEmpty();
+        assertThat(privateChatRepository.savedChats).isEmpty();
+    }
+
+    @Test
+    void privateMessageSentEventDoesNotNotifyOfflineReceiver() {
+        RecordingNotifierInvoker notifierInvoker = new RecordingNotifierInvoker();
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                null,
+                null,
+                new OfflineUserService(),
+                null,
+                null,
+                null,
+                null,
+                notifierInvoker,
+                null);
+        ImPrivateMessageSentEvent event = new ImPrivateMessageSentEvent();
+        event.setReceiverId(2L);
+        event.setReceiverChatId(102L);
+        event.setSenderId(1L);
+        event.setMessageId(900L);
+
+        appService.onMessageSent(event);
+
+        assertThat(notifierInvoker.privateSentCommands).isEmpty();
+    }
+
+    @Test
+    void queryPrivateMessageDetailReturnsOnlyCurrentUsersMessageCopy() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        inboxRepository.messages.add(privateMessage(900L, 101L, 1L, 1L, ImPrivateMessageStatus.SENT, null, "token-1"));
+        inboxRepository.messages.add(privateMessage(900L, 102L, 2L, 1L, ImPrivateMessageStatus.RECEIVED, null, "token-1"));
+
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                privateChatRepository,
+                inboxRepository,
+                null,
+                new ImChatService(null, privateChatRepository, null, null, null, null),
+                null,
+                null,
+                null,
+                null,
+                null);
+
+        ImPrivateMessageDTO detail = appService.queryMessageDetail(
+                new ImPrivateMessageDetailQuery(102L, 2L, "token-1"));
+
+        assertThat(detail.getMessageId()).isEqualTo(900L);
+        assertThat(detail.getSenderId()).isEqualTo(1L);
+        assertThat(detail.getReceiverId()).isEqualTo(2L);
+        assertThat(detail.getContent()).isEqualTo("hello");
+    }
+
+    @Test
+    void privateMessageRevokedEventInvokesRevokeNotifier() {
+        RecordingNotifierInvoker notifierInvoker = new RecordingNotifierInvoker();
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                notifierInvoker,
+                null);
+        com.co.kc.imchat.domain.message.event.ImPrivateMessageRevokedEvent event =
+                new com.co.kc.imchat.domain.message.event.ImPrivateMessageRevokedEvent();
+        event.setReceiverId(2L);
+        event.setChatId(102L);
+        event.setMessageId(900L);
+
+        appService.onMessageRevoked(event);
+
+        assertThat(notifierInvoker.privateRevokedCommands)
+                .extracting(ImPrivateRevokedNotification::receiverId)
                 .containsExactly(2L);
     }
 
@@ -428,9 +570,15 @@ class PrivateChatAppServiceTest {
     private ImPrivateInboxMessage privateMessage(
             Long messageId, Long chatId, Long userId, Long senderId,
             ImPrivateMessageStatus status, LocalDateTime revokeTime) {
+        return privateMessage(messageId, chatId, userId, senderId, status, revokeTime, "token-" + messageId);
+    }
+
+    private ImPrivateInboxMessage privateMessage(
+            Long messageId, Long chatId, Long userId, Long senderId,
+            ImPrivateMessageStatus status, LocalDateTime revokeTime, String token) {
         return ImPrivateInboxMessage.builder()
                 .id(new ImMessageId(messageId))
-                .token(new ImMessageToken("token-" + messageId))
+                .token(new ImMessageToken(token))
                 .content(new ImMessageContent(ImMessageType.TEXT, "hello"))
                 .chatId(new ImChatId(chatId))
                 .userId(new UserId(userId))
@@ -532,13 +680,16 @@ class PrivateChatAppServiceTest {
         public Optional<ImPrivateInboxMessage> find(ImChatId chatId, ImMessageId messageId) {
             return messages.stream()
                     .filter(message -> message.getChatId().equals(chatId))
-                    .filter(message -> message.getId().getValue().equals(messageId.getValue()))
+                    .filter(message -> message.getId().value().equals(messageId.value()))
                     .findFirst();
         }
 
         @Override
         public Optional<ImPrivateInboxMessage> find(ImChatId chatId, ImMessageToken messageToken) {
-            return Optional.empty();
+            return messages.stream()
+                    .filter(message -> message.getChatId().equals(chatId))
+                    .filter(message -> message.getToken().value().equals(messageToken.value()))
+                    .findFirst();
         }
 
         @Override
@@ -547,8 +698,8 @@ class PrivateChatAppServiceTest {
             return messages.stream()
                     .filter(message -> message.getChatId().equals(imChatId))
                     .filter(message -> message.getUserId().equals(viewer))
-                    .filter(message -> imLastMessageId == null || message.getId().getValue() < imLastMessageId.getValue())
-                    .sorted((left, right) -> right.getId().getValue().compareTo(left.getId().getValue()))
+                    .filter(message -> imLastMessageId == null || message.getId().value() < imLastMessageId.value())
+                    .sorted((left, right) -> right.getId().value().compareTo(left.getId().value()))
                     .limit(count)
                     .collect(Collectors.toList());
         }
@@ -556,12 +707,16 @@ class PrivateChatAppServiceTest {
         @Override
         public Optional<ImPrivateInboxMessage> queryDetail(
                 ImChatId chatId, ImMessageToken messageToken, UserId viewer) {
-            return Optional.empty();
+            return messages.stream()
+                    .filter(message -> message.getChatId().equals(chatId))
+                    .filter(message -> message.getUserId().equals(viewer))
+                    .filter(message -> message.getToken().value().equals(messageToken.value()))
+                    .findFirst();
         }
 
         @Override
         public boolean contain(ImChatId chatId, ImMessageToken messageToken) {
-            return false;
+            return find(chatId, messageToken).isPresent();
         }
     }
 
@@ -812,8 +967,20 @@ class PrivateChatAppServiceTest {
         }
     }
 
+    private static class OfflineUserService extends UserService {
+        OfflineUserService() {
+            super(null, null, null, null);
+        }
+
+        @Override
+        public boolean isOnline(UserId userId) {
+            return false;
+        }
+    }
+
     private static class RecordingNotifierInvoker extends ImMessageNotifierInvoker {
-        private final List<ImPrivateSentNotifyCmd> privateSentCommands = new ArrayList<>();
+        private final List<ImPrivateSentNotification> privateSentCommands = new ArrayList<>();
+        private final List<ImPrivateRevokedNotification> privateRevokedCommands = new ArrayList<>();
 
         RecordingNotifierInvoker() {
             super(null, null);
@@ -821,9 +988,29 @@ class PrivateChatAppServiceTest {
 
         @Override
         public <T> void invoke(T command) {
-            if (command instanceof ImPrivateSentNotifyCmd) {
-                privateSentCommands.add((ImPrivateSentNotifyCmd) command);
+            if (command instanceof ImPrivateSentNotification) {
+                privateSentCommands.add((ImPrivateSentNotification) command);
             }
+            if (command instanceof ImPrivateRevokedNotification) {
+                privateRevokedCommands.add((ImPrivateRevokedNotification) command);
+            }
+        }
+    }
+
+    private static class RecordingConfirmableStore implements ImMessageConfirmableStore {
+        private final List<String> confirmedReceiptIds = new ArrayList<>();
+
+        @Override
+        public void offer(ReceiptTask message) {
+        }
+
+        @Override
+        public void consume(Consumer<ReceiptTask> consumer) {
+        }
+
+        @Override
+        public void confirm(String receiptId) {
+            confirmedReceiptIds.add(receiptId);
         }
     }
 

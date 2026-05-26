@@ -1,10 +1,8 @@
 package com.co.kc.imchat.interfaces.endpoint.websocket;
 
 import com.co.kc.imchat.application.PrivateMessageAppService;
-import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageReceiveCmd;
 import com.co.kc.imchat.interfaces.model.enums.ParamsConstants;
 import com.co.kc.imchat.interfaces.support.websocket.PushQueue;
-import com.co.kc.imchat.interfaces.model.io.im.ImPrivateMessageReceiveRequest;
 import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
 import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageSendCmd;
@@ -34,18 +32,6 @@ public class ImPrivateWsController {
         Long userId = (Long) headerAccessor.getSessionAttributes().get(ParamsConstants.USER_ID);
         ImPrivateMessageSendCmd command = ImMessageHttpIoTransformer.INSTANCE.imPrivateMessageSendCmdFrom(userId, request);
         privateMessageAppService.sendMessage(command);
-        return Result.success(new WsResponse(request.getRequestId()));
-    }
-
-    /**
-     * 处理客户端消息接收
-     */
-    @SendToUser(PushQueue.QUEUE_RESULT)
-    @MessageMapping("/message/private/receive")
-    public Result<WsResponse> receivePrivateMessage(ImPrivateMessageReceiveRequest request, SimpMessageHeaderAccessor headerAccessor) {
-        Long userId = (Long) headerAccessor.getSessionAttributes().get(ParamsConstants.USER_ID);
-        ImPrivateMessageReceiveCmd command = ImMessageHttpIoTransformer.INSTANCE.imPrivateMessageReceiveCmdFrom(userId, request);
-        privateMessageAppService.receiveMessage(command);
         return Result.success(new WsResponse(request.getRequestId()));
     }
 

@@ -1,5 +1,6 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.application.support.transaction.AfterTransactionCommit;
 import com.co.kc.imchat.domain.chat.model.ImChatId;
 import com.co.kc.imchat.domain.chat.service.ImChatService;
 import com.co.kc.imchat.domain.group.model.Group;
@@ -29,8 +30,8 @@ import com.co.kc.imchat.application.model.cqrs.command.group.GroupMessageReceive
 import com.co.kc.imchat.application.model.cqrs.command.group.GroupMessageRevokeCmd;
 import com.co.kc.imchat.application.model.cqrs.command.group.GroupMessageReadCmd;
 import com.co.kc.imchat.application.model.cqrs.command.group.GroupMessageSendCmd;
-import com.co.kc.imchat.application.model.cqrs.command.group.GroupRevokedNotifyCmd;
-import com.co.kc.imchat.application.model.cqrs.command.group.GroupSentNotifyCmd;
+import com.co.kc.imchat.application.model.notification.ImGroupRevokedNotification;
+import com.co.kc.imchat.application.model.notification.ImGroupSentNotification;
 import com.co.kc.imchat.application.model.cqrs.dto.group.GroupMessageDTO;
 import com.co.kc.imchat.application.model.cqrs.query.group.GroupMessageDetailQuery;
 import com.co.kc.imchat.application.model.cqrs.query.group.GroupMessageHistoryQuery;
@@ -88,14 +89,15 @@ public class GroupMessageAppService {
         ImGroupMessageTransmission transmission =
                 imMessageService.transmitGroupMessage(outboundMessage, imMessageSender, recipients);
 
-        imGroupInboxMessageRepository.save(transmission.getInboxMessages());
-        imGroupChatRepository.save(transmission.getGroupChats());
+        imGroupInboxMessageRepository.save(transmission.inboxMessages());
+        imGroupChatRepository.save(transmission.groupChats());
 
         ImGroupMessageSentEvent event =
                 imMessageService.newImMessageSentEvent(senderChat.getGroupId(), transmission.getSenderMessage(senderId));
         imMessageEventPublisher.publish(event);
     }
 
+    @AfterTransactionCommit
     public void onMessageSent(ImGroupMessageSentEvent event) {
         GroupId groupId = new GroupId(event.getGroupId());
         UserId senderId = new UserId(event.getSenderId());
@@ -109,10 +111,10 @@ public class GroupMessageAppService {
             if (!userService.isOnline(memberChat.getUserId())) {
                 continue;
             }
-            GroupSentNotifyCmd notifyCmd =
-                    ImMessageAppTransformer.INSTANCE.groupSentNotifyCmdFrom(
-                            memberChat.getUserId().getValue(), memberChat.getId().getValue(), event);
-            imMessageNotifierInvoker.invoke(notifyCmd);
+            ImGroupSentNotification notification =
+                    ImMessageAppTransformer.INSTANCE.imGroupSentNotificationFrom(
+                            memberChat.getUserId().value(), memberChat.getId().value(), event);
+            imMessageNotifierInvoker.invoke(notification);
         }
     }
 
@@ -136,23 +138,24 @@ public class GroupMessageAppService {
                 imGroupInboxMessageRepository.findByGroupIdAndMessageId(senderChat.getGroupId(), messageId);
         ImGroupMessageRevocation revocation =
                 imMessageService.revokeGroupMessage(inboxMessages, senderInboxMessage, userId);
-        imGroupInboxMessageRepository.save(revocation.getMessages());
+        imGroupInboxMessageRepository.save(revocation.messages());
 
         ImGroupMessageRevokedEvent event =
-                imMessageService.newImMessageRevokedEvent(senderChat.getGroupId(), revocation.getSenderMessage());
+                imMessageService.newImMessageRevokedEvent(senderChat.getGroupId(), revocation.senderMessage());
         imMessageEventPublisher.publish(event);
     }
 
+    @AfterTransactionCommit
     public void onMessageRevoked(ImGroupMessageRevokedEvent event) {
         GroupId groupId = new GroupId(event.getGroupId());
         List<GroupMember> memberList = groupMemberRepository.find(groupId);
         List<UserId> memberUserIds = FunctionUtils.mappingList(memberList, GroupMember::getUserId);
         List<ImGroupChat> memberChats = imGroupChatRepository.find(groupId, memberUserIds);
         for (ImGroupChat memberChat : memberChats) {
-            GroupRevokedNotifyCmd notifyCmd =
-                    ImMessageAppTransformer.INSTANCE.groupRevokedNotifyCmdFrom(
-                            memberChat.getUserId().getValue(), memberChat.getId().getValue(), event);
-            imMessageNotifierInvoker.invoke(notifyCmd);
+            ImGroupRevokedNotification notification =
+                    ImMessageAppTransformer.INSTANCE.imGroupRevokedNotificationFrom(
+                            memberChat.getUserId().value(), memberChat.getId().value(), event);
+            imMessageNotifierInvoker.invoke(notification);
         }
     }
 

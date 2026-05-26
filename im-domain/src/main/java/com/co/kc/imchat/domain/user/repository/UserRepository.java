@@ -7,6 +7,9 @@ import com.co.kc.imchat.domain.user.model.UserId;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * 资源库：用户。
+ */
 public interface UserRepository {
     /**
      * 根据userId查找用户

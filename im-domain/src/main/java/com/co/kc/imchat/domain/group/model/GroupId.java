@@ -1,17 +1,11 @@
 package com.co.kc.imchat.domain.group.model;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
-@Getter
-@EqualsAndHashCode
-public class GroupId {
-    private final Long value;
-
-    public GroupId(Long value) {
-        if (value == null) {
-            throw new IllegalArgumentException("value cannot be null");
-        }
-        this.value = value;
-    }
-}
+/**
+ * 值对象：群组ID。
+ */
+public record GroupId(Long value) {
+    public GroupId {
+        AssertUtils.domainPropNotNull("群组ID不能为空", value);
+    }}

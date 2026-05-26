@@ -29,11 +29,11 @@ public interface ImChatDbTransformer {
     default DbImPrivateChat dbImPrivateChatFrom(ImPrivateChat imPrivateChat) {
         DbImPrivateChat row = new DbImPrivateChat();
         row.setId(imPrivateChat.getPkId());
-        row.setChatId(imPrivateChat.getId().getValue());
-        row.setUserId(imPrivateChat.getUserId().getValue());
-        row.setPeerUserId(imPrivateChat.getPeerUserId().getValue());
-        row.setLastMessageId(imPrivateChat.getLastMessageId() == null ? 0L : imPrivateChat.getLastMessageId().getValue());
-        row.setReadMessageId(imPrivateChat.getReadMessageId() == null ? 0L : imPrivateChat.getReadMessageId().getValue());
+        row.setChatId(imPrivateChat.getId().value());
+        row.setUserId(imPrivateChat.getUserId().value());
+        row.setPeerUserId(imPrivateChat.getPeerUserId().value());
+        row.setLastMessageId(imPrivateChat.getLastMessageId() == null ? 0L : imPrivateChat.getLastMessageId().value());
+        row.setReadMessageId(imPrivateChat.getReadMessageId() == null ? 0L : imPrivateChat.getReadMessageId().value());
         row.setUnreadMessageCount(imPrivateChat.getUnreadMessageCount() == null ? 0 : imPrivateChat.getUnreadMessageCount());
         row.setStatus(dbImChatStatusFrom(imPrivateChat.getStatus()));
         row.setActiveTime(imPrivateChat.getActiveTime());
@@ -43,11 +43,11 @@ public interface ImChatDbTransformer {
     default DbImGroup dbImGroupFrom(Group group) {
         DbImGroup dbGroup = new DbImGroup();
         dbGroup.setId(group.getPkId());
-        dbGroup.setGroupId(group.getId().getValue());
-        dbGroup.setOwnerId(group.getOwnerId().getValue());
-        dbGroup.setName(group.getName().getValue());
-        dbGroup.setNotification(group.getNotification() == null ? "" : group.getNotification().getValue());
-        dbGroup.setMemberCount(group.getMemberCount().getValue());
+        dbGroup.setGroupId(group.getId().value());
+        dbGroup.setOwnerId(group.getOwnerId().value());
+        dbGroup.setName(group.getName().value());
+        dbGroup.setNotification(group.getNotification() == null ? "" : group.getNotification().value());
+        dbGroup.setMemberCount(group.getMemberCount().value());
         dbGroup.setStatus(dbImGroupStatusFrom(group.getStatus()));
         return dbGroup;
     }
@@ -59,12 +59,12 @@ public interface ImChatDbTransformer {
     default DbImGroupChat dbImGroupChatFrom(ImGroupChat groupChat) {
         DbImGroupChat dbGroupChat = new DbImGroupChat();
         dbGroupChat.setId(groupChat.getPkId());
-        dbGroupChat.setChatId(groupChat.getId().getValue());
-        dbGroupChat.setGroupId(groupChat.getGroupId().getValue());
-        dbGroupChat.setUserId(groupChat.getUserId().getValue());
-        dbGroupChat.setGroupAlias(groupChat.getGroupAlias() == null ? "" : groupChat.getGroupAlias().getValue());
-        dbGroupChat.setLastMessageId(groupChat.getLastMessageId() == null ? 0L : groupChat.getLastMessageId().getValue());
-        dbGroupChat.setReadMessageId(groupChat.getReadMessageId() == null ? 0L : groupChat.getReadMessageId().getValue());
+        dbGroupChat.setChatId(groupChat.getId().value());
+        dbGroupChat.setGroupId(groupChat.getGroupId().value());
+        dbGroupChat.setUserId(groupChat.getUserId().value());
+        dbGroupChat.setGroupAlias(groupChat.getGroupAlias() == null ? "" : groupChat.getGroupAlias().value());
+        dbGroupChat.setLastMessageId(groupChat.getLastMessageId() == null ? 0L : groupChat.getLastMessageId().value());
+        dbGroupChat.setReadMessageId(groupChat.getReadMessageId() == null ? 0L : groupChat.getReadMessageId().value());
         dbGroupChat.setUnreadMessageCount(groupChat.getUnreadMessageCount() == null ? 0 : groupChat.getUnreadMessageCount());
         dbGroupChat.setStatus(dbImChatStatusFrom(groupChat.getStatus()));
         dbGroupChat.setActiveTime(groupChat.getActiveTime());
@@ -74,9 +74,9 @@ public interface ImChatDbTransformer {
     default DbImGroupMember dbImGroupMemberFrom(GroupMember member) {
         DbImGroupMember dbGroupMember = new DbImGroupMember();
         dbGroupMember.setId(member.getPkId());
-        dbGroupMember.setGroupId(member.getGroupId().getValue());
-        dbGroupMember.setUserId(member.getUserId().getValue());
-        dbGroupMember.setUserAlias(member.getUserAlias() == null ? "" : member.getUserAlias().getValue());
+        dbGroupMember.setGroupId(member.getGroupId().value());
+        dbGroupMember.setUserId(member.getUserId().value());
+        dbGroupMember.setUserAlias(member.getUserAlias() == null ? "" : member.getUserAlias().value());
         dbGroupMember.setJoinTime(member.getJoinTime());
         return dbGroupMember;
     }
@@ -91,15 +91,11 @@ public interface ImChatDbTransformer {
         if (status == null) {
             return DbImChatStatus.UNKNOWN;
         }
-        switch (status) {
-            case NORMAL:
-                return DbImChatStatus.NORMAL;
-            case HIDDEN:
-                return DbImChatStatus.HIDDEN;
-            case UNKNOWN:
-            default:
-                return DbImChatStatus.UNKNOWN;
-        }
+        return switch (status) {
+            case NORMAL -> DbImChatStatus.NORMAL;
+            case HIDDEN -> DbImChatStatus.HIDDEN;
+            default -> DbImChatStatus.UNKNOWN;
+        };
     }
 
     @ValueMappings(value = {

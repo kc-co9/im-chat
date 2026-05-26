@@ -9,6 +9,9 @@ import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 
+/**
+ * 聚合根：群聊收件箱消息。
+ */
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class ImGroupInboxMessage extends ImMessage {

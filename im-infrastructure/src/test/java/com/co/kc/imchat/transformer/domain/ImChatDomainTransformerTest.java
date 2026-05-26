@@ -29,7 +29,7 @@ class ImChatDomainTransformerTest {
 
         Group group = ImChatDomainTransformer.INSTANCE.imGroupFrom(row);
 
-        assertThat(group.getMemberCount().getValue()).isEqualTo(3);
+        assertThat(group.getMemberCount().value()).isEqualTo(3);
         assertThat(group.getStatus()).isEqualTo(GroupStatus.ACTIVE);
     }
 

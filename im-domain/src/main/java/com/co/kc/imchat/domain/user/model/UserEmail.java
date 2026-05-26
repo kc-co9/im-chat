@@ -1,33 +1,17 @@
 package com.co.kc.imchat.domain.user.model;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.ToString;
-import org.apache.commons.lang3.StringUtils;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
 import java.util.regex.Pattern;
 
 /**
- * 邮箱-值对象
- *
- * @author kc
+ * 值对象：用户邮箱。
  */
-@Getter
-@ToString
-@EqualsAndHashCode
-public class UserEmail {
+public record UserEmail(String value) {
     private static final String EMAIL_REGEX = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(?:\\.[a-zA-Z]{2,})?$";
     private static final Pattern EMAIL_PATTERN = Pattern.compile(EMAIL_REGEX);
 
-    private final String value;
-
-    public UserEmail(String value) {
-        if (StringUtils.isBlank(value)) {
-            throw new IllegalArgumentException("email is null or empty");
-        }
-        if (!EMAIL_PATTERN.matcher(value).matches()) {
-            throw new IllegalArgumentException("email is illegal");
-        }
-        this.value = value;
-    }
-}
+    public UserEmail {
+        AssertUtils.domainPropNotBlank("邮箱不能为空", value);
+        AssertUtils.domainPropTrue("邮箱格式不合法", EMAIL_PATTERN.matcher(value).matches());
+    }}

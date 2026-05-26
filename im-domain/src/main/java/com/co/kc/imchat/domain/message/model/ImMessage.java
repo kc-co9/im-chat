@@ -8,6 +8,9 @@ import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 
+/**
+ * 聚合根：消息。
+ */
 @EqualsAndHashCode(callSuper = false)
 @Data
 public class ImMessage extends Identification implements Validator {
@@ -19,7 +22,7 @@ public class ImMessage extends Identification implements Validator {
     protected LocalDateTime revokeTime;
 
     public String getVisibleContent() {
-        return content.getValue();
+        return content.value();
     }
 
     @Override
@@ -27,7 +30,7 @@ public class ImMessage extends Identification implements Validator {
         if (id == null || token == null || content == null || senderId == null || sendTime == null) {
             throw new IllegalStateException("消息缺少 id、token、content、senderId 或 sendTime");
         }
-        if (content.getType() == null) {
+        if (content.type() == null) {
             throw new IllegalStateException("消息 content.type 不能为空");
         }
     }

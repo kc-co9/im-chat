@@ -1,98 +1,117 @@
 package com.co.kc.imchat.support.notifier;
 
-import com.co.kc.imchat.application.support.notifier.ImMessageConfirmable;
-import com.co.kc.imchat.application.support.notifier.ImMessageConfirmableScheduler;
 import com.co.kc.imchat.application.support.notifier.ImMessageNotifier;
 import com.co.kc.imchat.application.support.notifier.ImMessageNotifierFactory;
 import com.co.kc.imchat.application.support.notifier.ImMessageNotifierInvoker;
-import com.co.kc.imchat.application.support.notifier.task.NotifierTask;
-import com.co.kc.imchat.application.support.notifier.task.NotifierTaskType;
+import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmable;
+import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmableService;
+import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmableStore;
+import com.co.kc.imchat.application.support.notifier.task.ReceiptTask;
+import com.co.kc.imchat.application.support.notifier.task.ReceiptType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class ImMessageNotifierInvokerTest {
 
     @Test
     void invokeSchedulesConfirmableTaskAndNotifies() {
         RecordingNotifier notifier = new RecordingNotifier();
-        RecordingScheduler scheduler = new RecordingScheduler();
-        ImMessageNotifierInvoker invoker = newInvoker(notifier, scheduler);
+        RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
+        ImMessageNotifierInvoker invoker = newInvoker(notifier, confirmableStore);
 
-        TestCommand command = new TestCommand("hello");
-        invoker.invoke(command);
+        TestNotification notification = new TestNotification("hello");
+        invoker.invoke(notification);
 
-        assertThat(notifier.notifiedCommand).isSameAs(command);
-        assertThat(scheduler.scheduledTask).isNotNull();
-        assertThat(scheduler.scheduledTask.getType()).isEqualTo(NotifierTaskType.PRIVATE_MESSAGE_SEND);
-        assertThat(scheduler.scheduledTask.getCommand()).contains("hello");
+        assertThat(notifier.notifiedNotification).isSameAs(notification);
+        assertThat(confirmableStore.offeredTask).isNotNull();
+        assertThat(confirmableStore.offeredTask.getReceiptType()).isEqualTo(ReceiptType.PRIVATE_MESSAGE_SEND);
+        assertThat(confirmableStore.offeredTask.getNotification()).isSameAs(notification);
+        assertThat(confirmableStore.offeredTask.getReceiptId()).isEqualTo("ack:hello");
+        assertThat(confirmableStore.offeredTask.getDelayMillis()).isEqualTo(2000L);
     }
 
     @Test
-    void retryNotifiesWithoutSchedulingAgain() {
-        RecordingNotifier notifier = new RecordingNotifier();
-        RecordingScheduler scheduler = new RecordingScheduler();
-        ImMessageNotifierInvoker invoker = newInvoker(notifier, scheduler);
+    void invokeSkipsSchedulingWhenConfirmableDisablesRetry() {
+        NoRetryNotifier notifier = new NoRetryNotifier();
+        RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
+        ImMessageNotifierInvoker invoker = newInvoker(notifier, confirmableStore);
 
-        invoker.retry(NotifierTaskType.PRIVATE_MESSAGE_SEND, new TestCommand("retry"));
+        TestNotification notification = new TestNotification("hello");
+        invoker.invoke(notification);
 
-        assertThat(notifier.notifiedCommand.getValue()).isEqualTo("retry");
-        assertThat(scheduler.scheduleCount.get()).isEqualTo(0);
+        assertThat(notifier.notifiedNotification).isSameAs(notification);
+        assertThat(confirmableStore.offeredTask).isNull();
     }
 
-    @Test
-    void retryDeserializesJsonCommandBeforeNotifying() {
-        RecordingNotifier notifier = new RecordingNotifier();
-        RecordingScheduler scheduler = new RecordingScheduler();
-        ImMessageNotifierInvoker invoker = newInvoker(notifier, scheduler);
-
-        invoker.retry(NotifierTaskType.PRIVATE_MESSAGE_SEND, "{\"value\":\"retry\"}");
-
-        assertThat(notifier.notifiedCommand.getValue()).isEqualTo("retry");
-        assertThat(scheduler.scheduleCount.get()).isEqualTo(0);
-    }
-
-    private ImMessageNotifierInvoker newInvoker(RecordingNotifier notifier, RecordingScheduler scheduler) {
+    private ImMessageNotifierInvoker newInvoker(
+            ImMessageNotifier<TestNotification> notifier,
+            RecordingConfirmableStore confirmableStore) {
+        ImMessageConfirmableService confirmableService = new ImMessageConfirmableService(
+                new ImMessageNotifierFactory(Collections.singletonList(notifier)),
+                confirmableStore,
+                mock(ScheduledExecutorService.class));
         return new ImMessageNotifierInvoker(
                 new ImMessageNotifierFactory(Collections.singletonList(notifier)),
-                scheduler);
+                confirmableService);
     }
 
-    private static class RecordingNotifier implements ImMessageNotifier<TestCommand>, ImMessageConfirmable {
-        private TestCommand notifiedCommand;
+    private static class RecordingNotifier implements ImMessageNotifier<TestNotification>, ImMessageConfirmable<TestNotification> {
+        protected TestNotification notifiedNotification;
 
         @Override
-        public void notify(TestCommand command) {
-            notifiedCommand = command;
+        public void notify(TestNotification notification) {
+            notifiedNotification = notification;
         }
 
         @Override
-        public NotifierTaskType task() {
-            return NotifierTaskType.PRIVATE_MESSAGE_SEND;
+        public ReceiptType receiptType() {
+            return ReceiptType.PRIVATE_MESSAGE_SEND;
+        }
+
+        @Override
+        public String receiptId(TestNotification notification) {
+            return "ack:" + notification.getValue();
         }
     }
 
-    private static class RecordingScheduler implements ImMessageConfirmableScheduler {
-        private final AtomicInteger scheduleCount = new AtomicInteger();
-        private NotifierTask scheduledTask;
+    private static class NoRetryNotifier extends RecordingNotifier {
+        @Override
+        public long delayMillis() {
+            return 0L;
+        }
+    }
+
+    private static class RecordingConfirmableStore implements ImMessageConfirmableStore {
+        private ReceiptTask offeredTask;
 
         @Override
-        public void schedule(NotifierTask task) {
-            scheduleCount.incrementAndGet();
-            scheduledTask = task;
+        public void offer(ReceiptTask message) {
+            this.offeredTask = message;
         }
+
+        @Override
+        public void consume(Consumer<ReceiptTask> consumer) {
+        }
+
+        @Override
+        public void confirm(String receiptId) {
+        }
+
     }
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    private static class TestCommand {
+    private static class TestNotification {
         private String value;
     }
 }

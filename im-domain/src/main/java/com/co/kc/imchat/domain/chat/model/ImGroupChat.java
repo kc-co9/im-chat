@@ -11,6 +11,9 @@ import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 
+/**
+ * 聚合根：群聊会话。
+ */
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class ImGroupChat extends ImChat {

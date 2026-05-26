@@ -1,26 +1,16 @@
 package com.co.kc.imchat.domain.user.model;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import org.apache.commons.lang3.StringUtils;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
 import java.util.regex.Pattern;
 
-@Getter
-@EqualsAndHashCode
-public class UserRawPassword {
-
+/**
+ * 值对象：用户明文密码。
+ */
+public record UserRawPassword(String value) {
     private static final Pattern PASSWORD_PATTERN = Pattern.compile("^[a-zA-Z0-9!@#$%^&()_+\\-=\\[\\]{}|;:,.<>/?~`]+$");
 
-    private final String value;
-
-    public UserRawPassword(String value) {
-        if (StringUtils.isBlank(value)) {
-            throw new IllegalArgumentException("password is null or empty");
-        }
-        if (!PASSWORD_PATTERN.matcher(value).matches()) {
-            throw new IllegalArgumentException("password contains illegal characters");
-        }
-        this.value = value;
-    }
-}
+    public UserRawPassword {
+        AssertUtils.domainPropNotBlank("密码不能为空", value);
+        AssertUtils.domainPropTrue("密码包含非法字符", PASSWORD_PATTERN.matcher(value).matches());
+    }}

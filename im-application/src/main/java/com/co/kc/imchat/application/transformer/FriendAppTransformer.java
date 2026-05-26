@@ -20,10 +20,10 @@ public interface FriendAppTransformer {
 
     default FriendItemDTO friendItemDtoFrom(Friend friend) {
         FriendItemDTO friendItemDTO = new FriendItemDTO();
-        friendItemDTO.setUserId(friend.getFriendUserId().getValue());
+        friendItemDTO.setUserId(friend.getFriendUserId().value());
         friendItemDTO.setStatus(friend.getStatus());
         friendItemDTO.setCreateTime(friend.getCreateTime());
-        friendItemDTO.setDisplayName(friend.displayName().getValue());
+        friendItemDTO.setDisplayName(friend.displayName().value());
         return friendItemDTO;
     }
 

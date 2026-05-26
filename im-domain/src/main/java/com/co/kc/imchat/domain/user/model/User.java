@@ -8,7 +8,7 @@ import lombok.Getter;
 import java.util.Objects;
 
 /**
- * 用户领域
+ * 聚合根：用户。
  */
 @Getter
 @EqualsAndHashCode(callSuper = false)

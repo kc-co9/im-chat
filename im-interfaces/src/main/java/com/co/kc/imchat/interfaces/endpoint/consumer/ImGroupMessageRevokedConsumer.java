@@ -1,6 +1,6 @@
 package com.co.kc.imchat.interfaces.endpoint.consumer;
 
-import com.co.kc.imchat.application.model.cqrs.command.group.GroupRevokedNotifyCmd;
+import com.co.kc.imchat.application.model.notification.ImGroupRevokedNotification;
 import com.co.kc.imchat.application.model.enums.RedisTopic;
 import com.co.kc.imchat.application.support.redis.RedisSubscriber;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +11,7 @@ import static com.co.kc.imchat.interfaces.support.websocket.PushQueue.QUEUE_GROU
 
 @Component
 @RequiredArgsConstructor
-public class ImGroupMessageRevokedConsumer implements RedisSubscriber<GroupRevokedNotifyCmd> {
+public class ImGroupMessageRevokedConsumer implements RedisSubscriber<ImGroupRevokedNotification> {
     private final SimpMessagingTemplate messagingTemplate;
 
     @Override
@@ -20,7 +20,7 @@ public class ImGroupMessageRevokedConsumer implements RedisSubscriber<GroupRevok
     }
 
     @Override
-    public void onMessage(GroupRevokedNotifyCmd message) {
+    public void onMessage(ImGroupRevokedNotification message) {
         messagingTemplate.convertAndSendToUser(String.valueOf(message.receiverId()), QUEUE_GROUP_MESSAGE_REVOKED, message);
     }
 

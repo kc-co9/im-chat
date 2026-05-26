@@ -116,19 +116,19 @@ class GroupAppServiceTest {
         GroupCreateDTO result = appService.createGroup(command);
 
         assertThat(result.getGroupId()).isEqualTo(1000L);
-        assertThat(groupRepository.savedGroup.getId().getValue()).isEqualTo(1000L);
+        assertThat(groupRepository.savedGroup.getId().value()).isEqualTo(1000L);
 
         assertThat(groupMemberRepository.savedMembers)
-                .extracting(member -> member.getUserId().getValue())
+                .extracting(member -> member.getUserId().value())
                 .containsExactly(1L, 2L);
 
         assertThat(groupChatRepository.savedGroupChats).isEmpty();
         assertThat(groupInboxMessageRepository.savedMessages).isEmpty();
         GroupCreatedEvent groupCreatedEvent = firstEvent(eventPublisher, GroupCreatedEvent.class);
-        assertThat(groupCreatedEvent.getGroupId().getValue()).isEqualTo(1000L);
-        assertThat(groupCreatedEvent.getOwnerId().getValue()).isEqualTo(1L);
+        assertThat(groupCreatedEvent.getGroupId().value()).isEqualTo(1000L);
+        assertThat(groupCreatedEvent.getOwnerId().value()).isEqualTo(1L);
         assertThat(groupCreatedEvent.getMembers())
-                .extracting(member -> member.getUserId().getValue())
+                .extracting(member -> member.getUserId().value())
                 .containsExactly(1L, 2L);
     }
 
@@ -173,25 +173,25 @@ class GroupAppServiceTest {
 
         assertThat(groupInboxMessageRepository.savedMessages).hasSize(2);
         assertThat(groupInboxMessageRepository.savedMessages)
-                .extracting(message -> message.getUserId().getValue())
+                .extracting(message -> message.getUserId().value())
                 .containsExactly(1L, 2L);
 
         assertThat(groupInboxMessageRepository.savedMessages)
                 .allSatisfy(message -> {
-                    assertThat(message.getId().getValue()).isEqualTo(1002L);
-                    assertThat(message.getSenderId().getValue()).isEqualTo(1L);
-                    assertThat(message.getContent().getType()).isEqualTo(ImMessageType.SYSTEM);
-                    assertThat(message.getContent().getValue()).isEqualTo("群聊已创建");
+                    assertThat(message.getId().value()).isEqualTo(1002L);
+                    assertThat(message.getSenderId().value()).isEqualTo(1L);
+                    assertThat(message.getContent().type()).isEqualTo(ImMessageType.SYSTEM);
+                    assertThat(message.getContent().value()).isEqualTo("群聊已创建");
                 });
         assertThat(groupInboxMessageRepository.savedMessages)
                 .extracting(ImGroupInboxMessage::getStatus)
                 .containsExactly(ImGroupMessageStatus.READ, ImGroupMessageStatus.SENT);
 
         assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getUserId().getValue())
+                .extracting(chat -> chat.getUserId().value())
                 .containsExactly(1L, 2L);
         assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getLastMessageId().getValue())
+                .extracting(chat -> chat.getLastMessageId().value())
                 .containsExactly(1002L, 1002L);
         assertThat(groupChatRepository.savedGroupChats)
                 .extracting(ImGroupChat::getUnreadMessageCount)
@@ -238,40 +238,40 @@ class GroupAppServiceTest {
 
         appService.inviteGroupMembers(command);
 
-        assertThat(groupRepository.savedGroup.getMemberCount().getValue()).isEqualTo(2);
+        assertThat(groupRepository.savedGroup.getMemberCount().value()).isEqualTo(2);
         assertThat(groupMemberRepository.savedMembers)
-                .extracting(member -> member.getUserId().getValue())
+                .extracting(member -> member.getUserId().value())
                 .containsExactly(2L);
 
         assertThat(groupChatRepository.savedGroupChats).isEmpty();
         assertThat(eventPublisher.events)
                 .singleElement()
                 .isInstanceOfSatisfying(GroupMemberJoinedEvent.class, event -> {
-                    assertThat(event.getInviterId().getValue()).isEqualTo(1L);
-                    assertThat(event.getGroupId().getValue()).isEqualTo(1001L);
+                    assertThat(event.getInviterId().value()).isEqualTo(1L);
+                    assertThat(event.getGroupId().value()).isEqualTo(1001L);
                     assertThat(event.getMembers())
-                            .extracting(member -> member.getUserId().getValue())
+                            .extracting(member -> member.getUserId().value())
                             .containsExactly(2L);
                 });
 
-        appService.onGroupMemberJoined((GroupMemberJoinedEvent) eventPublisher.events.get(0));
+        appService.onGroupMemberJoined((GroupMemberJoinedEvent) eventPublisher.events.getFirst());
 
         assertThat(groupInboxMessageRepository.savedMessages)
-                .extracting(message -> message.getUserId().getValue())
+                .extracting(message -> message.getUserId().value())
                 .containsExactly(1L, 2L);
         assertThat(groupInboxMessageRepository.savedMessages)
                 .allSatisfy(message -> {
-                    assertThat(message.getId().getValue()).isEqualTo(4000L);
-                    assertThat(message.getSenderId().getValue()).isEqualTo(1L);
-                    assertThat(message.getContent().getType()).isEqualTo(ImMessageType.SYSTEM);
-                    assertThat(message.getContent().getValue()).isEqualTo("bob 加入群聊");
+                    assertThat(message.getId().value()).isEqualTo(4000L);
+                    assertThat(message.getSenderId().value()).isEqualTo(1L);
+                    assertThat(message.getContent().type()).isEqualTo(ImMessageType.SYSTEM);
+                    assertThat(message.getContent().value()).isEqualTo("bob 加入群聊");
                 });
 
         assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getUserId().getValue())
+                .extracting(chat -> chat.getUserId().value())
                 .containsExactly(1L, 2L);
         assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getLastMessageId().getValue())
+                .extracting(chat -> chat.getLastMessageId().value())
                 .containsExactly(4000L, 4000L);
         assertThat(groupChatRepository.savedGroupChats)
                 .extracting(ImGroupChat::getUnreadMessageCount)
@@ -353,8 +353,8 @@ class GroupAppServiceTest {
         assertThat(eventPublisher.events)
                 .singleElement()
                 .isInstanceOfSatisfying(GroupDismissedEvent.class, event -> {
-                    assertThat(event.getGroupId().getValue()).isEqualTo(1001L);
-                    assertThat(event.getOwnerId().getValue()).isEqualTo(1L);
+                    assertThat(event.getGroupId().value()).isEqualTo(1001L);
+                    assertThat(event.getOwnerId().value()).isEqualTo(1L);
                 });
     }
 
@@ -380,22 +380,22 @@ class GroupAppServiceTest {
         assertThat(groupInboxMessageRepository.savedMessages).hasSize(2);
 
         assertThat(groupInboxMessageRepository.savedMessages)
-                .extracting(message -> message.getUserId().getValue())
+                .extracting(message -> message.getUserId().value())
                 .containsExactly(1L, 2L);
 
         assertThat(groupInboxMessageRepository.savedMessages)
                 .allSatisfy(message -> {
-                    assertThat(message.getId().getValue()).isEqualTo(4000L);
-                    assertThat(message.getSenderId().getValue()).isEqualTo(1L);
-                    assertThat(message.getContent().getType()).isEqualTo(ImMessageType.SYSTEM);
-                    assertThat(message.getContent().getValue()).isEqualTo("群聊已解散");
+                    assertThat(message.getId().value()).isEqualTo(4000L);
+                    assertThat(message.getSenderId().value()).isEqualTo(1L);
+                    assertThat(message.getContent().type()).isEqualTo(ImMessageType.SYSTEM);
+                    assertThat(message.getContent().value()).isEqualTo("群聊已解散");
                 });
         assertThat(groupInboxMessageRepository.savedMessages)
                 .extracting(ImGroupInboxMessage::getStatus)
                 .containsExactly(ImGroupMessageStatus.READ, ImGroupMessageStatus.SENT);
 
         assertThat(groupChatRepository.savedGroupChats)
-                .extracting(chat -> chat.getLastMessageId().getValue())
+                .extracting(chat -> chat.getLastMessageId().value())
                 .containsExactly(4000L, 4000L);
         assertThat(groupChatRepository.savedGroupChats)
                 .extracting(ImGroupChat::getUnreadMessageCount)
@@ -588,7 +588,7 @@ class GroupAppServiceTest {
 
         appService.transferGroupOwner(new GroupTransferOwnerCmd(1L, 1001L, 2L));
 
-        assertThat(groupRepository.savedGroup.getOwnerId().getValue()).isEqualTo(2L);
+        assertThat(groupRepository.savedGroup.getOwnerId().value()).isEqualTo(2L);
     }
 
     @Test
@@ -606,17 +606,17 @@ class GroupAppServiceTest {
 
         appService.leaveGroup(new GroupLeaveCmd(2L, 1001L));
 
-        assertThat(groupRepository.savedGroup.getMemberCount().getValue()).isEqualTo(1);
+        assertThat(groupRepository.savedGroup.getMemberCount().value()).isEqualTo(1);
         assertThat(groupMemberRepository.removedPairs).containsExactly("1001:2");
         assertThat(groupChatRepository.removedPairs).isEmpty();
         assertThat(eventPublisher.events)
                 .singleElement()
                 .isInstanceOfSatisfying(GroupMemberRemovedEvent.class, event -> {
-                    assertThat(event.getGroupId().getValue()).isEqualTo(1001L);
-                    assertThat(event.getUserId().getValue()).isEqualTo(2L);
+                    assertThat(event.getGroupId().value()).isEqualTo(1001L);
+                    assertThat(event.getUserId().value()).isEqualTo(2L);
                 });
 
-        appService.onGroupMemberRemoved((GroupMemberRemovedEvent) eventPublisher.events.get(0));
+        appService.onGroupMemberRemoved((GroupMemberRemovedEvent) eventPublisher.events.getFirst());
 
         assertThat(groupChatRepository.removedPairs).containsExactly("1001:2");
     }
@@ -650,17 +650,17 @@ class GroupAppServiceTest {
 
         appService.kickGroupMember(new GroupKickMemberCmd(1L, 1001L, 2L));
 
-        assertThat(groupRepository.savedGroup.getMemberCount().getValue()).isEqualTo(1);
+        assertThat(groupRepository.savedGroup.getMemberCount().value()).isEqualTo(1);
         assertThat(groupMemberRepository.removedPairs).containsExactly("1001:2");
         assertThat(groupChatRepository.removedPairs).isEmpty();
         assertThat(eventPublisher.events)
                 .singleElement()
                 .isInstanceOfSatisfying(GroupMemberRemovedEvent.class, event -> {
-                    assertThat(event.getGroupId().getValue()).isEqualTo(1001L);
-                    assertThat(event.getUserId().getValue()).isEqualTo(2L);
+                    assertThat(event.getGroupId().value()).isEqualTo(1001L);
+                    assertThat(event.getUserId().value()).isEqualTo(2L);
                 });
 
-        appService.onGroupMemberRemoved((GroupMemberRemovedEvent) eventPublisher.events.get(0));
+        appService.onGroupMemberRemoved((GroupMemberRemovedEvent) eventPublisher.events.getFirst());
 
         assertThat(groupChatRepository.removedPairs).containsExactly("1001:2");
     }
@@ -701,7 +701,7 @@ class GroupAppServiceTest {
 
         appService.changeGroupNotification(new GroupNotificationChangeCmd(1L, 1001L, "new notice"));
 
-        assertThat(groupRepository.savedGroup.getNotification().getValue()).isEqualTo("new notice");
+        assertThat(groupRepository.savedGroup.getNotification().value()).isEqualTo("new notice");
     }
 
     @Test
@@ -726,7 +726,7 @@ class GroupAppServiceTest {
         appService.changeGroupMemberAlias(new GroupMemberAliasChangeCmd(2L, 1001L, "member-name"));
 
         assertThat(groupMemberRepository.savedMembers).hasSize(1);
-        assertThat(groupMemberRepository.savedMembers.get(0).getUserAlias().getValue()).isEqualTo("member-name");
+        assertThat(groupMemberRepository.savedMembers.getFirst().getUserAlias().value()).isEqualTo("member-name");
     }
 
     private ImGroupChat groupChat(Long chatId, Long groupId, Long userId) {
@@ -1016,7 +1016,7 @@ class GroupAppServiceTest {
 
         @Override
         public void remove(GroupId groupId, UserId userId) {
-            removedPairs.add(groupId.getValue() + ":" + userId.getValue());
+            removedPairs.add(groupId.value() + ":" + userId.value());
         }
     }
 
@@ -1060,7 +1060,7 @@ class GroupAppServiceTest {
 
         @Override
         public void remove(GroupMember groupMember) {
-            removedPairs.add(groupMember.getGroupId().getValue() + ":" + groupMember.getUserId().getValue());
+            removedPairs.add(groupMember.getGroupId().value() + ":" + groupMember.getUserId().value());
         }
 
     }
@@ -1158,8 +1158,8 @@ class GroupAppServiceTest {
 
         @Override
         public Optional<Friend> find(FriendEdge edge) {
-            return find(edge.getUserId()).stream()
-                    .filter(friend -> friend.getFriendUserId().equals(edge.getFriendUserId()))
+            return find(edge.userId()).stream()
+                    .filter(friend -> friend.getFriendUserId().equals(edge.friendUserId()))
                     .findFirst();
         }
 

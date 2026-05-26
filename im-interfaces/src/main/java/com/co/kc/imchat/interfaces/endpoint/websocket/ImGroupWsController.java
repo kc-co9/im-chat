@@ -1,7 +1,6 @@
 package com.co.kc.imchat.interfaces.endpoint.websocket;
 
 import com.co.kc.imchat.application.GroupMessageAppService;
-import com.co.kc.imchat.application.model.cqrs.command.group.GroupMessageReceiveCmd;
 import com.co.kc.imchat.application.model.cqrs.command.group.GroupMessageReadCmd;
 import com.co.kc.imchat.application.model.cqrs.command.group.GroupMessageRevokeCmd;
 import com.co.kc.imchat.application.model.cqrs.command.group.GroupMessageSendCmd;
@@ -9,7 +8,6 @@ import com.co.kc.imchat.interfaces.model.enums.ParamsConstants;
 import com.co.kc.imchat.interfaces.support.websocket.PushQueue;
 import com.co.kc.imchat.common.model.io.Result;
 import com.co.kc.imchat.interfaces.model.io.WsResponse;
-import com.co.kc.imchat.interfaces.model.io.group.GroupMessageReceiveRequest;
 import com.co.kc.imchat.interfaces.model.io.group.GroupMessageReadRequest;
 import com.co.kc.imchat.interfaces.model.io.group.GroupMessageRevokeRequest;
 import com.co.kc.imchat.interfaces.model.io.group.GroupMessageSendRequest;
@@ -34,18 +32,6 @@ public class ImGroupWsController {
         Long userId = (Long) headerAccessor.getSessionAttributes().get(ParamsConstants.USER_ID);
         GroupMessageSendCmd command = ImMessageHttpIoTransformer.INSTANCE.groupMessageSendCmdFrom(userId, request);
         groupMessageAppService.sendMessage(command);
-        return Result.success(new WsResponse(request.getRequestId()));
-    }
-
-    /**
-     * 处理客户端消息接收
-     */
-    @SendToUser(PushQueue.QUEUE_RESULT)
-    @MessageMapping("/message/group/receive")
-    public Result<WsResponse> receiveGroupMessage(GroupMessageReceiveRequest request, SimpMessageHeaderAccessor headerAccessor) {
-        Long userId = (Long) headerAccessor.getSessionAttributes().get(ParamsConstants.USER_ID);
-        GroupMessageReceiveCmd command = ImMessageHttpIoTransformer.INSTANCE.groupMessageReceiveCmdFrom(userId, request);
-        groupMessageAppService.receiveMessage(command);
         return Result.success(new WsResponse(request.getRequestId()));
     }
 

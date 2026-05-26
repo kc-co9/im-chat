@@ -82,20 +82,20 @@ public class GroupAppService {
         List<UserId> memberIds = FunctionUtils.mappingList(command.memberIds(), UserId::new);
 
         GroupCreation groupCreation = groupService.createGroup(groupId, ownerId, groupName, memberIds);
-        groupRepository.save(groupCreation.getGroup());
-        groupMemberRepository.save(groupCreation.getMembers());
+        groupRepository.save(groupCreation.group());
+        groupMemberRepository.save(groupCreation.members());
 
-        domainEventPublisher.publish(new GroupCreatedEvent(groupId, ownerId, groupCreation.getMembers()));
+        domainEventPublisher.publish(new GroupCreatedEvent(groupId, ownerId, groupCreation.members()));
 
-        return new GroupCreateDTO(groupId.getValue());
+        return new GroupCreateDTO(groupId.value());
     }
 
     public void onGroupCreated(GroupCreatedEvent event) {
         GroupChatMembership chatMembership = imChatService.createGroupChatMembership(event.getMembers());
 
         ImGroupMessageTransmission transmission = imMessageService.transmitGroupCreated(event.getOwnerId(), chatMembership);
-        imGroupInboxMessageRepository.save(transmission.getInboxMessages());
-        imGroupChatRepository.save(transmission.getGroupChats());
+        imGroupInboxMessageRepository.save(transmission.inboxMessages());
+        imGroupChatRepository.save(transmission.groupChats());
 
         ImGroupMessageSentEvent imGroupMessageSentEvent =
                 imMessageService.newImMessageSentEvent(event.getGroupId(), transmission.getSenderMessage(event.getOwnerId()));
@@ -119,8 +119,8 @@ public class GroupAppService {
         GroupChatMembership chatMembership = imChatService.findGroupChatMembership(event.getGroupId());
 
         ImGroupMessageTransmission transmission = imMessageService.transmitGroupDismissed(event.getOwnerId(), chatMembership);
-        imGroupInboxMessageRepository.save(transmission.getInboxMessages());
-        imGroupChatRepository.save(transmission.getGroupChats());
+        imGroupInboxMessageRepository.save(transmission.inboxMessages());
+        imGroupChatRepository.save(transmission.groupChats());
 
         ImGroupMessageSentEvent messageSentEvent =
                 imMessageService.newImMessageSentEvent(event.getGroupId(), transmission.getSenderMessage(event.getOwnerId()));
@@ -136,10 +136,10 @@ public class GroupAppService {
 
         GroupMemberInvitation invitation = groupService.inviteMembers(groupId, userId, inviteeIds);
 
-        groupRepository.save(invitation.getGroup());
-        groupMemberRepository.save(invitation.getNewMembers());
+        groupRepository.save(invitation.group());
+        groupMemberRepository.save(invitation.newMembers());
 
-        domainEventPublisher.publish(new GroupMemberJoinedEvent(userId, groupId, invitation.getNewMembers()));
+        domainEventPublisher.publish(new GroupMemberJoinedEvent(userId, groupId, invitation.newMembers()));
     }
 
     public void onGroupMemberJoined(GroupMemberJoinedEvent event) {
@@ -149,8 +149,8 @@ public class GroupAppService {
 
         ImGroupMessageTransmission transmission =
                 imMessageService.transmitGroupMemberJoined(event.getInviterId(), chatJoin.describeChatMembership(), memberDescriptors);
-        imGroupInboxMessageRepository.save(transmission.getInboxMessages());
-        imGroupChatRepository.save(transmission.getGroupChats());
+        imGroupInboxMessageRepository.save(transmission.inboxMessages());
+        imGroupChatRepository.save(transmission.groupChats());
 
         ImGroupMessageSentEvent messageSentEvent =
                 imMessageService.newImMessageSentEvent(event.getGroupId(), transmission.getSenderMessage(event.getInviterId()));
@@ -175,10 +175,10 @@ public class GroupAppService {
         GroupId groupId = new GroupId(command.groupId());
 
         GroupMemberDeparture departure = groupService.leaveGroup(groupId, userId);
-        groupRepository.save(departure.getGroup());
-        groupMemberRepository.remove(departure.getGroupMember());
+        groupRepository.save(departure.group());
+        groupMemberRepository.remove(departure.groupMember());
 
-        domainEventPublisher.publish(new GroupMemberRemovedEvent(groupId, departure.getGroupMember().getUserId()));
+        domainEventPublisher.publish(new GroupMemberRemovedEvent(groupId, departure.groupMember().getUserId()));
     }
 
     @DistributeLock(scene = DistributeLockScene.GROUP_MEMBER_KICK, key = "#command.groupId()")
@@ -189,10 +189,10 @@ public class GroupAppService {
         UserId memberId = new UserId(command.memberUserId());
 
         GroupMemberDeparture departure = groupService.kickMember(groupId, userId, memberId);
-        groupRepository.save(departure.getGroup());
-        groupMemberRepository.remove(departure.getGroupMember());
+        groupRepository.save(departure.group());
+        groupMemberRepository.remove(departure.groupMember());
 
-        domainEventPublisher.publish(new GroupMemberRemovedEvent(groupId, departure.getGroupMember().getUserId()));
+        domainEventPublisher.publish(new GroupMemberRemovedEvent(groupId, departure.groupMember().getUserId()));
     }
 
     public void onGroupMemberRemoved(GroupMemberRemovedEvent event) {

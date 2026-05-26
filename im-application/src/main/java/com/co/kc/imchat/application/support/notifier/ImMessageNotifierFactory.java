@@ -1,78 +1,77 @@
 package com.co.kc.imchat.application.support.notifier;
 
-import com.co.kc.imchat.application.support.notifier.task.NotifierTaskType;
+import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmable;
+import com.co.kc.imchat.application.support.notifier.task.ReceiptType;
 import com.co.kc.imchat.common.utils.ReflectUtils;
 
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.springframework.aop.support.AopUtils;
-import org.springframework.stereotype.Component;
 
-@Component
 public class ImMessageNotifierFactory {
 
-    private final Map<Class<?>, ImMessageNotifier<?>> commandNotifierMap = new HashMap<>();
-    private final Map<NotifierTaskType, ImMessageNotifier<?>> typeNotifierMapping = new HashMap<>();
+    private final Map<Class<?>, ImMessageNotifier<?>> notificationNotifiers = new HashMap<>();
+    private final EnumMap<ReceiptType, ImMessageNotifier<?>> receiptNotifiers = new EnumMap<>(ReceiptType.class);
 
     public ImMessageNotifierFactory(List<ImMessageNotifier<?>> notifiers) {
         for (ImMessageNotifier<?> notifier : notifiers) {
-            registerCommand(notifier);
-            registerTask(notifier);
+            registerNotification(notifier);
+            registerReceipt(notifier);
         }
     }
 
     @SuppressWarnings("unchecked")
-    public <T> ImMessageNotifier<T> getNotifier(T command) {
-        if (command == null) {
-            throw new IllegalArgumentException("Unsupported IM notify command: null");
+    public <T> ImMessageNotifier<T> getNotifier(T notification) {
+        if (notification == null) {
+            throw new IllegalArgumentException("不支持空通知");
         }
-        ImMessageNotifier<?> notifier = commandNotifierMap.get(command.getClass());
+        ImMessageNotifier<?> notifier = notificationNotifiers.get(notification.getClass());
         if (notifier == null) {
-            throw new IllegalArgumentException("Unsupported IM notify command: " + command.getClass().getName());
+            throw new IllegalArgumentException("不支持通知：" + notification.getClass().getName());
         }
         return (ImMessageNotifier<T>) notifier;
     }
 
     @SuppressWarnings("unchecked")
-    public <T> ImMessageNotifier<T> getNotifier(NotifierTaskType taskType) {
-        return (ImMessageNotifier<T>) findNotifier(taskType);
+    public <T> ImMessageNotifier<T> getNotifier(ReceiptType receiptType) {
+        return (ImMessageNotifier<T>) findNotifier(receiptType);
     }
 
-    public Class<?> getCommandType(NotifierTaskType taskType) {
-        return resolveCommandType(findNotifier(taskType));
+    public Class<?> getNotificationType(ReceiptType receiptType) {
+        return resolveNotificationType(findNotifier(receiptType));
     }
 
-    private ImMessageNotifier<?> findNotifier(NotifierTaskType taskType) {
-        if (taskType == null) {
-            throw new IllegalArgumentException("Unsupported IM notify taskType: null");
+    private ImMessageNotifier<?> findNotifier(ReceiptType receiptType) {
+        if (receiptType == null) {
+            throw new IllegalArgumentException("不支持空通知回执类型");
         }
-        ImMessageNotifier<?> notifier = typeNotifierMapping.get(taskType);
+        ImMessageNotifier<?> notifier = receiptNotifiers.get(receiptType);
         if (notifier == null) {
-            throw new IllegalArgumentException("Unsupported IM notify command: " + taskType);
+            throw new IllegalArgumentException("不支持通知回执类型：" + receiptType);
         }
         return notifier;
     }
 
-    private void registerCommand(ImMessageNotifier<?> notifier) {
-        commandNotifierMap.put(resolveCommandType(notifier), notifier);
+    private void registerNotification(ImMessageNotifier<?> notifier) {
+        notificationNotifiers.put(resolveNotificationType(notifier), notifier);
     }
 
-    private void registerTask(ImMessageNotifier<?> notifier) {
-        if (notifier instanceof ImMessageConfirmable) {
-            NotifierTaskType taskType = ((ImMessageConfirmable) notifier).task();
-            typeNotifierMapping.put(taskType, notifier);
+    private void registerReceipt(ImMessageNotifier<?> notifier) {
+        if (notifier instanceof ImMessageConfirmable<?>) {
+            ReceiptType receiptType = ((ImMessageConfirmable<?>) notifier).receiptType();
+            receiptNotifiers.put(receiptType, notifier);
         }
     }
 
-    private Class<?> resolveCommandType(ImMessageNotifier<?> notifier) {
+    private Class<?> resolveNotificationType(ImMessageNotifier<?> notifier) {
         Class<?> notifierClass = AopUtils.getTargetClass(notifier);
-        Class<?> commandType = ReflectUtils.resolveFirstGenericTypeArgument(notifierClass, ImMessageNotifier.class);
-        if (commandType == null) {
-            throw new IllegalArgumentException("Cannot resolve ImMessageNotifier generic command type: "
-                    + notifierClass.getName());
+        Class<?> notificationType = ReflectUtils.resolveFirstGenericTypeArgument(notifierClass, ImMessageNotifier.class);
+        if (notificationType == null) {
+            throw new IllegalArgumentException("无法解析 ImMessageNotifier 泛型通知类型：" + notifierClass.getName());
         }
-        return commandType;
+        return notificationType;
     }
 }

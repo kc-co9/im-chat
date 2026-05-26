@@ -1,5 +1,6 @@
 package com.co.kc.imchat.application;
 
+import com.co.kc.imchat.application.support.transaction.AfterTransactionCommit;
 import com.co.kc.imchat.domain.friend.service.FriendService;
 import com.co.kc.imchat.domain.message.model.ImPrivateMessageStatus;
 import com.co.kc.imchat.application.model.cqrs.dto.im.ImPrivateMessageDTO;
@@ -25,7 +26,6 @@ import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageReceiv
 import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageSendCmd;
 import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageReadCmd;
 import com.co.kc.imchat.application.model.cqrs.command.im.ImPrivateMessageRevokeCmd;
-import com.co.kc.imchat.domain.message.event.ImPrivateMessageReceivedEvent;
 import com.co.kc.imchat.application.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.application.support.event.DomainEventPublisher;
 import com.co.kc.imchat.application.support.lock.DistributeLockScene;
@@ -108,13 +108,14 @@ public class PrivateMessageAppService {
         imMessageEventPublisher.publish(imMessageSentEvent);
     }
 
+    @AfterTransactionCommit
     public void onMessageSent(ImPrivateMessageSentEvent event) {
         UserId receiverId = new UserId(event.getReceiverId());
         boolean isOnline = userService.isOnline(receiverId);
         if (!isOnline) {
             return;
         }
-        imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateSentNotifyCmdFrom(event));
+        imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateSentNotificationFrom(event));
     }
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
@@ -131,14 +132,7 @@ public class PrivateMessageAppService {
 
         imMessage.receive(userId);
         imPrivateInboxMessageRepository.save(imMessage);
-
-        ImPrivateMessageReceivedEvent imMessageReceivedEvent = imMessageService.newImMessageReceivedEvent(imMessage);
-        imMessageEventPublisher.publish(imMessageReceivedEvent);
     }
-
-    public void onMessageReceived(ImPrivateMessageReceivedEvent event) {
-    }
-
 
     @DistributeLock(scene = DistributeLockScene.PRIVATE_MESSAGE_REVOKE, key = "#command.chatId() + ':' + #command.messageId()")
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
@@ -165,12 +159,13 @@ public class PrivateMessageAppService {
         imPrivateInboxMessageRepository.saveBatch(revocation.getMessages());
 
         ImPrivateMessageRevokedEvent imMessageRevokedEvent =
-                imMessageService.newImMessageRevokedEvent(revocation.getSenderMessage(), receiverChat.getUserId());
+                imMessageService.newImMessageRevokedEvent(revocation.senderMessage(), receiverChat.getUserId());
         imMessageEventPublisher.publish(imMessageRevokedEvent);
     }
 
+    @AfterTransactionCommit
     public void onMessageRevoked(ImPrivateMessageRevokedEvent event) {
-        imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateRevokedNotifyCmdFrom(event));
+        imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateRevokedNotificationFrom(event));
     }
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
@@ -218,4 +213,5 @@ public class PrivateMessageAppService {
                 .orElseThrow(() -> new NotFoundException("消息不存在"));
         return ImMessageAppTransformer.INSTANCE.imPrivateMessageDtoFrom(imPrivateMessage);
     }
+
 }

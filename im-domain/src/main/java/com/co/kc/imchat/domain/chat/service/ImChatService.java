@@ -68,7 +68,7 @@ public class ImChatService {
 
         return ListUtils.union(imPrivateChatDescriptors, imGroupChatDescriptors).stream()
                 .sorted(Comparator.comparing(
-                        ImUserChatDescriptor::getActiveTime,
+                        ImUserChatDescriptor::activeTime,
                         Comparator.nullsLast(Comparator.reverseOrder())))
                 .collect(Collectors.toList());
     }
@@ -164,19 +164,18 @@ public class ImChatService {
         List<ImChatId> chatIds = FunctionUtils.mappingList(imPrivateChatList, ImPrivateChat::getId);
         List<ImMessage> chatLastMessages = imPrivateChatRepository.findLastMessageList(chatIds, userId);
         Map<Long, ImMessage> chatLastMessageMap = FunctionUtils.mappingMap(
-                chatLastMessages, message -> message.getId().getValue(), Function.identity());
+                chatLastMessages, message -> message.getId().value(), Function.identity());
 
         return imPrivateChatList.stream()
                 .map(imPrivateChat -> {
                     UserId friendUserId = imPrivateChat.getPeerUserId();
-                    ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
-                    descriptor.setChatId(imPrivateChat.getId());
-                    descriptor.setChatName(this.obtainFriendChatName(friendMap.get(friendUserId)));
-                    descriptor.setChatType(imPrivateChat.getType());
-                    descriptor.setActiveTime(imPrivateChat.getActiveTime());
-                    Long lastMessageId = FunctionUtils.mappingOrNull(imPrivateChat.getLastMessageId(), ImMessageId::getValue);
-                    descriptor.setChatLastMessage(chatLastMessageMap.get(lastMessageId));
-                    return descriptor;
+                    Long lastMessageId = FunctionUtils.mappingOrNull(imPrivateChat.getLastMessageId(), ImMessageId::value);
+                    return new ImUserChatDescriptor(
+                            imPrivateChat.getId(),
+                            this.obtainFriendChatName(friendMap.get(friendUserId)),
+                            imPrivateChat.getType(),
+                            chatLastMessageMap.get(lastMessageId),
+                            imPrivateChat.getActiveTime());
                 }).collect(Collectors.toList());
     }
 
@@ -207,13 +206,12 @@ public class ImChatService {
                 })
                 .map(imGroupChat -> {
                     Group group = groupMap.get(imGroupChat.getGroupId());
-                    ImUserChatDescriptor descriptor = new ImUserChatDescriptor();
-                    descriptor.setChatId(imGroupChat.getId());
-                    descriptor.setChatName(this.obtainGroupChatName(group, imGroupChat.getGroupAlias()));
-                    descriptor.setChatType(imGroupChat.getType());
-                    descriptor.setActiveTime(imGroupChat.getActiveTime());
-                    descriptor.setChatLastMessage(chatLastMessageMap.get(imGroupChat.getId()));
-                    return descriptor;
+                    return new ImUserChatDescriptor(
+                            imGroupChat.getId(),
+                            this.obtainGroupChatName(group, imGroupChat.getGroupAlias()),
+                            imGroupChat.getType(),
+                            chatLastMessageMap.get(imGroupChat.getId()),
+                            imGroupChat.getActiveTime());
                 }).collect(Collectors.toList());
     }
 
@@ -227,7 +225,7 @@ public class ImChatService {
         if (friend == null) {
             return null;
         }
-        return new ImChatName(friend.displayName().getValue());
+        return new ImChatName(friend.displayName().value());
     }
 
     public ImChatName obtainGroupChatName(Group group, GroupAlias imGroupAlias) {
@@ -235,9 +233,9 @@ public class ImChatService {
             return null;
         }
         if (imGroupAlias != null) {
-            return new ImChatName(imGroupAlias.getValue());
+            return new ImChatName(imGroupAlias.value());
         } else {
-            return new ImChatName(group.getName().getValue());
+            return new ImChatName(group.getName().value());
         }
     }
 

@@ -14,7 +14,7 @@ class MysqlImGroupInboxMessageRepositoryTest {
     @Test
     void findLastMessageListUsesGroupChatLastMessageId() throws IOException {
         String source = new String(Files.readAllBytes(
-                Paths.get("src/main/java/com/co/kc/imchat/infrastructure/domain/MysqlImGroupInboxMessageRepository.java")),
+                Paths.get("src/main/java/com/co/kc/imchat/infrastructure/domain/repository/MysqlImGroupInboxMessageRepository.java")),
                 StandardCharsets.UTF_8);
 
         assertThat(source)

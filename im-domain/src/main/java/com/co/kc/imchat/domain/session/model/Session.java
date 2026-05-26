@@ -6,6 +6,9 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/**
+ * 聚合根：用户在线会话。
+ */
 @Data
 public class Session {
     private final UserId userId;

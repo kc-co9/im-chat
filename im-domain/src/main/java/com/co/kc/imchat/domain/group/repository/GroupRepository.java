@@ -7,6 +7,9 @@ import com.co.kc.imchat.domain.user.model.UserId;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * 资源库：群组。
+ */
 public interface GroupRepository {
 
     Optional<Group> find(GroupId groupId);

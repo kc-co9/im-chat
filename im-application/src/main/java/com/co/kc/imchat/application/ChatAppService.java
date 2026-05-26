@@ -67,7 +67,7 @@ public class ChatAppService {
 
         imChatService.enterChat(userChat);
 
-        return new ImPrivateChatOpenDTO(userChat.getId().getValue(), peerUserId.getValue());
+        return new ImPrivateChatOpenDTO(userChat.getId().value(), peerUserId.value());
     }
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
@@ -90,7 +90,7 @@ public class ChatAppService {
 
         imChatService.enterChat(groupChat);
 
-        return new GroupChatOpenDTO(groupChat.getId().getValue(), groupChat.getGroupId().getValue());
+        return new GroupChatOpenDTO(groupChat.getId().value(), groupChat.getGroupId().value());
     }
 
     public void exitChat(ImChatExitCmd command) {

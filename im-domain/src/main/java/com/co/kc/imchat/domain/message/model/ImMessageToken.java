@@ -1,21 +1,11 @@
 package com.co.kc.imchat.domain.message.model;
 
-import lombok.Getter;
-import org.apache.commons.lang3.StringUtils;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
 /**
- * 聊天-消息令牌
- * <p>
- * 消息令牌为外部传入的消息ID，用作消息去重
+ * 值对象：消息令牌，用作外部传入消息的幂等标识。
  */
-@Getter
-public class ImMessageToken {
-    private final String value;
-
-    public ImMessageToken(String value) {
-        if (StringUtils.isBlank(value)) {
-            throw new IllegalArgumentException("消息令牌不能为空");
-        }
-        this.value = value;
-    }
-}
+public record ImMessageToken(String value) {
+    public ImMessageToken {
+        AssertUtils.domainPropNotBlank("消息令牌不能为空", value);
+    }}

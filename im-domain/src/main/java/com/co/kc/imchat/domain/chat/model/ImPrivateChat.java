@@ -9,7 +9,7 @@ import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
 
 /**
- * 私聊-领域模型（每人一条持久化记录：{@link #userId} 为记录归属方，{@link #peerUserId} 为对端）。
+ * 聚合根：私聊会话（每人一条持久化记录：{@link #userId} 为记录归属方，{@link #peerUserId} 为对端）。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

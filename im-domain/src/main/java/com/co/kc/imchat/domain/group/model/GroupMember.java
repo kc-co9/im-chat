@@ -9,7 +9,7 @@ import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
 
 /**
- * IM群成员
+ * 实体：群成员。
  */
 @EqualsAndHashCode(callSuper = true)
 @Data

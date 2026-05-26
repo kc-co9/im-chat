@@ -1,20 +1,11 @@
 package com.co.kc.imchat.domain.sticker.model;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import org.apache.commons.lang3.StringUtils;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
-@Getter
-@EqualsAndHashCode
-public class ImStickerId {
-
-    private final String value;
-
-    public ImStickerId(String value) {
-        if (StringUtils.isBlank(value)) {
-            throw new IllegalArgumentException("StickerId cannot be empty");
-        }
-        this.value = value;
-    }
-
-}
+/**
+ * 值对象：表情ID。
+ */
+public record ImStickerId(String value) {
+    public ImStickerId {
+        AssertUtils.domainPropNotBlank("表情ID不能为空", value);
+    }}

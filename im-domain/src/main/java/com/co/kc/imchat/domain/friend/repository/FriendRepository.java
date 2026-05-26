@@ -7,6 +7,9 @@ import com.co.kc.imchat.domain.user.model.UserId;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * 资源库：好友关系。
+ */
 public interface FriendRepository {
     List<Friend> find(UserId userId);
 

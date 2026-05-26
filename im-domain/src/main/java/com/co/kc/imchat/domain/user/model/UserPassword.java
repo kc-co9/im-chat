@@ -1,18 +1,11 @@
 package com.co.kc.imchat.domain.user.model;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import org.apache.commons.lang3.StringUtils;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
-@Getter
-@EqualsAndHashCode
-public class UserPassword {
-    private final String value;
-
-    public UserPassword(String value) {
-        if (StringUtils.isBlank(value)) {
-            throw new IllegalArgumentException("password is null or empty");
-        }
-        this.value = value;
-    }
-}
+/**
+ * 值对象：已加密用户密码。
+ */
+public record UserPassword(String value) {
+    public UserPassword {
+        AssertUtils.domainPropNotBlank("密码不能为空", value);
+    }}

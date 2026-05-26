@@ -1,24 +1,17 @@
 package com.co.kc.imchat.domain.friend.model;
 
-import com.co.kc.imchat.domain.user.model.UserId;
 import com.co.kc.imchat.common.exception.BusinessException;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
+import com.co.kc.imchat.common.utils.AssertUtils;
+import com.co.kc.imchat.domain.user.model.UserId;
 
-@Getter
-@EqualsAndHashCode
-public class FriendEdge {
-    private final UserId userId;
-    private final UserId friendUserId;
-
-    public FriendEdge(UserId userId, UserId friendUserId) {
-        if (userId == null || friendUserId == null) {
-            throw new IllegalArgumentException("用户不能为空");
-        }
+/**
+ * 值对象：好友关系边。
+ */
+public record FriendEdge(UserId userId, UserId friendUserId) {
+    public FriendEdge {
+        AssertUtils.allDomainPropNotNull("用户不能为空", userId, friendUserId);
         if (userId.equals(friendUserId)) {
             throw new BusinessException("不能操作自己");
         }
-        this.userId = userId;
-        this.friendUserId = friendUserId;
     }
 }

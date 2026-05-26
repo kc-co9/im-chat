@@ -9,7 +9,7 @@ import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
 
 /**
- * 聊天-领域模型
+ * 聚合根：聊天会话。
  */
 @Data
 @EqualsAndHashCode(callSuper = false)

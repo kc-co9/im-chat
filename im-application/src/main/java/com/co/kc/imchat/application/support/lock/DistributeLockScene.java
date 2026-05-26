@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum DistributeLockScene {
-    USER_SIGN_UP("im:user:signUp"),
+    USER_SIGN_UP("im:user:sign:up"),
     FRIEND_ADD("im:friend:add"),
     PRIVATE_CHAT_OPEN("im:private:chat:open"),
     PRIVATE_MESSAGE_SEND("im:private:message:send"),

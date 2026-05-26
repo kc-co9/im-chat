@@ -1,18 +1,11 @@
 package com.co.kc.imchat.domain.group.model;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import org.apache.commons.lang3.StringUtils;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
-@Getter
-@EqualsAndHashCode
-public class GroupAlias {
-    private final String value;
-
-    public GroupAlias(String value) {
-        if (StringUtils.isBlank(value)) {
-            throw new IllegalArgumentException("群备注不能为空");
-        }
-        this.value = value;
-    }
-}
+/**
+ * 值对象：群备注。
+ */
+public record GroupAlias(String value) {
+    public GroupAlias {
+        AssertUtils.domainPropNotBlank("群备注不能为空", value);
+    }}

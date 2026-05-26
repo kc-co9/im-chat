@@ -1,6 +1,6 @@
 package com.co.kc.imchat.application.model.cqrs.command.user;
 
-import org.apache.commons.lang3.StringUtils;
+import com.co.kc.imchat.common.utils.AssertUtils;
 
 /**
  * 用户认证command
@@ -14,11 +14,7 @@ public record UserSignInCmd(
         String password
 ) {
     public UserSignInCmd {
-        if (StringUtils.isBlank(email)) {
-            throw new IllegalArgumentException("帐号为空");
-        }
-        if (StringUtils.isBlank(password)) {
-            throw new IllegalArgumentException("密码为空");
-        }
+        AssertUtils.argNotBlank("帐号为空", email);
+        AssertUtils.argNotBlank("密码为空", password);
     }
 }

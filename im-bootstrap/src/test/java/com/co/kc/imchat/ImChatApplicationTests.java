@@ -22,7 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
         "management.health.redis.enabled=false",
         "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration",
         "springdoc.api-docs.enabled=false",
-        "springdoc.swagger-ui.enabled=false"
+        "springdoc.swagger-ui.enabled=false",
+        "im.message.delay.worker.enabled=false"
 })
 public class ImChatApplicationTests {
 

@@ -1,5 +1,7 @@
 package com.co.kc.imchat.application.model.cqrs.command.user;
 
+import com.co.kc.imchat.common.utils.AssertUtils;
+
 /**
  * 用户登出command
  *
@@ -10,11 +12,7 @@ public record UserSignOutCmd(
         Long userId
 ) {
     public UserSignOutCmd {
-        if (userId == null) {
-            throw new IllegalArgumentException("userId is null");
-        }
-        if (userId <= 0) {
-            throw new IllegalArgumentException("userId is less than 0");
-        }
+        AssertUtils.argNotNull("用户ID不能为空", userId);
+        AssertUtils.argTrue("用户ID必须大于0", userId > 0);
     }
 }
