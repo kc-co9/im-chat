@@ -54,6 +54,7 @@ import com.co.kc.imchat.application.model.cqrs.query.ImPrivateMessageHistoryQuer
 import com.co.kc.imchat.application.support.event.DomainEventPublisher;
 import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmableStore;
 import com.co.kc.imchat.application.support.notifier.task.ReceiptTask;
+import com.co.kc.imchat.application.support.notifier.task.ReceiptType;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.exception.RepeatException;
 import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
@@ -1001,11 +1002,15 @@ class PrivateChatAppServiceTest {
         private final List<String> confirmedReceiptIds = new ArrayList<>();
 
         @Override
-        public void offer(ReceiptTask message) {
+        public void startConfirming(Consumer<ReceiptTask> consumer) {
         }
 
         @Override
-        public void consume(Consumer<ReceiptTask> consumer) {
+        public void stopConfirming() {
+        }
+
+        @Override
+        public void offer(ReceiptTask message) {
         }
 
         @Override

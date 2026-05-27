@@ -11,12 +11,10 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 
 class NotificationAckAppServiceTest {
 
@@ -103,18 +101,22 @@ class NotificationAckAppServiceTest {
     }
 
     private ImMessageConfirmableService newConfirmableService(RecordingConfirmableStore confirmableStore) {
-        return new ImMessageConfirmableService(null, confirmableStore, mock(ScheduledExecutorService.class));
+        return new ImMessageConfirmableService(null, confirmableStore);
     }
 
     private static class RecordingConfirmableStore implements ImMessageConfirmableStore {
         private final List<String> confirmedReceiptIds = new ArrayList<>();
 
         @Override
-        public void offer(ReceiptTask message) {
+        public void startConfirming(Consumer<ReceiptTask> consumer) {
         }
 
         @Override
-        public void consume(Consumer<ReceiptTask> consumer) {
+        public void stopConfirming() {
+        }
+
+        @Override
+        public void offer(ReceiptTask message) {
         }
 
         @Override

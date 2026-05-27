@@ -1,7 +1,6 @@
 package com.co.kc.imchat.application.support.notifier.confirmable;
 
 import com.co.kc.imchat.application.support.notifier.task.ReceiptTask;
-
 import java.util.function.Consumer;
 
 /**
@@ -13,17 +12,23 @@ import java.util.function.Consumer;
 public interface ImMessageConfirmableStore {
 
     /**
+     * 启动通知回执重投任务消费。
+     *
+     * <p>consumer 正常结束后，实现方确认当前任务并按需注册下一轮延迟任务；
+     * consumer 抛异常时，实现方应尽量保留后续重投机会。</p>
+     */
+    void startConfirming(Consumer<ReceiptTask> consumer);
+
+    /**
+     * 停止通知回执重投任务消费。
+     */
+    void stopConfirming();
+
+    /**
      * 将需确认的消息放入延迟重试队列。
      */
     void offer(ReceiptTask message);
 
-    /**
-     * 消费一条到期的重试消息。
-     *
-     * <p>consumer 正常结束后，实现方确认当前任务并按需注册下一轮延迟任务；
-     * consumer 抛异常时，实现方应尽量保留后续重试机会。</p>
-     */
-    void consume(Consumer<ReceiptTask> consumer);
 
     /**
      * 确认回执并删除对应的重投任务。

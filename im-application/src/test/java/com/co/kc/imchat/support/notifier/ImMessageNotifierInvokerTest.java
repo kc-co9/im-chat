@@ -14,11 +14,9 @@ import lombok.NoArgsConstructor;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 
 class ImMessageNotifierInvokerTest {
 
@@ -57,8 +55,7 @@ class ImMessageNotifierInvokerTest {
             RecordingConfirmableStore confirmableStore) {
         ImMessageConfirmableService confirmableService = new ImMessageConfirmableService(
                 new ImMessageNotifierFactory(Collections.singletonList(notifier)),
-                confirmableStore,
-                mock(ScheduledExecutorService.class));
+                confirmableStore);
         return new ImMessageNotifierInvoker(
                 new ImMessageNotifierFactory(Collections.singletonList(notifier)),
                 confirmableService);
@@ -94,12 +91,16 @@ class ImMessageNotifierInvokerTest {
         private ReceiptTask offeredTask;
 
         @Override
-        public void offer(ReceiptTask message) {
-            this.offeredTask = message;
+        public void startConfirming(Consumer<ReceiptTask> consumer) {
         }
 
         @Override
-        public void consume(Consumer<ReceiptTask> consumer) {
+        public void stopConfirming() {
+        }
+
+        @Override
+        public void offer(ReceiptTask message) {
+            this.offeredTask = message;
         }
 
         @Override

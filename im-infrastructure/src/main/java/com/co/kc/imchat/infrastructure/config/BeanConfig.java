@@ -32,15 +32,10 @@ import com.co.kc.imchat.application.support.notifier.ImMessageNotifierInvoker;
 import com.co.kc.imchat.application.support.notifier.receiver.NotificationAckReceiver;
 import com.co.kc.imchat.domain.user.service.PasswordService;
 import com.co.kc.imchat.application.support.auth.TokenService;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 public class BeanConfig {
@@ -194,19 +189,8 @@ public class BeanConfig {
 
     @Bean(initMethod = "init", destroyMethod = "destroy")
     public ImMessageConfirmableService imMessageConfirmableService(ImMessageNotifierFactory imMessageNotifierFactory,
-                                                                   ImMessageConfirmableStore imMessageConfirmableStore,
-                                                                   ScheduledExecutorService imMessageConfirmableExecutor) {
-        return new ImMessageConfirmableService(imMessageNotifierFactory, imMessageConfirmableStore, imMessageConfirmableExecutor);
-    }
-
-    @Bean
-    public ScheduledExecutorService imMessageConfirmableExecutor() {
-        ThreadFactory threadFactory = new ThreadFactoryBuilder()
-                .setNameFormat("im-message-confirmable-service-%d")
-                .setDaemon(false)
-                .setPriority(Thread.NORM_PRIORITY)
-                .build();
-        return new ScheduledThreadPoolExecutor(1, threadFactory, new ThreadPoolExecutor.DiscardPolicy());
+                                                                   ImMessageConfirmableStore imMessageConfirmableStore) {
+        return new ImMessageConfirmableService(imMessageNotifierFactory, imMessageConfirmableStore);
     }
 
     @Bean

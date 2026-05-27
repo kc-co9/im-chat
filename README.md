@@ -255,6 +255,12 @@ im-common          -> no business module dependency
 8. 客户端订阅自己的 `/queue/message/private/sent`、`/queue/message/private/revoked`、`/queue/message/group/sent`、`/queue/message/group/revoked` 等队列接收推送。
 9. 需要确认的通知会在 Redis 写入 `PENDING` 状态，并注册延迟重试任务；客户端 ACK 后写为 `CONFIRMED`，重试任务触发时会跳过已确认通知。
 
+#### 回执重投队列
+
+需要客户端回执的通知会同时写入确认状态和延迟重投任务。重投任务内容按 `receiptId` 保存，延迟队列里只保存 `receiptId`，避免队列元素携带过大的通知内容。
+
+延迟重投队列按 `ReceiptType` 拆分业务类型，再按 `receiptId` 拆分分片。每个分片有独立消费任务，只拉取自己绑定的队列，避免某一类回执或某一个热点队列长期占用整体消费入口。客户端 ACK 时，服务端通过 `receiptId` 找到任务内容，再定位对应分片并清理队列中的残留任务；如果队列里后续仍弹出已确认任务，只要任务内容不存在就会直接跳过。
+
 这种架构的核心是：消息事实以数据库为准，Redis 只负责跨实例广播在线通知。即使接收方当前不在线，消息副本仍已保存；接收方重新打开会话或查询历史时，从数据库读取消息。
 
 #### 通知通道

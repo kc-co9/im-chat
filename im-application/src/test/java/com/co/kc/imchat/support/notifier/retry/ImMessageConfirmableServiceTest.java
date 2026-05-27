@@ -14,15 +14,9 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
-import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 class ImMessageConfirmableServiceTest {
     static {
@@ -46,18 +40,23 @@ class ImMessageConfirmableServiceTest {
     }
 
     @Test
-    void initSchedulesConfirmableTaskConsumerWithInjectedExecutor() {
+    void initStartsConfirmingInStore() {
         RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
-        ScheduledExecutorService scheduledExecutorService = mock(ScheduledExecutorService.class);
-        ImMessageConfirmableService service = new ImMessageConfirmableService(
-                new ImMessageNotifierFactory(Collections.singletonList(new RecordingNotifier())),
-                confirmableStore,
-                scheduledExecutorService);
+        ImMessageConfirmableService service = newService(new RecordingNotifier(), confirmableStore);
 
         service.init();
 
-        verify(scheduledExecutorService).scheduleWithFixedDelay(
-                any(Runnable.class), org.mockito.Mockito.eq(1L), org.mockito.Mockito.eq(1L), org.mockito.Mockito.eq(TimeUnit.SECONDS));
+        assertThat(confirmableStore.consumer).isNotNull();
+    }
+
+    @Test
+    void destroyStopsConfirmingInStore() {
+        RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
+        ImMessageConfirmableService service = newService(new RecordingNotifier(), confirmableStore);
+
+        service.destroy();
+
+        assertThat(confirmableStore.stopped).isTrue();
     }
 
     @Test
@@ -81,65 +80,12 @@ class ImMessageConfirmableServiceTest {
         assertThat(confirmableStore.confirmedReceiptId).isEqualTo("ack:hello");
     }
 
-    @Test
-    void consumeRedeliversPoppedTaskAndConvertsNotificationMap() throws Exception {
-        RecordingNotifier notifier = new RecordingNotifier();
-        RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
-        confirmableStore.consumedTask = newTask(Map.of("value", "retry"));
-        ImMessageConfirmableService service = newService(notifier, confirmableStore);
-
-        invokeConsume(service);
-
-        assertThat(notifier.notifiedNotification).isEqualTo(new TestNotification("retry"));
-        assertThat(confirmableStore.offeredTask).isNull();
-    }
-
-    @Test
-    void consumeReturnsWhenStoreHasNoTask() throws Exception {
-        RecordingNotifier notifier = new RecordingNotifier();
-        RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
-        ImMessageConfirmableService service = newService(notifier, confirmableStore);
-
-        invokeConsume(service);
-
-        assertThat(notifier.notifiedNotification).isNull();
-        assertThat(confirmableStore.offeredTask).isNull();
-    }
-
-    @Test
-    void consumeSwallowsProcessingExceptionSoScheduledWorkerCanContinue() throws Exception {
-        ThrowingNotifier notifier = new ThrowingNotifier();
-        RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
-        confirmableStore.consumedTask = newTask(new TestNotification("retry"));
-        ImMessageConfirmableService service = newService(notifier, confirmableStore);
-
-        invokeConsume(service);
-
-        assertThat(notifier.calls).isEqualTo(1);
-    }
-
     private ImMessageConfirmableService newService(
             RecordingNotifier notifier,
             RecordingConfirmableStore confirmableStore) {
         return new ImMessageConfirmableService(
                 new ImMessageNotifierFactory(Collections.singletonList(notifier)),
-                confirmableStore,
-                mock(ScheduledExecutorService.class));
-    }
-
-    private void invokeConsume(ImMessageConfirmableService service) throws Exception {
-        var consume = ImMessageConfirmableService.class.getDeclaredMethod("consumeSafely");
-        consume.setAccessible(true);
-        consume.invoke(service);
-    }
-
-    private ReceiptTask newTask(Object notification) {
-        return ReceiptTask.builder()
-                .receiptType(ReceiptType.PRIVATE_MESSAGE_SEND)
-                .notification(notification)
-                .receiptId("ack:retry")
-                .delayMillis(2000L)
-                .build();
+                confirmableStore);
     }
 
     private static class RecordingNotifier implements ImMessageNotifier<TestNotification>, ImMessageConfirmable<TestNotification> {
@@ -161,31 +107,25 @@ class ImMessageConfirmableServiceTest {
         }
     }
 
-    private static class ThrowingNotifier extends RecordingNotifier {
-        private int calls;
-
-        @Override
-        public void notify(TestNotification notification) {
-            calls++;
-            throw new IllegalStateException("notify failed");
-        }
-    }
-
     private static class RecordingConfirmableStore implements ImMessageConfirmableStore {
         private ReceiptTask offeredTask;
-        private ReceiptTask consumedTask;
+        private Consumer<ReceiptTask> consumer;
+        private boolean stopped;
         private String confirmedReceiptId;
+
+        @Override
+        public void startConfirming(Consumer<ReceiptTask> consumer) {
+            this.consumer = consumer;
+        }
+
+        @Override
+        public void stopConfirming() {
+            this.stopped = true;
+        }
 
         @Override
         public void offer(ReceiptTask message) {
             this.offeredTask = message;
-        }
-
-        @Override
-        public void consume(Consumer<ReceiptTask> consumer) {
-            if (consumedTask != null) {
-                consumer.accept(consumedTask);
-            }
         }
 
         @Override

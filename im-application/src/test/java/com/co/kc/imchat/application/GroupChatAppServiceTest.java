@@ -50,6 +50,7 @@ import com.co.kc.imchat.domain.user.service.PasswordService;
 import com.co.kc.imchat.application.support.event.DomainEventPublisher;
 import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmableStore;
 import com.co.kc.imchat.application.support.notifier.task.ReceiptTask;
+import com.co.kc.imchat.application.support.notifier.task.ReceiptType;
 import com.co.kc.imchat.common.exception.BusinessException;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.exception.RepeatException;
@@ -1036,11 +1037,15 @@ class GroupChatAppServiceTest {
         private final List<String> confirmedReceiptIds = new ArrayList<>();
 
         @Override
-        public void offer(ReceiptTask message) {
+        public void startConfirming(Consumer<ReceiptTask> consumer) {
         }
 
         @Override
-        public void consume(Consumer<ReceiptTask> consumer) {
+        public void stopConfirming() {
+        }
+
+        @Override
+        public void offer(ReceiptTask message) {
         }
 
         @Override
