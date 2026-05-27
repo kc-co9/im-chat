@@ -52,7 +52,7 @@
         <jaxb.version>2.3.1</jaxb.version>
         <commons-lang3.version>3.12.0</commons-lang3.version>
         <commons-collections4.version>4.4</commons-collections4.version>
-        <guava.version>31.1-jre</guava.version>
+        <guava.version>32.0.0-jre</guava.version>
         <okhttp.version>4.9.3</okhttp.version>
         <bcrypt.version>0.10.2</bcrypt.version>
         <jjwt.version>0.9.1</jjwt.version>
