@@ -460,3 +460,7 @@ com.co.kc.imchat.ImChatApplication
 5. 新增通用工具、通用异常或跨模块基础类型时放在 `im-common`。
 6. 不允许领域层反向依赖应用层、接口层或基础设施层。
 7. 应用层命令、查询和通知模型优先使用 `record` 表达不可变输入输出模型。
+
+## 开源协议
+
+本项目基于 `GNU General Public License v3.0 only` 开源，详情见 [LICENSE](LICENSE)。
