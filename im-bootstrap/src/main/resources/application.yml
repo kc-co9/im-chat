@@ -5,7 +5,7 @@ spring:
   application:
     name: im-chat
   datasource:
-    url:  jdbc:mysql://localhost:3306/im_chat?characterEncoding=utf-8&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/im_chat?characterEncoding=utf-8&serverTimezone=UTC
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -71,7 +71,9 @@ spring:
           enabled: true
           paths: /**
   autoconfigure:
-    exclude: org.apache.shardingsphere.spring.boot.ShardingSphereAutoConfiguration
+    exclude:
+      - org.apache.shardingsphere.spring.boot.ShardingSphereAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.web.SpringDataWebAutoConfiguration
   mvc:
     favicon:
       enabled: false

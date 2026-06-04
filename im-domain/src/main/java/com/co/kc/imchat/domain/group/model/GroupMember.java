@@ -6,6 +6,8 @@ import com.co.kc.imchat.domain.user.model.UserId;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
@@ -13,7 +15,10 @@ import java.time.LocalDateTime;
  */
 @EqualsAndHashCode(callSuper = true)
 @Data
-public class GroupMember extends Identification implements Validator {
+public class GroupMember extends Identification implements Validator, Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private MemberId id;
     private UserId userId;
     private GroupId groupId;

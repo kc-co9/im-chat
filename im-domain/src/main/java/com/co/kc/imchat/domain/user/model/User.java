@@ -5,6 +5,8 @@ import com.co.kc.imchat.domain.user.service.PasswordService;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.Objects;
 
 /**
@@ -12,7 +14,10 @@ import java.util.Objects;
  */
 @Getter
 @EqualsAndHashCode(callSuper = false)
-public class User extends Identification {
+public class User extends Identification implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     /**
      * 聚合根-唯一标识
      */

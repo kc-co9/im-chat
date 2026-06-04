@@ -9,12 +9,18 @@ import com.co.kc.imchat.common.exception.BusinessException;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
+import java.io.Serial;
+import java.io.Serializable;
+
 /**
  * 聚合根：群组。
  */
 @Getter
 @EqualsAndHashCode(callSuper = true)
-public class Group extends Identification implements Validator {
+public class Group extends Identification implements Validator, Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private GroupId id;
     private ImChatType type;
     private UserId ownerId;

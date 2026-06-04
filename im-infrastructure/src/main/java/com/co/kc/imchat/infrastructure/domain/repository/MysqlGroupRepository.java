@@ -1,14 +1,13 @@
 package com.co.kc.imchat.infrastructure.domain.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
+import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.domain.group.model.Group;
 import com.co.kc.imchat.domain.group.model.GroupId;
 import com.co.kc.imchat.domain.group.repository.GroupRepository;
 import com.co.kc.imchat.domain.user.model.UserId;
 import com.co.kc.imchat.infrastructure.mybatis.entity.DbImGroup;
-import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupChatService;
 import com.co.kc.imchat.infrastructure.mybatis.service.DbImGroupService;
-import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.infrastructure.transformer.db.ImChatDbTransformer;
 import com.co.kc.imchat.infrastructure.transformer.domain.ImChatDomainTransformer;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +21,6 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class MysqlGroupRepository implements GroupRepository {
     private final DbImGroupService dbImGroupService;
-    private final DbImGroupChatService dbImGroupChatService;
 
     @Override
     public Optional<Group> find(GroupId groupId) {

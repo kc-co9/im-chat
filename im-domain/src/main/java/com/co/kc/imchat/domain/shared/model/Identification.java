@@ -4,6 +4,9 @@ import com.co.kc.imchat.common.utils.AssertUtils;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
+import java.io.Serial;
+import java.io.Serializable;
+
 /**
  * 委托ID-共享领域对象
  *
@@ -11,7 +14,10 @@ import lombok.Getter;
  */
 @Getter
 @EqualsAndHashCode
-public class Identification {
+public class Identification implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     /**
      * 数据库主键ID
      */

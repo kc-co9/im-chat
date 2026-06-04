@@ -1,52 +1,50 @@
-package com.co.kc.imchat;
+package com.co.kc.imchat.support;
 
 import com.alicp.jetcache.Cache;
 import com.alicp.jetcache.CacheManager;
 import com.alicp.jetcache.embedded.LinkedHashMapCacheBuilder;
 import com.alicp.jetcache.support.BroadcastManager;
 import com.alicp.jetcache.template.QuickConfig;
-import org.junit.jupiter.api.Test;
-import org.redisson.api.RedissonClient;
+import com.co.kc.imchat.application.support.notifier.confirmable.ImMessageConfirmableStore;
+import com.co.kc.imchat.application.support.notifier.task.ReceiptTask;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.listener.RedisMessageListenerContainer;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
-@SpringBootTest(properties = {
-        "management.health.redis.enabled=false",
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration",
-        "springdoc.api-docs.enabled=false",
-        "springdoc.swagger-ui.enabled=false",
-        "im.message.delay.worker.enabled=false"
-})
-public class ImChatApplicationTests {
+@TestConfiguration
+public class TestCacheConfiguration {
 
-    @MockitoBean
-    private RedisConnectionFactory redisConnectionFactory;
-
-    @MockitoBean
-    private RedissonClient redissonClient;
-
-    @MockitoBean
-    private RedisMessageListenerContainer redisMessageListenerContainer;
-
-    @Test
-    void contextLoads() {
+    @Bean
+    @Primary
+    CacheManager cacheManager() {
+        return new MemoryCacheManager();
     }
 
-    @TestConfiguration
-    static class TestConfig {
+    @Bean
+    @Primary
+    ImMessageConfirmableStore imMessageConfirmableStore() {
+        return new NoOpConfirmableStore();
+    }
 
-        @Bean
-        @Primary
-        CacheManager cacheManager() {
-            return new MemoryCacheManager();
+    private static class NoOpConfirmableStore implements ImMessageConfirmableStore {
+        @Override
+        public void offer(ReceiptTask task) {
+        }
+
+        @Override
+        public void confirm(String receiptId) {
+        }
+
+        @Override
+        public void startConfirming(Consumer<ReceiptTask> consumer) {
+        }
+
+        @Override
+        public void stopConfirming() {
         }
     }
 

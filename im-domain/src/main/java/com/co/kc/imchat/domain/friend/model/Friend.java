@@ -9,6 +9,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
@@ -18,7 +20,10 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class Friend extends Identification implements Validator {
+public class Friend extends Identification implements Validator, Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private FriendId id;
     private UserId userId;
     private UserId friendUserId;
