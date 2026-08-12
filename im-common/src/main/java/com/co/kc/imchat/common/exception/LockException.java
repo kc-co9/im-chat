@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import static com.co.kc.imchat.common.constant.ErrorCode.BUSY_ERROR;
+import static com.co.kc.imchat.common.constant.HttpErrorCode.BUSY_ERROR;
 
 
 /**

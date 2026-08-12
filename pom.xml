@@ -26,11 +26,10 @@
 
     <modules>
         <module>im-common</module>
-        <module>im-domain</module>
-        <module>im-application</module>
-        <module>im-infrastructure</module>
-        <module>im-interfaces</module>
-        <module>im-bootstrap</module>
+        <module>im-plugin</module>
+        <module>im-gateway</module>
+        <module>im-broker</module>
+        <module>im-service</module>
     </modules>
 
     <properties>
@@ -49,6 +48,7 @@
         <jetcache.version>2.7.8</jetcache.version>
         <caffeine.version>2.9.3</caffeine.version>
         <springdoc.version>2.8.15</springdoc.version>
+        <shardingsphere.version>5.2.1</shardingsphere.version>
         <jaxb.version>2.3.1</jaxb.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <commons-collections4.version>4.4</commons-collections4.version>
@@ -56,10 +56,30 @@
         <okhttp.version>4.9.3</okhttp.version>
         <bcrypt.version>0.10.2</bcrypt.version>
         <jjwt.version>0.9.1</jjwt.version>
+        <sofa-bolt.version>1.6.6</sofa-bolt.version>
+        <sofa-common-tools.version>2.1.1</sofa-common-tools.version>
+        <hessian.version>4.0.66</hessian.version>
+        <dubbo.version>3.2.10</dubbo.version>
+        <spring-cloud.version>2025.0.0</spring-cloud.version>
+        <spring-cloud-alibaba.version>2025.0.0.0</spring-cloud-alibaba.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+                <version>${spring-cloud-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.co.kc.im</groupId>
                 <artifactId>im-common</artifactId>
@@ -67,25 +87,79 @@
             </dependency>
             <dependency>
                 <groupId>com.co.kc.im</groupId>
-                <artifactId>im-domain</artifactId>
+                <artifactId>im-cache</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.co.kc.im</groupId>
-                <artifactId>im-application</artifactId>
+                <artifactId>im-lock</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.co.kc.im</groupId>
-                <artifactId>im-infrastructure</artifactId>
+                <artifactId>im-datasource</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.co.kc.im</groupId>
-                <artifactId>im-interfaces</artifactId>
+                <artifactId>im-session</artifactId>
                 <version>${project.version}</version>
             </dependency>
-
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-dubbo</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-bolt</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-mq</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-gossip</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-nacos</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alipay.sofa</groupId>
+                <artifactId>bolt</artifactId>
+                <version>${sofa-bolt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alipay.sofa.common</groupId>
+                <artifactId>sofa-common-tools</artifactId>
+                <version>${sofa-common-tools.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.caucho</groupId>
+                <artifactId>hessian</artifactId>
+                <version>${hessian.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.dubbo</groupId>
+                <artifactId>dubbo-spring-boot-starter</artifactId>
+                <version>${dubbo.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.dubbo</groupId>
+                <artifactId>dubbo-registry-nacos</artifactId>
+                <version>${dubbo.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.mybatis.spring.boot</groupId>
                 <artifactId>mybatis-spring-boot-starter</artifactId>
@@ -105,6 +179,11 @@
                 <groupId>com.baomidou</groupId>
                 <artifactId>mybatis-plus-jsqlparser</artifactId>
                 <version>${mybatis-plus.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.shardingsphere</groupId>
+                <artifactId>shardingsphere-jdbc-core</artifactId>
+                <version>${shardingsphere.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.mysql</groupId>
@@ -147,6 +226,16 @@
                         <artifactId>spring-boot-starter-logging</artifactId>
                     </exclusion>
                 </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>com.alicp.jetcache</groupId>
+                <artifactId>jetcache-core</artifactId>
+                <version>${jetcache.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alicp.jetcache</groupId>
+                <artifactId>jetcache-anno-api</artifactId>
+                <version>${jetcache.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.projectlombok</groupId>
@@ -242,7 +331,7 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration>
-                        <argLine>-Dfile.encoding=UTF-8 -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+                        <argLine>-Dfile.encoding=UTF-8 -Xshare:off -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
                     </configuration>
                 </plugin>
             </plugins>

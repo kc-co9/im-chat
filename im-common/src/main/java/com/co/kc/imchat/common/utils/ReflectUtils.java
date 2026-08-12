@@ -13,6 +13,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -178,46 +179,69 @@ public class ReflectUtils {
      * 从 {@code sourceClass} 的接口或父类声明中解析 {@code targetRawType<T>} 的第一个泛型参数。
      */
     public static Class<?> resolveFirstGenericTypeArgument(Class<?> sourceClass, Class<?> targetRawType) {
+        return resolveGenericTypeArgument(sourceClass, targetRawType, 0);
+    }
+
+    /**
+     * 从 {@code sourceClass} 的接口或父类声明中解析 {@code targetRawType} 指定下标的泛型参数。
+     */
+    public static Class<?> resolveGenericTypeArgument(Class<?> sourceClass, Class<?> targetRawType, int index) {
+        List<Class<?>> genericTypes = resolveGenericTypeArguments(sourceClass, targetRawType);
+        if (index < 0 || index >= genericTypes.size()) {
+            return null;
+        }
+        return genericTypes.get(index);
+    }
+
+    /**
+     * 从 {@code sourceClass} 的接口或父类声明中解析 {@code targetRawType} 的所有泛型参数。
+     */
+    public static List<Class<?>> resolveGenericTypeArguments(Class<?> sourceClass, Class<?> targetRawType) {
         Class<?> current = sourceClass;
         while (current != null && current != Object.class) {
-            Class<?> genericType = resolveFirstGenericTypeArgument(current.getGenericInterfaces(), targetRawType);
-            if (genericType != null) {
-                return genericType;
+            List<Class<?>> genericTypes = resolveGenericTypeArguments(current.getGenericInterfaces(), targetRawType);
+            if (!genericTypes.isEmpty()) {
+                return genericTypes;
             }
-            genericType = resolveFirstGenericTypeArgument(current.getGenericSuperclass(), targetRawType);
-            if (genericType != null) {
-                return genericType;
+            genericTypes = resolveGenericTypeArguments(current.getGenericSuperclass(), targetRawType);
+            if (!genericTypes.isEmpty()) {
+                return genericTypes;
             }
             current = current.getSuperclass();
         }
-        return null;
+        return Collections.emptyList();
     }
 
-    private static Class<?> resolveFirstGenericTypeArgument(Type[] types, Class<?> targetRawType) {
+    private static List<Class<?>> resolveGenericTypeArguments(Type[] types, Class<?> targetRawType) {
         for (Type type : types) {
-            Class<?> genericType = resolveFirstGenericTypeArgument(type, targetRawType);
-            if (genericType != null) {
-                return genericType;
+            List<Class<?>> genericTypes = resolveGenericTypeArguments(type, targetRawType);
+            if (!genericTypes.isEmpty()) {
+                return genericTypes;
             }
         }
-        return null;
+        return Collections.emptyList();
     }
 
-    private static Class<?> resolveFirstGenericTypeArgument(Type type, Class<?> targetRawType) {
+    private static List<Class<?>> resolveGenericTypeArguments(Type type, Class<?> targetRawType) {
         if (!(type instanceof ParameterizedType)) {
-            return null;
+            return Collections.emptyList();
         }
         ParameterizedType parameterizedType = (ParameterizedType) type;
         Type rawType = parameterizedType.getRawType();
         if (!(rawType instanceof Class)) {
-            return null;
+            return Collections.emptyList();
         }
         Class<?> rawClass = (Class<?>) rawType;
         if (!targetRawType.equals(rawClass) && !targetRawType.isAssignableFrom(rawClass)) {
-            return null;
+            return Collections.emptyList();
         }
-        Type actualType = parameterizedType.getActualTypeArguments()[0];
-        return actualType instanceof Class ? (Class<?>) actualType : null;
+        List<Class<?>> genericTypes = new ArrayList<>();
+        for (Type actualType : parameterizedType.getActualTypeArguments()) {
+            if (actualType instanceof Class) {
+                genericTypes.add((Class<?>) actualType);
+            }
+        }
+        return genericTypes;
     }
 
     public static Set<Class<?>> getInheritClass(Object obj) {

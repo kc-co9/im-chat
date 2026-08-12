@@ -1,0 +1,14 @@
+server:
+  port: 8886
+
+im:
+  account:
+    provider:
+      enabled: true
+
+spring:
+  application:
+    name: im-account
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.service-group:SERVICE_GROUP}

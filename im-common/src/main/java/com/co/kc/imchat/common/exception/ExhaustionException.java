@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 
 /**
  * 资源耗尽异常
@@ -9,6 +9,6 @@ import com.co.kc.imchat.common.constant.ErrorCode;
  */
 public class ExhaustionException extends BaseException {
     public ExhaustionException(String reason) {
-        super(ErrorCode.EXHAUSTION_ERROR, reason);
+        super(HttpErrorCode.EXHAUSTION_ERROR, reason);
     }
 }

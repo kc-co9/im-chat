@@ -1,0 +1,14 @@
+server:
+  port: 8887
+
+im:
+  social:
+    provider:
+      enabled: true
+
+spring:
+  application:
+    name: im-social
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.service-group:SERVICE_GROUP}

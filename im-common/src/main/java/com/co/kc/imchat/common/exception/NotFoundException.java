@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 
 /**
  * 不存在异常
@@ -9,6 +9,6 @@ import com.co.kc.imchat.common.constant.ErrorCode;
  */
 public class NotFoundException extends BaseException {
     public NotFoundException(String reason) {
-        super(ErrorCode.NOT_FOUND, reason);
+        super(HttpErrorCode.NOT_FOUND, reason);
     }
 }

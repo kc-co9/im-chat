@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 
 /**
  * 业务异常
@@ -14,7 +14,7 @@ public class BusinessException extends BaseException {
         super(msg);
     }
 
-    public BusinessException(ErrorCode errorCode, String reason) {
+    public BusinessException(HttpErrorCode errorCode, String reason) {
         super(errorCode, reason);
     }
 }

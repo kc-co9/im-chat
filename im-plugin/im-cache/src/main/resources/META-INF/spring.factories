@@ -1,0 +1,2 @@
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.co.kc.imchat.plugin.cache.environment.CacheEnvironmentPostProcessor

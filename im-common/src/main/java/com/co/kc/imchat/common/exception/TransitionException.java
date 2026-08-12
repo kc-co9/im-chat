@@ -1,14 +1,14 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 
 
 public class TransitionException extends BaseException {
     public TransitionException(String reason) {
-        super(ErrorCode.TRANSITION_ERROR, reason);
+        super(HttpErrorCode.TRANSITION_ERROR, reason);
     }
 
     public TransitionException(String reason, Throwable throwable) {
-        super(ErrorCode.TRANSITION_ERROR, reason, throwable);
+        super(HttpErrorCode.TRANSITION_ERROR, reason, throwable);
     }
 }

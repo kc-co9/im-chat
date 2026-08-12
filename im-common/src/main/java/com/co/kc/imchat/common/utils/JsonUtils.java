@@ -75,6 +75,17 @@ public class JsonUtils {
     }
 
     /**
+     * 将对象转换为指定类型
+     */
+    public static <T> T convertValue(Object value, Class<T> clazz) {
+        try {
+            return OBJECT_MAPPER.convertValue(value, clazz);
+        } catch (IllegalArgumentException e) {
+            throw new SerializationException("JSON 对象转换失败", e);
+        }
+    }
+
+    /**
      * 获取全局共享的 ObjectMapper（如需进一步配置）
      */
     public static ObjectMapper getMapper() {

@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 
 /**
  * HTTP请求异常
@@ -11,10 +11,10 @@ import com.co.kc.imchat.common.constant.ErrorCode;
  */
 public class HttpException extends BaseException {
     public HttpException(String reason) {
-        super(ErrorCode.NETWORK_ERROR, reason);
+        super(HttpErrorCode.NETWORK_ERROR, reason);
     }
 
     public HttpException(String reason, Throwable throwable) {
-        super(ErrorCode.NETWORK_ERROR, reason, throwable);
+        super(HttpErrorCode.NETWORK_ERROR, reason, throwable);
     }
 }

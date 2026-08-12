@@ -1,0 +1,15 @@
+package com.co.kc.imchat.service.social.model.io.group;
+
+import lombok.Data;
+
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+
+@Data
+public class GroupInviteMembersRequest {
+    @NotNull(message = "群聊不能为空")
+    private Long groupId;
+    @NotEmpty(message = "群组成员不能为空")
+    private List<Long> memberIds;
+}

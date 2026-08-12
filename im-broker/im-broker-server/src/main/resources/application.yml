@@ -1,0 +1,38 @@
+spring:
+  main:
+    web-application-type: none
+  application:
+    name: im-broker
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
+  cloud:
+    nacos:
+      discovery:
+        port: ${im.bolt.server.port}
+
+im:
+  bolt:
+    client:
+      enabled: true
+    server:
+      enabled: true
+      port: 12200
+  broker:
+    instance:
+      host: ${IM_BROKER_HOST:127.0.0.1}
+      port: ${im.bolt.server.port}
+    cluster:
+      seed-addresses: []
+      gossip-fanout: 2
+      gossip-timeout-millis: 3000
+      gossip-removed-ttl-millis: 300000
+    registry:
+      broker-ttl: 60s
+      gateway-ttl: 60s
+      connection-ttl: 60s
+    gateway-push:
+      bolt:
+        timeout-millis: 3000
+    peer-call:
+      timeout-millis: 3000

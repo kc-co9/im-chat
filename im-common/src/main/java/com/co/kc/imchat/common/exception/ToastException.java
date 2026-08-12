@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 
 /**
  * 提示异常
@@ -11,6 +11,6 @@ import com.co.kc.imchat.common.constant.ErrorCode;
  */
 public class ToastException extends BaseException {
     public ToastException(String msg) {
-        super(ErrorCode.OPERATE_ERROR.getCode(), msg, "Toast用户", null);
+        super(HttpErrorCode.OPERATE_ERROR.getCode(), msg, "Toast用户", null);
     }
 }

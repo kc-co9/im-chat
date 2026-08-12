@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 
 /**
  * 认证异常
@@ -11,10 +11,10 @@ import com.co.kc.imchat.common.constant.ErrorCode;
  */
 public class AuthException extends BaseException {
     public AuthException(String reason) {
-        super(ErrorCode.AUTH_FAIL, reason);
+        super(HttpErrorCode.AUTH_FAIL, reason);
     }
 
-    public AuthException(ErrorCode errorCode, String reason) {
+    public AuthException(HttpErrorCode errorCode, String reason) {
         super(errorCode, reason);
     }
 }

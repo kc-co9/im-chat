@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 
 /**
  * 已经存在异常
@@ -9,6 +9,6 @@ import com.co.kc.imchat.common.constant.ErrorCode;
  */
 public class RepeatException extends BaseException {
     public RepeatException(String reason) {
-        super(ErrorCode.REPEATED_ERROR, reason);
+        super(HttpErrorCode.REPEATED_ERROR, reason);
     }
 }

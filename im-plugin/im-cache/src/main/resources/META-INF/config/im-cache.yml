@@ -1,0 +1,17 @@
+jetcache:
+  statIntervalMinutes: 1
+  areaInCacheName: false
+  local:
+    default:
+      type: caffeine
+      keyConvertor: jackson
+      limit: 100
+  remote:
+    default:
+      type: redisson
+      keyConvertor: jackson
+      broadcastChannel: ${spring.application.name}
+      keyPrefix: ${spring.application.name}
+      valueEncoder: java
+      valueDecoder: java
+      defaultExpireInMillis: 5000

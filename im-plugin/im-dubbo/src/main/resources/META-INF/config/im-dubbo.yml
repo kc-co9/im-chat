@@ -1,0 +1,13 @@
+im:
+  dubbo:
+    enabled: true
+    registry:
+      address: nacos://${im.nacos.server-addr:127.0.0.1:8848}
+      namespace: ${im.nacos.namespace:}
+      group: DUBBO_GROUP
+    protocol:
+      name: dubbo
+      port: -1
+    consumer:
+      timeout: 3000
+      check: false

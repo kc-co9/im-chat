@@ -1,0 +1,34 @@
+server:
+  port: 18080
+
+spring:
+  application:
+    name: im-http-gateway
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
+  cloud:
+    gateway:
+      server:
+        webflux:
+          default-filters:
+            - DedupeResponseHeader=Access-Control-Allow-Origin, RETAIN_UNIQUE
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedHeaders: '*'
+                allowedMethods: '*'
+                allowedOrigins: '*'
+          routes:
+            - id: im-account
+              uri: lb://im-account
+              predicates:
+                - Path=/user/**
+            - id: im-message
+              uri: lb://im-message
+              predicates:
+                - Path=/im/chat/**,/im/private/**,/im/group/queryMessageDetail,/im/group/queryHistoryMessage
+            - id: im-social
+              uri: lb://im-social
+              predicates:
+                - Path=/friend/**,/im/group/createGroup,/im/group/inviteGroupMembers,/im/group/dismissGroup,/im/group/kickGroupMember,/im/group/leaveGroup,/im/group/transferGroupOwner,/im/group/changeGroupNotification,/im/group/changeGroupMemberAlias,/im/group/getGroupList,/im/group/getGroupDetail

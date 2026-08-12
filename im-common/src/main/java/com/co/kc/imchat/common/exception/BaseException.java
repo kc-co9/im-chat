@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
@@ -28,34 +28,34 @@ public class BaseException extends RuntimeException {
     private final String reason;
 
     public BaseException(String msg) {
-        this(ErrorCode.SYS_ERROR.getCode(), msg, "", null);
+        this(HttpErrorCode.SYS_ERROR.getCode(), msg, "", null);
     }
 
     public BaseException(String msg, String reason) {
-        this(ErrorCode.SYS_ERROR.getCode(), msg, reason, null);
+        this(HttpErrorCode.SYS_ERROR.getCode(), msg, reason, null);
     }
 
     public BaseException(String msg, Throwable throwable) {
-        this(ErrorCode.SYS_ERROR.getCode(), msg, "", throwable);
+        this(HttpErrorCode.SYS_ERROR.getCode(), msg, "", throwable);
     }
 
     public BaseException(String msg, String reason, Throwable throwable) {
-        this(ErrorCode.SYS_ERROR.getCode(), msg, reason, throwable);
+        this(HttpErrorCode.SYS_ERROR.getCode(), msg, reason, throwable);
     }
 
-    public BaseException(ErrorCode exCode) {
+    public BaseException(HttpErrorCode exCode) {
         this(exCode.getCode(), exCode.getMsg(), "", null);
     }
 
-    public BaseException(ErrorCode exCode, String reason) {
+    public BaseException(HttpErrorCode exCode, String reason) {
         this(exCode.getCode(), exCode.getMsg(), reason, null);
     }
 
-    public BaseException(ErrorCode exCode, Throwable throwable) {
+    public BaseException(HttpErrorCode exCode, Throwable throwable) {
         this(exCode.getCode(), exCode.getMsg(), "", throwable);
     }
 
-    public BaseException(ErrorCode exCode, String reason, Throwable throwable) {
+    public BaseException(HttpErrorCode exCode, String reason, Throwable throwable) {
         this(exCode.getCode(), exCode.getMsg(), reason, throwable);
     }
 

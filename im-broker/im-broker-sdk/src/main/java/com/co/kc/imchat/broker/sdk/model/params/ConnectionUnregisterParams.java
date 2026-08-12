@@ -1,0 +1,10 @@
+package com.co.kc.imchat.broker.sdk.model.params;
+
+/**
+ * 用户网关路由注销请求。
+ *
+ * @param userId    连接归属用户 ID
+ * @param gatewayId 用户所在 WS 网关实例 ID
+ */
+public record ConnectionUnregisterParams(Long userId, String gatewayId) {
+}

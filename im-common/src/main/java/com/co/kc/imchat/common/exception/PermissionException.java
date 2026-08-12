@@ -1,6 +1,6 @@
 package com.co.kc.imchat.common.exception;
 
-import com.co.kc.imchat.common.constant.ErrorCode;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 
 /**
  * 权限异常
@@ -11,6 +11,6 @@ import com.co.kc.imchat.common.constant.ErrorCode;
  */
 public class PermissionException extends BaseException {
     public PermissionException(String reason) {
-        super(ErrorCode.AUTH_DENY, reason);
+        super(HttpErrorCode.AUTH_DENY, reason);
     }
 }

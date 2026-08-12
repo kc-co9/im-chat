@@ -1,0 +1,20 @@
+im:
+  nacos:
+    namespace: b0b51fe2-fd46-463e-96df-dfba4a3b41a1
+
+spring:
+  config:
+    import:
+      - optional:nacos:common.yml?group=${im.nacos.config.common-group:COMMON_GROUP}
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${im.nacos.server-addr:127.0.0.1:8848}
+        namespace: ${im.nacos.namespace}
+        group: ${im.nacos.discovery.group:IM_CHAT_GROUP}
+        fail-fast: true
+      config:
+        server-addr: ${im.nacos.server-addr:127.0.0.1:8848}
+        namespace: ${im.nacos.namespace}
+        group: ${im.nacos.config.group:DEFAULT_GROUP}
+        file-extension: yml

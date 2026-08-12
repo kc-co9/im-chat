@@ -1,0 +1,15 @@
+package com.co.kc.imchat.service.message.infrastructure.config.beans;
+
+import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.common.identity.snowflake.impl.StaticSnowflakeMachineId;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class BasicBeans {
+
+    @Bean
+    public SnowflakeId snowflakeId() {
+        return new SnowflakeId(new StaticSnowflakeMachineId(1, 1));
+    }
+}
