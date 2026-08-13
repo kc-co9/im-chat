@@ -26,7 +26,7 @@ class SecurityComponentTest {
     @Test
     void converterReadsBearerToken() {
         AuthenticationConverter converter = new AuthenticationConverter();
-        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/friend/friendList")
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/social/friend/friendList")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token"));
 
         Authentication authentication = converter.convert(exchange).block();
@@ -57,7 +57,7 @@ class SecurityComponentTest {
     @Test
     void successHandlerAddsTrustedUserHeaderAndRemovesSpoofedHeader() {
         AuthenticationSuccessHandler successHandler = new AuthenticationSuccessHandler();
-        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/friend/friendList")
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/social/friend/friendList")
                 .header(UserContextHeaders.USER_ID, "999"));
         AtomicReference<ServerWebExchange> downstreamExchange = new AtomicReference<>();
         WebFilterChain chain = filteredExchange -> {
@@ -76,7 +76,7 @@ class SecurityComponentTest {
     @Test
     void sanitizingFilterRemovesExternalUserHeader() {
         UserContextHeaderSanitizingFilter filter = new UserContextHeaderSanitizingFilter();
-        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/user/signIn")
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/account/user/signIn")
                 .header(UserContextHeaders.USER_ID, "999"));
         AtomicReference<ServerWebExchange> downstreamExchange = new AtomicReference<>();
 

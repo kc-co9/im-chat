@@ -47,5 +47,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*!/docs/
-docs/*
+lerna-debug.log*
+
+# Generated documentation is reproducible and must not be committed.
+docs/generated/*
+!docs/generated/.gitkeep

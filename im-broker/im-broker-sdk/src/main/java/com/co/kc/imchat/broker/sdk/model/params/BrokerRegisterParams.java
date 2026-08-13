@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.sdk.model.params;
 
+import java.io.Serializable;
+
 /**
  * Broker 实例注册请求。
  *
@@ -7,5 +9,5 @@ package com.co.kc.imchat.broker.sdk.model.params;
  * @param host     Broker Bolt 主机
  * @param port     Broker Bolt 端口
  */
-public record BrokerRegisterParams(String brokerId, String host, int port) {
+public record BrokerRegisterParams(String brokerId, String host, int port) implements Serializable {
 }

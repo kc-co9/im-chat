@@ -43,11 +43,11 @@ public interface ConnectionRegistry {
     List<UserGatewayDTO> list();
 
     /**
-     * 保留网关上报的用户集合，并清理该网关下未上报的过期连接。
+     * 以网关上报的用户集合为完整快照，补充缺失路由并清理未上报的过期连接。
      *
      * @param gatewayId 网关实例 ID
      * @param userIds   当前有效用户 ID 列表
-     * @return 被清理的用户网关路由
+     * @return 本次新增和删除的用户网关路由
      */
-    List<UserGatewayDTO> sync(String gatewayId, List<Long> userIds);
+    ConnectionSyncResult sync(String gatewayId, List<Long> userIds);
 }

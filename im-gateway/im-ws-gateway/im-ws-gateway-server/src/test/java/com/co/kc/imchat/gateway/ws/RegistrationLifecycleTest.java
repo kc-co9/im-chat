@@ -34,7 +34,7 @@ class RegistrationLifecycleTest {
     }
 
     @Test
-    void scheduledRefreshHeartbeatsGatewayBeforeSyncingConnectionRoutes() {
+    void scheduledRefreshRegistersGatewayBeforeSyncingConnectionRoutes() {
         CapturingBrokerClient brokerClient = new CapturingBrokerClient();
         RegistrationLifecycle lifecycle = lifecycle(brokerClient, new ConnectionRegistry());
 
@@ -42,9 +42,9 @@ class RegistrationLifecycleTest {
         brokerClient.events = "";
         lifecycle.refresh();
 
-        assertThat(brokerClient.events).isEqualTo("heartbeat,sync");
-        assertThat(brokerClient.heartbeatGatewayCommand)
-                .isEqualTo(new GatewayHeartbeatParams("gw-1"));
+        assertThat(brokerClient.events).isEqualTo("register,sync");
+        assertThat(brokerClient.registerGatewayCommand)
+                .isEqualTo(new GatewayRegisterParams("gw-1", "127.0.0.1", 12201));
     }
 
     @Test

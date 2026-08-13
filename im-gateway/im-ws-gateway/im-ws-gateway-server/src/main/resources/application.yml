@@ -11,6 +11,12 @@ spring:
       discovery:
         port: ${im.gateway.ws.port}
 
+management:
+  endpoints:
+    jmx:
+      exposure:
+        include: health,metrics
+
 im:
   bolt:
     client:

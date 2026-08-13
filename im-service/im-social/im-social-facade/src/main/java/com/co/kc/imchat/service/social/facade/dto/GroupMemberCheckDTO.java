@@ -1,4 +1,6 @@
 package com.co.kc.imchat.service.social.facade.dto;
 
-public record GroupMemberCheckDTO(boolean member) {
+import java.io.Serializable;
+
+public record GroupMemberCheckDTO(boolean member) implements Serializable {
 }

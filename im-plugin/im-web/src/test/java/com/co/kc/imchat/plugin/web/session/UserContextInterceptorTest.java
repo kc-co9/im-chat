@@ -42,9 +42,16 @@ class UserContextInterceptorTest {
     }
 
     @Test
-    void permitsSignInWithoutUserHeader() {
+    void permitsSignInWithoutUserHeaderWhenServiceHasContextPath() {
         UserContextInterceptor interceptor = new UserContextInterceptor();
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/user/signIn");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setMethod("POST");
+        request.setContextPath("/account");
+        request.setRequestURI("/account/user/signIn");
+        request.setServletPath("/user/signIn");
+
+        assertThat(request.getRequestURI()).isEqualTo("/account/user/signIn");
+        assertThat(request.getServletPath()).isEqualTo("/user/signIn");
 
         boolean proceed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
 

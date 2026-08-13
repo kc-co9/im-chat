@@ -44,9 +44,9 @@ client
 
 当前路由配置在 `src/main/resources/application.yml`：
 
-- `/user/**` -> `im-account`
-- `/im/chat/**`、`/im/private/**`、部分 `/im/group/**` 查询接口 -> `im-message`
-- `/friend/**`、群组社交管理接口 -> `im-social`
+- `/account/**` -> `im-account`
+- `/message/**` -> `im-message`
+- `/social/**` -> `im-social`
 
 ## 安全边界
 

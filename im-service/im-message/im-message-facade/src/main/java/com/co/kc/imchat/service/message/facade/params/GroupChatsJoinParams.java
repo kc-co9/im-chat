@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.message.facade.params;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -14,5 +15,5 @@ public record GroupChatsJoinParams(
         Long inviterId,
         Long groupId,
         List<GroupChatMemberParams> members,
-        List<GroupChatMemberDescriptorParams> memberDescriptors) {
+        List<GroupChatMemberDescriptorParams> memberDescriptors) implements Serializable {
 }

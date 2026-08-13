@@ -1,6 +1,5 @@
 package com.co.kc.imchat.plugin.bolt;
 
-import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.plugin.bolt.core.BoltRequestProcessor;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequest;
 import com.co.kc.imchat.plugin.bolt.model.BoltResponse;
@@ -36,9 +35,8 @@ class BoltRequestProcessorTest {
         BoltResponse response = (BoltResponse) processor.handleRequest(null,
                 new BoltRequest("test.service", "ping", "{\"value\":\"hello\"}"));
 
-        assertThat(response.success()).isTrue();
-        assertThat(JsonUtils.fromJson(response.data(), PingResponse.class).value())
-                .isEqualTo("pong:{\"value\":\"hello\"}");
+        assertThat(response.isSuccess()).isTrue();
+        assertThat(response.getData()).isEqualTo("{\"value\":\"pong:{\\\"value\\\":\\\"hello\\\"}\"}");
     }
 
     @Test
@@ -48,8 +46,15 @@ class BoltRequestProcessorTest {
         BoltResponse response = (BoltResponse) processor.handleRequest(null,
                 new BoltRequest("test.service", "missing", "{}"));
 
-        assertThat(response.success()).isFalse();
-        assertThat(response.code()).isEqualTo("BOLT_HANDLER_NOT_FOUND");
+        assertThat(response.isSuccess()).isFalse();
+        assertThat(response.getCode()).isEqualTo("BOLT_HANDLER_NOT_FOUND");
+    }
+
+    @Test
+    void registersProcessorForBoltRequestClass() {
+        BoltRequestProcessor processor = new BoltRequestProcessor(List.of());
+
+        assertThat(processor.interest()).isEqualTo(BoltRequest.class.getName());
     }
 
     private record PingResponse(String value) {

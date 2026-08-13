@@ -299,7 +299,7 @@ class GroupChatAppServiceTest {
     }
 
     @Test
-    void groupMessageSentNotificationSkipsSender() {
+    void groupMessageSentNotificationSkipsSenderAndLetsBrokerDecideOnlineConnections() {
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
         groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
@@ -312,7 +312,7 @@ class GroupChatAppServiceTest {
         GroupMessageAppService appService = new GroupMessageAppService(
                 groupChatRepository,
                 null,
-                new TestAccountAdapter(false, 2L),
+                new TestAccountAdapter(false),
                 new TestSocialAdapter(new MemoryGroupRepository(), groupMemberRepository, groupChatRepository),
                 null,
                 new ImChatService(null, groupChatRepository, null),
@@ -331,10 +331,10 @@ class GroupChatAppServiceTest {
 
         assertThat(notifierInvoker.groupSentCommands)
                 .extracting(ImGroupSentNotification::receiverId)
-                .containsExactly(2L);
+                .containsExactly(2L, 3L);
         assertThat(notifierInvoker.groupSentCommands)
                 .extracting(ImGroupSentNotification::chatId)
-                .containsExactly(102L);
+                .containsExactly(102L, 103L);
     }
 
     @Test

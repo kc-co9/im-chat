@@ -23,12 +23,12 @@ spring:
             - id: im-account
               uri: lb://im-account
               predicates:
-                - Path=/user/**
+                - Path=/account/**
             - id: im-message
               uri: lb://im-message
               predicates:
-                - Path=/im/chat/**,/im/private/**,/im/group/queryMessageDetail,/im/group/queryHistoryMessage
+                - Path=/message/**
             - id: im-social
               uri: lb://im-social
               predicates:
-                - Path=/friend/**,/im/group/createGroup,/im/group/inviteGroupMembers,/im/group/dismissGroup,/im/group/kickGroupMember,/im/group/leaveGroup,/im/group/transferGroupOwner,/im/group/changeGroupNotification,/im/group/changeGroupMemberAlias,/im/group/getGroupList,/im/group/getGroupDetail
+                - Path=/social/**

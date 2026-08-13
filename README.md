@@ -130,6 +130,8 @@
 
 项目采用基于依赖倒置的服务化架构。HTTP 和 WebSocket 入口由 gateway 承载，IM 实时连接索引与在线投递由 broker 承载，业务规则、用例编排和技术实现先集中在业务服务内部，服务之间通过 SDK、facade 或 Dubbo 契约解耦。
 
+本节用于帮助首次阅读者理解主要链路；当前运行拓扑、模块边界和数据所有权以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
+
 ```text
         ┌────────────────┐        ┌────────────────┐
         │ im-http-gateway│        │ im-ws-gateway  │
@@ -171,7 +173,7 @@ im-common                -> no business module dependency
 1. `*-facade` 只保存服务间契约、内部 DTO 和错误语义，不依赖 server。
 2. server 可以实现自己的 facade，也可以通过 Dubbo、Bolt adapter 调用其他服务；后续替换协议时只替换 adapter。
 3. WebSocket 连接、连接索引、业务处理分别放到 gateway、broker、service。
-4. 当前 `im-message-server` 承载原 DDD 应用层、领域层、基础设施和 HTTP 接口；后续迁移 account/social 时，先迁移 provider 实现，再迁移领域代码。
+4. account、social、message 分别拥有自己的应用层、领域层、基础设施和 HTTP/RPC 接口，跨服务只通过 facade 契约协作。
 5. 消息主链路不直接依赖 account/social 内部领域服务，而是通过 `AccountFacade`、`SocialFacade` 边界访问。
 
 ## 模块
@@ -180,11 +182,13 @@ im-common                -> no business module dependency
 |------|------|----------|
 | `im-common` | 公共模块 | 通用常量、异常、基础枚举、响应模型、工具类、跨服务实时帧基础类型 |
 | `im-plugin` | 技术插件 | Bolt RPC、Dubbo、Gossip 同步、Web、缓存、分布式锁、MQ、数据源、Session 等通用基础能力 |
+| `im-gateway/im-http-gateway` | HTTP 网关 | 外部 HTTP 路由、内部路径隔离、traceId 透传和跨域处理 |
 | `im-gateway/im-ws-gateway-*` | WebSocket 网关 | Netty WebSocket 连接、协议 adapter、gateway facade |
 | `im-broker/im-broker-*` | IM Broker | Broker/Gateway/Connection/Frame RPC 入口、用户到 gateway 的连接索引、Broker 间 Gossip 同步、精确投递 |
-| `im-service/im-account-*` | 账号服务边界 | 账号 facade，登录态、用户资料、在线状态查询契约 |
-| `im-service/im-social-*` | 社交服务边界 | 好友关系、群成员、群消息收件人查询契约 |
+| `im-service/im-account-*` | 账号服务 | 用户、认证和在线会话的领域实现、HTTP 接口与 facade provider |
+| `im-service/im-social-*` | 社交服务 | 好友、群组和群成员的领域实现、HTTP 接口与 facade provider |
 | `im-service/im-message-*` | 消息服务 | 消息应用层、领域层、基础设施、HTTP 接口、消息 facade |
+| `im-architecture` | 架构反馈 | 使用 ArchUnit 验证模块依赖和分层边界 |
 
 ### 消息投递架构
 
@@ -284,7 +288,7 @@ im-broker     -> im-ws-gateway  Bolt RPC
 im-broker     -> im-broker      Gossip digest/delta over Bolt
 ```
 
-这些内部调用只服务于服务间链路，不作为外部 API 暴露。外部 HTTP 请求统一进入 `im-http-gateway`，当前技术升级阶段仍路由到承载原 HTTP controller 的 `im-message`，路径为 `/user/**`、`/friend/**`、`/im/**`。
+这些内部调用只服务于服务间链路，不作为外部 API 暴露。外部 HTTP 请求统一进入 `im-http-gateway`，并分别将 `/account/**`、`/message/**`、`/social/**` 路由到 account、message、social 服务。
 
 客户端收到需要回执的通知后，统一发送 ACK 命令。`receiptType` 为发送通知时，服务端会先把消息副本置为 `RECEIVED`，再确认对应发送通知任务；`receiptType` 为撤回通知时，服务端只确认对应撤回通知任务。
 
@@ -299,9 +303,9 @@ im-broker     -> im-broker      Gossip digest/delta over Bolt
 
 ### 模块协作
 
-运行时入口按职责拆分到 `im-gateway`、`im-broker` 和 `im-service`。`im-ws-gateway` 负责 WebSocket 连接，`im-broker` 负责连接索引、Broker 间同步和用户到 gateway 的映射，`im-service` 负责业务处理。HTTP 入口保留在 service server 内，后续可通过独立 HTTP gateway 做统一流量入口。
+运行时入口按职责拆分到 `im-gateway`、`im-broker` 和 `im-service`。`im-ws-gateway` 负责 WebSocket 连接，`im-broker` 负责连接索引、Broker 间同步和用户到 gateway 的映射，account、social、message 服务分别负责各自业务处理。服务保留自己的 HTTP Controller，由 `im-http-gateway` 统一提供外部流量入口。
 
-`im-message-server` 当前承载消息业务的应用层、领域层、基础设施和 HTTP 接口。消息主链路访问账号/社交能力时只依赖 `AccountFacade`、`SocialFacade`，当前 provider 是本地实现，后续迁移 account/social 独立服务时可替换为 RPC provider。
+`im-message-server` 承载消息业务的应用层、领域层、基础设施和 HTTP/RPC 接口。消息主链路访问账号和社交能力时只依赖 facade 契约，通过 Dubbo adapter 调用 `im-account` 与 `im-social` provider，不依赖其他服务的内部领域实现。
 
 `im-account-facade`、`im-social-facade`、`im-message-facade` 是服务间契约模块，保存 facade 接口、内部 DTO 和错误语义。server 模块只实现契约，不反向依赖调用方。
 
@@ -313,11 +317,11 @@ im-broker     -> im-broker      Gossip digest/delta over Bolt
 
 | 资源 | 路径前缀 | 说明 |
 |------|----------|------|
-| 用户 | `/user` | 注册、登录、登出、用户详情 |
-| 好友 | `/friend` | 好友列表、详情、搜索、添加、删除、拉黑、备注 |
-| 聊天会话 | `/im/chat` | 会话列表、打开私聊、打开群聊、退出和隐藏会话 |
-| 群组 | `/im/group` | 群组创建、成员管理、群设置、群详情、群消息查询 |
-| 私聊消息 | `/im/private` | 私聊消息详情和历史查询 |
+| 用户 | `/account/user` | 注册、登录、登出、用户详情 |
+| 好友 | `/social/friend` | 好友列表、详情、搜索、添加、删除、拉黑、备注 |
+| 聊天会话 | `/message/chat` | 会话列表、打开私聊、打开群聊、退出和隐藏会话 |
+| 群组 | `/social/group`、`/message/group` | 群组创建、成员管理、群设置、群详情、群消息查询 |
+| 私聊消息 | `/message/private` | 私聊消息详情和历史查询 |
 
 接口文档使用 `springdoc-openapi` 暴露：
 
@@ -414,7 +418,7 @@ WebSocket 连接入口为 `/ws`。当前版本不再使用 STOMP destination，�
 | 注册与配置 | `Nacos Discovery`、`Nacos Config` |
 | 对象转换 | `MapStruct` |
 | 认证与安全 | `JWT`、`BCrypt` |
-| 测试 | `JUnit 5`、`Mockito`、`H2` |
+| 测试与架构约束 | `JUnit 5`、`Mockito`、`H2`、`ArchUnit` |
 
 ## 运行
 
@@ -475,10 +479,10 @@ im-cache: META-INF/config/im-cache.yml
 | WebSocket 网关 WS 端口 | `im-ws-gateway` | `19090` |
 | Broker Bolt 端口 | `im-broker` | `12200` |
 | 消息服务 | `im-message` | `8888` |
-| 账号服务壳 | `im-account` | `8886` |
-| 社交服务壳 | `im-social` | `8887` |
+| 账号服务 | `im-account` | `8886` |
+| 社交服务 | `im-social` | `8887` |
 
-`im-account` 和 `im-social` 当前是可注册、可健康检查的轻量服务壳，先保留业务拆分边界；账号和社交领域实现仍由 `im-message` 内部本地 provider 承载。`im-message` 当前既提供业务处理，也承担消息主链路的内部 facade；后续如果把 account/social 迁为独立服务，只需要把本地 provider 换成对应 RPC adapter。
+`im-account`、`im-social` 和 `im-message` 是独立业务服务，分别提供自己的 HTTP 接口和 Dubbo facade provider。message 通过 RPC adapter 调用账号与社交能力，HTTP gateway 通过 Nacos 服务发现把固定路径前缀路由到对应服务。
 
 ### 构建
 
@@ -497,19 +501,19 @@ mvn test
 推荐启动顺序：
 
 1. 启动基础设施：`MySQL`、`Redis`、`Nacos`。
-2. 启动 `im-message`，让消息业务和内部 facade 先完成注册。
-3. 启动 `im-broker`，准备连接索引并接收 message 的实时投递请求。
-4. 启动 `im-ws-gateway`，承接 WebSocket 连接并把上行帧转给 broker。
-5. 启动 `im-http-gateway`，提供统一 HTTP 对外入口。
-6. 启动 `im-account`、`im-social` 壳服务，补齐服务发现和后续拆分边界。
+2. 启动 `im-account`、`im-social`，先注册账号与社交 Dubbo provider。
+3. 启动 `im-message`，连接账号、社交 provider 并注册消息服务。
+4. 启动 `im-broker`，准备连接索引并接收 message 的实时投递请求。
+5. 启动 `im-ws-gateway`，承接 WebSocket 连接并把上行帧转给 broker。
+6. 启动 `im-http-gateway`，提供统一 HTTP 对外入口。
 
 ```bash
+mvn -pl im-service/im-account/im-account-server -am spring-boot:run
+mvn -pl im-service/im-social/im-social-server -am spring-boot:run
 mvn -pl im-service/im-message/im-message-server -am spring-boot:run
 mvn -pl im-broker/im-broker-server -am spring-boot:run
 mvn -pl im-gateway/im-ws-gateway/im-ws-gateway-server -am spring-boot:run
 mvn -pl im-gateway/im-http-gateway -am spring-boot:run
-mvn -pl im-service/im-account/im-account-server -am spring-boot:run
-mvn -pl im-service/im-social/im-social-server -am spring-boot:run
 ```
 
 ### 目标架构链路
@@ -535,7 +539,7 @@ mvn -pl im-service/im-social/im-social-server -am spring-boot:run
 
 `im-ws-gateway` 还提供基础长连接治理：Netty pipeline 会处理 WebSocket Ping/Pong，超过 `im.gateway.ws.idle.reader-idle-seconds` 未收到客户端帧时主动关闭连接，连接关闭后触发 broker 注销用户到当前 gateway 的连接索引。WebSocket 单帧大小由 `im.gateway.ws.max-frame-payload-length` 控制，服务停止时会主动通知 broker 注销当前 gateway，并关闭本机活跃连接，避免下线过程遗留本地连接。
 
-`im-http-gateway` 会拒绝 `/internal/**` 外部访问，并为缺少 `X-Trace-Id` 的请求自动生成 traceId 后透传到下游服务，同时把最终 traceId 写回响应头，方便前端与服务端日志对齐。当前 HTTP 对外路由仍指向已有 message service 的 `/user/**`、`/friend/**`、`/im/**` 接口；account/social 服务当前还没有独立 HTTP Controller，后续拆分出 HTTP API 后再增加对应路由。
+`im-http-gateway` 会拒绝 `/internal/**` 外部访问，并为缺少 `X-Trace-Id` 的请求自动生成 traceId 后透传到下游服务，同时把最终 traceId 写回响应头，方便前端与服务端日志对齐。HTTP 对外路由按服务固定前缀拆分：`/account/**` -> `im-account`，`/message/**` -> `im-message`，`/social/**` -> `im-social`。
 
 Broker 内部按五类 Bolt service 拆分调用边界：
 
@@ -555,7 +559,7 @@ Broker 内部按五类 Bolt service 拆分调用边界：
 com.co.kc.imchat.gateway.http.ImHttpGatewayApplication
 com.co.kc.imchat.gateway.ws.ImWsGatewayApplication
 com.co.kc.imchat.broker.ImBrokerApplication
-com.co.kc.imchat.service.message.ImChatApplication
+com.co.kc.imchat.service.message.ImMessageApplication
 com.co.kc.imchat.service.account.ImAccountApplication
 com.co.kc.imchat.service.social.ImSocialApplication
 ```
@@ -564,20 +568,116 @@ com.co.kc.imchat.service.social.ImSocialApplication
 
 ```text
 .
+├── AGENTS.md
+├── ARCHITECTURE.md
+├── docs
+│   ├── design-docs
+│   ├── exec-plans
+│   ├── product-specs
+│   ├── references
+│   ├── PLANS.md
+│   ├── RELIABILITY.md
+│   └── SECURITY.md
+├── im-architecture
+├── im-broker
 ├── im-common
 ├── im-gateway
 │   ├── im-http-gateway
 │   └── im-ws-gateway
-├── im-broker
+├── im-plugin
 ├── im-service
 │   ├── im-account
 │   ├── im-message
 │   └── im-social
-├── im-plugin
+├── scripts
+│   ├── check-drift.sh
+│   └── verify.sh
 ├── sql
 │   └── ddl.sql
 └── pom.xml
 ```
+
+## 工程文档与质量保障
+
+README 面向项目开发者，介绍系统能力、运行方式、配置和日常开发流程。[AGENTS.md](AGENTS.md) 面向 Coding Agent，记录执行规则、修改边界和完成标准；AI 可以读取 README 理解业务与运行上下文，但以适用范围内的 `AGENTS.md` 作为操作约束。
+
+### Harness 设计思想
+
+项目引入 Harness Engineering，不是为了增加一套独立于开发流程的文档体系，而是让仓库本身具备足够的可理解性和反馈能力。开发者和 Coding Agent 都应该能够从仓库中回答三个问题：系统当前如何组织、修改需要遵守哪些边界、修改完成后如何证明结果可信。
+
+当前 Harness 遵循以下原则：
+
+1. **仓库内生**：架构、设计、计划、可靠性和安全约束与代码一起版本化，不依赖个人记忆或聊天记录。
+2. **渐进披露**：README 提供项目全貌和设计背景，`ARCHITECTURE.md` 与专题文档继续展开细节，`AGENTS.md` 提供 AI 执行规则，避免所有内容堆积在单个文件中。
+3. **约束可执行**：能够机械判断的问题落入 ArchUnit、测试、Maven 或漂移脚本，需要语义判断的内容保留在设计规范和 Review 中。
+4. **反馈分层**：开发过程中使用快速、局部反馈，提交前再执行完整验证；运行后通过指标和日志继续观察真实行为。
+5. **持续沉淀**：重复出现的缺陷和 Review 意见应逐步转化为规范、测试或自动门禁，减少同一问题反复依赖人工提醒。
+
+Harness 关注的不只是提示词质量，更重要的是为开发者和工具提供准确上下文、稳定边界和短反馈周期。代码中的良好模式和不良模式都会被后续开发继续复制，因此项目通过文档、测试和自动约束主动控制仓库熵增。
+
+```text
+开发与运行反馈
+    -> 设计或编码规范
+    -> 单元测试、行为测试或漂移检查
+    -> 架构与 CI 约束
+    -> 更短、更确定的反馈闭环
+```
+
+Harness 是持续演进的工程能力，不追求一次性建立所有治理文档。只有形成稳定需求、明确维护者和验证方式时才增加新的专题入口，避免创建没有实际用途的空文档。
+
+### 文档分工
+
+开发者和 AI 共同使用以下工程文档：
+
+- [ARCHITECTURE.md](ARCHITECTURE.md)：运行拓扑、模块边界、依赖方向和数据所有权；
+- [设计文档](docs/design-docs/index.md)：重要设计选择和历史决策；
+- [产品规格](docs/product-specs/index.md)：经过确认的业务行为和验收边界；
+- [执行计划](docs/PLANS.md)：跨模块改造的计划与归档记录；
+- [可靠性](docs/RELIABILITY.md)与[安全规范](docs/SECURITY.md)：跨模块运行保障；
+- [编码规范](docs/references/CODING_GUIDE.md)与[单元测试规范](docs/references/UNIT_TEST_GUIDE.md)：开发和 Review 标准；
+- [Code Review 指南](docs/references/CODE_REVIEW_GUIDE.md)：统一独立上下文审查方式和 findings 输出要求。
+- [Harness 指南](docs/references/HARNESS_GUIDE.md)与[反馈台账](docs/feedback/HARNESS_FEEDBACK.md)：推荐拓扑、规则生命周期、落地示例、反馈质量和 Harness 自身问题跟踪。
+
+项目把能够机械判断的规则放入 ArchUnit、Maven 测试和漂移脚本，减少仅依赖人工约定的重复问题。当前质量保障包括：
+
+- `im-architecture` 检查模块和分层依赖；
+- `scripts/check-drift.sh` 检查生成物、编码反模式、测试反模式和文档链接；
+- GitHub Actions 在 Pull Request 验证受影响模块，在主分支运行完整测试，并定期执行 Harness 治理；
+- Maven Enforcer 固定 Java/Maven 运行范围，JaCoCo 在 `verify` 阶段生成覆盖率报告；
+- Broker 与 WS Gateway 通过 Micrometer 暴露 Broker、Gossip、用户和连接状态。
+
+### 开发验证
+
+日常修改后运行快速检查：
+
+```bash
+./scripts/verify.sh quick
+```
+
+提交前运行完整检查：
+
+```bash
+./scripts/verify.sh full
+```
+
+也可以按需单独运行：
+
+```bash
+./scripts/verify.sh drift
+./scripts/verify.sh architecture
+./scripts/verify.sh behavior
+./scripts/verify.sh affected
+./scripts/verify.sh report
+```
+
+`affected` 根据 Git 变更范围选择模块；公共模块、根 POM、脚本和 CI 变化会保守地升级为全量验证。`report` 输出 `target/harness/report.json`，汇总最近验证状态和耗时、Surefire 测试结果、计划与技术债务以及显式登记的误报和偶发测试。报告中的分数只表示反馈传感器是否可用，不表示源码质量。SDK/facade 建立正式发布基线后，可通过 `scripts/check-api-compatibility.sh <base-ref>` 构建契约基线。
+
+### 参考文章
+
+项目的质量反馈体系参考了以下 Harness Engineering 实践：
+
+- [OpenAI：Harness engineering](https://openai.com/zh-Hans-CN/index/harness-engineering/)
+- [Martin Fowler：Harness Engineering](https://martinfowler.com/articles/harness-engineering.html)
 
 ## 开发约定
 
@@ -591,38 +691,19 @@ com.co.kc.imchat.service.social.ImSocialApplication
 
 ### 提交信息约定
 
+开发者和 AI 共同遵循 [Git 规范](docs/references/GIT_GUIDE.md)。只有在用户明确要求时，AI 才可以创建提交；提交前必须完成全量验证、检查实际暂存内容，并排除无关修改。
+
 提交信息沿用项目现有的中文标题和编号正文格式：
 
 ```text
 <中文动词开头的简洁标题>
 
-1. <第一组完整改动，说明新增或调整的核心能力>
+1. <第一组完整改动及其目的>
 
-2. <第二组完整改动，说明模块结构、调用边界或配置变化>
-
-3. <第三组完整改动，说明兼容处理、测试和文档更新>
+2. <第二组完整改动及其目的>
 ```
 
-具体要求：
-
-1. 标题使用“新增、优化、调整、修复、拆分、清理”等动词开头，概括提交目的，不罗列文件名，结尾不加标点。
-2. 标题与正文之间保留一个空行；正文使用连续数字编号，不使用无序列表。
-3. 每条正文描述一个完整改动维度，优先按照“核心能力、架构与配置、验证与清理”的顺序组织。
-4. 涉及跨模块重构时应说明新的职责边界、调用链路和数据所有权，不能只写“调整代码结构”。
-5. 涉及运行行为时应说明默认配置、兼容策略和失败处理；涉及测试时应说明覆盖的关键场景。
-6. 单次提交应保持主题一致。仅格式化、重命名或机械生成的内容应与对应功能改动一起说明，避免正文失去审查价值。
-
-示例：
-
-```text
-优化仓储缓存与配置管理
-
-1. 新增仓储缓存代理与 JetCache 远程缓存配置，补充缓存名称常量和领域缓存值序列化支持
-
-2. 拆分基础设施 Bean 配置，整理启动与仓储缓存集成测试包结构，抽取 SpringBootTest 测试注解
-
-3. 清理未使用的 CQRS 模型和仓储依赖，补充缓存代理单元测试与启动集成测试
-```
+完整的提交边界、暂存策略、验证要求和正反示例以 Git 规范为准，README 不重复维护。
 
 ## 开源协议
 

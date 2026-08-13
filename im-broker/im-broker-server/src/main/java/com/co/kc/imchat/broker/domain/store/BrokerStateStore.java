@@ -181,7 +181,7 @@ public class BrokerStateStore implements GossipSyncStore {
     }
 
     private void removeLocalConnections(String gatewayId) {
-        connectionRegistry.sync(gatewayId, List.of()).forEach(this::removeConnectionState);
+        connectionRegistry.sync(gatewayId, List.of()).removed().forEach(this::removeConnectionState);
     }
 
     private Optional<ConnectionState> readConnectionState(String payload, ConnectionKey connectionKey) {

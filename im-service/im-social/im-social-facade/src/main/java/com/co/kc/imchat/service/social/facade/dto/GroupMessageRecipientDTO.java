@@ -1,4 +1,6 @@
 package com.co.kc.imchat.service.social.facade.dto;
 
-public record GroupMessageRecipientDTO(Long userId) {
+import java.io.Serializable;
+
+public record GroupMessageRecipientDTO(Long userId) implements Serializable {
 }

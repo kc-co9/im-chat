@@ -1,4 +1,6 @@
 package com.co.kc.imchat.service.social.facade.params;
 
-public record FriendRelationCheckParams(Long userId, Long friendUserId) {
+import java.io.Serializable;
+
+public record FriendRelationCheckParams(Long userId, Long friendUserId) implements Serializable {
 }

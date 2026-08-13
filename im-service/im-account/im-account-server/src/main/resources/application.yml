@@ -1,5 +1,7 @@
 server:
   port: 8886
+  servlet:
+    context-path: /account
 
 im:
   account:
@@ -12,3 +14,9 @@ spring:
   config:
     import:
       - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.service-group:SERVICE_GROUP}
+  datasource:
+    url: jdbc:mysql://localhost:3306/im_chat?characterEncoding=utf-8&serverTimezone=UTC
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    type: com.alibaba.druid.pool.DruidDataSource

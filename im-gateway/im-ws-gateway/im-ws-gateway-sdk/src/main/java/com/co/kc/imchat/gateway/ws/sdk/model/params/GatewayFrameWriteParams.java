@@ -1,5 +1,6 @@
 package com.co.kc.imchat.gateway.ws.sdk.model.params;
 
+import java.io.Serializable;
 import com.co.kc.imchat.common.model.io.FrameResponse;
 
 /**
@@ -8,5 +9,5 @@ import com.co.kc.imchat.common.model.io.FrameResponse;
  * @param userId 目标用户 ID
  * @param frame  写入客户端连接的实时帧
  */
-public record GatewayFrameWriteParams(Long userId, FrameResponse frame) {
+public record GatewayFrameWriteParams(Long userId, FrameResponse frame) implements Serializable {
 }

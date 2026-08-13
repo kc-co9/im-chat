@@ -106,7 +106,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/*/v3/api-docs/**",
                                 "/actuator/**").permitAll()
-                        .pathMatchers("/user/signUp", "/user/signIn").permitAll()
+                        .pathMatchers("/account/user/signUp", "/account/user/signIn").permitAll()
                         .anyExchange().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)

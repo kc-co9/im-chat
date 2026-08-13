@@ -46,18 +46,15 @@ class HttpGatewayEndpointConfigTest {
         assertEquals(List.of("lb://im-account", "lb://im-message", "lb://im-social"), routeUris);
 
         assertEquals(
-                "Path=/user/**",
+                "Path=/account/**",
                 environment.getProperty("spring.cloud.gateway.server.webflux.routes[0].predicates[0]")
         );
         assertEquals(
-                "Path=/im/chat/**,/im/private/**,/im/group/queryMessageDetail,/im/group/queryHistoryMessage",
+                "Path=/message/**",
                 environment.getProperty("spring.cloud.gateway.server.webflux.routes[1].predicates[0]")
         );
         assertEquals(
-                "Path=/friend/**,/im/group/createGroup,/im/group/inviteGroupMembers,"
-                        + "/im/group/dismissGroup,/im/group/kickGroupMember,/im/group/leaveGroup,"
-                        + "/im/group/transferGroupOwner,/im/group/changeGroupNotification,"
-                        + "/im/group/changeGroupMemberAlias,/im/group/getGroupList,/im/group/getGroupDetail",
+                "Path=/social/**",
                 environment.getProperty("spring.cloud.gateway.server.webflux.routes[2].predicates[0]")
         );
 
@@ -67,5 +64,10 @@ class HttpGatewayEndpointConfigTest {
                 .anyMatch(predicate -> predicate.contains("/internal/**"));
 
         assertFalse(exposesInternalRoute);
+    }
+
+    @Test
+    void classpathProvidesLoadBalancerImplementationForLbRoutes() throws ClassNotFoundException {
+        Class.forName("org.springframework.cloud.loadbalancer.support.LoadBalancerClientFactory");
     }
 }

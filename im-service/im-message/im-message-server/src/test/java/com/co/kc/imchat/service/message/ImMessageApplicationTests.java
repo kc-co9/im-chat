@@ -10,7 +10,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @ImChatSpringBootTest
 @Import(TestCacheConfiguration.class)
-public class ImChatApplicationTests {
+public class ImMessageApplicationTests {
 
     @MockitoBean
     private RedisConnectionFactory redisConnectionFactory;

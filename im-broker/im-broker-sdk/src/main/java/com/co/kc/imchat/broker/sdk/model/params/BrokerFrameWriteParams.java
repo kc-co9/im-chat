@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.sdk.model.params;
 
+import java.io.Serializable;
 import com.co.kc.imchat.broker.sdk.enums.BrokerFrameDirection;
 import com.co.kc.imchat.common.model.io.FrameRequest;
 import com.co.kc.imchat.common.model.io.FrameResponse;
@@ -19,7 +20,7 @@ public record BrokerFrameWriteParams(BrokerFrameDirection direction,
                                      Long userId,
                                      String connectionId,
                                      FrameRequest request,
-                                     FrameResponse response) {
+                                     FrameResponse response) implements Serializable {
 
     public static BrokerFrameWriteParams inbound(Long userId, String connectionId, FrameRequest request) {
         return new BrokerFrameWriteParams(BrokerFrameDirection.INBOUND, userId, connectionId, request, null);

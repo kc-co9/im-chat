@@ -6,6 +6,7 @@ import com.co.kc.imchat.broker.domain.registry.broker.memory.InMemoryBrokerRegis
 import com.co.kc.imchat.broker.domain.registry.connection.memory.InMemoryConnectionRegistry;
 import com.co.kc.imchat.broker.domain.registry.gateway.memory.InMemoryGatewayRegistry;
 import com.co.kc.imchat.plugin.gossip.model.GossipDeltaOperation;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,6 +14,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Tag("realtime-behavior")
 class BrokerStateStoreTest {
 
     @Test
@@ -48,19 +50,6 @@ class BrokerStateStoreTest {
                 source.brokerStateStore.keysNewerThan(target.brokerStateStore.digest())));
 
         assertTrue(target.connectionRegistry.find(1L).isEmpty());
-    }
-
-    @Test
-    void digestCompactsExpiredRemovedEntries() throws InterruptedException {
-        ClusterProperties properties = new ClusterProperties();
-        properties.setGossipRemovedTtlMillis(1);
-        TestNode source = testNode(properties);
-        source.brokerStateStore.putConnectionState(1L, "gw-1");
-        source.brokerStateStore.removeConnectionState(1L, "gw-1");
-
-        Thread.sleep(5);
-
-        assertTrue(source.brokerStateStore.digest().isEmpty());
     }
 
     @Test

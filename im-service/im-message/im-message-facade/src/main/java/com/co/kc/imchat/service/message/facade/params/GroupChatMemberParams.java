@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.message.facade.params;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
@@ -9,5 +10,5 @@ import java.time.LocalDateTime;
  * @param userId   成员用户 ID
  * @param joinTime 成员入群时间
  */
-public record GroupChatMemberParams(Long groupId, Long userId, LocalDateTime joinTime) {
+public record GroupChatMemberParams(Long groupId, Long userId, LocalDateTime joinTime) implements Serializable {
 }

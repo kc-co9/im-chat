@@ -2,10 +2,11 @@ package com.co.kc.imchat.broker.interfaces.handler.connection;
 
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
 import com.co.kc.imchat.broker.domain.registry.connection.ConnectionRegistry;
+import com.co.kc.imchat.broker.domain.registry.connection.ConnectionSyncResult;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
-import com.co.kc.imchat.broker.sdk.model.dto.UserGatewayDTO;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionSyncParams;
 import com.co.kc.imchat.broker.support.event.model.ConnectionSyncedEvent;
+import com.co.kc.imchat.broker.support.event.model.ConnectionRegisteredEvent;
 import com.co.kc.imchat.broker.support.event.publisher.BrokerEventPublisher;
 import org.springframework.stereotype.Component;
 
@@ -32,8 +33,11 @@ public class ConnectionSyncHandler extends AbstractBrokerRpcHandler<ConnectionSy
             return null;
         }
         List<Long> userIds = params.userIds() == null ? List.of() : params.userIds();
-        List<UserGatewayDTO> removedCollections = connectionRegistry.sync(params.gatewayId(), userIds);
-        brokerEventPublisher.publish(new ConnectionSyncedEvent(params.gatewayId(), userIds, removedCollections));
+        ConnectionSyncResult result = connectionRegistry.sync(params.gatewayId(), userIds);
+        // sync 重建的路由也必须进入 Gossip 状态，否则其他 Broker 无法感知恢复后的连接。
+        result.added().forEach(connection -> brokerEventPublisher.publish(
+                new ConnectionRegisteredEvent(connection.userId(), connection.gatewayId())));
+        brokerEventPublisher.publish(new ConnectionSyncedEvent(params.gatewayId(), userIds, result.removed()));
         return null;
     }
 }

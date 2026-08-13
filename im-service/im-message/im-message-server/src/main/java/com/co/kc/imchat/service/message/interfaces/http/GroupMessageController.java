@@ -18,7 +18,7 @@ import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/im/group")
+@RequestMapping(value = "/group")
 public class GroupMessageController {
     private final GroupMessageAppService groupMessageAppService;
 

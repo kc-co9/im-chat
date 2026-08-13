@@ -1,4 +1,6 @@
 package com.co.kc.imchat.service.account.facade.dto;
 
-public record TokenValidateDTO(boolean valid, Long userId) {
+import java.io.Serializable;
+
+public record TokenValidateDTO(boolean valid, Long userId) implements Serializable {
 }

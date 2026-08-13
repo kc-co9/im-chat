@@ -18,20 +18,20 @@ public class BoltClientInvoker implements BoltInvoker {
                            Class<R> responseType, int timeoutMillis) {
         try {
             String payload = JsonUtils.toJson(request);
-            Object response = rpcClient.invokeSync(address,
-                    new BoltRequest(service, operation, payload), timeoutMillis);
+            Object response = rpcClient.invokeSync(address, new BoltRequest(service, operation, payload), timeoutMillis);
             if (!(response instanceof BoltResponse boltResponse)) {
                 throw new IllegalStateException("Unexpected Bolt response type: " + response);
             }
-            if (!boltResponse.success()) {
-                throw new IllegalStateException(boltResponse.code() + ": " + boltResponse.message());
+            if (!boltResponse.isSuccess()) {
+                throw new IllegalStateException("Bolt response failed, code=" + boltResponse.getCode()
+                        + ", message=" + boltResponse.getMessage());
             }
             if (responseType == Void.class) {
                 return null;
             }
-            return JsonUtils.fromJson(boltResponse.data(), responseType);
+            return JsonUtils.fromJson(boltResponse.getData(), responseType);
         } catch (Exception ex) {
-            throw new IllegalStateException("Bolt invocation failed: " + service + "#" + operation, ex);
+            throw new IllegalStateException("Bolt invocation failed: " + address + " " + service + "#" + operation, ex);
         }
     }
 }

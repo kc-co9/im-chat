@@ -34,7 +34,7 @@ import java.util.List;
 @Tag(name = "聊天接口")
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/im/chat")
+@RequestMapping(value = "/chat")
 public class ChatController {
     private final ChatAppService chatAppService;
 

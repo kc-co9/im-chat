@@ -1,16 +1,17 @@
 package com.co.kc.imchat.plugin.web.advice;
 
 import com.co.kc.imchat.common.model.io.HttpResult;
+import com.co.kc.imchat.common.constant.HttpErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.http.server.ServletServerHttpResponse;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -71,6 +72,16 @@ class ResultAdviceTest {
                 new ServletServerHttpResponse(new MockHttpServletResponse()));
 
         assertThat(body).isSameAs(resource);
+    }
+
+    @Test
+    void mapsUnreadableRequestBodyToParamsError() {
+        ErrorAdvice errorAdvice = new ErrorAdvice();
+
+        HttpResult<Map<String, Object>> result = errorAdvice.httpMessageNotReadableExceptionHandler(
+                new HttpMessageNotReadableException("Required request body is missing"));
+
+        assertThat(result.getCode()).isEqualTo(HttpErrorCode.PARAMS_ERROR.getCode());
     }
 
     private MethodParameter returnType(String methodName) throws NoSuchMethodException {

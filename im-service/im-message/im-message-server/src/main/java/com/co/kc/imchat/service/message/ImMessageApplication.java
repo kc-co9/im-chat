@@ -14,10 +14,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 })
 @EnableScheduling
 @EnableMethodCache(basePackages = "com.co.kc.imchat.service.message.infrastructure.domain.repository", proxyTargetClass = true)
-public class ImChatApplication {
+public class ImMessageApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(ImChatApplication.class, args);
+        SpringApplication.run(ImMessageApplication.class, args);
     }
 
 }

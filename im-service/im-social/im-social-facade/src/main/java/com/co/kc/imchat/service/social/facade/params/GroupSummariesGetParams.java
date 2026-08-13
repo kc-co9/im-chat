@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.social.facade.params;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -7,5 +8,5 @@ import java.util.List;
  *
  * @param groupIds 群 ID 列表
  */
-public record GroupSummariesGetParams(List<Long> groupIds) {
+public record GroupSummariesGetParams(List<Long> groupIds) implements Serializable {
 }

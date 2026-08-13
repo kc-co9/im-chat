@@ -3,6 +3,7 @@ package com.co.kc.imchat.broker.domain.registry.connection.memory;
 import com.co.kc.imchat.common.utils.NestedMapUtils;
 import com.co.kc.imchat.broker.sdk.model.dto.UserGatewayDTO;
 import com.co.kc.imchat.broker.domain.registry.connection.ConnectionRegistry;
+import com.co.kc.imchat.broker.domain.registry.connection.ConnectionSyncResult;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -54,11 +55,20 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
     }
 
     @Override
-    public List<UserGatewayDTO> sync(String gatewayId, List<Long> userIds) {
+    public ConnectionSyncResult sync(String gatewayId, List<Long> userIds) {
         Set<Long> aliveUserIds = userIds == null ? Set.of() : new HashSet<>(userIds);
+        List<UserGatewayDTO> addedConnections = new ArrayList<>();
+        // Gateway 上报的是完整快照；Broker 重启丢失内存状态后，需要据此重建仍然有效的路由。
+        for (Long userId : aliveUserIds) {
+            if (userId != null && find(userId).stream()
+                    .noneMatch(connection -> gatewayId.equals(connection.gatewayId()))) {
+                register(userId, gatewayId);
+                addedConnections.add(gatewayConnections.get(gatewayId).get(userId));
+            }
+        }
         Map<Long, UserGatewayDTO> connections = gatewayConnections.get(gatewayId);
         if (connections == null) {
-            return List.of();
+            return new ConnectionSyncResult(addedConnections, List.of());
         }
         List<UserGatewayDTO> removedConnections = new ArrayList<>();
         for (Long userId : connections.keySet()) {
@@ -74,6 +84,6 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
         if (connections.isEmpty()) {
             gatewayConnections.remove(gatewayId, connections);
         }
-        return removedConnections;
+        return new ConnectionSyncResult(addedConnections, removedConnections);
     }
 }

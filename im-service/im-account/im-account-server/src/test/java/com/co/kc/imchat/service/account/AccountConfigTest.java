@@ -20,6 +20,17 @@ class AccountConfigTest {
                 .isEqualTo("optional:nacos:im-account.yml?group=SERVICE_GROUP");
     }
 
+    @Test
+    void declaresExplicitMysqlDatasource() throws IOException {
+        StandardEnvironment environment = loadApplicationConfig();
+
+        assertThat(environment.getProperty("spring.datasource.url")).startsWith("jdbc:mysql://");
+        assertThat(environment.getProperty("spring.datasource.driver-class-name"))
+                .isEqualTo("com.mysql.cj.jdbc.Driver");
+        assertThat(environment.getProperty("spring.datasource.type"))
+                .isEqualTo("com.alibaba.druid.pool.DruidDataSource");
+    }
+
     private StandardEnvironment loadApplicationConfig() throws IOException {
         StandardEnvironment environment = new StandardEnvironment();
         new YamlPropertySourceLoader().load("application.yml", new ClassPathResource("application.yml"))

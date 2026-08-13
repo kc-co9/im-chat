@@ -37,7 +37,7 @@ public class GatewayUnregisterHandler extends AbstractBrokerRpcHandler<GatewayUn
             return null;
         }
         gatewayRegistry.unregister(params.gatewayId());
-        List<UserGatewayDTO> removedCollections = connectionRegistry.sync(params.gatewayId(), List.of());
+        List<UserGatewayDTO> removedCollections = connectionRegistry.sync(params.gatewayId(), List.of()).removed();
         brokerEventPublisher.publish(new ConnectionSyncedEvent(params.gatewayId(), List.of(), removedCollections));
         brokerEventPublisher.publish(new GatewayRemovedEvent(params.gatewayId()));
         return null;

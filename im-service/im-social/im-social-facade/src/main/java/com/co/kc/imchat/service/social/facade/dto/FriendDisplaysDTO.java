@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.social.facade.dto;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -7,5 +8,5 @@ import java.util.List;
  *
  * @param friends 好友展示信息列表
  */
-public record FriendDisplaysDTO(List<FriendDisplayDTO> friends) {
+public record FriendDisplaysDTO(List<FriendDisplayDTO> friends) implements Serializable {
 }

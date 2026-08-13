@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.sdk.model.params;
 
+import java.io.Serializable;
 import com.co.kc.imchat.broker.sdk.model.dto.ConnectionMigrationDTO;
 
 import java.util.List;
@@ -9,7 +10,7 @@ import java.util.List;
  *
  * @param connections 迁移到目标 owner Broker 的连接
  */
-public record ConnectionMigrateParams(List<ConnectionMigrationDTO> connections) {
+public record ConnectionMigrateParams(List<ConnectionMigrationDTO> connections) implements Serializable {
     public ConnectionMigrateParams {
         connections = connections == null ? List.of() : List.copyOf(connections);
     }

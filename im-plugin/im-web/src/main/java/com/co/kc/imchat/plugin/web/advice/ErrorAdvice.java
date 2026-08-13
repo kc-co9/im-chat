@@ -6,6 +6,7 @@ import com.co.kc.imchat.common.model.io.HttpResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -39,6 +40,13 @@ public class ErrorAdvice {
                 .map(FieldError::getDefaultMessage)
                 .orElse(HttpErrorCode.PARAMS_ERROR.getMsg());
         return HttpResult.error(HttpErrorCode.PARAMS_ERROR, message);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseBody
+    public HttpResult<Map<String, Object>> httpMessageNotReadableExceptionHandler(HttpMessageNotReadableException ex) {
+        log.error("HttpMessageNotReadableException", ex);
+        return HttpResult.error(HttpErrorCode.PARAMS_ERROR);
     }
 
     @ExceptionHandler(BaseException.class)

@@ -1,7 +1,10 @@
 package com.co.kc.imchat.service.social;
 
+import com.co.kc.imchat.plugin.web.advice.ResultAdvice;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 
 @SpringBootTest(properties = {
         "server.port=0",
@@ -17,8 +20,15 @@ import org.springframework.boot.test.context.SpringBootTest;
         "spring.cloud.discovery.enabled=false"
 })
 class ImSocialApplicationTest {
+    @Autowired
+    private ApplicationContext applicationContext;
 
     @Test
     void contextLoads() {
+    }
+
+    @Test
+    void loadsHttpResultAdviceFromImWebAutoConfiguration() {
+        applicationContext.getBean(ResultAdvice.class);
     }
 }

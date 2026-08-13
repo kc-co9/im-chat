@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.sdk.model.dto;
 
+import java.io.Serializable;
 import java.time.Instant;
 
 /**
@@ -15,5 +16,5 @@ public record UserGatewayDTO(
         String gatewayId,
         Instant connectedAt,
         Instant refreshedAt
-) {
+) implements Serializable {
 }

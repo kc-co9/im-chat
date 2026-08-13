@@ -1,5 +1,7 @@
 package com.co.kc.imchat.service.account.facade.dto;
 
+import java.io.Serializable;
+
 /**
  * 按邮箱查询用户资料响应。
  *
@@ -8,7 +10,7 @@ package com.co.kc.imchat.service.account.facade.dto;
  * @param username 用户名
  * @param email    用户邮箱
  */
-public record UserProfileFindDTO(boolean found, Long userId, String username, String email) {
+public record UserProfileFindDTO(boolean found, Long userId, String username, String email) implements Serializable {
     public static UserProfileFindDTO empty() {
         return new UserProfileFindDTO(false, null, null, null);
     }

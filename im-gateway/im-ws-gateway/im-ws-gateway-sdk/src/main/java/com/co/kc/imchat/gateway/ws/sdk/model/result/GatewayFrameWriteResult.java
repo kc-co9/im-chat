@@ -1,5 +1,6 @@
 package com.co.kc.imchat.gateway.ws.sdk.model.result;
 
+import java.io.Serializable;
 import com.co.kc.imchat.gateway.ws.sdk.model.dto.GatewayFrameWriteDTO;
 import com.co.kc.imchat.gateway.ws.sdk.enums.FrameWriteStatus;
 
@@ -11,7 +12,7 @@ import java.util.ArrayList;
  *
  * @param writeList 每个连接的写入处理结果
  */
-public record GatewayFrameWriteResult(List<GatewayFrameWriteDTO> writeList) {
+public record GatewayFrameWriteResult(List<GatewayFrameWriteDTO> writeList) implements Serializable {
     public GatewayFrameWriteResult {
         writeList = writeList == null ? List.of() : List.copyOf(writeList);
     }

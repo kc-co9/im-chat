@@ -19,7 +19,7 @@ class TraceIdGlobalFilterTest {
     void addsTraceIdWhenMissing() {
         TraceIdGlobalFilter filter = new TraceIdGlobalFilter();
         MockServerWebExchange exchange = MockServerWebExchange.from(
-                MockServerHttpRequest.get("/user/userDetail"));
+                MockServerHttpRequest.get("/account/user/userDetail"));
         AtomicReference<ServerWebExchange> nextExchange = new AtomicReference<>();
 
         filter.filter(exchange, capture(nextExchange)).block();
@@ -32,7 +32,7 @@ class TraceIdGlobalFilterTest {
     void writesTraceIdToResponseWhenMissing() {
         TraceIdGlobalFilter filter = new TraceIdGlobalFilter();
         MockServerWebExchange exchange = MockServerWebExchange.from(
-                MockServerHttpRequest.get("/user/userDetail"));
+                MockServerHttpRequest.get("/account/user/userDetail"));
 
         filter.filter(exchange, tracedExchange -> tracedExchange.getResponse().setComplete()).block();
 
@@ -44,7 +44,7 @@ class TraceIdGlobalFilterTest {
     void keepsExistingTraceId() {
         TraceIdGlobalFilter filter = new TraceIdGlobalFilter();
         MockServerWebExchange exchange = MockServerWebExchange.from(
-                MockServerHttpRequest.get("/user/userDetail")
+                MockServerHttpRequest.get("/account/user/userDetail")
                         .header(HttpHeaderConstants.TRACE_ID, "trace-1"));
         AtomicReference<ServerWebExchange> nextExchange = new AtomicReference<>();
 
@@ -58,7 +58,7 @@ class TraceIdGlobalFilterTest {
     void writesExistingTraceIdToResponse() {
         TraceIdGlobalFilter filter = new TraceIdGlobalFilter();
         MockServerWebExchange exchange = MockServerWebExchange.from(
-                MockServerHttpRequest.get("/user/userDetail")
+                MockServerHttpRequest.get("/account/user/userDetail")
                         .header(HttpHeaderConstants.TRACE_ID, "trace-1"));
 
         filter.filter(exchange, tracedExchange -> tracedExchange.getResponse().setComplete()).block();

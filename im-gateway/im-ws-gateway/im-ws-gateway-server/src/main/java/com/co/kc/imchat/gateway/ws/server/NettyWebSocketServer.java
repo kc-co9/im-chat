@@ -3,6 +3,7 @@ package com.co.kc.imchat.gateway.ws.server;
 import com.co.kc.imchat.broker.sdk.BrokerClient;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayUnregisterParams;
 import com.co.kc.imchat.gateway.ws.server.handler.FrameHandler;
+import com.co.kc.imchat.gateway.ws.server.handler.HeartbeatHandler;
 import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
 import com.co.kc.imchat.gateway.ws.server.handler.IdleHandler;
 import com.co.kc.imchat.gateway.ws.server.handler.PingFrameHandler;
@@ -71,25 +72,29 @@ public class NettyWebSocketServer {
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel channel) {
+                            int writerIdleSeconds = Math.max(1, readerIdleSeconds / 2);
                             /*
                              * Pipeline 顺序按连接生命周期组织：
-                             * 1. IdleStateHandler：先放入空闲检测，让后续任意阶段的长时间无读连接都能被关闭。
+                             * 1. IdleStateHandler：检测读写空闲；写空闲时主动 ping，长时间无读时关闭连接。
                              * 2. HttpServerCodec + HttpObjectAggregator：把 HTTP 握手请求解码并聚合为 FullHttpRequest。
                              * 3. HandshakeHandler：在协议升级前完成路径校验、token 认证、Broker 连接注册。
                              * 4. WebSocketServerProtocolHandler：完成标准 WebSocket 协议升级、帧编解码和 payload 大小限制。
                              *    TCP 粘包/拆包由 HTTP/WebSocket 编解码器处理，业务 handler 只接收完整 TextWebSocketFrame。
-                             * 5. ConnectionIdleHandler：响应读空闲事件，关闭连接并触发后续连接清理。
-                             * 6. PingFrameHandler：处理 ping/pong 心跳帧，不进入业务转发链路。
-                             * 7. FrameHandler：处理文本业务帧，解码为 FrameRequest 后转交应用层分发。
+                             * 5. HeartbeatHandler：写空闲时发送协议级 ping，浏览器自动回复 pong。
+                             * 6. ConnectionIdleHandler：响应读空闲事件，关闭连接并触发后续连接清理。
+                             * 7. PingFrameHandler：处理客户端 ping，不进入业务转发链路。
+                             * 8. FrameHandler：处理文本业务帧，解码为 FrameRequest 后转交应用层分发。
                              */
                             channel.pipeline()
-                                    .addLast(new IdleStateHandler(readerIdleSeconds, 0, 0, TimeUnit.SECONDS))
+                                    .addLast(new IdleStateHandler(
+                                            readerIdleSeconds, writerIdleSeconds, 0, TimeUnit.SECONDS))
                                     .addLast(new HttpServerCodec())
                                     .addLast(new HttpObjectAggregator(64 * 1024))
                                     .addLast(new HandshakeHandler(
                                             gatewayId, path, brokerClient, connectionRegistry,
                                             authenticationManager))
                                     .addLast(new WebSocketServerProtocolHandler(path, null, true, maxFramePayloadLength))
+                                    .addLast(new HeartbeatHandler())
                                     .addLast(new IdleHandler())
                                     .addLast(new PingFrameHandler())
                                     .addLast(new FrameHandler(brokerClient));

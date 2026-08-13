@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.sdk.model.dto;
 
+import java.io.Serializable;
 import java.time.Instant;
 
 /**
@@ -15,7 +16,7 @@ public record BrokerEndpointDTO(String brokerId,
                                 String host,
                                 int port,
                                 Instant registeredAt,
-                                Instant lastSeenAt) {
+                                Instant lastSeenAt) implements Serializable {
 
     /**
      * 获取 Broker Bolt 服务地址。

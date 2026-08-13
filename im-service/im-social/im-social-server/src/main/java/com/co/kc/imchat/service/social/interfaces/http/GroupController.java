@@ -42,7 +42,7 @@ import java.util.List;
 @RestController
 @ConditionalOnBean(GroupAppService.class)
 @RequiredArgsConstructor
-@RequestMapping(value = "/im/group")
+@RequestMapping(value = "/group")
 public class GroupController {
     private final GroupAppService groupAppService;
 

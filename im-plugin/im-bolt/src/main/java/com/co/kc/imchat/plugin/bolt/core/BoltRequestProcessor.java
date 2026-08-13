@@ -23,12 +23,12 @@ public class BoltRequestProcessor extends SyncUserProcessor<BoltRequest> {
 
     @Override
     public Object handleRequest(BizContext bizContext, BoltRequest request) {
-        BoltRequestHandler handler = handlers.get(key(request.service(), request.operation()));
+        BoltRequestHandler handler = handlers.get(key(request.getService(), request.getOperation()));
         if (handler == null) {
             return BoltResponse.failed("BOLT_HANDLER_NOT_FOUND", "Bolt handler not found");
         }
         try {
-            Object response = handler.handle(request.payload());
+            Object response = handler.handle(request.getPayload());
             return BoltResponse.ok(JsonUtils.toJson(response));
         } catch (Exception ex) {
             return BoltResponse.failed("BOLT_HANDLER_ERROR", ex.getMessage());

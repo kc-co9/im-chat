@@ -140,9 +140,6 @@ public class GroupMessageAppService {
             if (memberChat.belongsTo(senderId)) {
                 continue;
             }
-            if (!accountAdapter.isOnline(memberChat.getUserId().value())) {
-                continue;
-            }
             ImGroupSentNotification notification =
                     ImMessageAppTransformer.INSTANCE.imGroupSentNotificationFrom(
                             memberChat.getUserId().value(), memberChat.getId().value(), event);

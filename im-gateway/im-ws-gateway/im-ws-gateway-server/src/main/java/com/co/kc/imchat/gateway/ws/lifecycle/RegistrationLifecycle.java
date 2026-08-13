@@ -2,7 +2,6 @@ package com.co.kc.imchat.gateway.ws.lifecycle;
 
 import com.co.kc.imchat.broker.sdk.BrokerClient;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionSyncParams;
-import com.co.kc.imchat.broker.sdk.model.params.GatewayHeartbeatParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.gateway.ws.config.properties.GatewayProperties;
 import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
@@ -32,8 +31,6 @@ public class RegistrationLifecycle {
     private final int boltPort;
     private final BrokerClient brokerClient;
     private final ConnectionRegistry connectionRegistry;
-    private volatile boolean registered;
-
     @Autowired
     public RegistrationLifecycle(GatewayProperties properties,
                                  ImBoltProperties boltProperties,
@@ -61,36 +58,22 @@ public class RegistrationLifecycle {
             register();
             syncConnections();
         } catch (RuntimeException ex) {
-            log.warn("failed to register ws gateway, will retry later, error:{}", ex.toString());
+            log.warn("failed to register ws gateway, will retry later", ex);
         }
     }
 
     @Scheduled(fixedDelay = REGISTER_REFRESH_DELAY_MILLIS)
     public void refresh() {
         try {
-            refreshGatewayRegistration();
+            register();
             syncConnections();
         } catch (RuntimeException ex) {
-            log.warn("failed to refresh ws gateway registration, will retry later, error:{}", ex.toString());
+            log.warn("failed to refresh ws gateway registration, will retry later", ex);
         }
     }
 
     private void register() {
         brokerClient.registerGateway(new GatewayRegisterParams(gatewayId, host, boltPort));
-        brokerClient.refreshBrokerAddresses();
-        registered = true;
-    }
-
-    private void refreshGatewayRegistration() {
-        if (registered) {
-            heartbeat();
-            return;
-        }
-        register();
-    }
-
-    private void heartbeat() {
-        brokerClient.heartbeatGateway(new GatewayHeartbeatParams(gatewayId));
         brokerClient.refreshBrokerAddresses();
     }
 

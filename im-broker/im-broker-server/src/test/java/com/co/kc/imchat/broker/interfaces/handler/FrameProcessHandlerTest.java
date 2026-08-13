@@ -35,6 +35,7 @@ import com.co.kc.imchat.service.message.facade.params.NotificationAckParams;
 import com.co.kc.imchat.service.message.facade.params.PrivateMessageReadParams;
 import com.co.kc.imchat.service.message.facade.params.PrivateMessageRevokeParams;
 import com.co.kc.imchat.service.message.facade.params.PrivateMessageSendParams;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -47,6 +48,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@Tag("realtime-behavior")
 class FrameProcessHandlerTest {
     private static final String BROKER_1_HOST = "10.0.0.1";
     private static final String BROKER_2_HOST = "10.0.0.2";

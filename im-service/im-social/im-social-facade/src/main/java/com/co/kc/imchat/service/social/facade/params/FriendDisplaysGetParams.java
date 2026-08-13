@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.social.facade.params;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -8,5 +9,5 @@ import java.util.List;
  * @param userId        当前用户 ID
  * @param friendUserIds 好友用户 ID 列表
  */
-public record FriendDisplaysGetParams(Long userId, List<Long> friendUserIds) {
+public record FriendDisplaysGetParams(Long userId, List<Long> friendUserIds) implements Serializable {
 }

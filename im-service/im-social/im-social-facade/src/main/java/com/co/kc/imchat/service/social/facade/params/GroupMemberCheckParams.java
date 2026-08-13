@@ -1,4 +1,6 @@
 package com.co.kc.imchat.service.social.facade.params;
 
-public record GroupMemberCheckParams(Long groupId, Long userId) {
+import java.io.Serializable;
+
+public record GroupMemberCheckParams(Long groupId, Long userId) implements Serializable {
 }

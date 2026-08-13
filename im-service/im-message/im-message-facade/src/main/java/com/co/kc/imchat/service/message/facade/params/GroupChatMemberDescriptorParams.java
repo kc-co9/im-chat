@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.message.facade.params;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
@@ -9,5 +10,5 @@ import java.time.LocalDateTime;
  * @param displayName 发送系统消息时展示的成员名称
  * @param joinTime 成员入群时间
  */
-public record GroupChatMemberDescriptorParams(Long userId, String displayName, LocalDateTime joinTime) {
+public record GroupChatMemberDescriptorParams(Long userId, String displayName, LocalDateTime joinTime) implements Serializable {
 }

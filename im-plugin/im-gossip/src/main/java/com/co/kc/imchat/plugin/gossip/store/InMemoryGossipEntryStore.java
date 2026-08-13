@@ -27,12 +27,20 @@ public class InMemoryGossipEntryStore {
     private final String localNodeId;
     private final AtomicReference<GossipVersion> versionClock;
     private final LongSupplier removedTtlMillisSupplier;
+    private final LongSupplier currentTimeMillisSupplier;
 
     public InMemoryGossipEntryStore(String localNodeId, LongSupplier removedTtlMillisSupplier) {
+        this(localNodeId, removedTtlMillisSupplier, System::currentTimeMillis);
+    }
+
+    public InMemoryGossipEntryStore(String localNodeId,
+                                    LongSupplier removedTtlMillisSupplier,
+                                    LongSupplier currentTimeMillisSupplier) {
         this.localNodeId = localNodeId;
         this.versionClock = new AtomicReference<>(new GossipVersion(
-                System.currentTimeMillis(), 0, localNodeId));
+                currentTimeMillisSupplier.getAsLong(), 0, localNodeId));
         this.removedTtlMillisSupplier = removedTtlMillisSupplier;
+        this.currentTimeMillisSupplier = currentTimeMillisSupplier;
     }
 
     public void put(String key, GossipEntityType entityType, String payload) {
@@ -129,7 +137,7 @@ public class InMemoryGossipEntryStore {
     }
 
     private GossipVersion nextVersion() {
-        long now = System.currentTimeMillis();
+        long now = currentTimeMillisSupplier.getAsLong();
         return versionClock.updateAndGet(previous -> now > previous.timestamp()
                 ? new GossipVersion(now, 0, localNodeId)
                 : new GossipVersion(previous.timestamp(), previous.counter() + 1, localNodeId));
@@ -155,7 +163,7 @@ public class InMemoryGossipEntryStore {
                 return previous;
             }
             return delta.operation() == GossipDeltaOperation.REMOVED
-                    ? new RemovedState(delta.version(), System.currentTimeMillis())
+                    ? new RemovedState(delta.version(), currentTimeMillisSupplier.getAsLong())
                     : null;
         });
     }
@@ -165,7 +173,7 @@ public class InMemoryGossipEntryStore {
         if (removedTtlMillis <= 0) {
             return;
         }
-        long now = System.currentTimeMillis();
+        long now = currentTimeMillisSupplier.getAsLong();
         for (Map.Entry<String, RemovedState> entry : removedStates.entrySet()) {
             RemovedState removedState = entry.getValue();
             if (now - removedState.observedAt() < removedTtlMillis) {

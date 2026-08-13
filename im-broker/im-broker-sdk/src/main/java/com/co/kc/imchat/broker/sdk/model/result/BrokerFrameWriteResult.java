@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.sdk.model.result;
 
+import java.io.Serializable;
 import com.co.kc.imchat.broker.sdk.model.dto.BrokerFrameWriteDTO;
 import com.co.kc.imchat.broker.sdk.enums.BrokerFrameWriteStatus;
 import com.co.kc.imchat.common.constant.FrameErrorCode;
@@ -21,7 +22,7 @@ public record BrokerFrameWriteResult(boolean processed,
                                      String code,
                                      String message,
                                      Long userId,
-                                     List<BrokerFrameWriteDTO> writeList) {
+                                     List<BrokerFrameWriteDTO> writeList) implements Serializable {
     public BrokerFrameWriteResult {
         writeList = writeList == null ? Collections.emptyList() : List.copyOf(writeList);
     }

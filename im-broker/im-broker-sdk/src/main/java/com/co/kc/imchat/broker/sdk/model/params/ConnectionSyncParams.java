@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.sdk.model.params;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -10,5 +11,5 @@ import java.util.List;
  * @param gatewayId 网关实例 ID
  * @param userIds   当前网关内仍然活跃的用户 ID 列表
  */
-public record ConnectionSyncParams(String gatewayId, List<Long> userIds) {
+public record ConnectionSyncParams(String gatewayId, List<Long> userIds) implements Serializable {
 }

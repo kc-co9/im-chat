@@ -7,6 +7,7 @@ import com.co.kc.imchat.plugin.gossip.model.GossipVersion;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,11 +48,12 @@ class InMemoryGossipEntryStoreTest {
     }
 
     @Test
-    void removedEntryCanBeCompacted() throws InterruptedException {
-        InMemoryGossipEntryStore store = store("node-1", 1);
+    void removedEntryCanBeCompacted() {
+        AtomicLong clock = new AtomicLong(1000);
+        InMemoryGossipEntryStore store = new InMemoryGossipEntryStore("node-1", () -> 1, clock::get);
 
         store.putRemoved("BROKER:broker-1", GossipEntityType.BROKER, "null");
-        Thread.sleep(5);
+        clock.addAndGet(1);
         List<?> digest = store.digest();
 
         assertEquals(List.of(), digest);

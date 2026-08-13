@@ -2,10 +2,12 @@ package com.co.kc.imchat.broker.domain.registry.connection.memory;
 
 import com.co.kc.imchat.broker.domain.registry.broker.memory.InMemoryBrokerRegistry;
 import com.co.kc.imchat.broker.domain.registry.connection.memory.InMemoryConnectionRegistry;
+import com.co.kc.imchat.broker.domain.registry.connection.ConnectionSyncResult;
 import com.co.kc.imchat.broker.domain.registry.gateway.memory.InMemoryGatewayRegistry;
 import com.co.kc.imchat.broker.sdk.model.dto.UserGatewayDTO;
 import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
 import com.co.kc.imchat.broker.sdk.model.dto.GatewayEndpointDTO;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,6 +15,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Tag("realtime-behavior")
 class InMemoryConnectionRegistryTest {
 
     @Test
@@ -72,7 +75,8 @@ class InMemoryConnectionRegistryTest {
 
         assertTrue(store.find(1L).isEmpty());
         assertTrue(store.list().isEmpty());
-        assertTrue(store.sync("gw-1", List.of()).isEmpty());
+        assertTrue(store.sync("gw-1", List.of()).added().isEmpty());
+        assertTrue(store.sync("gw-1", List.of()).removed().isEmpty());
     }
 
     @Test
@@ -117,17 +121,19 @@ class InMemoryConnectionRegistryTest {
     }
 
     @Test
-    void keepOnlyReturnsRemovedConnections() {
+    void syncReturnsAddedAndRemovedConnections() {
         InMemoryConnectionRegistry store = new InMemoryConnectionRegistry();
         store.register(1L, "gw-1");
         store.register(2L, "gw-1");
 
-        List<UserGatewayDTO> removedLocations = store.sync("gw-1", List.of(2L));
+        ConnectionSyncResult result = store.sync("gw-1", List.of(2L, 3L));
 
-        assertEquals(List.of("gw-1"), removedLocations.stream()
-                .map(UserGatewayDTO::gatewayId)
+        assertEquals(List.of(3L), result.added().stream()
+                .map(UserGatewayDTO::userId)
                 .toList());
-        assertEquals(1L, removedLocations.get(0).userId());
+        assertEquals(List.of(1L), result.removed().stream()
+                .map(UserGatewayDTO::userId)
+                .toList());
     }
 
     @Test

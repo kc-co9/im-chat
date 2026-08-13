@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.message.facade.params;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -9,5 +10,5 @@ import java.util.List;
  * @param ownerId 群主用户 ID
  * @param members 创建群时的成员列表
  */
-public record GroupChatsCreateParams(Long groupId, Long ownerId, List<GroupChatMemberParams> members) {
+public record GroupChatsCreateParams(Long groupId, Long ownerId, List<GroupChatMemberParams> members) implements Serializable {
 }

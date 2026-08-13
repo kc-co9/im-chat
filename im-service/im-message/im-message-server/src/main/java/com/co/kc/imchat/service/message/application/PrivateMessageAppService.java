@@ -154,11 +154,6 @@ public class PrivateMessageAppService {
 
     @AfterTransactionCommit
     public void onMessageSent(ImPrivateMessageSentEvent event) {
-        UserId receiverId = new UserId(event.getReceiverId());
-        boolean isOnline = accountAdapter.isOnline(receiverId.value());
-        if (!isOnline) {
-            return;
-        }
         imMessageNotifierInvoker.invoke(ImMessageAppTransformer.INSTANCE.imPrivateSentNotificationFrom(event));
     }
 

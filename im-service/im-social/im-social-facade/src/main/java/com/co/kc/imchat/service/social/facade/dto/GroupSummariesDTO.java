@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.social.facade.dto;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -7,5 +8,5 @@ import java.util.List;
  *
  * @param groups 群摘要列表
  */
-public record GroupSummariesDTO(List<GroupSummaryDTO> groups) {
+public record GroupSummariesDTO(List<GroupSummaryDTO> groups) implements Serializable {
 }

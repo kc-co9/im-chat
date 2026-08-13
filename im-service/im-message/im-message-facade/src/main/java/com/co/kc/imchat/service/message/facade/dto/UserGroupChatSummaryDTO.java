@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.message.facade.dto;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
@@ -18,7 +19,7 @@ public record UserGroupChatSummaryDTO(
         Long groupId,
         Long userId,
         Integer unreadMessageCount,
-        LocalDateTime activeTime) {
+        LocalDateTime activeTime) implements Serializable {
     public static UserGroupChatSummaryDTO empty() {
         return new UserGroupChatSummaryDTO(false, null, null, null, null, null);
     }

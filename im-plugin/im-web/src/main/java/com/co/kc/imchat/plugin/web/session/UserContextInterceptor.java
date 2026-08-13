@@ -55,7 +55,10 @@ public class UserContextInterceptor implements HandlerInterceptor {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
-        String path = request.getRequestURI();
+        String path = request.getServletPath();
+        if (StringUtils.isBlank(path)) {
+            path = request.getRequestURI();
+        }
         return PUBLIC_PATHS.contains(path) || PUBLIC_PREFIXES.stream().anyMatch(path::startsWith);
     }
 }

@@ -18,7 +18,7 @@ import java.util.List;
 @Tag(name = "用户私聊接口")
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(value = "/im/private")
+@RequestMapping(value = "/private")
 public class PrivateMessageController {
     private final PrivateMessageAppService privateMessageAppService;
 

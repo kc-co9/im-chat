@@ -352,7 +352,7 @@ class PrivateChatAppServiceTest {
     }
 
     @Test
-    void sendPrivateMessageNotifiesOnlineReceiverAndKeepsUnreadWhenReceiverNotChatting() {
+    void sendPrivateMessageNotifiesReceiverAndKeepsUnreadWhenReceiverNotChatting() {
         MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
         privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
         privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
@@ -363,7 +363,7 @@ class PrivateChatAppServiceTest {
         PrivateMessageAppService appService = new PrivateMessageAppService(
                 privateChatRepository,
                 inboxRepository,
-                new TestAccountAdapter(false, 2L),
+                new TestAccountAdapter(false),
                 new ImChatService(privateChatRepository, null, null),
                 new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
                 new TestSocialAdapter(new NormalFriendRepository(), null, null, null),
@@ -444,7 +444,7 @@ class PrivateChatAppServiceTest {
     }
 
     @Test
-    void privateMessageSentEventDoesNotNotifyOfflineReceiver() {
+    void privateMessageSentEventAttemptsNotificationWithoutAccountOnlineFilter() {
         RecordingNotifierInvoker notifierInvoker = new RecordingNotifierInvoker();
         PrivateMessageAppService appService = new PrivateMessageAppService(
                 null,
@@ -464,7 +464,9 @@ class PrivateChatAppServiceTest {
 
         appService.onMessageSent(event);
 
-        assertThat(notifierInvoker.privateSentCommands).isEmpty();
+        assertThat(notifierInvoker.privateSentCommands)
+                .extracting(ImPrivateSentNotification::receiverId)
+                .containsExactly(2L);
     }
 
     @Test
