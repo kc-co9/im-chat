@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.message.domain.chat.model;
 
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.common.domain.shared.model.Identification;
 import com.co.kc.imchat.common.domain.shared.model.Validator;
 import com.co.kc.imchat.common.domain.user.model.UserId;

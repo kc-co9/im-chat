@@ -42,6 +42,8 @@ message service
   -> web client
 ```
 
+客户端对需确认通知的 ACK 作为上行帧沿同一路径返回 Message service。Gateway 只转发 ACK，不保存回执任务，也不决定重投。
+
 ## 边界说明
 
 - WS 网关只负责连接、协议帧和路由转发，不处理消息业务逻辑。
@@ -53,6 +55,7 @@ message service
 - SDK 与 Server 分离，使 Broker 只依赖调用契约，不依赖 Netty 运行实现。
 - 具体连接只存于所属网关；集群层只同步用户与网关位置。
 - 上行和下行都经过 Broker，统一在线路由与业务服务调用边界。
+- Gateway 的逐连接写入结果表示本机是否接受写入，不等同于客户端已经处理通知。
 
 ## 验证命令
 

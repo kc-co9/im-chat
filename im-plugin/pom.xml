@@ -12,6 +12,7 @@
 
     <modules>
         <module>im-cache</module>
+        <module>im-metrics</module>
         <module>im-lock</module>
         <module>im-datasource</module>
         <module>im-session</module>

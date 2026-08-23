@@ -4,25 +4,29 @@
 
 `im-ws-gateway-sdk` 是 WS 网关对内部服务暴露的调用 SDK。
 
-当前主要给 Broker 使用，用于把实时帧写入指定 WS 网关中的指定连接。SDK 内包含调用参数、返回对象、Bolt RPC 标识，以及按网关地址发起调用的客户端。
+当前主要给 Broker 使用，用于把实时帧写入指定 WS 网关中的用户连接，或关闭指定旧会话版本的连接。SDK 内包含调用参数、返回对象、Bolt RPC 标识，以及按网关地址发起调用的客户端。
 
 ## 目录结构
 
 ```text
 im-ws-gateway-sdk/
   src/main/java/com/co/kc/imchat/gateway/ws/sdk/
-    client/                     # Broker 访问 WS 网关的 Bolt 客户端
-    params/                      # RPC 入参
-    dto/                         # RPC 返回对象
-    rpc/                         # Bolt RPC service / operation 标识
+    GatewayClient.java           # Broker 访问 WS 网关的 Bolt 客户端
+    enums/                       # Bolt service / operation 与写入状态
+    model/
+      params/                    # RPC 入参
+      dto/                       # 单次写入明细
+      result/                    # RPC 结果
 ```
 
 ## 契约说明
 
-- `FrameWriteParams`：包含目标用户、连接 ID 列表和需要写入的实时帧。
-- `FrameWriteDTO`：返回当前网关接受写入和写入失败的连接 ID。
-- `RpcService` / `RpcOperation`：Bolt 内部通信使用的服务名和操作名。
-- `GatewayFrameClient`：按明确的 WS 网关地址发起写帧调用；连接和网关查找由 Broker 负责。
+- `GatewayFrameWriteParams`：包含目标用户和需要写入的实时帧；具体连接由目标网关本地查找。
+- `GatewayFrameWriteDTO`：单个连接的接受或失败明细。
+- `GatewayFrameWriteResult`：聚合当前网关的逐连接写入结果。
+- `ConnectionCloseParams`：包含目标用户和需要关闭的旧 `sessionVersion`。
+- `GatewayBoltService` / `GatewayBoltOperation`：Bolt 内部通信使用的服务名和操作名。
+- `GatewayClient`：按明确的 WS 网关地址发起写帧或关闭连接调用；网关查找由 Broker 负责。
 
 ## 依赖边界
 
@@ -40,12 +44,16 @@ im-ws-gateway-sdk/
 
 ```text
 Broker
-  -> GatewayFrameClient
-  -> RpcService.FRAME / RpcOperation.WRITE_FRAME
+  -> GatewayClient
+  -> GatewayBoltService.FRAME / CONNECTION
+  -> GatewayBoltOperation.WRITE_FRAME / CLOSE_CONNECTIONS
   -> WS Gateway Server
-  -> Netty Channel
+  -> local ConnectionRegistry
+  -> matching Netty Channel
   -> WebSocket client
 ```
+
+写帧成功仅表示目标 Gateway 已接受对应连接的本次写入，不表示客户端已经处理通知。客户端业务 ACK 会沿上行链路返回 Message service，由 Message service 确认回执任务。
 
 ## 验证命令
 

@@ -3,6 +3,7 @@ package com.co.kc.imchat.gateway.ws.sdk;
 import com.co.kc.imchat.broker.sdk.model.dto.GatewayEndpointDTO;
 import com.co.kc.imchat.gateway.ws.sdk.model.result.GatewayFrameWriteResult;
 import com.co.kc.imchat.gateway.ws.sdk.model.params.GatewayFrameWriteParams;
+import com.co.kc.imchat.gateway.ws.sdk.model.params.ConnectionCloseParams;
 import com.co.kc.imchat.gateway.ws.sdk.enums.GatewayBoltOperation;
 import com.co.kc.imchat.gateway.ws.sdk.enums.GatewayBoltService;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
@@ -32,6 +33,12 @@ public class GatewayClient {
         return boltInvoker.invoke(address(gateway), GatewayBoltService.FRAME.service(),
                 GatewayBoltOperation.WRITE_FRAME.operation(), params,
                 GatewayFrameWriteResult.class, timeoutMillis);
+    }
+
+    /** 关闭指定网关上的用户连接。 */
+    public void closeConnections(GatewayEndpointDTO gateway, ConnectionCloseParams params) {
+        boltInvoker.invoke(address(gateway), GatewayBoltService.CONNECTION.service(),
+                GatewayBoltOperation.CLOSE_CONNECTIONS.operation(), params, Void.class, timeoutMillis);
     }
 
     private String address(GatewayEndpointDTO gateway) {

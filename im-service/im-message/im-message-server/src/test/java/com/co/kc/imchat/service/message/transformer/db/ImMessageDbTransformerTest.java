@@ -1,6 +1,6 @@
 package com.co.kc.imchat.service.message.transformer.db;
 
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.common.domain.group.model.GroupId;
 import com.co.kc.imchat.service.message.domain.message.model.ImGroupInboxMessage;
 import com.co.kc.imchat.service.message.domain.message.model.ImGroupMessageStatus;

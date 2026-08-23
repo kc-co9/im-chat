@@ -74,7 +74,6 @@ public class RegistrationLifecycle {
 
     private void register() {
         brokerClient.registerGateway(new GatewayRegisterParams(gatewayId, host, boltPort));
-        brokerClient.refreshBrokerAddresses();
     }
 
     private void syncConnections() {

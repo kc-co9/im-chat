@@ -9,6 +9,7 @@ import org.springframework.context.ApplicationContext;
 @SpringBootTest(properties = {
         "server.port=0",
         "im.account.provider.enabled=false",
+        "im.session.jwt.enabled=false",
         "jetcache.remote.default.type=mock",
         "im.dubbo.registry.address=N/A",
         "spring.autoconfigure.exclude=org.redisson.spring.starter.RedissonAutoConfigurationV2,"

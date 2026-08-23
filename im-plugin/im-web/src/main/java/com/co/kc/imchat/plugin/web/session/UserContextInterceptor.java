@@ -14,6 +14,7 @@ public class UserContextInterceptor implements HandlerInterceptor {
     private static final List<String> PUBLIC_PATHS = List.of(
             "/user/signUp",
             "/user/signIn",
+            "/user/refreshToken",
             "/favicon.ico",
             "/doc.html",
             "/swagger-ui.html",
@@ -33,12 +34,14 @@ public class UserContextInterceptor implements HandlerInterceptor {
         }
 
         String userId = request.getHeader(UserContextHeaders.USER_ID);
-        if (StringUtils.isBlank(userId)) {
+        String sessionVersion = request.getHeader(UserContextHeaders.SESSION_VERSION);
+        if (StringUtils.isBlank(userId) || StringUtils.isBlank(sessionVersion)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return false;
         }
         try {
-            UserContextUtils.set(new UserContext(Long.valueOf(userId), null, null));
+            Long parsedUserId = Long.valueOf(userId);
+            UserContextUtils.set(new UserContext(parsedUserId, null, null, sessionVersion));
             return true;
         } catch (NumberFormatException ex) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

@@ -8,4 +8,12 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
     <artifactId>im-account-facade</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>

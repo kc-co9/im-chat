@@ -5,6 +5,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+bash "$ROOT_DIR/scripts/test-sql-harness.sh"
+bash "$ROOT_DIR/scripts/test-java-style-harness.sh"
+
+space_fixture="$(mktemp -d)/repository with spaces"
+ln -s "$ROOT_DIR" "$space_fixture"
+trap 'rm -rf "${space_fixture%/*}"' EXIT
+bash "$space_fixture/scripts/check-drift.sh" >/dev/null
+
 # Verify impact analysis against representative repository paths.
 
 assert_impact() {

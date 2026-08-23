@@ -56,7 +56,7 @@ Broker SDK 通过 `BrokerBoltService` 和 `BrokerBoltOperation` 固定内部 RPC
 | `broker.broker` | `registerBroker`、`unregisterBroker`、`heartbeatBroker`、`listBrokers` | Broker 实例管理 |
 | `broker.gossip` | `gossipDigest`、`gossipDelta` | Broker 间状态摘要和增量同步 |
 | `broker.gateway` | `registerGateway`、`unregisterGateway`、`heartbeatGateway` | WS gateway 实例管理 |
-| `broker.connection` | `registerConnection`、`unregisterConnection`、`syncConnections`、`migrateConnections` | 用户到 gateway 的连接索引管理 |
+| `broker.connection` | `registerConnection`、`unregisterConnection`、`syncConnections`、`migrateConnections`、`closeConnections` | 用户到 gateway 的连接索引管理及会话关闭控制 |
 | `broker.frame` | `writeFrame` | 上行帧转交 message service，下行帧写入 WS gateway |
 
 `AbstractBrokerRpcHandler<I, O>` 负责统一反序列化入参、调用 `process(I params)` 并返回结果。具体 handler 只关心自己的 Params 和 Result 类型。
@@ -92,6 +92,8 @@ owner = sortedBrokerIds[floorMod(hash(userId), brokerCount)]
 ```
 
 如果当前 Broker 不是该用户的归属 Broker，请求会通过 `BrokerPeerClient` 转发给归属 Broker；如果当前 Broker 就是归属 Broker，则直接写入本地 `ConnectionRegistry`。
+
+账号服务发出的会话关闭控制同样可以请求到任意 Broker。非归属 Broker 先转发给归属 Broker，归属 Broker 再根据 `userId -> gatewayId` 路由把控制发给相关 Gateway。Broker 不判断会话是否有效；Gateway 只关闭匹配控制中旧 `sessionVersion` 的本机连接。
 
 当 Broker 成员发生变化时，用户归属可能变化。`BrokerConnectionService` 会定期检查本地连接索引，把不再归属当前 Broker 的用户映射迁移给新的归属 Broker，并在迁移成功后从本地注销旧映射。
 
@@ -132,8 +134,10 @@ Broker ID 根据 `im.broker.instance.host` 和 `im.broker.instance.port` 自动�
 - 外部模块依赖 `im-broker-sdk` 调用 Broker，不依赖 `im-broker-server` 运行实现。
 - WS gateway 通过 Bolt 调用 Broker 注册 gateway、发送 gateway 心跳、注册/注销用户连接、同步连接快照和提交上行帧。
 - Message service 通过 Broker SDK 写入下行帧，Broker 根据连接索引调用对应 WS gateway。
+- Account service 通过 Broker SDK 发布会话关闭控制，Broker 只负责按用户路由，不保存 Account Session 状态。
 - Broker 间同步能力由 `im-plugin/im-gossip` 抽象，Broker server 只负责把业务状态适配成 gossip store。
 - Broker 不依赖 gateway 本地连接实现，也不处理消息落库、会话状态、好友关系或群成员校验。
+- Broker 返回逐连接下行结果，但不持有消息通知回执任务；ACK 和有界重投由 Message service 负责。
 
 ## 验证命令
 

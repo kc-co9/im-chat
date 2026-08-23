@@ -38,6 +38,5 @@ im:
         host: ${im.gateway.ws.host}
       broker:
         bolt:
-          address: 127.0.0.1:12200
           load-balance: HASH
           timeout-millis: 3000

@@ -1,11 +1,11 @@
 package com.co.kc.imchat.service.account.facade;
 
-import com.co.kc.imchat.service.account.facade.params.TokenValidateParams;
+import com.co.kc.imchat.service.account.facade.dto.SessionAuthDTO;
+import com.co.kc.imchat.service.account.facade.dto.UserProfileDTO;
+import com.co.kc.imchat.service.account.facade.dto.UserProfileFindDTO;
+import com.co.kc.imchat.service.account.facade.params.AccessTokenParams;
 import com.co.kc.imchat.service.account.facade.params.UserProfileFindParams;
 import com.co.kc.imchat.service.account.facade.params.UserProfileGetParams;
-import com.co.kc.imchat.service.account.facade.dto.TokenValidateDTO;
-import com.co.kc.imchat.service.account.facade.dto.UserProfileFindDTO;
-import com.co.kc.imchat.service.account.facade.dto.UserProfileDTO;
 
 /**
  * 账号服务契约。
@@ -14,12 +14,12 @@ import com.co.kc.imchat.service.account.facade.dto.UserProfileDTO;
  */
 public interface AccountService {
     /**
-     * 校验登录令牌并解析用户身份。
+     * 校验 Access Token 及其关联会话。
      *
-     * @param params 令牌校验请求
-     * @return 令牌校验结果
+     * @param params Access Token 认证参数
+     * @return 会话认证成功结果
      */
-    TokenValidateDTO validateToken(TokenValidateParams params);
+    SessionAuthDTO authenticate(AccessTokenParams params);
 
     /**
      * 查询用户基础资料。

@@ -5,6 +5,7 @@ import com.co.kc.imchat.service.message.model.cqrs.command.chat.GroupAliasChange
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.ImGroupChatOpenCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.ImPrivateChatOpenCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.PrivateChatHideCmd;
+import com.co.kc.imchat.service.message.model.cqrs.command.chat.ChatExitCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.group.GroupChatHideCmd;
 import com.co.kc.imchat.service.message.model.cqrs.dto.im.ImChatItemDTO;
 import com.co.kc.imchat.service.message.model.cqrs.dto.group.GroupChatOpenDTO;
@@ -70,6 +71,13 @@ public class ChatController {
     public void hideGroupChat(@RequestBody @Validated GroupChatHideRequest request) {
         Long userId = UserContextUtils.get().getUserId();
         chatAppService.hideGroupChat(new GroupChatHideCmd(userId, request.getChatId()));
+    }
+
+    @PostMapping(value = "/exitChat")
+    public void exitChat() {
+        Long userId = UserContextUtils.get().getUserId();
+        ChatExitCmd command = new ChatExitCmd(userId);
+        chatAppService.exitChat(command);
     }
 
     @PostMapping(value = "/changeGroupAlias")

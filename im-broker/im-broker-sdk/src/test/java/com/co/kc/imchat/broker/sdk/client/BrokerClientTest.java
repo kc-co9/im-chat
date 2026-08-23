@@ -4,6 +4,7 @@ import com.co.kc.imchat.broker.sdk.BrokerClient;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltService;
 import com.co.kc.imchat.broker.sdk.enums.BrokerLoadBalance;
+import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayHeartbeatParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
@@ -11,6 +12,7 @@ import com.co.kc.imchat.broker.sdk.model.params.GatewayUnregisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionSyncParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
+import com.co.kc.imchat.broker.sdk.model.params.ConnectionCloseParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerHeartbeatParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerRegisterParams;
@@ -20,6 +22,8 @@ import com.co.kc.imchat.broker.sdk.model.result.BrokerListResult;
 import com.co.kc.imchat.common.model.io.FrameRequest;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -32,11 +36,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BrokerClientTest {
 
     @Test
+    void createsClientFromDiscoveredBrokerService() {
+        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
+        invoker.response = BrokerFrameWriteResult.ok();
+        DiscoveryClient discoveryClient = new StaticDiscoveryClient(List.of(
+                new StaticServiceInstance("broker-1", "10.0.0.1", 12200),
+                new StaticServiceInstance("broker-2", "10.0.0.2", 12200)));
+
+        BrokerClient client = new BrokerClient(
+                invoker, discoveryClient, ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000);
+        client.writeFrame(BrokerFrameWriteParams.inbound(1L, "conn-1",
+                new FrameRequest("1", "message.private.send", "1", "trace", Map.of())));
+
+        assertThat(invoker.address).isIn("10.0.0.1:12200", "10.0.0.2:12200");
+    }
+
+    @Test
     void invokesBrokerOperationsThroughBolt() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
         invoker.response = BrokerFrameWriteResult.ok();
-        BrokerClient client = new BrokerClient(
-                invoker, "127.0.0.1:12200", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
         BrokerFrameWriteParams command = BrokerFrameWriteParams.inbound(1L, "conn-1",
                 new FrameRequest("1", "message.private.send", "1", "trace", Map.of()));
 
@@ -54,8 +73,7 @@ class BrokerClientTest {
     void loadBalancesBrokerAddressesByRoundRobin() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
         invoker.response = BrokerFrameWriteResult.ok();
-        BrokerClient client = new BrokerClient(
-                invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.ROUND_ROBIN, 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.ROUND_ROBIN);
         BrokerFrameWriteParams command = BrokerFrameWriteParams.inbound(1L, "conn-1",
                 new FrameRequest("1", "message.private.send", "1", "trace", Map.of()));
 
@@ -71,8 +89,7 @@ class BrokerClientTest {
     void ignoresBlankBrokerAddresses() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
         invoker.response = BrokerFrameWriteResult.ok();
-        BrokerClient client = new BrokerClient(
-                invoker, " 127.0.0.1:12200, ,127.0.0.1:12202 ", BrokerLoadBalance.ROUND_ROBIN, 3000);
+        BrokerClient client = client(invoker, " 127.0.0.1:12200, ,127.0.0.1:12202 ", BrokerLoadBalance.ROUND_ROBIN);
         BrokerFrameWriteParams command = BrokerFrameWriteParams.inbound(1L, "conn-1",
                 new FrameRequest("1", "message.private.send", "1", "trace", Map.of()));
 
@@ -86,8 +103,7 @@ class BrokerClientTest {
     @Test
     void hashesGatewayOperationsByGatewayId() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = new BrokerClient(
-                invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH, 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
 
         client.registerGateway(new GatewayRegisterParams("gw-1", "127.0.0.1", 12201));
         client.heartbeatGateway(new GatewayHeartbeatParams("gw-1"));
@@ -101,8 +117,7 @@ class BrokerClientTest {
     void hashesFrameWriteByUserId() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
         invoker.response = BrokerFrameWriteResult.ok();
-        BrokerClient client = new BrokerClient(
-                invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH, 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
         FrameRequest request = new FrameRequest("1", "message.private.send", "1", "trace", Map.of());
 
         client.writeFrame(BrokerFrameWriteParams.inbound(100L, "conn-1", request));
@@ -115,14 +130,26 @@ class BrokerClientTest {
     @Test
     void hashesConnectionRegisterAndUnregisterByUserId() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = new BrokerClient(
-                invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH, 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
 
         client.registerConnection(new ConnectionRegisterParams(100L, "gw-1"));
         client.unregisterConnection(new ConnectionUnregisterParams(100L, "gw-2"));
 
         assertThat(invoker.addresses).hasSize(2);
         assertThat(invoker.addresses).containsOnly(invoker.addresses.get(0));
+    }
+
+    @Test
+    void routesConnectionCloseControlByUserId() {
+        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
+        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
+        ConnectionCloseParams params = new ConnectionCloseParams(100L, "session-old");
+
+        client.closeConnections(params);
+
+        assertThat(invoker.service).isEqualTo(BrokerBoltService.CONNECTION.service());
+        assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.CLOSE_CONNECTIONS.operation());
+        assertThat(invoker.request).isSameAs(params);
     }
 
     @Test
@@ -140,7 +167,7 @@ class BrokerClientTest {
     @Test
     void registersGatewayThroughBolt() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = new BrokerClient(invoker, "127.0.0.1:12200", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
         GatewayRegisterParams command = new GatewayRegisterParams("gw-1", "10.0.0.8", 12201);
 
         client.registerGateway(command);
@@ -153,7 +180,7 @@ class BrokerClientTest {
     @Test
     void registersBrokerThroughBolt() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = new BrokerClient(invoker, "127.0.0.1:12200", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
         BrokerRegisterParams command = new BrokerRegisterParams("broker-1", "127.0.0.1", 12200);
 
         client.registerBroker(command);
@@ -166,7 +193,7 @@ class BrokerClientTest {
     @Test
     void heartbeatsBrokerThroughBolt() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = new BrokerClient(invoker, "127.0.0.1:12200", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
         BrokerHeartbeatParams command = new BrokerHeartbeatParams("broker-1");
 
         client.heartbeatBroker(command);
@@ -179,7 +206,7 @@ class BrokerClientTest {
     @Test
     void unregistersBrokerThroughBolt() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = new BrokerClient(invoker, "127.0.0.1:12200", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
         BrokerUnregisterParams command = new BrokerUnregisterParams("broker-1");
 
         client.unregisterBroker(command);
@@ -192,7 +219,7 @@ class BrokerClientTest {
     @Test
     void unregistersGatewayThroughBolt() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = new BrokerClient(invoker, "127.0.0.1:12200", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
         GatewayUnregisterParams command = new GatewayUnregisterParams("gw-1");
 
         client.unregisterGateway(command);
@@ -205,7 +232,7 @@ class BrokerClientTest {
     @Test
     void heartbeatsGatewayThroughBolt() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = new BrokerClient(invoker, "127.0.0.1:12200", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
         GatewayHeartbeatParams command = new GatewayHeartbeatParams("gw-1");
 
         client.heartbeatGateway(command);
@@ -218,7 +245,7 @@ class BrokerClientTest {
     @Test
     void syncsConnectionRoutesThroughBolt() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = new BrokerClient(invoker, "127.0.0.1:12200,127.0.0.1:12202", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
         ConnectionSyncParams command = new ConnectionSyncParams("gw-1", List.of(100L));
 
         client.syncConnections(command);
@@ -242,7 +269,7 @@ class BrokerClientTest {
                 return null;
             }
         };
-        BrokerClient client = new BrokerClient(invoker, "127.0.0.1:12200,127.0.0.1:12202", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
 
         client.syncConnections(new ConnectionSyncParams("gw-1", List.of(100L)));
 
@@ -255,13 +282,28 @@ class BrokerClientTest {
         invoker.response = new BrokerListResult(List.of(
                 new BrokerEndpointDTO("broker-2", "127.0.0.1", 12202, Instant.now(), Instant.now()),
                 new BrokerEndpointDTO("broker-1", "127.0.0.1", 12200, Instant.now(), Instant.now())));
-        BrokerClient client = new BrokerClient(invoker, "127.0.0.1:12204", 3000);
+        BrokerClient client = client(invoker, "127.0.0.1:12204", BrokerLoadBalance.HASH);
         ConnectionSyncParams command = new ConnectionSyncParams("gw-1", List.of(100L));
 
         client.refreshBrokerAddresses();
         client.syncConnections(command);
 
         assertThat(invoker.addresses).containsExactly("127.0.0.1:12204", "127.0.0.1:12200", "127.0.0.1:12202");
+    }
+
+    private static BrokerClient client(CapturingBoltInvocation invoker,
+                                       String addresses,
+                                       BrokerLoadBalance loadBalance) {
+        List<ServiceInstance> instances = java.util.Arrays.stream(addresses.split(","))
+                .map(String::trim)
+                .filter(address -> !address.isBlank())
+                .<ServiceInstance>map(address -> {
+                    String[] parts = address.split(":");
+                    return new StaticServiceInstance(address, parts[0], Integer.parseInt(parts[1]));
+                })
+                .toList();
+        return new BrokerClient(invoker, new StaticDiscoveryClient(instances),
+                ServiceName.IM_BROKER, loadBalance, 3000);
     }
 
     private static class CapturingBoltInvocation implements BoltInvoker {
@@ -284,6 +326,65 @@ class BrokerClientTest {
             this.request = request;
             this.responseType = responseType;
             return (R) response;
+        }
+    }
+
+    private record StaticServiceInstance(String instanceId, String host, int port) implements ServiceInstance {
+        @Override
+        public String getInstanceId() {
+            return instanceId;
+        }
+
+        @Override
+        public String getServiceId() {
+            return "im-broker";
+        }
+
+        @Override
+        public String getHost() {
+            return host;
+        }
+
+        @Override
+        public int getPort() {
+            return port;
+        }
+
+        @Override
+        public boolean isSecure() {
+            return false;
+        }
+
+        @Override
+        public java.net.URI getUri() {
+            return java.net.URI.create("bolt://" + host + ":" + port);
+        }
+
+        @Override
+        public String getScheme() {
+            return "bolt";
+        }
+
+        @Override
+        public java.util.Map<String, String> getMetadata() {
+            return Map.of();
+        }
+    }
+
+    private record StaticDiscoveryClient(List<ServiceInstance> instances) implements DiscoveryClient {
+        @Override
+        public List<ServiceInstance> getInstances(String serviceId) {
+            return instances;
+        }
+
+        @Override
+        public List<String> getServices() {
+            return List.of("im-broker");
+        }
+
+        @Override
+        public String description() {
+            return "static";
         }
     }
 }

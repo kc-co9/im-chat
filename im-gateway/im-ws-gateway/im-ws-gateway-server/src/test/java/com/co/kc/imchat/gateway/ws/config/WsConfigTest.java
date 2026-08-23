@@ -17,11 +17,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class WsConfigTest {
 
     @Test
-    void defaultProfileUsesTargetBoltBrokerAddress() throws IOException {
+    void defaultProfileUsesBrokerDiscoveryService() throws IOException {
         StandardEnvironment environment = load("application.yml");
 
         assertThat(environment.getProperty("im.gateway.ws.broker.protocol")).isNull();
-        assertThat(environment.getProperty("im.gateway.ws.broker.bolt.address")).isEqualTo("127.0.0.1:12200");
         assertThat(environment.getProperty("im.gateway.ws.broker.bolt.load-balance")).isEqualTo("HASH");
         assertThat(environment.getProperty("im.bolt.client.enabled", Boolean.class)).isTrue();
         assertThat(environment.getProperty("im.bolt.server.enabled", Boolean.class)).isTrue();
@@ -66,7 +65,6 @@ class WsConfigTest {
         assertThat(properties.getMaxFramePayloadLength()).isEqualTo(65536);
         assertThat(properties.getIdle().getReaderIdleSeconds()).isEqualTo(60);
         assertThat(properties.getBolt().getHost()).isEqualTo("127.0.0.1");
-        assertThat(properties.getBroker().getBolt().getAddress()).isEqualTo("127.0.0.1:12200");
         assertThat(properties.getBroker().getBolt().getLoadBalance()).isEqualTo(BrokerLoadBalance.HASH);
         assertThat(properties.getBroker().getBolt().getTimeoutMillis()).isEqualTo(3000);
         assertThat(properties.getRegister().isEnabled()).isTrue();

@@ -22,11 +22,13 @@ class UserContextInterceptorTest {
         UserContextInterceptor interceptor = new UserContextInterceptor();
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/friend/friendList");
         request.addHeader(UserContextHeaders.USER_ID, "42");
+        request.addHeader(UserContextHeaders.SESSION_VERSION, "session-v2");
 
         boolean proceed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
 
         assertThat(proceed).isTrue();
         assertThat(UserContextUtils.get().getUserId()).isEqualTo(42L);
+        assertThat(UserContextUtils.get().getSessionVersion()).isEqualTo("session-v2");
     }
 
     @Test
@@ -39,6 +41,50 @@ class UserContextInterceptorTest {
 
         assertThat(proceed).isFalse();
         assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_UNAUTHORIZED);
+    }
+
+    @Test
+    void rejectsProtectedRequestWithoutSessionVersionHeader() {
+        UserContextInterceptor interceptor = new UserContextInterceptor();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/friend/friendList");
+        request.addHeader(UserContextHeaders.USER_ID, "42");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean proceed = interceptor.preHandle(request, response, new Object());
+
+        assertThat(proceed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_UNAUTHORIZED);
+        assertThat(UserContextUtils.get()).isNull();
+    }
+
+    @Test
+    void rejectsProtectedRequestWithBlankSessionVersionHeader() {
+        UserContextInterceptor interceptor = new UserContextInterceptor();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/friend/friendList");
+        request.addHeader(UserContextHeaders.USER_ID, "42");
+        request.addHeader(UserContextHeaders.SESSION_VERSION, "  ");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean proceed = interceptor.preHandle(request, response, new Object());
+
+        assertThat(proceed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_UNAUTHORIZED);
+        assertThat(UserContextUtils.get()).isNull();
+    }
+
+    @Test
+    void rejectsProtectedRequestWithInvalidUserIdAndDoesNotEstablishContext() {
+        UserContextInterceptor interceptor = new UserContextInterceptor();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/friend/friendList");
+        request.addHeader(UserContextHeaders.USER_ID, "invalid");
+        request.addHeader(UserContextHeaders.SESSION_VERSION, "session-v2");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean proceed = interceptor.preHandle(request, response, new Object());
+
+        assertThat(proceed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_UNAUTHORIZED);
+        assertThat(UserContextUtils.get()).isNull();
     }
 
     @Test
@@ -60,10 +106,26 @@ class UserContextInterceptorTest {
     }
 
     @Test
+    void permitsRefreshTokenWithoutUserHeaderWhenServiceHasContextPath() {
+        UserContextInterceptor interceptor = new UserContextInterceptor();
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setMethod("POST");
+        request.setContextPath("/account");
+        request.setRequestURI("/account/user/refreshToken");
+        request.setServletPath("/user/refreshToken");
+
+        boolean proceed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
+
+        assertThat(proceed).isTrue();
+        assertThat(UserContextUtils.get()).isNull();
+    }
+
+    @Test
     void clearsUserContextAfterCompletion() {
         UserContextInterceptor interceptor = new UserContextInterceptor();
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/friend/friendList");
         request.addHeader(UserContextHeaders.USER_ID, "42");
+        request.addHeader(UserContextHeaders.SESSION_VERSION, "session-v2");
 
         interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
         interceptor.afterCompletion(request, new MockHttpServletResponse(), new Object(), null);

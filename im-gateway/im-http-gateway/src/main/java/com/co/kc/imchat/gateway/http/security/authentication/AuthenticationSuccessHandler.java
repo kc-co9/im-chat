@@ -24,7 +24,9 @@ public class AuthenticationSuccessHandler implements ServerAuthenticationSuccess
         ServerHttpRequest request = exchange.getRequest().mutate()
                 .headers(headers -> {
                     headers.remove(UserContextHeaders.USER_ID);
+                    headers.remove(UserContextHeaders.SESSION_VERSION);
                     headers.set(UserContextHeaders.USER_ID, String.valueOf(tokenAuthentication.getUserId()));
+                    headers.set(UserContextHeaders.SESSION_VERSION, tokenAuthentication.getSessionVersion());
                 })
                 .build();
         return webFilterExchange.getChain().filter(exchange.mutate().request(request).build());

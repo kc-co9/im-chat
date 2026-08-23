@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.message.domain.chat.model;
 
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.message.model.ImMessageId;
 import com.co.kc.imchat.service.message.domain.message.model.ImPrivateInboxMessage;
 import com.co.kc.imchat.common.domain.user.model.UserId;
@@ -50,6 +51,12 @@ public class ImPrivateChat extends ImChat {
 
     public void readMessage(ImPrivateInboxMessage message) {
         this.readMessageId = message.getId();
+        this.unreadMessageCount = 0;
+    }
+
+    /** 将当前私聊会话标记为已读到最新消息。 */
+    public void readToLatest() {
+        this.readMessageId = lastMessageId;
         this.unreadMessageCount = 0;
     }
 

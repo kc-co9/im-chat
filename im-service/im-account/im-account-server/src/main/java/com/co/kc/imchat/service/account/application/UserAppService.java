@@ -16,7 +16,7 @@ import com.co.kc.imchat.service.account.facade.params.UserProfileGetParams;
 import com.co.kc.imchat.service.account.model.cqrs.command.UserSignUpCmd;
 import com.co.kc.imchat.service.account.model.cqrs.dto.UserDetailDTO;
 import com.co.kc.imchat.service.account.model.cqrs.query.UserDetailQuery;
-import com.co.kc.imchat.service.account.transformer.AccountAppTransformer;
+import com.co.kc.imchat.service.account.transformer.application.AccountAppTransformer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;

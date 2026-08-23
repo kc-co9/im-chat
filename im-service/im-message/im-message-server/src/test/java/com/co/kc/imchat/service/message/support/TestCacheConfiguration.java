@@ -13,12 +13,14 @@ import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerListResult;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
-import com.co.kc.imchat.service.message.adapter.account.AccountAdapter;
-import com.co.kc.imchat.service.message.domain.account.model.AuthenticatedUser;
 import com.co.kc.imchat.service.message.domain.social.model.FriendDisplay;
 import com.co.kc.imchat.service.message.domain.social.model.GroupMessageRecipient;
 import com.co.kc.imchat.service.message.domain.social.model.GroupSummary;
 import com.co.kc.imchat.service.message.adapter.social.SocialAdapter;
+import com.co.kc.imchat.common.domain.user.model.UserId;
+import com.co.kc.imchat.service.message.domain.chat.model.ImChatView;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -47,7 +49,7 @@ public class TestCacheConfiguration {
     @Bean
     @Primary
     BrokerClient brokerClient() {
-        return new BrokerClient(new EmptyPushBoltInvoker(), "127.0.0.1:12200", 3000);
+        return BrokerClientTestSupport.client(new EmptyPushBoltInvoker());
     }
 
     private record EmptyPushBoltInvoker() implements BoltInvoker {
@@ -68,31 +70,19 @@ public class TestCacheConfiguration {
 
     @Bean
     @Primary
-    AccountAdapter accountAdapter() {
-        return new AccountAdapter(
-                unusedRemoteService(com.co.kc.imchat.service.account.facade.AccountService.class),
-                unusedRemoteService(com.co.kc.imchat.service.account.facade.AccountSessionService.class)) {
+    ImChatViewRepository imChatViewRepository() {
+        return new ImChatViewRepository() {
             @Override
-            public AuthenticatedUser authenticate(String token) {
-                return new AuthenticatedUser(1L, "test@example.com", "test");
+            public void save(ImChatView presence) {
             }
 
             @Override
-            public void enterChat(Long userId, Long chatId) {
+            public void clear(UserId userId) {
             }
 
             @Override
-            public void exitChat(Long userId) {
-            }
-
-            @Override
-            public boolean isOnline(Long userId) {
-                return false;
-            }
-
-            @Override
-            public boolean isChatting(Long userId, Long chatId) {
-                return false;
+            public java.util.Optional<ImChatView> find(UserId userId) {
+                return java.util.Optional.empty();
             }
         };
     }

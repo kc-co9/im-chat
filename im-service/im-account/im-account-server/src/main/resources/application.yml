@@ -4,9 +4,18 @@ server:
     context-path: /account
 
 im:
+  bolt:
+    client:
+      enabled: true
+  session:
+    jwt:
+      enabled: true
+      secret: 65fe0d3158a24a4f9524b7d7e0d4821d9571a8ed5d7da588f715a46a96531b7783a27152ca4b2219835cf0b266ab9fe1d3d5b1c7e37a4481674233894ed40acf
   account:
     provider:
       enabled: true
+    broker:
+      timeout-millis: 3000
 
 spring:
   application:

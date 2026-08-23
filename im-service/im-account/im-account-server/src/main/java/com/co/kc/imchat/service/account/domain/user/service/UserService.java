@@ -23,7 +23,7 @@ public class UserService {
 
     public User authenticate(UserEmail email, UserRawPassword rawPassword) {
         User user = userRepository.find(email)
-                .orElseThrow(() -> new AuthException("用户不存在"));
+                .orElseThrow(() -> new AuthException("用户认证失败"));
 
         boolean hasPassed = user.validateRawPassword(rawPassword, passwordService);
         if (!hasPassed) {

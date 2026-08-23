@@ -1,7 +1,7 @@
 package com.co.kc.imchat.service.account.domain.session.repository;
 
-import com.co.kc.imchat.service.account.domain.session.model.Session;
 import com.co.kc.imchat.common.domain.user.model.UserId;
+import com.co.kc.imchat.service.account.domain.session.model.Session;
 
 import java.util.Optional;
 

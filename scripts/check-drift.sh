@@ -7,6 +7,16 @@ cd "$ROOT_DIR"
 
 failures=0
 
+if ! java_style_output="$("$ROOT_DIR/scripts/check-java-style.sh" 2>&1)"; then
+  printf '%s\n' "$java_style_output"
+  failures=$((failures + 1))
+fi
+
+if ! sql_output="$("$ROOT_DIR/scripts/check-sql.sh" 2>&1)"; then
+  printf '%s\n' "$sql_output"
+  failures=$((failures + 1))
+fi
+
 # Report all low-noise violations in one run instead of stopping at the first match.
 report_matches() {
   local title="$1"

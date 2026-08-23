@@ -1,12 +1,27 @@
 package com.co.kc.imchat.architecture;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.base.DescribedPredicate;
 import org.junit.jupiter.api.Test;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 class LayerBoundaryTest {
+    private static final DescribedPredicate<JavaClass> TOKEN_CRYPTOGRAPHY_TYPES =
+            new DescribedPredicate<>("be a concrete Token cryptography type") {
+                @Override
+                public boolean test(JavaClass javaClass) {
+                    return javaClass.getPackageName().startsWith("javax.crypto")
+                            || java.util.Set.of(
+                                    "com.co.kc.imchat.plugin.session.token.codec.JwtTokenCodec",
+                                    "com.co.kc.imchat.plugin.session.token.model.DecodedToken",
+                                    "com.co.kc.imchat.plugin.session.token.model.TokenClaims",
+                                    "com.co.kc.imchat.plugin.session.token.model.TokenType")
+                            .contains(javaClass.getName());
+                }
+            };
     private static final String[] DOMAIN_PACKAGES = {
             "com.co.kc.imchat.broker.domain..",
             "com.co.kc.imchat.service.account.domain..",
@@ -46,6 +61,14 @@ class LayerBoundaryTest {
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "..infrastructure.mybatis..",
                         "..infrastructure.domain.repository..")
+                .check(CLASSES);
+    }
+
+    @Test
+    void accountApplicationMustNotImplementTokenCryptography() {
+        noClasses()
+                .that().resideInAPackage("com.co.kc.imchat.service.account.application..")
+                .should().dependOnClassesThat(TOKEN_CRYPTOGRAPHY_TYPES)
                 .check(CLASSES);
     }
 }

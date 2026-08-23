@@ -14,8 +14,8 @@ class GatewayMetricsTest {
     @Test
     void exposesActiveConnectionAndUserCounts() {
         ConnectionRegistry connections = new ConnectionRegistry();
-        connections.register(1L, "connection-1", new EmbeddedChannel());
-        connections.register(1L, "connection-2", new EmbeddedChannel());
+        connections.register(1L, "session-1", "connection-1", new EmbeddedChannel());
+        connections.register(1L, "session-1", "connection-2", new EmbeddedChannel());
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
         new GatewayMetrics(connections).bindTo(registry);

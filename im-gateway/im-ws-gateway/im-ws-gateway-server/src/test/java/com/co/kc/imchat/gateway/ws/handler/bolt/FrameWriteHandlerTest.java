@@ -25,7 +25,7 @@ class FrameWriteHandlerTest {
     void relaysFrameToRegisteredConnection() throws Exception {
         ConnectionRegistry registry = new ConnectionRegistry();
         EmbeddedChannel channel = new EmbeddedChannel();
-        registry.register(1L, "conn-1", channel);
+        registry.register(1L, "session-1", "conn-1", channel);
         FrameWriteHandler handler = new FrameWriteHandler(registry);
         GatewayFrameWriteParams params = new GatewayFrameWriteParams(1L,
                 new FrameResponse("1", FrameType.PUSH, "message.private.sent", "1", "trace",

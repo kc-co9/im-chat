@@ -7,6 +7,7 @@ import com.co.kc.imchat.service.message.domain.chat.service.ImChatService;
 import com.co.kc.imchat.service.message.domain.message.repository.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.service.message.domain.message.repository.ImPrivateInboxMessageRepository;
 import com.co.kc.imchat.service.message.domain.message.service.ImMessageService;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -27,4 +28,5 @@ public class DomainServiceBeans {
                                              ImPrivateInboxMessageRepository imPrivateInboxMessageRepository) {
         return new ImMessageService(imGroupInboxMessageRepository, imPrivateInboxMessageRepository, snowflakeId);
     }
+
 }

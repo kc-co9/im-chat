@@ -1,12 +1,13 @@
 package com.co.kc.imchat.service.account.infrastructure.config.beans;
 
-import com.co.kc.imchat.plugin.session.token.TokenService;
-import com.co.kc.imchat.service.account.application.AccountAppService;
-import com.co.kc.imchat.service.account.application.AccountSessionAppService;
+import com.co.kc.imchat.service.account.application.SessionAppService;
+import com.co.kc.imchat.service.account.adapter.broker.SessionConnectionAdapter;
 import com.co.kc.imchat.service.account.application.UserAppService;
 import com.co.kc.imchat.service.account.domain.session.repository.SessionRepository;
+import com.co.kc.imchat.service.account.domain.session.service.SessionService;
 import com.co.kc.imchat.service.account.domain.user.repository.UserRepository;
 import com.co.kc.imchat.service.account.domain.user.service.UserService;
+import com.co.kc.imchat.plugin.lock.core.DistributedLockTemplate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,15 +26,17 @@ public class AppServiceBeans {
     }
 
     @Bean
-    public AccountAppService accountAppService(SessionRepository sessionRepository,
+    public SessionAppService sessionAppService(SessionRepository sessionRepository,
                                                UserService userService,
-                                               TokenService tokenService) {
-        return new AccountAppService(sessionRepository, userService, tokenService);
-    }
-
-    @Bean
-    public AccountSessionAppService accountSessionAppService(SessionRepository sessionRepository) {
-        return new AccountSessionAppService(sessionRepository);
+                                               SessionService sessionService,
+                                               SessionConnectionAdapter sessionConnectionAdapter,
+                                               DistributedLockTemplate distributedLockTemplate) {
+        return new SessionAppService(
+                sessionRepository,
+                userService,
+                sessionService,
+                sessionConnectionAdapter,
+                distributedLockTemplate);
     }
 
 }

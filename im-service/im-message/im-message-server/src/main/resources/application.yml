@@ -92,7 +92,6 @@ im:
   message:
     broker:
       bolt:
-        address: ${im.broker.bolt.address:127.0.0.1:12200}
         timeout-millis: 3000
 
 # springdoc-openapi项目配置

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "im.gateway.ws.register.enabled=false",
         "im.bolt.client.enabled=false",
         "im.bolt.server.enabled=false",
+        "spring.cloud.discovery.client.simple.instances.im-broker[0].uri=http://127.0.0.1:12200",
         "spring.cloud.nacos.discovery.enabled=false",
         "spring.cloud.nacos.config.enabled=false",
         "spring.cloud.discovery.enabled=false"

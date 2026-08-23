@@ -2,6 +2,7 @@ package com.co.kc.imchat.broker.sdk;
 
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.enums.BrokerLoadBalance;
+import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.broker.sdk.loadbalance.BrokerAddressSelector;
 import com.co.kc.imchat.broker.sdk.loadbalance.HashBrokerAddressSelector;
 import com.co.kc.imchat.broker.sdk.loadbalance.RandomBrokerAddressSelector;
@@ -18,11 +19,13 @@ import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayUnregisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionSyncParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
+import com.co.kc.imchat.broker.sdk.model.params.ConnectionCloseParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerListResult;
+import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -39,18 +42,26 @@ public class BrokerClient {
     private final BrokerAddressSelector brokerAddressSelector;
     private final int timeoutMillis;
 
-    protected BrokerClient() {
-        this(null, "127.0.0.1:0", BrokerLoadBalance.HASH, 0);
-    }
-
-    public BrokerClient(BoltInvoker boltInvoker, String brokerAddress, int timeoutMillis) {
-        this(boltInvoker, brokerAddress, BrokerLoadBalance.HASH, timeoutMillis);
-    }
-
-    public BrokerClient(BoltInvoker boltInvoker, String brokerAddress,
-                        BrokerLoadBalance loadBalance, int timeoutMillis) {
+    /**
+     * 从服务发现获取初始 Broker 地址列表创建客户端。
+     *
+     * <p>初始地址仅用于第一次调用，后续地址通过 Broker 集群快照刷新。</p>
+     *
+     * @param boltInvoker    Bolt 调用器
+     * @param discoveryClient 服务发现客户端
+     * @param serviceName    Broker 服务发现名称
+     * @param loadBalance    地址负载均衡策略
+     * @param timeoutMillis  调用超时时间
+     */
+    public BrokerClient(BoltInvoker boltInvoker,
+                        DiscoveryClient discoveryClient,
+                        ServiceName serviceName,
+                        BrokerLoadBalance loadBalance,
+                        int timeoutMillis) {
+        AssertUtils.argNotNull("discovery client must not be null", discoveryClient);
+        AssertUtils.argNotNull("broker service name must not be null", serviceName);
         this.boltInvoker = boltInvoker;
-        this.brokerAddresses = new AtomicReference<>(parseBrokerAddresses(brokerAddress));
+        this.brokerAddresses = new AtomicReference<>(discoverBootstrapAddresses(discoveryClient, serviceName));
         this.brokerAddressSelector = createBrokerAddressSelector(loadBalance);
         this.timeoutMillis = timeoutMillis;
     }
@@ -181,6 +192,12 @@ public class BrokerClient {
                 connectionRouteKey(params.userId(), params.gatewayId()), Void.class);
     }
 
+    /** 请求 Broker 关闭用户连接。 */
+    public void closeConnections(ConnectionCloseParams params) {
+        invokeBroker(BrokerBoltOperation.CLOSE_CONNECTIONS, params,
+                String.valueOf(params.userId()), Void.class);
+    }
+
     /**
      * 把实时帧交给 Broker 统一处理。
      *
@@ -220,16 +237,15 @@ public class BrokerClient {
         return fallback;
     }
 
-    private List<String> parseBrokerAddresses(String brokerAddress) {
-        if (brokerAddress == null || brokerAddress.isBlank()) {
-            throw new IllegalArgumentException("broker address must not be blank");
-        }
-        List<String> addresses = Arrays.stream(brokerAddress.split(","))
-                .map(String::trim)
-                .filter(address -> !address.isBlank())
+    private List<String> discoverBootstrapAddresses(
+            DiscoveryClient discoveryClient,
+            ServiceName serviceName) {
+        List<String> addresses = discoveryClient.getInstances(serviceName.value()).stream()
+                .map(instance -> instance.getHost() + ":" + instance.getPort())
+                .distinct()
                 .toList();
         if (addresses.isEmpty()) {
-            throw new IllegalArgumentException("broker address must not be blank");
+            throw new IllegalStateException("No Broker instances found for service: " + serviceName.value());
         }
         return addresses;
     }

@@ -20,15 +20,15 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ConnectionRegistry {
     private final Map<String, Channel> channels = new ConcurrentHashMap<>();
-    private final Map<String, Long> connectionUsers = new ConcurrentHashMap<>();
+    private final Map<String, ConnectionState> connectionStates = new ConcurrentHashMap<>();
     private final Map<Long, Set<String>> userConnections = new ConcurrentHashMap<>();
 
     /**
      * 注册当前进程持有的连接。
      */
-    public void register(Long userId, String connectionId, Channel channel) {
+    public void register(Long userId, String sessionVersion, String connectionId, Channel channel) {
         channels.put(connectionId, channel);
-        connectionUsers.put(connectionId, userId);
+        connectionStates.put(connectionId, new ConnectionState(userId, sessionVersion, connectionId));
         userConnections.computeIfAbsent(userId, ignored -> ConcurrentHashMap.newKeySet()).add(connectionId);
     }
 
@@ -39,10 +39,11 @@ public class ConnectionRegistry {
      */
     public boolean unregister(String connectionId) {
         channels.remove(connectionId);
-        Long userId = connectionUsers.remove(connectionId);
-        if (userId == null) {
+        ConnectionState connectionState = connectionStates.remove(connectionId);
+        if (connectionState == null) {
             return false;
         }
+        Long userId = connectionState.userId();
         Set<String> connectionIds = userConnections.get(userId);
         if (connectionIds == null) {
             return true;
@@ -80,12 +81,45 @@ public class ConnectionRegistry {
     }
 
     /**
+     * 查询活跃连接的只读身份元数据，不暴露 Netty Channel。
+     */
+    public List<ConnectionState> activeConnections() {
+        return connectionStates.values().stream()
+                .filter(state -> {
+                    Channel channel = channels.get(state.connectionId());
+                    return channel != null && channel.isActive();
+                })
+                .sorted(java.util.Comparator.comparing(ConnectionState::connectionId))
+                .toList();
+    }
+
+    /**
+     * 关闭符合指定用户和会话版本条件的本机连接。
+     */
+    public List<String> closeConnections(Long userId, String sessionVersion) {
+        List<String> connectionIds = connectionStates.values().stream()
+                .filter(state -> state.userId().equals(userId)
+                        && state.sessionVersion().equals(sessionVersion))
+                .map(ConnectionState::connectionId)
+                .sorted()
+                .toList();
+        for (String connectionId : connectionIds) {
+            Channel channel = channels.get(connectionId);
+            unregister(connectionId);
+            if (channel != null) {
+                channel.close();
+            }
+        }
+        return connectionIds;
+    }
+
+    /**
      * 关闭并清空当前进程持有的所有连接。
      */
     public void closeAll() {
         channels.values().forEach(Channel::close);
         channels.clear();
-        connectionUsers.clear();
+        connectionStates.clear();
         userConnections.clear();
     }
 
@@ -128,5 +162,17 @@ public class ConnectionRegistry {
     private void closeFailedConnection(String connectionId, Channel channel) {
         unregister(connectionId);
         channel.close();
+    }
+
+    public record ConnectionState(Long userId, String sessionVersion, String connectionId) {
+        public ConnectionState {
+            java.util.Objects.requireNonNull(userId, "userId");
+            if (sessionVersion == null || sessionVersion.isBlank()) {
+                throw new IllegalArgumentException("sessionVersion must not be blank");
+            }
+            if (connectionId == null || connectionId.isBlank()) {
+                throw new IllegalArgumentException("connectionId must not be blank");
+            }
+        }
     }
 }

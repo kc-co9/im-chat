@@ -13,6 +13,9 @@ import com.co.kc.imchat.common.model.io.FrameResponse;
 import com.co.kc.imchat.common.model.enums.FrameType;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.gateway.ws.server.context.ContextAttributes;
+import com.co.kc.imchat.gateway.ws.support.BrokerClientTestSupport;
+import com.co.kc.imchat.common.model.enums.ServiceName;
+import com.co.kc.imchat.broker.sdk.enums.BrokerLoadBalance;
 import com.co.kc.imchat.gateway.ws.server.handler.FrameHandler;
 import com.co.kc.imchat.gateway.ws.protocol.JsonFrameCodec;
 import com.co.kc.imchat.gateway.ws.security.identity.WsPrincipal;
@@ -30,7 +33,7 @@ class FrameHandlerTest {
     @Test
     void handlesTextFrameAndWritesResponse() {
         EmbeddedChannel channel = new EmbeddedChannel(new FrameHandler(new SuccessfulBrokerClient()));
-        channel.attr(ContextAttributes.PRINCIPAL).set(new WsPrincipal(1L));
+        channel.attr(ContextAttributes.PRINCIPAL).set(new WsPrincipal(1L, "session-1"));
         channel.attr(ContextAttributes.CONNECTION_ID).set("conn-1");
         FrameRequest request = new FrameRequest("1", "message.private.send", "10001",
                 "trace", Map.of("userId", 1L));
@@ -46,7 +49,7 @@ class FrameHandlerTest {
     @Test
     void returnsBrokerUnavailableErrorWhenRouteFails() {
         EmbeddedChannel channel = new EmbeddedChannel(new FrameHandler(new FailingBrokerClient()));
-        channel.attr(ContextAttributes.PRINCIPAL).set(new WsPrincipal(1L));
+        channel.attr(ContextAttributes.PRINCIPAL).set(new WsPrincipal(1L, "session-1"));
         channel.attr(ContextAttributes.CONNECTION_ID).set("conn-1");
         FrameRequest request = new FrameRequest("1", "message.private.send", "10001",
                 "trace", Map.of("userId", 1L));
@@ -66,7 +69,7 @@ class FrameHandlerTest {
     void rejectsUnknownCommandWithoutRoutingToBroker() {
         ProbeBrokerClient brokerClient = new ProbeBrokerClient();
         EmbeddedChannel channel = new EmbeddedChannel(new FrameHandler(brokerClient));
-        channel.attr(ContextAttributes.PRINCIPAL).set(new WsPrincipal(1L));
+        channel.attr(ContextAttributes.PRINCIPAL).set(new WsPrincipal(1L, "session-1"));
         channel.attr(ContextAttributes.CONNECTION_ID).set("conn-1");
         FrameRequest request = new FrameRequest("1", "unknown.command", "10001", "trace", Map.of());
 
@@ -95,6 +98,11 @@ class FrameHandlerTest {
     }
 
     private static class SuccessfulBrokerClient extends BrokerClient {
+        private SuccessfulBrokerClient() {
+            super(BrokerClientTestSupport.invoker(), BrokerClientTestSupport.discovery(),
+                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000);
+        }
+
         @Override
         public void registerGateway(GatewayRegisterParams command) {
         }

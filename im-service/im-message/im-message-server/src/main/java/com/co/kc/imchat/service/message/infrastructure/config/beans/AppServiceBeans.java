@@ -15,7 +15,7 @@ import com.co.kc.imchat.service.message.domain.chat.service.ImChatService;
 import com.co.kc.imchat.service.message.domain.message.repository.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.service.message.domain.message.repository.ImPrivateInboxMessageRepository;
 import com.co.kc.imchat.service.message.domain.message.service.ImMessageService;
-import com.co.kc.imchat.service.message.adapter.account.AccountAdapter;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
 import com.co.kc.imchat.service.message.adapter.social.SocialAdapter;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -34,19 +34,20 @@ public class AppServiceBeans {
                                          ImChatService imChatService,
                                          SocialAdapter socialAdapter,
                                          ImMessageService imMessageService,
-                                         DomainEventPublisher imMessageEventPublisher) {
+                                         DomainEventPublisher imMessageEventPublisher,
+                                         ImChatViewRepository imChatViewRepository) {
         return new ChatAppService(
                 imPrivateChatRepository, imGroupChatRepository,
                 imGroupInboxMessageRepository, imChatService,
                 socialAdapter, imMessageService,
-                imMessageEventPublisher);
+                imMessageEventPublisher, imChatViewRepository);
     }
 
     @Bean
     public PrivateMessageAppService privateMessageAppService(SnowflakeId snowflakeId,
                                                              ImPrivateChatRepository imPrivateChatRepository,
                                                              ImPrivateInboxMessageRepository imPrivateInboxMessageRepository,
-                                                             AccountAdapter accountAdapter,
+                                                             ImChatViewRepository imChatViewRepository,
                                                              ImChatService imChatService,
                                                              ImMessageService imMessageService,
                                                              SocialAdapter socialAdapter,
@@ -55,7 +56,7 @@ public class AppServiceBeans {
                                                              PlatformTransactionManager transactionManager) {
         return new PrivateMessageAppService(
                 imPrivateChatRepository, imPrivateInboxMessageRepository,
-                accountAdapter, imChatService, imMessageService, socialAdapter,
+                imChatViewRepository, imChatService, imMessageService, socialAdapter,
                 snowflakeId, imMessageNotifierInvoker,
                 imMessageEventPublisher, new TransactionTemplate(transactionManager));
     }
@@ -64,7 +65,7 @@ public class AppServiceBeans {
     public GroupMessageAppService groupMessageAppService(SnowflakeId snowflakeId,
                                                          ImGroupChatRepository imGroupChatRepository,
                                                          ImGroupInboxMessageRepository imGroupInboxMessageRepository,
-                                                         AccountAdapter accountAdapter,
+                                                         ImChatViewRepository imChatViewRepository,
                                                          SocialAdapter socialAdapter,
                                                          ImMessageService imMessageService,
                                                          ImChatService imChatService,
@@ -73,7 +74,7 @@ public class AppServiceBeans {
                                                          PlatformTransactionManager transactionManager) {
         return new GroupMessageAppService(
                 imGroupChatRepository, imGroupInboxMessageRepository,
-                accountAdapter, socialAdapter, imMessageService, imChatService,
+                imChatViewRepository, socialAdapter, imMessageService, imChatService,
                 snowflakeId, imMessageNotifierInvoker, imMessageEventPublisher,
                 new TransactionTemplate(transactionManager));
     }

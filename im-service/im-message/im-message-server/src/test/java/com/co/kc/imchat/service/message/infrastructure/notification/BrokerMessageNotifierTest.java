@@ -6,6 +6,7 @@ import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.common.model.io.FrameResponse;
 import com.co.kc.imchat.common.model.enums.FrameType;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.service.message.support.BrokerClientTestSupport;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -17,8 +18,8 @@ class BrokerMessageNotifierTest {
 
     @Test
     void notifiesReceiverThroughBroker() {
-        MessagePushService pushService = new MessagePushService(new BrokerClient(
-                new StubBoltInvoker(List.of("conn-1")), "127.0.0.1:12200", 3000));
+        MessagePushService pushService = new MessagePushService(BrokerClientTestSupport.client(
+                new StubBoltInvoker(List.of("conn-1"))));
         BrokerMessageNotifier notifier = new BrokerMessageNotifier(pushService);
         FrameResponse frame = new FrameResponse("1", FrameType.PUSH, "message.private.sent", null,
                 "trace", null, null, Map.of("messageId", 1L, "eventId", "event-1", "receiptId", "receipt-1"));

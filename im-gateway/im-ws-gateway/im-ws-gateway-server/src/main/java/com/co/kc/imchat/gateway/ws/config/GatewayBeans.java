@@ -1,16 +1,17 @@
 package com.co.kc.imchat.gateway.ws.config;
 
 import com.co.kc.imchat.broker.sdk.BrokerClient;
+import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.gateway.ws.config.properties.GatewayProperties;
 import com.co.kc.imchat.gateway.ws.handler.FrameWriteHandler;
+import com.co.kc.imchat.gateway.ws.handler.ConnectionCloseHandler;
 import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
 import com.co.kc.imchat.gateway.ws.server.NettyWebSocketServer;
 import com.co.kc.imchat.gateway.ws.security.authentication.WsAuthenticationManager;
 import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
-import com.co.kc.imchat.plugin.session.token.TokenService;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -27,21 +28,23 @@ public class GatewayBeans {
     @ConditionalOnMissingBean
     public BrokerClient brokerClient(
             BoltInvoker boltInvoker,
+            DiscoveryClient discoveryClient,
             GatewayProperties properties) {
-        return new BrokerClient(boltInvoker, properties.getBroker().getBolt().getAddress(),
+        return new BrokerClient(boltInvoker,
+                discoveryClient,
+                ServiceName.IM_BROKER,
                 properties.getBroker().getBolt().getLoadBalance(),
                 properties.getBroker().getBolt().getTimeoutMillis());
     }
 
     @Bean
-    @ConditionalOnMissingBean
-    public WsAuthenticationManager wsAuthenticationManager(TokenService tokenService) {
-        return new WsAuthenticationManager(tokenService);
+    public FrameWriteHandler frameWriteBoltHandler(ConnectionRegistry connectionRegistry) {
+        return new FrameWriteHandler(connectionRegistry);
     }
 
     @Bean
-    public FrameWriteHandler frameWriteBoltHandler(ConnectionRegistry connectionRegistry) {
-        return new FrameWriteHandler(connectionRegistry);
+    public ConnectionCloseHandler connectionCloseBoltHandler(ConnectionRegistry connectionRegistry) {
+        return new ConnectionCloseHandler(connectionRegistry);
     }
 
     @Bean

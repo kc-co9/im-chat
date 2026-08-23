@@ -58,7 +58,7 @@ public class Friend extends Identification implements Validator, Serializable {
         } else if (friendName != null) {
             return new FriendDisplayName(friendName.value());
         }
-        return new FriendDisplayName(String.valueOf(friendUserId.value()));
+        return new FriendDisplayName(friendUserId.stringValue());
     }
 
 }

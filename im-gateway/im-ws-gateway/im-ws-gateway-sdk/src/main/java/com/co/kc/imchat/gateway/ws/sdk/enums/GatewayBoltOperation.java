@@ -7,7 +7,10 @@ public enum GatewayBoltOperation {
     /**
      * 把实时帧写入 WS 网关本机连接。
      */
-    WRITE_FRAME("writeFrame");
+    WRITE_FRAME("writeFrame"),
+
+    /** 关闭指定旧会话版本的连接。 */
+    CLOSE_CONNECTIONS("closeConnections");
 
     private final String operation;
 

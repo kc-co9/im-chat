@@ -38,6 +38,19 @@
         </dependency>
         <dependency>
             <groupId>com.co.kc.im</groupId>
+            <artifactId>im-lock</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
+            <artifactId>im-metrics</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
+            <artifactId>im-broker-sdk</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
             <artifactId>im-web</artifactId>
         </dependency>
         <dependency>
@@ -97,10 +110,6 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.co.kc.im</groupId>
-            <artifactId>im-nacos</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

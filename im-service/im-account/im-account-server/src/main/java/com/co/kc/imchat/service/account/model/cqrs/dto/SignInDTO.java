@@ -1,18 +1,17 @@
 package com.co.kc.imchat.service.account.model.cqrs.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import java.time.Instant;
 
 /**
  * 用户认证响应DTO
  *
  * @author kc
  */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class SignInDTO {
-    private Long userId;
-    private String token;
+public record SignInDTO(
+        Long userId,
+        String accessToken,
+        Instant accessTokenExpiresAt,
+        String refreshToken,
+        Instant refreshTokenExpiresAt
+) {
 }

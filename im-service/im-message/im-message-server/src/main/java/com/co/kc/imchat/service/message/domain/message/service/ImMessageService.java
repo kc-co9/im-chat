@@ -1,7 +1,7 @@
 package com.co.kc.imchat.service.message.domain.message.service;
 
 import com.co.kc.imchat.service.message.domain.chat.model.GroupChatMembership;
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImGroupChat;
 import com.co.kc.imchat.common.domain.group.model.GroupId;
 import com.co.kc.imchat.common.domain.group.model.MemberDescriptor;
@@ -142,8 +142,8 @@ public class ImMessageService {
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("群聊消息不存在"));
 
-        boolean isSender = receiverChat.belongsTo(sender.userId());
-        receiverChat.receiveLatestMessage(imGroupInboxMessage, isSender);
+        boolean readImmediately = receiverChat.belongsTo(sender.userId()) || recipient.chatting();
+        receiverChat.receiveLatestMessage(imGroupInboxMessage, readImmediately);
         return receiverChat;
     }
 
@@ -151,7 +151,7 @@ public class ImMessageService {
                                                        ImMessageSender sender, ImMessageRecipient recipient) {
         ImGroupChat senderChat = (ImGroupChat) sender.chat();
         ImGroupChat receiverChat = (ImGroupChat) recipient.chat();
-        boolean isSender = receiverChat.belongsTo(sender.userId());
+        boolean readImmediately = receiverChat.belongsTo(sender.userId()) || recipient.chatting();
         return ImGroupInboxMessage.builder()
                 .id(outboundMessage.id())
                 .token(outboundMessage.token())
@@ -160,10 +160,10 @@ public class ImMessageService {
                 .chatId(receiverChat.getId())
                 .userId(receiverChat.getUserId())
                 .senderId(sender.userId())
-                .status(isSender ? ImGroupMessageStatus.READ : ImGroupMessageStatus.SENT)
+                .status(readImmediately ? ImGroupMessageStatus.READ : ImGroupMessageStatus.SENT)
                 .sendTime(outboundMessage.sendTime())
-                .receivedTime(isSender ? outboundMessage.sendTime() : null)
-                .readTime(isSender ? outboundMessage.sendTime() : null)
+                .receivedTime(readImmediately ? outboundMessage.sendTime() : null)
+                .readTime(readImmediately ? outboundMessage.sendTime() : null)
                 .build();
     }
 

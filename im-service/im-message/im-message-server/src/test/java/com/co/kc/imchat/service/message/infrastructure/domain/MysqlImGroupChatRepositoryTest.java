@@ -1,6 +1,6 @@
 package com.co.kc.imchat.service.message.infrastructure.domain;
 
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatType;
 import com.co.kc.imchat.service.message.domain.chat.model.ImGroupChat;
 import com.co.kc.imchat.common.domain.group.model.GroupId;

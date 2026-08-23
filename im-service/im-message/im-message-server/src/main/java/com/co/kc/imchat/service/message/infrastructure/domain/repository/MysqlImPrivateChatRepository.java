@@ -1,7 +1,7 @@
 package com.co.kc.imchat.service.message.infrastructure.domain.repository;
 
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImPrivateChat;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImPrivateChatRepository;
 import com.co.kc.imchat.service.message.domain.message.model.ImMessage;

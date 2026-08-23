@@ -8,6 +8,7 @@ import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
 import com.co.kc.imchat.gateway.ws.sdk.model.dto.GatewayFrameWriteDTO;
 import com.co.kc.imchat.gateway.ws.sdk.model.result.GatewayFrameWriteResult;
 import com.co.kc.imchat.gateway.ws.sdk.model.params.GatewayFrameWriteParams;
+import com.co.kc.imchat.gateway.ws.sdk.model.params.ConnectionCloseParams;
 import com.co.kc.imchat.gateway.ws.sdk.enums.GatewayBoltOperation;
 import com.co.kc.imchat.gateway.ws.sdk.enums.GatewayBoltService;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
@@ -53,6 +54,22 @@ class GatewayClientTest {
         assertThat(json).contains("\"connectionId\":\"conn-1\"", "\"status\":\"ACCEPTED\"");
         assertThat(json).contains("\"connectionId\":\"conn-2\"", "\"status\":\"FAILED\"");
         assertThat(json).doesNotContain("acceptedConnectionIds", "failedConnectionIds");
+    }
+
+    @Test
+    void sendsDedicatedConnectionCloseControl() {
+        RecordingBoltInvoker invoker = new RecordingBoltInvoker();
+        GatewayClient client = new GatewayClient(invoker, 3000);
+        GatewayEndpointDTO gateway = new GatewayEndpointDTO(
+                "gw-1", "10.0.0.8", 12201, Instant.now(), Instant.now());
+        ConnectionCloseParams params = new ConnectionCloseParams(1L, "session-old");
+
+        client.closeConnections(gateway, params);
+
+        assertThat(invoker.service).isEqualTo(GatewayBoltService.CONNECTION.service());
+        assertThat(invoker.operation).isEqualTo(GatewayBoltOperation.CLOSE_CONNECTIONS.operation());
+        assertThat(invoker.request).isSameAs(params);
+        assertThat(invoker.responseType).isEqualTo(Void.class);
     }
 
     private static class RecordingBoltInvoker implements BoltInvoker {

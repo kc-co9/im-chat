@@ -4,10 +4,8 @@ import com.co.kc.imchat.common.constant.HttpErrorCode;
 import com.co.kc.imchat.common.model.io.HttpResult;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.gateway.http.security.authentication.AuthenticationConverter;
-import com.co.kc.imchat.gateway.http.security.authentication.AuthenticationManager;
 import com.co.kc.imchat.gateway.http.security.authentication.AuthenticationSuccessHandler;
 import com.co.kc.imchat.gateway.http.security.filter.UserContextHeaderSanitizingFilter;
-import com.co.kc.imchat.plugin.session.token.TokenService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -28,7 +26,6 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 /**
  * HTTP 网关安全配置。
@@ -38,11 +35,6 @@ import java.util.List;
 @Configuration
 @EnableWebFluxSecurity
 public class SecurityConfig {
-
-    @Bean
-    public ReactiveAuthenticationManager authenticationManager(List<TokenService> tokenServices) {
-        return new AuthenticationManager(tokenServices);
-    }
 
     @Bean
     public ServerAuthenticationConverter authenticationConverter() {
@@ -106,7 +98,10 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/*/v3/api-docs/**",
                                 "/actuator/**").permitAll()
-                        .pathMatchers("/account/user/signUp", "/account/user/signIn").permitAll()
+                        .pathMatchers(
+                                "/account/user/signUp",
+                                "/account/user/signIn",
+                                "/account/user/refreshToken").permitAll()
                         .anyExchange().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)

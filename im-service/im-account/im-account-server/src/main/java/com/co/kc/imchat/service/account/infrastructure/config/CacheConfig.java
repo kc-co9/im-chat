@@ -2,6 +2,7 @@ package com.co.kc.imchat.service.account.infrastructure.config;
 
 import com.alicp.jetcache.Cache;
 import com.co.kc.imchat.plugin.cache.core.JetCacheFactory;
+import com.co.kc.imchat.plugin.session.properties.JwtProperties;
 import com.co.kc.imchat.service.account.domain.user.model.User;
 import com.co.kc.imchat.service.account.infrastructure.support.constant.AccountCacheNames;
 import com.co.kc.imchat.service.account.model.cqrs.dto.SessionDTO;
@@ -35,8 +36,9 @@ public class CacheConfig {
     }
 
     @Bean
-    public Cache<Long, SessionDTO> userSessionCache(JetCacheFactory cacheFactory) {
-        return remoteCache(cacheFactory, AccountCacheNames.USER_SESSION, Duration.of(1, ChronoUnit.DAYS));
+    public Cache<Long, SessionDTO> userSessionCache(JetCacheFactory cacheFactory,
+                                                    JwtProperties jwtProperties) {
+        return remoteCache(cacheFactory, AccountCacheNames.USER_SESSION, jwtProperties.getRefreshTokenTtl());
     }
 
     private <K, V> Cache<K, V> remoteCache(JetCacheFactory cacheFactory, String name, Duration expire) {

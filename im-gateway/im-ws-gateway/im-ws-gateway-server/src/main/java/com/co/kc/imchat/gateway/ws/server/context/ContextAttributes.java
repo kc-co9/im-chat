@@ -17,6 +17,9 @@ public final class ContextAttributes {
      */
     public static final AttributeKey<String> CONNECTION_ID = AttributeKey.valueOf("im.gateway.connectionId");
 
+    /** 当前连接所属的账号 Session 版本。 */
+    public static final AttributeKey<String> SESSION_VERSION = AttributeKey.valueOf("im.gateway.sessionVersion");
+
     private ContextAttributes() {
     }
 }

@@ -10,6 +10,9 @@ import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
 import com.co.kc.imchat.gateway.ws.lifecycle.RegistrationLifecycle;
 import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
+import com.co.kc.imchat.gateway.ws.support.BrokerClientTestSupport;
+import com.co.kc.imchat.common.model.enums.ServiceName;
+import com.co.kc.imchat.broker.sdk.enums.BrokerLoadBalance;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
@@ -65,8 +68,8 @@ class RegistrationLifecycleTest {
         EmbeddedChannel activeChannel = new EmbeddedChannel();
         EmbeddedChannel inactiveChannel = new EmbeddedChannel();
         inactiveChannel.close();
-        connectionRegistry.register(1L, "conn-1", activeChannel);
-        connectionRegistry.register(2L, "conn-2", inactiveChannel);
+        connectionRegistry.register(1L, "session-1", "conn-1", activeChannel);
+        connectionRegistry.register(2L, "session-2", "conn-2", inactiveChannel);
         RegistrationLifecycle lifecycle = lifecycle(brokerClient, connectionRegistry);
 
         lifecycle.refresh();
@@ -97,6 +100,11 @@ class RegistrationLifecycleTest {
         protected GatewayHeartbeatParams heartbeatGatewayCommand;
         protected ConnectionSyncParams syncConnectionsCommand;
         protected String events = "";
+
+        private CapturingBrokerClient() {
+            super(BrokerClientTestSupport.invoker(), BrokerClientTestSupport.discovery(),
+                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000);
+        }
 
         @Override
         public void registerGateway(GatewayRegisterParams params) {

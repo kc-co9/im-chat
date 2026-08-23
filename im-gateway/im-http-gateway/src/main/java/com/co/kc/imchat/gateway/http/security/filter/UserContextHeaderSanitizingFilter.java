@@ -17,7 +17,10 @@ public class UserContextHeaderSanitizingFilter implements WebFilter {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest().mutate()
-                .headers(headers -> headers.remove(UserContextHeaders.USER_ID))
+                .headers(headers -> {
+                    headers.remove(UserContextHeaders.USER_ID);
+                    headers.remove(UserContextHeaders.SESSION_VERSION);
+                })
                 .build();
         return chain.filter(exchange.mutate().request(request).build());
     }

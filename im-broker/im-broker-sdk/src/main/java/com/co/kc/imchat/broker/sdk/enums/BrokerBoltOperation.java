@@ -72,6 +72,9 @@ public enum BrokerBoltOperation {
      */
     MIGRATE_CONNECTIONS(BrokerBoltService.CONNECTION, "migrateConnections"),
 
+    /** 关闭用户连接。 */
+    CLOSE_CONNECTIONS(BrokerBoltService.CONNECTION, "closeConnections"),
+
     /**
      * 统一处理实时帧，上行帧转交业务服务，下行帧写入目标用户在线连接。
      */

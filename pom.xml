@@ -100,6 +100,11 @@
             </dependency>
             <dependency>
                 <groupId>com.co.kc.im</groupId>
+                <artifactId>im-metrics</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
                 <artifactId>im-datasource</artifactId>
                 <version>${project.version}</version>
             </dependency>

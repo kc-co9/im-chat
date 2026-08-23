@@ -36,10 +36,10 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
     private final WsAuthenticationManager authenticationManager;
 
     public HandshakeHandler(String gatewayId,
-                                   String path,
-                                   BrokerClient brokerClient,
-                                   ConnectionRegistry connectionRegistry,
-                                   WsAuthenticationManager authenticationManager) {
+                            String path,
+                            BrokerClient brokerClient,
+                            ConnectionRegistry connectionRegistry,
+                            WsAuthenticationManager authenticationManager) {
         this.gatewayId = gatewayId;
         this.path = path;
         this.brokerClient = brokerClient;
@@ -49,32 +49,81 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
-        if (message instanceof FullHttpRequest request) {
-            QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
-            if (!path.equals(decoder.path())) {
-                reject(context, message, HttpResponseStatus.NOT_FOUND);
-                return;
-            }
-            WsPrincipal principal = authenticationManager.authenticate(token(request, decoder));
-            if (principal == null) {
-                reject(context, message, HttpResponseStatus.UNAUTHORIZED);
-                return;
-            }
-            // 连接注册成功后再放行到 WebSocket 协议升级，避免 Broker 无路由时客户端误以为连接可用。
-            String connectionId = UUID.randomUUID().toString();
-            try {
-                brokerClient.registerConnection(
-                        new ConnectionRegisterParams(principal.userId(), gatewayId));
-            } catch (RuntimeException ex) {
-                reject(context, message, HttpResponseStatus.SERVICE_UNAVAILABLE);
-                return;
-            }
-            context.channel().attr(ContextAttributes.PRINCIPAL).set(principal);
-            context.channel().attr(ContextAttributes.CONNECTION_ID).set(connectionId);
-            connectionRegistry.register(principal.userId(), connectionId, context.channel());
-            request.setUri(path);
+        if (!(message instanceof FullHttpRequest request)) {
+            super.channelRead(context, message);
+            return;
         }
-        super.channelRead(context, message);
+        QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
+        if (!path.equals(decoder.path())) {
+            reject(context, request, HttpResponseStatus.NOT_FOUND);
+            return;
+        }
+        authenticate(context, request, decoder);
+    }
+
+    private void authenticate(
+            ChannelHandlerContext context,
+            FullHttpRequest request,
+            QueryStringDecoder decoder
+    ) {
+        try {
+            authenticationManager.authenticate(token(request, decoder))
+                    .whenComplete((principal, error) -> completeAuthentication(
+                            context, request, principal, error));
+        } catch (RuntimeException exception) {
+            reject(context, request, HttpResponseStatus.UNAUTHORIZED);
+        }
+    }
+
+    @SuppressWarnings("resource") // EventExecutor 的生命周期由 Netty Channel 管理。
+    private void completeAuthentication(
+            ChannelHandlerContext context,
+            FullHttpRequest request,
+            WsPrincipal principal,
+            Throwable error
+    ) {
+        if (!context.executor().inEventLoop()) {
+            context.executor().execute(() -> completeAuthentication(context, request, principal, error));
+            return;
+        }
+        if (!context.channel().isActive()) {
+            ReferenceCountUtil.release(request);
+            return;
+        }
+        if (error != null || principal == null) {
+            reject(context, request, HttpResponseStatus.UNAUTHORIZED);
+            return;
+        }
+        registerAuthenticatedConnection(context, request, principal);
+    }
+
+    private void registerAuthenticatedConnection(
+            ChannelHandlerContext context,
+            FullHttpRequest request,
+            WsPrincipal principal
+    ) {
+        String connectionId = UUID.randomUUID().toString();
+        try {
+            brokerClient.registerConnection(new ConnectionRegisterParams(principal.userId(), gatewayId));
+        } catch (RuntimeException ex) {
+            reject(context, request, HttpResponseStatus.SERVICE_UNAVAILABLE);
+            return;
+        }
+        bindConnection(context, principal, connectionId);
+        request.setUri(path);
+        context.fireChannelRead(request);
+    }
+
+    private void bindConnection(
+            ChannelHandlerContext context,
+            WsPrincipal principal,
+            String connectionId
+    ) {
+        context.channel().attr(ContextAttributes.PRINCIPAL).set(principal);
+        context.channel().attr(ContextAttributes.SESSION_VERSION).set(principal.sessionVersion());
+        context.channel().attr(ContextAttributes.CONNECTION_ID).set(connectionId);
+        connectionRegistry.register(
+                principal.userId(), principal.sessionVersion(), connectionId, context.channel());
     }
 
     @Override
@@ -82,20 +131,22 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
         WsPrincipal principal = context.channel().attr(ContextAttributes.PRINCIPAL).get();
         String connectionId = context.channel().attr(ContextAttributes.CONNECTION_ID).get();
         if (principal != null && connectionId != null) {
-            boolean userOffline = connectionRegistry.unregister(connectionId);
-            if (!userOffline) {
-                super.channelInactive(context);
-                return;
-            }
-            try {
-                brokerClient.unregisterConnection(
-                        new ConnectionUnregisterParams(principal.userId(), gatewayId));
-            } catch (RuntimeException ex) {
-                log.warn("failed to unregister ws connection from broker, gatewayId:{}, connectionId:{}, error:{}",
-                        gatewayId, connectionId, ex.toString());
-            }
+            unregisterConnection(principal, connectionId);
         }
         super.channelInactive(context);
+    }
+
+    private void unregisterConnection(WsPrincipal principal, String connectionId) {
+        if (!connectionRegistry.unregister(connectionId)) {
+            return;
+        }
+        try {
+            brokerClient.unregisterConnection(
+                    new ConnectionUnregisterParams(principal.userId(), gatewayId));
+        } catch (RuntimeException exception) {
+            log.warn("failed to unregister ws connection from broker, gatewayId:{}, connectionId:{}, error:{}",
+                    gatewayId, connectionId, exception.toString());
+        }
     }
 
     /**

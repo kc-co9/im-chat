@@ -6,7 +6,7 @@ import com.co.kc.imchat.service.message.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.service.message.model.cqrs.query.ImPrivateMessageDetailQuery;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.service.ImChatService;
 import com.co.kc.imchat.service.message.domain.chat.model.ImPrivateChat;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImPrivateChatRepository;
@@ -31,12 +31,10 @@ import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
 import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.service.message.transformer.ImMessageAppTransformer;
-import com.co.kc.imchat.service.message.adapter.account.AccountAdapter;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
 import com.co.kc.imchat.service.message.adapter.social.SocialAdapter;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.TransactionStatus;
-import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.LocalDateTime;
@@ -47,7 +45,7 @@ public class PrivateMessageAppService {
     private final ImPrivateChatRepository imPrivateChatRepository;
     private final ImPrivateInboxMessageRepository imPrivateInboxMessageRepository;
 
-    private final AccountAdapter accountAdapter;
+    private final ImChatViewRepository imChatViewRepository;
     private final ImChatService imChatService;
     private final ImMessageService imMessageService;
     private final SocialAdapter socialAdapter;
@@ -59,21 +57,7 @@ public class PrivateMessageAppService {
 
     public PrivateMessageAppService(ImPrivateChatRepository imPrivateChatRepository,
                                     ImPrivateInboxMessageRepository imPrivateInboxMessageRepository,
-                                    AccountAdapter accountAdapter,
-                                    ImChatService imChatService,
-                                    ImMessageService imMessageService,
-                                    SocialAdapter socialAdapter,
-                                    SnowflakeId snowflakeId,
-                                    ImMessageNotifierInvoker imMessageNotifierInvoker,
-                                    DomainEventPublisher imMessageEventPublisher) {
-        this(imPrivateChatRepository, imPrivateInboxMessageRepository, accountAdapter, imChatService, imMessageService,
-                socialAdapter, snowflakeId, imMessageNotifierInvoker, imMessageEventPublisher,
-                immediateTransactionOperations());
-    }
-
-    public PrivateMessageAppService(ImPrivateChatRepository imPrivateChatRepository,
-                                    ImPrivateInboxMessageRepository imPrivateInboxMessageRepository,
-                                    AccountAdapter accountAdapter,
+                                    ImChatViewRepository imChatViewRepository,
                                     ImChatService imChatService,
                                     ImMessageService imMessageService,
                                     SocialAdapter socialAdapter,
@@ -83,7 +67,7 @@ public class PrivateMessageAppService {
                                     TransactionOperations transactionOperations) {
         this.imPrivateChatRepository = imPrivateChatRepository;
         this.imPrivateInboxMessageRepository = imPrivateInboxMessageRepository;
-        this.accountAdapter = accountAdapter;
+        this.imChatViewRepository = imChatViewRepository;
         this.imChatService = imChatService;
         this.imMessageService = imMessageService;
         this.socialAdapter = socialAdapter;
@@ -109,7 +93,7 @@ public class PrivateMessageAppService {
 
         socialAdapter.ensureFriendshipActive(senderChat.getUserId().value(), receiverChat.getUserId().value());
         imMessageService.ensurePrivateMessageUnique(chatId, messageToken);
-        boolean receiverChatting = accountAdapter.isChatting(receiverChat.getUserId().value(), receiverChat.getId().value());
+        boolean receiverChatting = imChatViewRepository.isViewing(receiverChat.getUserId(), receiverChat.getId());
 
         ImPrivateInboxMessage senderInboxMessage = ImPrivateInboxMessage.builder()
                 .id(messageId)
@@ -253,17 +237,4 @@ public class PrivateMessageAppService {
         return ImMessageAppTransformer.INSTANCE.imPrivateMessageDtoFrom(imPrivateMessage);
     }
 
-    private static TransactionOperations immediateTransactionOperations() {
-        return new TransactionOperations() {
-            @Override
-            public <T> T execute(TransactionCallback<T> action) {
-                return action.doInTransaction(null);
-            }
-
-            @Override
-            public void executeWithoutResult(java.util.function.Consumer<TransactionStatus> action) {
-                action.accept(null);
-            }
-        };
-    }
 }

@@ -7,7 +7,7 @@ import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.service.message.domain.chat.model.GroupChatJoin;
 import com.co.kc.imchat.service.message.domain.chat.model.GroupChatMembership;
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImGroupChat;
 import com.co.kc.imchat.service.message.domain.chat.model.ImPrivateChat;
 import com.co.kc.imchat.service.message.domain.chat.model.ImUserChatDescriptor;
@@ -20,6 +20,8 @@ import com.co.kc.imchat.service.message.domain.message.model.ImGroupMessageTrans
 import com.co.kc.imchat.service.message.domain.message.model.ImMessage;
 import com.co.kc.imchat.service.message.domain.message.repository.ImGroupInboxMessageRepository;
 import com.co.kc.imchat.service.message.domain.message.service.ImMessageService;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
+import com.co.kc.imchat.service.message.domain.chat.model.ImChatView;
 import com.co.kc.imchat.service.message.facade.dto.UserGroupChatSummaryDTO;
 import com.co.kc.imchat.service.message.facade.params.UserGroupChatSummaryGetParams;
 import com.co.kc.imchat.service.message.facade.params.GroupChatMemberRemoveParams;
@@ -33,6 +35,7 @@ import com.co.kc.imchat.service.message.model.cqrs.command.chat.GroupAliasChange
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.ImGroupChatOpenCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.ImPrivateChatOpenCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.PrivateChatHideCmd;
+import com.co.kc.imchat.service.message.model.cqrs.command.chat.ChatExitCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.group.GroupChatHideCmd;
 import com.co.kc.imchat.service.message.model.cqrs.dto.im.ImChatItemDTO;
 import com.co.kc.imchat.service.message.model.cqrs.dto.group.GroupChatOpenDTO;
@@ -72,6 +75,7 @@ public class ChatAppService {
     private final SocialAdapter socialAdapter;
     private final ImMessageService imMessageService;
     private final DomainEventPublisher eventPublisher;
+    private final ImChatViewRepository imChatViewRepository;
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     @DistributeLock(scene = ImMessageLockScene.PRIVATE_CHAT_OPEN, key = "#LockKeys.userPair(#command.userId(), #command.peerUserId())")
@@ -83,7 +87,9 @@ public class ChatAppService {
 
         ImPrivateChat userChat = imPrivateChatRepository.find(userId, peerUserId).orElseThrow(() -> new NotFoundException("聊天不存在"));
         userChat.activate(LocalDateTime.now());
+        userChat.readToLatest();
         imPrivateChatRepository.save(userChat);
+        imChatViewRepository.save(new ImChatView(userId, userChat.getId()));
 
         return ImChatAppTransformer.INSTANCE.imPrivateChatOpenDtoFrom(userChat, peerUserId);
     }
@@ -104,6 +110,7 @@ public class ChatAppService {
 
         List<ImGroupInboxMessage> unreadMessages = imMessageService.readUnreadGroupMessages(groupChat, userId);
         imGroupInboxMessageRepository.save(unreadMessages);
+        imChatViewRepository.save(new ImChatView(userId, chatId));
 
         return ImChatAppTransformer.INSTANCE.groupChatOpenDtoFrom(groupChat);
     }
@@ -118,6 +125,7 @@ public class ChatAppService {
 
         privateChat.hide();
         imPrivateChatRepository.save(privateChat);
+        imChatViewRepository.clear(userId);
     }
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
@@ -132,6 +140,15 @@ public class ChatAppService {
 
         groupChat.hide();
         imGroupChatRepository.save(groupChat);
+        imChatViewRepository.clear(userId);
+    }
+
+    /**
+     * 离开当前聊天详情，但不隐藏聊天列表项。
+     */
+    public void exitChat(ChatExitCmd command) {
+        UserId userId = new UserId(command.userId());
+        imChatViewRepository.clear(userId);
     }
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)

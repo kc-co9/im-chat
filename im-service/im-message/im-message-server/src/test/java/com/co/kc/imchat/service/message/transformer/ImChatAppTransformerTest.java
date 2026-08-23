@@ -3,7 +3,7 @@ package com.co.kc.imchat.service.message.transformer;
 import com.co.kc.imchat.common.domain.group.model.GroupId;
 import com.co.kc.imchat.common.domain.group.model.MemberDescriptor;
 import com.co.kc.imchat.service.message.domain.chat.model.GroupChatMember;
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatStatus;
 import com.co.kc.imchat.service.message.domain.chat.model.ImGroupChat;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatName;

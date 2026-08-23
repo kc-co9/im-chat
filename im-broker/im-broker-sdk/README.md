@@ -1,33 +1,45 @@
 # im-broker-sdk
 
-## 模块作用
+`im-broker-sdk` 定义 Broker 的内部调用契约和默认客户端，不包含 Broker 服务端、Registry 或 Handler 实现。
 
-`im-broker-sdk` 定义 Broker 对其他内部模块暴露的调用契约和默认客户端。
-
-它包含 Bolt RPC service/operation 标识、Params、DTO、共享模型和基于 Bolt 的 `BrokerClient`，不包含 Broker 运行服务端实现。
-
-## 目录结构
+## 目录
 
 ```text
-im-broker-sdk/
-  src/main/java/com/co/kc/imchat/broker/sdk/
-    BrokerRpcOperation.java              # Broker RPC operation 标识
-    BrokerRpcService.java                # Broker RPC service 标识
-    client/                              # Broker 默认客户端
-    dto/                                 # RPC 返回对象
-    model/                               # 共享连接位置模型
-    params/                              # RPC 入参对象
+broker/sdk/
+├── BrokerClient.java
+├── BrokerSdkAutoConfiguration.java
+├── enums/          # Bolt service/operation、负载均衡和结果状态
+├── lifecycle/      # Broker 地址快照刷新
+├── loadbalance/    # HASH、ROUND_ROBIN、RANDOM 地址选择
+└── model/
+    ├── dto/
+    ├── params/
+    └── result/
 ```
 
-## 边界说明
+## 地址发现
 
-- WS 网关和消息服务可以依赖本模块发起 Broker 内部调用。
-- 运行实现、缓存、Redis、Bolt Handler 都放在 `im-broker-server`。
-- Params 和 DTO 保持内部通信语义，不承载业务领域模型。
+`BrokerClient` 构造时通过 Spring `DiscoveryClient` 查询 `ServiceName.IM_BROKER`，把发现到的 `host:port` 列表作为首次调用的 bootstrap 地址。没有可用实例时直接启动失败，不使用写死的 seed address。
 
-## 关键技术点
+首次建立调用能力后，`BrokerRefresher` 在应用就绪时及之后每 30 秒调用 `LIST_BROKERS`，从 Broker 侧获取按实例 ID 排序的集群快照并原子替换本地地址列表。刷新失败只记录警告并保留最近一次可用快照。
 
-- `BrokerClient` 集中封装 service/operation、JSON 和超时，调用方不接触 Bolt 细节。
-- 地址选择支持 HASH、ROUND_ROBIN、RANDOM；轮询计数使用溢出安全的取模逻辑。
-- Broker/Gateway/Connection/Frame 使用不同服务维度，避免单一 RPC service 无限扩张。
-- SDK 模型是跨进程契约，Server 内部领域状态需通过 Transformer 转换。
+因此两套发现能力职责不同：
+
+- Nacos 负责初始 Broker 地址。
+- Broker registry/Gossip 负责运行期 Broker 集群快照和实时路由状态。
+
+消费方必须启用 `im.bolt.client.enabled=true`，使 `im-bolt` 自动配置创建 `BoltInvoker`。
+
+## 客户端边界
+
+- `BrokerClient` 封装 Bolt service/operation、超时、地址选择和模型转换，调用方不接触 Bolt 实现。
+- Gateway 注册、连接同步、帧写入和会话关闭均使用 typed params。
+- `ConnectionCloseParams` 携带用户和旧 `sessionVersion`，供 Broker 路由到 Gateway；SDK 不判断会话有效性。
+- HASH 用于稳定业务路由，ROUND_ROBIN 和 RANDOM 用于无固定路由键的调用。
+- SDK DTO 是跨进程契约，不作为业务服务领域模型使用；Adapter 在边界完成转换。
+- Broker/Gateway 本地状态、Redis、Gossip entry 和 Handler 只存在于 server。
+- 下行写入结果描述 Gateway 接受与失败的连接集合，不等同于 Message notification ACK。
+
+```bash
+mvn -q -pl im-broker/im-broker-sdk -am test
+```

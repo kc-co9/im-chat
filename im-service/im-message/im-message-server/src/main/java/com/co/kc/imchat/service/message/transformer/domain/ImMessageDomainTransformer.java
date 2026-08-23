@@ -5,7 +5,7 @@ import com.co.kc.imchat.service.message.domain.message.model.ImGroupMessageStatu
 import com.co.kc.imchat.service.message.domain.message.model.ImMessageType;
 import com.co.kc.imchat.service.message.domain.message.model.ImPrivateInboxMessage;
 import com.co.kc.imchat.service.message.domain.message.model.ImPrivateMessageStatus;
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.common.domain.group.model.GroupId;
 import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.service.message.domain.message.model.ImMessageContent;

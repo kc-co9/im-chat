@@ -12,6 +12,15 @@
     <dependencies>
         <dependency>
             <groupId>com.co.kc.im</groupId>
+            <artifactId>im-account-facade</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
+            <artifactId>im-dubbo</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
             <artifactId>im-ws-gateway-sdk</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -51,10 +60,6 @@
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.co.kc.im</groupId>
-            <artifactId>im-nacos</artifactId>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

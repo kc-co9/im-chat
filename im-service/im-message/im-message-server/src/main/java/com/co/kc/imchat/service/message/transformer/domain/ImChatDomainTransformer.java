@@ -1,6 +1,6 @@
 package com.co.kc.imchat.service.message.transformer.domain;
 
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatStatus;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatType;
 import com.co.kc.imchat.common.domain.group.model.GroupAlias;
@@ -14,6 +14,7 @@ import com.co.kc.imchat.service.message.infrastructure.mybatis.entity.DbImPrivat
 import com.co.kc.imchat.service.message.infrastructure.mybatis.enums.DbImChatType;
 import com.co.kc.imchat.service.message.infrastructure.mybatis.enums.DbImChatStatus;
 import org.mapstruct.Mapper;
+import org.mapstruct.MappingConstants;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 import org.mapstruct.factory.Mappers;
@@ -78,19 +79,8 @@ public interface ImChatDomainTransformer {
     })
     ImChatType imChatTypeFrom(DbImChatType type);
 
-    default ImChatStatus imChatStatusFrom(DbImChatStatus status) {
-        if (status == null) {
-            return ImChatStatus.UNKNOWN;
-        }
-        switch (status) {
-            case NORMAL:
-                return ImChatStatus.NORMAL;
-            case HIDDEN:
-                return ImChatStatus.HIDDEN;
-            case UNKNOWN:
-            default:
-                return ImChatStatus.UNKNOWN;
-        }
-    }
+    @ValueMapping(source = MappingConstants.NULL, target = "UNKNOWN")
+    @ValueMapping(source = MappingConstants.ANY_REMAINING, target = "UNKNOWN")
+    ImChatStatus imChatStatusFrom(DbImChatStatus status);
 
 }

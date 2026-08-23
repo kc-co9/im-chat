@@ -5,7 +5,7 @@ import lombok.Data;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 public class SessionDTO implements Serializable {
@@ -13,8 +13,10 @@ public class SessionDTO implements Serializable {
     private static final long serialVersionUID = 1L;
     
     private Long userId;
-    private Long chatId;
     private SessionStatusEnum status;
-    private LocalDateTime signInTime;
-    private LocalDateTime signOutTime;
+    private Instant signInTime;
+    private Instant signOutTime;
+    private String sessionVersion;
+    private String refreshFingerprint;
+    private Instant refreshTokenExpiresAt;
 }

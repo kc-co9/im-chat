@@ -1,8 +1,10 @@
 package com.co.kc.imchat.plugin.lock.aspect;
 
+import com.co.kc.imchat.common.exception.LockException;
+import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
 import com.co.kc.imchat.plugin.lock.core.DistributedLockTemplate;
 import com.co.kc.imchat.plugin.lock.support.LockKeys;
-import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
+import com.co.kc.imchat.plugin.lock.support.LockOptions;
 import lombok.RequiredArgsConstructor;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -40,7 +42,18 @@ public class DistributeLockAspect {
         DistributeLock distributeLock = method.getAnnotation(DistributeLock.class);
         String key = parseKey(distributeLock.key(), method, joinPoint.getArgs());
         return distributedLockTemplate.execute(
-                joinPoint::proceed, distributeLock.scene(), key, distributeLock.expireTime(), distributeLock.waitTime());
+                () -> proceed(joinPoint), distributeLock.scene(), key,
+                LockOptions.of(distributeLock.expireTime(), distributeLock.waitTime()));
+    }
+
+    private Object proceed(ProceedingJoinPoint joinPoint) throws Exception {
+        try {
+            return joinPoint.proceed();
+        } catch (Exception | Error exception) {
+            throw exception;
+        } catch (Throwable throwable) {
+            throw new LockException("分布式锁内业务执行失败", throwable);
+        }
     }
 
     private Method getMethod(ProceedingJoinPoint joinPoint) throws NoSuchMethodException {

@@ -87,11 +87,6 @@ public class GatewayProperties {
     @Data
     public static class BrokerBolt {
         /**
-         * Broker Bolt 服务地址，多个地址用英文逗号分隔。
-         */
-        private String address = "127.0.0.1:12200";
-
-        /**
          * Broker 地址负载均衡策略。
          */
         private BrokerLoadBalance loadBalance = BrokerLoadBalance.HASH;

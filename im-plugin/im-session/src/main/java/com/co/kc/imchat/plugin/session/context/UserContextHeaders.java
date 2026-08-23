@@ -5,6 +5,7 @@ package com.co.kc.imchat.plugin.session.context;
  */
 public final class UserContextHeaders {
     public static final String USER_ID = "X-IM-User-Id";
+    public static final String SESSION_VERSION = "X-IM-Session-Version";
 
     private UserContextHeaders() {
     }

@@ -5,6 +5,7 @@ import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
 import com.co.kc.imchat.broker.sdk.model.dto.ConnectionMigrationDTO;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
+import com.co.kc.imchat.broker.sdk.model.params.ConnectionCloseParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionMigrateParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
@@ -34,6 +35,10 @@ public class BrokerPeerClient {
 
     public void unregisterConnection(BrokerEndpointDTO broker, ConnectionUnregisterParams params) {
         invoke(broker, BrokerBoltOperation.UNREGISTER_CONNECTION, params, Void.class);
+    }
+
+    public void closeConnections(BrokerEndpointDTO broker, ConnectionCloseParams params) {
+        invoke(broker, BrokerBoltOperation.CLOSE_CONNECTIONS, params, Void.class);
     }
 
     public BrokerFrameWriteResult writeFrame(BrokerEndpointDTO broker, BrokerFrameWriteParams params) {

@@ -3,7 +3,7 @@ package com.co.kc.imchat.common.domain;
 import com.co.kc.imchat.service.message.domain.chat.model.GroupChatJoin;
 import com.co.kc.imchat.service.message.domain.chat.model.GroupChatMember;
 import com.co.kc.imchat.service.message.domain.chat.model.GroupChatMembership;
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatName;
 import com.co.kc.imchat.service.message.domain.chat.model.ImUserChatDescriptor;
 import com.co.kc.imchat.common.domain.group.model.GroupAlias;
@@ -61,7 +61,7 @@ class DomainValueObjectTest {
     void valueObjectValidationMessagesAreChinese() {
         assertThatThrownBy(() -> new ImChatId(null))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("聊天ID不能为空");
+                .hasMessage("聊天会话ID不能为空");
         assertThatThrownBy(() -> new ImChatName(" "))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("聊天名称不能为空");

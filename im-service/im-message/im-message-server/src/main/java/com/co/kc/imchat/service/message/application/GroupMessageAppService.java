@@ -1,7 +1,7 @@
 package com.co.kc.imchat.service.message.application;
 
 import com.co.kc.imchat.plugin.datasource.transaction.AfterTransactionCommit;
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.common.domain.group.model.GroupId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImGroupChat;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImGroupChatRepository;
@@ -37,13 +37,11 @@ import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
 import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.service.message.transformer.ImMessageAppTransformer;
-import com.co.kc.imchat.service.message.adapter.account.AccountAdapter;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
 import com.co.kc.imchat.service.message.domain.social.model.GroupMessageRecipient;
 import com.co.kc.imchat.service.message.adapter.social.SocialAdapter;
-import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionOperations;
 
 import java.util.List;
@@ -54,7 +52,7 @@ public class GroupMessageAppService {
     private final ImGroupChatRepository imGroupChatRepository;
     private final ImGroupInboxMessageRepository imGroupInboxMessageRepository;
 
-    private final AccountAdapter accountAdapter;
+    private final ImChatViewRepository imChatViewRepository;
     private final SocialAdapter socialAdapter;
     private final ImMessageService imMessageService;
     private final ImChatService imChatService;
@@ -66,21 +64,7 @@ public class GroupMessageAppService {
 
     public GroupMessageAppService(ImGroupChatRepository imGroupChatRepository,
                                   ImGroupInboxMessageRepository imGroupInboxMessageRepository,
-                                  AccountAdapter accountAdapter,
-                                  SocialAdapter socialAdapter,
-                                  ImMessageService imMessageService,
-                                  ImChatService imChatService,
-                                  SnowflakeId snowflakeId,
-                                  ImMessageNotifierInvoker imMessageNotifierInvoker,
-                                  DomainEventPublisher imMessageEventPublisher) {
-        this(imGroupChatRepository, imGroupInboxMessageRepository, accountAdapter, socialAdapter, imMessageService,
-                imChatService, snowflakeId, imMessageNotifierInvoker, imMessageEventPublisher,
-                immediateTransactionOperations());
-    }
-
-    public GroupMessageAppService(ImGroupChatRepository imGroupChatRepository,
-                                  ImGroupInboxMessageRepository imGroupInboxMessageRepository,
-                                  AccountAdapter accountAdapter,
+                                  ImChatViewRepository imChatViewRepository,
                                   SocialAdapter socialAdapter,
                                   ImMessageService imMessageService,
                                   ImChatService imChatService,
@@ -90,7 +74,7 @@ public class GroupMessageAppService {
                                   TransactionOperations transactionOperations) {
         this.imGroupChatRepository = imGroupChatRepository;
         this.imGroupInboxMessageRepository = imGroupInboxMessageRepository;
-        this.accountAdapter = accountAdapter;
+        this.imChatViewRepository = imChatViewRepository;
         this.socialAdapter = socialAdapter;
         this.imMessageService = imMessageService;
         this.imChatService = imChatService;
@@ -255,9 +239,7 @@ public class GroupMessageAppService {
 
     private List<ImMessageRecipient> findMessageRecipients(GroupId groupId) {
         return findRecipientChats(groupId).stream()
-                .map(chat -> new ImMessageRecipient(
-                        chat,
-                        accountAdapter.isChatting(chat.getUserId().value(), chat.getId().value())))
+                .map(chat -> new ImMessageRecipient(chat, imChatViewRepository.isViewing(chat.getUserId(), chat.getId())))
                 .toList();
     }
 
@@ -280,17 +262,4 @@ public class GroupMessageAppService {
         return chat;
     }
 
-    private static TransactionOperations immediateTransactionOperations() {
-        return new TransactionOperations() {
-            @Override
-            public <T> T execute(TransactionCallback<T> action) {
-                return action.doInTransaction(null);
-            }
-
-            @Override
-            public void executeWithoutResult(java.util.function.Consumer<TransactionStatus> action) {
-                action.accept(null);
-            }
-        };
-    }
 }

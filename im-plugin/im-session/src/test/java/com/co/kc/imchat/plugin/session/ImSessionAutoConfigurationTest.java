@@ -1,22 +1,91 @@
 package com.co.kc.imchat.plugin.session;
 
-import com.co.kc.imchat.plugin.session.token.JwtTokenService;
-import com.co.kc.imchat.plugin.session.token.TokenService;
+import com.co.kc.imchat.plugin.session.properties.JwtProperties;
+import com.co.kc.imchat.plugin.session.token.codec.JwtTokenCodec;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ImSessionAutoConfigurationTest {
 
+    private static final String STRONG_SECRET =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(ImSessionAutoConfiguration.class);
 
     @Test
-    void providesDefaultTokenService() {
+    void doesNotCreateCodecWhileJwtIsDisabled() {
         contextRunner.run(context -> {
-            assertThat(context).hasSingleBean(TokenService.class);
-            assertThat(context.getBean(TokenService.class)).isInstanceOf(JwtTokenService.class);
+            assertThat(context).doesNotHaveBean(JwtTokenCodec.class);
         });
+    }
+
+    @Test
+    void bindsJwtDefaultsWhenCodecIsEnabled() {
+        contextRunner.withPropertyValues(
+                "im.session.jwt.enabled=true",
+                "im.session.jwt.secret=" + STRONG_SECRET)
+                .run(context -> {
+                    assertThat(context).hasSingleBean(JwtTokenCodec.class);
+                    JwtProperties properties = context.getBean(JwtProperties.class);
+                    assertThat(properties.getAccessTokenTtl()).isEqualTo(Duration.ofHours(2));
+                    assertThat(properties.getRefreshTokenTtl()).isEqualTo(Duration.ofDays(30));
+                    assertThat(properties.getRefreshThreshold()).isEqualTo(Duration.ofMinutes(15));
+                });
+    }
+
+    @Test
+    void rejectsMissingSecretInLocalProfile() {
+        contextRunner.withPropertyValues(
+                "spring.profiles.active=local",
+                "im.session.jwt.enabled=true")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void rejectsMissingSecretOutsideLocalProfile() {
+        contextRunner.withPropertyValues("im.session.jwt.enabled=true")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void rejectsWeakExternalSecret() {
+        contextRunner.withPropertyValues(
+                "im.session.jwt.enabled=true",
+                "im.session.jwt.secret=too-short")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void rejectsInvalidIssuerAndTtlOrdering() {
+        contextRunner.withPropertyValues(
+                "im.session.jwt.enabled=true",
+                "im.session.jwt.secret=" + STRONG_SECRET,
+                "im.session.jwt.issuer= ",
+                "im.session.jwt.access-token-ttl=31d",
+                "im.session.jwt.refresh-token-ttl=30d")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void backsOffWhenApplicationProvidesCodec() {
+        JwtTokenCodec customCodec = new JwtTokenCodec(
+                new SecretKeySpec(STRONG_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA512"),
+                "custom",
+                Duration.ofHours(1),
+                Duration.ofDays(1),
+                Clock.systemUTC());
+        contextRunner.withBean(JwtTokenCodec.class, () -> customCodec)
+                .run(context -> {
+                    assertThat(context).hasSingleBean(JwtTokenCodec.class);
+                    assertThat(context.getBean(JwtTokenCodec.class)).isSameAs(customCodec);
+                });
     }
 }

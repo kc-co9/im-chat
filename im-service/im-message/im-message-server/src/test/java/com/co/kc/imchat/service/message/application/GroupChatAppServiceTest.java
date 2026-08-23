@@ -1,6 +1,6 @@
 package com.co.kc.imchat.service.message.application;
 
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.service.ImChatService;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatStatus;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatType;
@@ -42,13 +42,17 @@ import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.exception.RepeatException;
 import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
-import com.co.kc.imchat.service.message.adapter.account.AccountAdapter;
 import com.co.kc.imchat.service.message.domain.social.model.FriendDisplay;
 import com.co.kc.imchat.service.message.domain.social.model.GroupMessageRecipient;
 import com.co.kc.imchat.service.message.domain.social.model.GroupSummary;
+import com.co.kc.imchat.service.message.domain.chat.model.ImChatView;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
 import com.co.kc.imchat.service.message.adapter.social.SocialAdapter;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionCallback;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -64,6 +68,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GroupChatAppServiceTest {
+
+    private static TransactionOperations testTransactionOperations() {
+        return new TransactionOperations() {
+            @Override
+            public <T> T execute(TransactionCallback<T> action) {
+                return action.doInTransaction(null);
+            }
+        };
+    }
 
     @Test
     void sendGroupMessageRejectsChatIdOwnedByAnotherMember() {
@@ -164,7 +177,8 @@ class GroupChatAppServiceTest {
                 new ImChatService(null, groupChatRepository, null),
                 new TestSocialAdapter(groupRepository, groupMemberRepository, groupChatRepository),
                 null,
-                null);
+                null,
+                presenceService());
 
         appService.hideGroupChat(new GroupChatHideCmd(1L, 101L));
 
@@ -259,6 +273,27 @@ class GroupChatAppServiceTest {
     }
 
     @Test
+    void sendGroupMessageDoesNotIncreaseUnreadForViewedReceiverChat() {
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
+        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        MemoryGroupInboxRepository inboxRepository = new MemoryGroupInboxRepository();
+
+        GroupMessageAppService appService = groupMessageAppService(
+                groupChatRepository, groupMemberRepository, inboxRepository,
+                normalGroupRepository(1001L), new NoopDomainEventPublisher(), viewingPresenceService(2L, 102L));
+
+        appService.sendMessage(groupMessageSendCmd(101L, 1L));
+
+        ImGroupChat receiverChat = groupChatRepository.findSavedByUserId(2L);
+        assertThat(receiverChat.getUnreadMessageCount()).isZero();
+        assertThat(receiverChat.getReadMessageId().value()).isEqualTo(900L);
+    }
+
+    @Test
     void sendGroupMessageRejectsDismissedGroup() {
         MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
         groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
@@ -312,13 +347,14 @@ class GroupChatAppServiceTest {
         GroupMessageAppService appService = new GroupMessageAppService(
                 groupChatRepository,
                 null,
-                new TestAccountAdapter(false),
+                presenceService(),
                 new TestSocialAdapter(new MemoryGroupRepository(), groupMemberRepository, groupChatRepository),
                 null,
                 new ImChatService(null, groupChatRepository, null),
                 null,
                 notifierInvoker,
-                null);
+                null,
+                testTransactionOperations());
         ImGroupMessageSentEvent event = new ImGroupMessageSentEvent();
         event.setGroupId(1001L);
         event.setSenderId(1L);
@@ -355,7 +391,8 @@ class GroupChatAppServiceTest {
                 new ImChatService(null, groupChatRepository, null),
                 null,
                 notifierInvoker,
-                null);
+                null,
+                testTransactionOperations());
         ImGroupMessageRevokedEvent event = new ImGroupMessageRevokedEvent();
         event.setGroupId(1001L);
         event.setSenderId(1L);
@@ -827,7 +864,25 @@ class GroupChatAppServiceTest {
                 new ImChatService(null, null, null),
                 new TestSocialAdapter(groupRepository, groupMemberRepository, groupChatRepository),
                 new ImMessageService(inboxRepository, null, null),
-                null);
+                null,
+                presenceService());
+    }
+
+    private ImChatViewRepository presenceService() {
+        return new ImChatViewRepository() {
+            @Override
+            public void save(ImChatView presence) {
+            }
+
+            @Override
+            public void clear(UserId userId) {
+            }
+
+            @Override
+            public java.util.Optional<ImChatView> find(UserId userId) {
+                return java.util.Optional.empty();
+            }
+        };
     }
 
     private GroupMessageAppService groupMessageAppService(MemoryGroupChatRepository groupChatRepository,
@@ -843,16 +898,47 @@ class GroupChatAppServiceTest {
                                                           MemoryGroupInboxRepository inboxRepository,
                                                           MemoryGroupRepository groupRepository,
                                                           DomainEventPublisher eventPublisher) {
+        return groupMessageAppService(groupChatRepository, groupMemberRepository, inboxRepository,
+                groupRepository, eventPublisher, presenceService());
+    }
+
+    private GroupMessageAppService groupMessageAppService(MemoryGroupChatRepository groupChatRepository,
+                                                          MemoryGroupMemberRepository groupMemberRepository,
+                                                          MemoryGroupInboxRepository inboxRepository,
+                                                          MemoryGroupRepository groupRepository,
+                                                          DomainEventPublisher eventPublisher,
+                                                          ImChatViewRepository presenceService) {
         return new GroupMessageAppService(
                 groupChatRepository,
                 inboxRepository,
-                new TestAccountAdapter(false),
+                presenceService,
                 new TestSocialAdapter(groupRepository, groupMemberRepository, groupChatRepository),
                 new ImMessageService(inboxRepository, null, new FixedSnowflakeId(1L)),
                 new ImChatService(null, groupChatRepository, null),
                 new FixedSnowflakeId(900L),
                 null,
-                eventPublisher);
+                eventPublisher,
+                testTransactionOperations());
+    }
+
+    private ImChatViewRepository viewingPresenceService(Long userId, Long chatId) {
+        return new ImChatViewRepository() {
+            @Override
+            public void save(ImChatView presence) {
+            }
+
+            @Override
+            public void clear(UserId ignored) {
+            }
+
+            @Override
+            public java.util.Optional<ImChatView> find(UserId currentUserId) {
+                return new UserId(userId).equals(currentUserId)
+                        ? java.util.Optional.of(new ImChatView(
+                        new UserId(userId), new ImChatId(chatId)))
+                        : java.util.Optional.empty();
+            }
+        };
     }
 
     private GroupMessageSendCmd groupMessageSendCmd(Long chatId, Long senderId) {
@@ -930,41 +1016,6 @@ class GroupChatAppServiceTest {
         @Override
         public void publish(List<DomainEvent> eventList) {
             events.addAll(eventList);
-        }
-    }
-
-    private static class TestAccountAdapter extends AccountAdapter {
-        private final boolean chatting;
-        private final List<Long> onlineUserIds;
-
-        TestAccountAdapter(boolean chatting, Long... onlineUserIds) {
-            super(unusedRemoteService(com.co.kc.imchat.service.account.facade.AccountService.class),
-                    unusedRemoteService(com.co.kc.imchat.service.account.facade.AccountSessionService.class));
-            this.chatting = chatting;
-            this.onlineUserIds = List.of(onlineUserIds);
-        }
-
-        @Override
-        public com.co.kc.imchat.service.message.domain.account.model.AuthenticatedUser authenticate(String token) {
-            return null;
-        }
-
-        @Override
-        public void enterChat(Long userId, Long chatId) {
-        }
-
-        @Override
-        public void exitChat(Long userId) {
-        }
-
-        @Override
-        public boolean isOnline(Long userId) {
-            return onlineUserIds.contains(userId);
-        }
-
-        @Override
-        public boolean isChatting(Long userId, Long chatId) {
-            return chatting;
         }
     }
 

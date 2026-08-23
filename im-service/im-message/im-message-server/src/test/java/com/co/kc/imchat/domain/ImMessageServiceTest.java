@@ -1,7 +1,7 @@
 package com.co.kc.imchat.common.domain;
 
 import com.co.kc.imchat.service.message.domain.chat.model.GroupChatMembership;
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatType;
 import com.co.kc.imchat.service.message.domain.chat.model.ImGroupChat;
 import com.co.kc.imchat.common.domain.group.model.GroupId;
@@ -101,7 +101,7 @@ class ImMessageServiceTest {
     }
 
     @Test
-    void buildGroupInboxMessageKeepsReceiverSentEvenWhenReceiverIsChatting() {
+    void buildGroupInboxMessageMarksReceiverReadWhenReceiverIsChatting() {
         ImMessageService service = new ImMessageService(null, null, new FixedSnowflakeId(1L));
         UserId senderId = new UserId(1L);
         ImGroupChat senderChat = groupChat(101L, 1001L, 1L);
@@ -121,11 +121,11 @@ class ImMessageServiceTest {
                 .filter(message -> message.getUserId().equals(new UserId(2L)))
                 .findFirst()
                 .orElseThrow(AssertionError::new);
-        assertThat(receiverMessage.getStatus()).isEqualTo(ImGroupMessageStatus.SENT);
-        assertThat(receiverMessage.getReceivedTime()).isNull();
-        assertThat(receiverMessage.getReadTime()).isNull();
-        assertThat(receiverChat.getUnreadMessageCount()).isEqualTo(1);
-        assertThat(receiverChat.getReadMessageId()).isNull();
+        assertThat(receiverMessage.getStatus()).isEqualTo(ImGroupMessageStatus.READ);
+        assertThat(receiverMessage.getReceivedTime()).isNotNull();
+        assertThat(receiverMessage.getReadTime()).isNotNull();
+        assertThat(receiverChat.getUnreadMessageCount()).isZero();
+        assertThat(receiverChat.getReadMessageId()).isEqualTo(new ImMessageId(900L));
     }
 
     @Test

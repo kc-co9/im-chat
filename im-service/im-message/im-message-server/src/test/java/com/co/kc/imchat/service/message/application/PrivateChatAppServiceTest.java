@@ -1,6 +1,6 @@
 package com.co.kc.imchat.service.message.application;
 
-import com.co.kc.imchat.service.message.domain.chat.model.ImChatId;
+import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.service.ImChatService;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatStatus;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatType;
@@ -41,9 +41,10 @@ import com.co.kc.imchat.service.message.application.notification.task.ReceiptTas
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.exception.RepeatException;
 import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
-import com.co.kc.imchat.service.message.adapter.account.AccountAdapter;
 import com.co.kc.imchat.service.message.domain.social.model.FriendDisplay;
 import com.co.kc.imchat.service.message.domain.social.model.GroupMessageRecipient;
+import com.co.kc.imchat.service.message.domain.chat.model.ImChatView;
+import com.co.kc.imchat.service.message.domain.chat.repository.ImChatViewRepository;
 import com.co.kc.imchat.service.message.domain.social.model.GroupSummary;
 import com.co.kc.imchat.service.message.adapter.social.SocialAdapter;
 import com.co.kc.imchat.service.message.application.lock.ImMessageLockScene;
@@ -51,6 +52,8 @@ import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionCallback;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -68,6 +71,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PrivateChatAppServiceTest {
 
+    private static TransactionOperations testTransactionOperations() {
+        return new TransactionOperations() {
+            @Override
+            public <T> T execute(TransactionCallback<T> action) {
+                return action.doInTransaction(null);
+            }
+        };
+    }
+
     @Test
     void openPrivateChatUsesStableUserPairLockKey() throws NoSuchMethodException {
         Method method = ChatAppService.class.getMethod("openPrivateChat", ImPrivateChatOpenCmd.class);
@@ -83,6 +95,8 @@ class PrivateChatAppServiceTest {
         MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
         ImPrivateChat userChat = privateChat(101L, 1L, 2L);
         userChat.hide();
+        userChat.setLastMessageId(new ImMessageId(900L));
+        userChat.setUnreadMessageCount(3);
         ImPrivateChat peerChat = privateChat(102L, 2L, 1L);
         peerChat.hide();
         privateChatRepository.chats.add(userChat);
@@ -94,7 +108,8 @@ class PrivateChatAppServiceTest {
                 new ImChatService(privateChatRepository, null, null),
                 new TestSocialAdapter(new NormalFriendRepository(), null, null, null),
                 null,
-                null);
+                null,
+                presenceService());
         ImPrivateChatOpenCmd command = new ImPrivateChatOpenCmd(1L, 2L);
 
         ImPrivateChatOpenDTO result = appService.openPrivateChat(command);
@@ -105,6 +120,8 @@ class PrivateChatAppServiceTest {
         assertThat(privateChatRepository.savedChats).containsExactly(userChat);
         assertThat(userChat.getStatus()).isEqualTo(ImChatStatus.NORMAL);
         assertThat(userChat.getActiveTime()).isNotNull();
+        assertThat(userChat.getReadMessageId()).isEqualTo(new ImMessageId(900L));
+        assertThat(userChat.getUnreadMessageCount()).isZero();
         assertThat(peerChat.getStatus()).isEqualTo(ImChatStatus.HIDDEN);
     }
 
@@ -118,7 +135,8 @@ class PrivateChatAppServiceTest {
                 new ImChatService(privateChatRepository, null, null),
                 new TestSocialAdapter(new NormalFriendRepository(), null, null, null),
                 null,
-                null);
+                null,
+                presenceService());
 
         assertThatThrownBy(() -> appService.openPrivateChat(new ImPrivateChatOpenCmd(1L, 2L)))
                 .isInstanceOf(NotFoundException.class)
@@ -136,7 +154,8 @@ class PrivateChatAppServiceTest {
                 new ImChatService(privateChatRepository, null, null),
                 new TestSocialAdapter(new OneWayNormalFriendRepository(1L, 2L), null, null, null),
                 null,
-                null);
+                null,
+                presenceService());
 
         assertThatThrownBy(() -> appService.openPrivateChat(new ImPrivateChatOpenCmd(1L, 2L)))
                 .isInstanceOf(NotFoundException.class)
@@ -161,7 +180,8 @@ class PrivateChatAppServiceTest {
                 new ImChatService(privateChatRepository, null, null),
                 new TestSocialAdapter(new NormalFriendRepository(), null, null, null),
                 null,
-                null);
+                null,
+                presenceService());
 
         ImPrivateChatOpenDTO result = appService.openPrivateChat(new ImPrivateChatOpenCmd(1L, 2L));
 
@@ -185,7 +205,8 @@ class PrivateChatAppServiceTest {
                 new ImChatService(privateChatRepository, null, null),
                 new TestSocialAdapter(null, null, null, null),
                 null,
-                null);
+                null,
+                presenceService());
 
         appService.hidePrivateChat(new PrivateChatHideCmd(1L, 101L));
 
@@ -218,12 +239,50 @@ class PrivateChatAppServiceTest {
                 new ImChatService(null, groupChatRepository, null),
                 new TestSocialAdapter(null, groupRepository, groupMemberRepository, groupChatRepository),
                 null,
-                null);
+                null,
+                presenceService());
 
         appService.changeGroupAlias(new GroupAliasChangeCmd(1L, 201L, "work"));
 
         assertThat(groupChatRepository.savedGroupChats).containsExactly(userChat);
         assertThat(userChat.getGroupAlias().value()).isEqualTo("work");
+    }
+
+    private ImChatViewRepository presenceService() {
+        return new ImChatViewRepository() {
+            @Override
+            public void save(ImChatView presence) {
+            }
+
+            @Override
+            public void clear(UserId userId) {
+            }
+
+            @Override
+            public java.util.Optional<ImChatView> find(UserId userId) {
+                return java.util.Optional.empty();
+            }
+        };
+    }
+
+    private ImChatViewRepository viewingPresenceService(UserId userId, Long chatId) {
+        return new ImChatViewRepository() {
+            @Override
+            public void save(ImChatView presence) {
+            }
+
+            @Override
+            public void clear(UserId ignored) {
+            }
+
+            @Override
+            public java.util.Optional<ImChatView> find(UserId currentUserId) {
+                return userId.equals(currentUserId)
+                        ? java.util.Optional.of(new ImChatView(
+                        userId, new ImChatId(chatId)))
+                        : java.util.Optional.empty();
+            }
+        };
     }
 
     @Test
@@ -245,7 +304,8 @@ class PrivateChatAppServiceTest {
                 null,
                 new FixedSnowflakeId(900L),
                 null,
-                new MemoryDomainEventPublisher());
+                new MemoryDomainEventPublisher(),
+                testTransactionOperations());
 
         ImPrivateMessageRevokeCmd command = new ImPrivateMessageRevokeCmd(1L, 101L, 900L);
 
@@ -277,7 +337,8 @@ class PrivateChatAppServiceTest {
                 null,
                 new FixedSnowflakeId(900L),
                 null,
-                new MemoryDomainEventPublisher());
+                new MemoryDomainEventPublisher(),
+                testTransactionOperations());
 
         List<ImPrivateMessageDTO> messages = appService.queryHistoryMessage(
                 new ImPrivateMessageHistoryQuery(101L, 1L, null, 20));
@@ -308,7 +369,8 @@ class PrivateChatAppServiceTest {
                 null,
                 new FixedSnowflakeId(900L),
                 null,
-                eventPublisher);
+                eventPublisher,
+                testTransactionOperations());
 
         appService.readMessage(new ImPrivateMessageReadCmd(102L, 2L, 900L));
 
@@ -340,7 +402,8 @@ class PrivateChatAppServiceTest {
                 null,
                 new FixedSnowflakeId(900L),
                 null,
-                eventPublisher);
+                eventPublisher,
+                testTransactionOperations());
 
         appService.receiveMessage(new ImPrivateMessageReceiveCmd(2L, 102L, 900L));
 
@@ -363,13 +426,14 @@ class PrivateChatAppServiceTest {
         PrivateMessageAppService appService = new PrivateMessageAppService(
                 privateChatRepository,
                 inboxRepository,
-                new TestAccountAdapter(false),
+                presenceService(),
                 new ImChatService(privateChatRepository, null, null),
                 new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
                 new TestSocialAdapter(new NormalFriendRepository(), null, null, null),
                 new FixedSnowflakeId(900L),
                 notifierInvoker,
-                eventPublisher);
+                eventPublisher,
+                testTransactionOperations());
 
         appService.sendMessage(privateMessageSendCmd(101L, 1L));
         appService.onMessageSent((ImPrivateMessageSentEvent) eventPublisher.events.getFirst());
@@ -386,6 +450,34 @@ class PrivateChatAppServiceTest {
     }
 
     @Test
+    void sendPrivateMessageDoesNotIncreaseUnreadForViewedReceiverChat() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                privateChatRepository,
+                inboxRepository,
+                viewingPresenceService(new UserId(2L), 102L),
+                new ImChatService(privateChatRepository, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                new TestSocialAdapter(new NormalFriendRepository(), null, null, null),
+                new FixedSnowflakeId(900L),
+                new RecordingNotifierInvoker(),
+                eventPublisher,
+                testTransactionOperations());
+
+        appService.sendMessage(privateMessageSendCmd(101L, 1L));
+
+        ImPrivateChat receiverChat = privateChatRepository.savedChats.stream()
+                .filter(chat -> chat.belongsTo(new UserId(2L)))
+                .findFirst()
+                .orElseThrow(AssertionError::new);
+        assertThat(receiverChat.getUnreadMessageCount()).isZero();
+    }
+
+    @Test
     void sendPrivateMessageRejectsDuplicateTokenBeforeSavingMessages() {
         MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
         privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
@@ -397,41 +489,18 @@ class PrivateChatAppServiceTest {
         PrivateMessageAppService appService = new PrivateMessageAppService(
                 privateChatRepository,
                 inboxRepository,
-                new TestAccountAdapter(false, 2L),
+                presenceService(),
                 new ImChatService(privateChatRepository, null, null),
                 new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
                 new TestSocialAdapter(new NormalFriendRepository(), null, null, null),
                 new FixedSnowflakeId(900L),
                 new RecordingNotifierInvoker(),
-                new MemoryDomainEventPublisher());
+                new MemoryDomainEventPublisher(),
+                testTransactionOperations());
 
         assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
                 .isInstanceOf(RepeatException.class)
                 .hasMessageContaining("消息已存在");
-        assertThat(inboxRepository.savedMessages).isEmpty();
-        assertThat(privateChatRepository.savedChats).isEmpty();
-    }
-
-    @Test
-    void sendPrivateMessageChecksReceiverChattingBeforeSavingMessages() {
-        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
-        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
-        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
-        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
-        PrivateMessageAppService appService = new PrivateMessageAppService(
-                privateChatRepository,
-                inboxRepository,
-                new ChattingFailureAccountAdapter(),
-                new ImChatService(privateChatRepository, null, null),
-                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
-                new TestSocialAdapter(new NormalFriendRepository(), null, null, null),
-                new FixedSnowflakeId(900L),
-                new RecordingNotifierInvoker(),
-                new MemoryDomainEventPublisher());
-
-        assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("session unavailable");
         assertThat(inboxRepository.savedMessages).isEmpty();
         assertThat(privateChatRepository.savedChats).isEmpty();
     }
@@ -449,13 +518,14 @@ class PrivateChatAppServiceTest {
         PrivateMessageAppService appService = new PrivateMessageAppService(
                 null,
                 null,
-                new TestAccountAdapter(false),
+                presenceService(),
                 null,
                 null,
                 null,
                 null,
                 notifierInvoker,
-                null);
+                null,
+                testTransactionOperations());
         ImPrivateMessageSentEvent event = new ImPrivateMessageSentEvent();
         event.setReceiverId(2L);
         event.setReceiverChatId(102L);
@@ -487,7 +557,8 @@ class PrivateChatAppServiceTest {
                 null,
                 null,
                 null,
-                null);
+                null,
+                testTransactionOperations());
 
         ImPrivateMessageDTO detail = appService.queryMessageDetail(
                 new ImPrivateMessageDetailQuery(102L, 2L, "token-1"));
@@ -510,7 +581,8 @@ class PrivateChatAppServiceTest {
                 null,
                 null,
                 notifierInvoker,
-                null);
+                null,
+                testTransactionOperations());
         com.co.kc.imchat.service.message.domain.message.event.ImPrivateMessageRevokedEvent event =
                 new com.co.kc.imchat.service.message.domain.message.event.ImPrivateMessageRevokedEvent();
         event.setReceiverId(2L);
@@ -533,13 +605,14 @@ class PrivateChatAppServiceTest {
         PrivateMessageAppService appService = new PrivateMessageAppService(
                 privateChatRepository,
                 inboxRepository,
-                new TestAccountAdapter(false, 2L),
+                presenceService(),
                 new ImChatService(privateChatRepository, null, null),
                 new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
                 new TestSocialAdapter(new MissingFriendRepository(), null, null, null),
                 new FixedSnowflakeId(900L),
                 new RecordingNotifierInvoker(),
-                new MemoryDomainEventPublisher());
+                new MemoryDomainEventPublisher(),
+                testTransactionOperations());
 
         assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
                 .isInstanceOf(NotFoundException.class)
@@ -556,13 +629,14 @@ class PrivateChatAppServiceTest {
         PrivateMessageAppService appService = new PrivateMessageAppService(
                 privateChatRepository,
                 inboxRepository,
-                new TestAccountAdapter(false, 2L),
+                presenceService(),
                 new ImChatService(privateChatRepository, null, null),
                 new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
                 new TestSocialAdapter(new OneWayNormalFriendRepository(1L, 2L), null, null, null),
                 new FixedSnowflakeId(900L),
                 new RecordingNotifierInvoker(),
-                new MemoryDomainEventPublisher());
+                new MemoryDomainEventPublisher(),
+                testTransactionOperations());
 
         assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
                 .isInstanceOf(NotFoundException.class)
@@ -929,52 +1003,6 @@ class PrivateChatAppServiceTest {
         @Override
         public void publish(List<DomainEvent> eventList) {
             events.addAll(eventList);
-        }
-    }
-
-    private static class TestAccountAdapter extends AccountAdapter {
-        private final boolean chatting;
-        private final Set<Long> onlineUserIds;
-
-        TestAccountAdapter(boolean chatting, Long... onlineUserIds) {
-            super(unusedRemoteService(com.co.kc.imchat.service.account.facade.AccountService.class),
-                    unusedRemoteService(com.co.kc.imchat.service.account.facade.AccountSessionService.class));
-            this.chatting = chatting;
-            this.onlineUserIds = Set.of(onlineUserIds);
-        }
-
-        @Override
-        public com.co.kc.imchat.service.message.domain.account.model.AuthenticatedUser authenticate(String token) {
-            return null;
-        }
-
-        @Override
-        public void enterChat(Long userId, Long chatId) {
-        }
-
-        @Override
-        public void exitChat(Long userId) {
-        }
-
-        @Override
-        public boolean isOnline(Long userId) {
-            return onlineUserIds.contains(userId);
-        }
-
-        @Override
-        public boolean isChatting(Long userId, Long chatId) {
-            return chatting;
-        }
-    }
-
-    private static class ChattingFailureAccountAdapter extends TestAccountAdapter {
-        ChattingFailureAccountAdapter() {
-            super(false, 2L);
-        }
-
-        @Override
-        public boolean isChatting(Long userId, Long chatId) {
-            throw new IllegalStateException("session unavailable");
         }
     }
 
