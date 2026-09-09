@@ -3,17 +3,31 @@ server:
   servlet:
     context-path: /account
 
+springdoc:
+  swagger-ui:
+    path: /api/doc.html
+  api-docs:
+    path: /v3/api-docs
+
 im:
+  identity:
+    snowflake:
+      mode: STATIC
+      data-center-id: 1
+      machine-id: 1
   bolt:
     client:
       enabled: true
   session:
+    web:
+      public-paths:
+        - /user/signUp
+        - /user/signIn
+        - /user/refreshToken
     jwt:
       enabled: true
       secret: 65fe0d3158a24a4f9524b7d7e0d4821d9571a8ed5d7da588f715a46a96531b7783a27152ca4b2219835cf0b266ab9fe1d3d5b1c7e37a4481674233894ed40acf
   account:
-    provider:
-      enabled: true
     broker:
       timeout-millis: 3000
 
@@ -24,7 +38,7 @@ spring:
     import:
       - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.service-group:SERVICE_GROUP}
   datasource:
-    url: jdbc:mysql://localhost:3306/im_chat?characterEncoding=utf-8&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/im_chat_account?characterEncoding=utf-8&serverTimezone=UTC
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver

@@ -1,5 +1,9 @@
 # IM Module Split Design
 
+> SQL layout note (2026-09-07): the original repository-root SQL layout below has been superseded.
+> Deployable Server modules now own `sql/ddl.sql` beside their source tree, matching their independent
+> database ownership. Current rules are defined by `ARCHITECTURE.md` and `docs/references/SQL_GUIDE.md`.
+
 ## Background
 
 The project is currently a single Maven module. Packages already roughly follow DDD layers, but all code, dependencies, resources, and tests are built as one artifact. This makes the project feel bulky and does not enforce layer boundaries at compile time.

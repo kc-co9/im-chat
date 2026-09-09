@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -17,6 +16,6 @@ public class FriendListResponse {
     public static class FriendItem {
         private Long userId;
         private String displayName;
-        private LocalDateTime createTime;
+        private Long createTime;
     }
 }

@@ -21,7 +21,7 @@ import com.co.kc.imchat.service.message.domain.message.repository.ImPrivateInbox
 import com.co.kc.imchat.service.message.domain.message.model.ImPrivateMessageStatus;
 import com.co.kc.imchat.common.domain.shared.event.DomainEvent;
 import com.co.kc.imchat.common.domain.user.model.UserId;
-import com.co.kc.imchat.common.identity.snowflake.ISnowflakeMachineId;
+import com.co.kc.imchat.plugin.identity.snowflake.ISnowflakeMachineId;
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.ImPrivateChatOpenCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.GroupAliasChangeCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.PrivateChatHideCmd;
@@ -40,7 +40,7 @@ import com.co.kc.imchat.service.message.application.notification.confirmable.ImM
 import com.co.kc.imchat.service.message.application.notification.task.ReceiptTask;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.exception.RepeatException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.service.message.domain.social.model.FriendDisplay;
 import com.co.kc.imchat.service.message.domain.social.model.GroupMessageRecipient;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatView;

@@ -2,7 +2,6 @@ package com.co.kc.imchat.service.social.application;
 
 import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.service.social.facade.dto.FriendDisplayDTO;
-import com.co.kc.imchat.service.social.facade.dto.FriendDisplaysDTO;
 import com.co.kc.imchat.service.social.facade.dto.FriendRelationCheckDTO;
 import com.co.kc.imchat.service.social.facade.params.FriendDisplaysGetParams;
 import com.co.kc.imchat.service.social.facade.params.FriendRelationCheckParams;
@@ -16,6 +15,7 @@ import com.co.kc.imchat.service.social.domain.friend.model.Friend;
 import com.co.kc.imchat.service.social.domain.friend.repository.FriendRepository;
 import com.co.kc.imchat.service.social.domain.friend.service.FriendService;
 import com.co.kc.imchat.common.domain.user.model.UserId;
+import com.co.kc.imchat.service.social.domain.friend.model.FriendProfile;
 import com.co.kc.imchat.service.social.model.cqrs.command.friend.FriendAddCmd;
 import com.co.kc.imchat.service.social.model.cqrs.command.friend.FriendBlockCmd;
 import com.co.kc.imchat.service.social.model.cqrs.command.friend.FriendDeleteCmd;
@@ -35,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @RequiredArgsConstructor
 public class FriendAppService {
@@ -110,7 +111,12 @@ public class FriendAppService {
     public List<FriendItemDTO> getFriendList(FriendListQuery query) {
         UserId userId = new UserId(query.userId());
         List<Friend> friends = friendRepository.find(userId);
-        return FriendAppTransformer.INSTANCE.friendItemListFrom(friends);
+
+        List<UserId> friendUserIds = FunctionUtils.mappingList(friends, Friend::getFriendUserId);
+        Map<UserId, UserProfile> friendUserProfiles = accountAdapter.findUserProfiles(friendUserIds);
+
+        List<FriendProfile> profiles = friendService.describeFriends(friends, friendUserProfiles);
+        return FriendAppTransformer.INSTANCE.friendItemListFrom(profiles);
     }
 
     public FriendRelationCheckDTO checkFriendRelation(FriendRelationCheckParams params) {
@@ -121,13 +127,20 @@ public class FriendAppService {
         return FriendAppTransformer.INSTANCE.friendRelationCheckDtoFrom(active);
     }
 
-    public FriendDisplaysDTO getFriendDisplays(FriendDisplaysGetParams params) {
+    public List<FriendDisplayDTO> getFriendDisplays(FriendDisplaysGetParams params) {
         UserId userId = new UserId(params.userId());
         List<UserId> friendUserIds = FunctionUtils.mappingList(params.friendUserIds(), UserId::new);
-        List<FriendDisplayDTO> friends = friendRepository.find(userId, friendUserIds).stream()
+
+        List<Friend> friends = friendRepository.find(userId, friendUserIds);
+
+        List<UserId> profileUserIds = FunctionUtils.mappingDistinctList(friends, Friend::getFriendUserId);
+        Map<UserId, UserProfile> friendUserProfiles = accountAdapter.findUserProfiles(profileUserIds);
+
+        List<FriendProfile> profiles = friendService.describeFriends(friends, friendUserProfiles);
+
+        return profiles.stream()
                 .map(FriendAppTransformer.INSTANCE::friendDisplayDtoFrom)
                 .toList();
-        return FriendAppTransformer.INSTANCE.friendDisplaysDtoFrom(friends);
     }
 
     public FriendDetailDTO getFriendDetail(FriendDetailQuery query) {
@@ -146,4 +159,5 @@ public class FriendAppService {
                 .map(Collections::singletonList)
                 .orElse(Collections.emptyList());
     }
+
 }

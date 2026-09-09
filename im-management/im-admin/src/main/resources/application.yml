@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: im-admin
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
+  cloud:
+    stream:
+      bindings:
+        auditOutput:
+          destination: im.audit.im-admin.v1
+
+server:
+  port: 18093
+
+springdoc:
+  swagger-ui:
+    path: /api/doc.html
+  api-docs:
+    path: /v3/api-docs
+
+im:
+  audit:
+    enabled: true
+    transport: kafka
+    kafka:
+      binding-name: auditOutput
+  iam:
+    enabled: true
+    issuer: http://localhost:18090
+    application:
+      key: imAdmin
+      clients:
+        web:
+          client-id: im-admin-client
+          client-secret: 06e6bfa85f595ea868245a6671d5b33b2d30d26b38cc391f
+          redirect-uri: http://localhost:18093/iam/callback
+          post-logout-redirect-uri: http://localhost:18093/
+        catalog:
+          client-id: im-admin-catalog
+          client-secret: 43d17a77e0c14443a00a4c73e47a166a88b246df91e243a9
+      session:
+        encryption-key: xUjxxThqasTnHzN6Pbu7YNErDqBTQKCFVUKPTgsXZNM=
+        secure-cookie: false

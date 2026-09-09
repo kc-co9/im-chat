@@ -6,7 +6,6 @@ import com.co.kc.imchat.service.social.domain.friend.model.Friend;
 import com.co.kc.imchat.service.social.domain.group.model.Group;
 import com.co.kc.imchat.service.social.domain.group.model.GroupMember;
 import com.co.kc.imchat.service.social.infrastructure.support.constant.SocialCacheNames;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -17,7 +16,6 @@ import java.time.temporal.ChronoUnit;
  * 社交缓存配置。
  */
 @Configuration
-@ConditionalOnProperty(prefix = "im.social.provider", name = "enabled", havingValue = "true")
 public class CacheConfig {
 
     @Bean

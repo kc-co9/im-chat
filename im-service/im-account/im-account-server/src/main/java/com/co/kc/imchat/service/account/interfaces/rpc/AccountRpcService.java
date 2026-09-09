@@ -9,13 +9,14 @@ import com.co.kc.imchat.service.account.facade.dto.UserProfileFindDTO;
 import com.co.kc.imchat.service.account.facade.params.AccessTokenParams;
 import com.co.kc.imchat.service.account.facade.params.UserProfileFindParams;
 import com.co.kc.imchat.service.account.facade.params.UserProfileGetParams;
+import com.co.kc.imchat.service.account.facade.params.UserProfilesGetParams;
 import org.apache.dubbo.config.annotation.DubboService;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Component
 @DubboService(interfaceClass = AccountService.class, version = "1.0.0")
-@ConditionalOnProperty(prefix = "im.account.provider", name = "enabled", havingValue = "true")
 public class AccountRpcService implements AccountService {
     private final SessionAppService sessionAppService;
     private final UserAppService userAppService;
@@ -33,6 +34,11 @@ public class AccountRpcService implements AccountService {
     @Override
     public UserProfileDTO getUserProfile(UserProfileGetParams params) {
         return userAppService.getUserProfile(params);
+    }
+
+    @Override
+    public List<UserProfileDTO> getUserProfiles(UserProfilesGetParams params) {
+        return userAppService.getUserProfiles(params);
     }
 
     @Override

@@ -24,6 +24,7 @@ class WsConfigTest {
         assertThat(environment.getProperty("im.gateway.ws.broker.bolt.load-balance")).isEqualTo("HASH");
         assertThat(environment.getProperty("im.bolt.client.enabled", Boolean.class)).isTrue();
         assertThat(environment.getProperty("im.bolt.server.enabled", Boolean.class)).isTrue();
+        assertThat(environment.getProperty("im.bolt.server.port", Integer.class)).isEqualTo(12202);
         assertThat(environment.getProperty("spring.config.import[0]"))
                 .isEqualTo("optional:nacos:im-ws-gateway.yml?group=INFRA_GROUP");
     }
@@ -60,14 +61,13 @@ class WsConfigTest {
                 .orElseThrow(() -> new IllegalStateException("WS 网关配置绑定失败"));
 
         assertThat(properties.getPort()).isEqualTo(19090);
-        assertThat(properties.gatewayId(12201)).isEqualTo("gateway-127.0.0.1-12201");
+        assertThat(properties.gatewayId(12202)).isEqualTo("gateway-127.0.0.1-12202");
         assertThat(properties.getPath()).isEqualTo("/ws");
         assertThat(properties.getMaxFramePayloadLength()).isEqualTo(65536);
         assertThat(properties.getIdle().getReaderIdleSeconds()).isEqualTo(60);
         assertThat(properties.getBolt().getHost()).isEqualTo("127.0.0.1");
         assertThat(properties.getBroker().getBolt().getLoadBalance()).isEqualTo(BrokerLoadBalance.HASH);
         assertThat(properties.getBroker().getBolt().getTimeoutMillis()).isEqualTo(3000);
-        assertThat(properties.getRegister().isEnabled()).isTrue();
     }
 
     @Test

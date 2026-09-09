@@ -7,6 +7,8 @@ cd "$ROOT_DIR"
 
 bash "$ROOT_DIR/scripts/test-sql-harness.sh"
 bash "$ROOT_DIR/scripts/test-java-style-harness.sh"
+bash "$ROOT_DIR/scripts/test-management-ui-harness.sh"
+bash "$ROOT_DIR/scripts/check-management-ui.sh"
 
 space_fixture="$(mktemp -d)/repository with spaces"
 ln -s "$ROOT_DIR" "$space_fixture"
@@ -31,6 +33,16 @@ assert_impact "im-broker/im-broker-server,im-architecture" \
   "im-broker/im-broker-server/src/main/java/example.java"
 assert_impact "im-plugin/im-gossip,im-architecture" \
   "im-plugin/im-gossip/src/main/java/example.java"
+assert_impact "im-plugin/im-mq-kafka,im-architecture" \
+  "im-plugin/im-mq/src/main/java/example.java"
+assert_impact "im-management/im-monitor,im-architecture" \
+  "im-management/im-monitor/src/main/java/example.java"
+assert_impact "im-management/im-admin,im-architecture" \
+  "im-management/im-admin/README.md"
+assert_impact "im-service/im-account/im-account-admin-facade,im-service/im-account/im-account-server,im-management/im-admin,im-architecture" \
+  "im-service/im-account/im-account-admin-facade/src/main/java/example.java"
+assert_impact "im-management/im-iam/im-iam-server,im-management/im-admin,im-management/im-monitor,im-management/im-audit/im-audit-server,im-architecture" \
+  "im-management/pom.xml"
 assert_impact all "im-common/src/main/java/example.java"
 
 # A failed verification must still leave machine-readable evidence.

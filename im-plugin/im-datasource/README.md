@@ -4,7 +4,7 @@
 
 ## 主要内容
 
-- `BaseEntity`、`BaseMybatisService`：持久化基础类型。
+- `BaseEntity`、`BaseMybatisService`：持久化基础类型；所有 MyBatis Entity 通过 `BaseEntity` 统一复用自增主键、`Instant` 创建/更新时间和逻辑删除字段。
 - `AfterTransactionCommit` 及其切面/模板：事务成功提交后执行动作。
 - `ImShardingSphereProperties`：`im.sharding-sphere` 配置绑定。
 
@@ -14,6 +14,7 @@
 
 - `AfterTransactionCommit` 通过 AOP 与 Spring 事务同步机制保证动作只在事务成功后执行。
 - MyBatis 基础类型只统一通用持久化行为，不向领域层暴露数据库实体。
+- MyBatis-Plus JSON TypeHandler 复用应用统一 `ObjectMapper`，支持 `Instant` 等 Java Time 类型。
 - ShardingSphere 只提供配置绑定，实际分片规则必须由拥有数据的服务维护。
 
 ```bash

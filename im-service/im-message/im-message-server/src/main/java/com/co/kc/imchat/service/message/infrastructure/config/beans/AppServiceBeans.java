@@ -7,7 +7,7 @@ import com.co.kc.imchat.service.message.application.PrivateMessageAppService;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
 import com.co.kc.imchat.service.message.application.notification.confirmable.ImMessageConfirmableService;
 import com.co.kc.imchat.service.message.application.notification.receiver.NotificationAckReceiver;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImGroupChatRepository;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImPrivateChatRepository;

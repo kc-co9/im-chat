@@ -37,7 +37,7 @@ class AppServiceBeansTest {
                 com.co.kc.imchat.service.social.domain.group.service.GroupService.class,
                 com.co.kc.imchat.service.social.adapter.account.AccountAdapter.class,
                 com.co.kc.imchat.service.social.adapter.message.MessageSocialAdapter.class,
-                com.co.kc.imchat.common.identity.snowflake.SnowflakeId.class,
+                com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId.class,
                 com.co.kc.imchat.plugin.datasource.transaction.AfterTransactionCommitTemplate.class);
 
         assertThat(friendMethod.getReturnType()).isEqualTo(com.co.kc.imchat.service.social.application.FriendAppService.class);

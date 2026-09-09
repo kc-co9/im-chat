@@ -9,7 +9,6 @@ import com.co.kc.imchat.plugin.gossip.sync.GossipSynchronizer;
 import com.co.kc.imchat.service.message.facade.MessageService;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -40,7 +39,6 @@ public class ClientBeans {
     }
 
     @Configuration
-    @ConditionalOnProperty(prefix = "im.broker.message-service", name = "enabled", havingValue = "true", matchIfMissing = true)
     static class MessageServiceReferenceBeans {
 
         @DubboReference(interfaceClass = MessageService.class, version = "1.0.0")

@@ -6,7 +6,6 @@ import com.co.kc.imchat.plugin.session.properties.JwtProperties;
 import com.co.kc.imchat.service.account.domain.user.model.User;
 import com.co.kc.imchat.service.account.infrastructure.support.constant.AccountCacheNames;
 import com.co.kc.imchat.service.account.model.cqrs.dto.SessionDTO;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -17,7 +16,6 @@ import java.time.temporal.ChronoUnit;
  * 账号缓存配置。
  */
 @Configuration
-@ConditionalOnProperty(prefix = "im.account.provider", name = "enabled", havingValue = "true")
 public class CacheConfig {
 
     @Bean

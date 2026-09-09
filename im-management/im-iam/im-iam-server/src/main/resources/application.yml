@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: im-iam
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
+  datasource:
+    url: jdbc:mysql://localhost:3306/im_chat_iam?characterEncoding=utf-8&serverTimezone=UTC
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+  cloud:
+    stream:
+      bindings:
+        auditOutput:
+          destination: im.audit.im-iam.v1
+
+server:
+  port: 18090
+
+springdoc:
+  swagger-ui:
+    path: /api/doc.html
+  api-docs:
+    path: /v3/api-docs
+
+im:
+  iam:
+    authorization:
+      issuer: http://localhost:18090
+      key-store-location: classpath:iam/iam-signing.p12
+      key-store-password: ImChatIamLocalStore_2026!
+      key-alias: im-iam-signing
+      key-password: ImChatIamLocalStore_2026!
+    bootstrap:
+      enabled: true
+      username: admin
+      email: admin@imchat.com
+      password: admin
+  identity:
+    snowflake:
+      mode: REDIS
+      data-center-id: 0
+  audit:
+    enabled: true
+    transport: kafka
+    kafka:
+      binding-name: auditOutput

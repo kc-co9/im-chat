@@ -1,6 +1,7 @@
 package com.co.kc.imchat.plugin.dubbo;
 
 import com.co.kc.imchat.plugin.dubbo.properties.ImDubboProperties;
+import com.co.kc.imchat.plugin.dubbo.aspect.RpcExceptionAspect;
 import org.apache.dubbo.config.ApplicationConfig;
 import org.apache.dubbo.config.ConsumerConfig;
 import org.apache.dubbo.config.ProtocolConfig;
@@ -36,6 +37,12 @@ class ImDubboAutoConfigurationTest {
         assertThat(protocol.getPort()).isEqualTo(-1);
         assertThat(registry.getAddress()).isEqualTo("N/A");
         assertThat(consumer.isCheck()).isFalse();
+    }
+
+    @Test
+    void providesGenericRpcExceptionBoundary() {
+        contextRunner.withPropertyValues("im.dubbo.registry.address=N/A")
+                .run(context -> assertThat(context).hasSingleBean(RpcExceptionAspect.class));
     }
 
     @Test

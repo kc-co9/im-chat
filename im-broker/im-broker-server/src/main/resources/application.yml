@@ -1,6 +1,4 @@
 spring:
-  main:
-    web-application-type: none
   application:
     name: im-broker
   config:
@@ -10,12 +8,25 @@ spring:
     nacos:
       discovery:
         port: ${im.bolt.server.port}
+        metadata:
+          management-host: ${im.broker.management.host}
+          management-port: ${im.broker.management.port}
 
 management:
   endpoints:
     jmx:
       exposure:
         include: health,metrics
+
+server:
+  address: ${im.broker.management.host}
+  port: ${im.broker.management.port}
+
+springdoc:
+  swagger-ui:
+    path: /api/doc.html
+  api-docs:
+    path: /v3/api-docs
 
 im:
   bolt:
@@ -25,6 +36,10 @@ im:
       enabled: true
       port: 12200
   broker:
+    management:
+      host: 127.0.0.1
+      port: 12201
+      history-capacity: 100
     instance:
       host: ${IM_BROKER_HOST:127.0.0.1}
       port: ${im.bolt.server.port}

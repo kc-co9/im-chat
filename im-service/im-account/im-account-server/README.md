@@ -13,14 +13,22 @@
 
 服务名 `im-account`，默认 HTTP 端口 `8886`，远程配置从 `SERVICE_GROUP/im-account.yml` 加载。依赖 MySQL、Redis、Nacos 和至少一个已注册 Broker，并通过 `im.dubbo.enabled` 控制 Dubbo。
 
+OpenAPI 页面为 `GET /account/api/doc.html`，API description 为 `GET /account/v3/api-docs`。
+
+Account 独占 `im_chat_account` Schema，当前只拥有 `db_user`。本地初始化执行模块根目录
+[`sql/ddl.sql`](sql/ddl.sql)；其他服务通过 Account Facade 读取用户事实，不访问该表。
+
 ## 关键技术点
 
 - 用户是账号事实，MySQL 持久化；Session 是运行态，Redis 持久化并支持跨实例查询。
+- 用户业务状态仅包含 `NORMAL/BANNED`；逻辑删除作为独立的 `deleted` 事实进入管理投影。非 `NORMAL` 或已删除用户不能登录、刷新或通过在线 Access Token 认证。
 - 密码只以 BCrypt 哈希保存，原始密码值对象不进入仓储模型。
+- 用户主动修改密码必须校验当前密码，再由用户聚合替换加密后的密码状态；管理员重置密码不要求当前密码，但同样通过管理用户聚合行为修改并在提交后撤销在线 Session。
 - Cached Repository 装饰 MySQL Repository，缓存失效不能改变账号业务结果。
-- HTTP 负责登录、刷新和注册，Dubbo Facade 提供集中式 Access Token 认证、用户资料和会话状态给内部服务。
+- HTTP 负责登录、刷新和注册，Dubbo Facade 提供集中式 Access Token 认证、单个及批量用户资料查询和会话状态给内部服务。
 - 登录替换或退出在 Session 事务提交后通过 Broker 发送旧会话关闭控制。该控制是 best-effort 加速机制，Session version 在线校验仍是撤销事实。
 - Domain、Application、Interface、Infrastructure 依赖方向保持向内，远程和数据库类型不进入领域模型。
+- `AccountAdminService` 提供分页、详情、资料修改、密码重置、封禁、解封和逻辑删除；密码重置、封禁和删除在提交后撤销 Session 并关闭连接。管理 Facade 不暴露密码、Token、Session 或持久化实体。
 
 ## 令牌签发与刷新策略
 

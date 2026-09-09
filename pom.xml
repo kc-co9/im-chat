@@ -30,6 +30,7 @@
         <module>im-gateway</module>
         <module>im-broker</module>
         <module>im-service</module>
+        <module>im-management</module>
         <module>im-architecture</module>
     </modules>
 
@@ -40,7 +41,9 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <mapstruct.version>1.5.5.Final</mapstruct.version>
+        <fesod-sheet.version>2.0.2-incubating</fesod-sheet.version>
         <lombok.version>1.18.42</lombok.version>
+        <transmittable-thread-local.version>2.14.5</transmittable-thread-local.version>
         <mybatis.version>3.0.4</mybatis.version>
         <mybatis-plus.version>3.5.14</mybatis-plus.version>
         <mysql.version>9.4.0</mysql.version>
@@ -90,7 +93,22 @@
             </dependency>
             <dependency>
                 <groupId>com.co.kc.im</groupId>
+                <artifactId>im-iam-sdk</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-audit-sdk</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
                 <artifactId>im-cache</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-identity</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -101,6 +119,11 @@
             <dependency>
                 <groupId>com.co.kc.im</groupId>
                 <artifactId>im-metrics</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-excel</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -130,7 +153,7 @@
             </dependency>
             <dependency>
                 <groupId>com.co.kc.im</groupId>
-                <artifactId>im-mq</artifactId>
+                <artifactId>im-mq-kafka</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -251,6 +274,11 @@
                 <version>${lombok.version}</version>
             </dependency>
             <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>transmittable-thread-local</artifactId>
+                <version>${transmittable-thread-local.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>org.mapstruct</groupId>
                 <artifactId>mapstruct</artifactId>
                 <version>${mapstruct.version}</version>
@@ -259,6 +287,11 @@
                 <groupId>org.mapstruct</groupId>
                 <artifactId>mapstruct-processor</artifactId>
                 <version>${mapstruct.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.fesod</groupId>
+                <artifactId>fesod-sheet</artifactId>
+                <version>${fesod-sheet.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.springdoc</groupId>
@@ -383,7 +416,7 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration>
-                        <argLine>@{argLine} -Dfile.encoding=UTF-8 -Xshare:off -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+                        <argLine>@{argLine} -Dfile.encoding=UTF-8 -Djava.awt.headless=true -Xshare:off -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
                     </configuration>
                 </plugin>
             </plugins>

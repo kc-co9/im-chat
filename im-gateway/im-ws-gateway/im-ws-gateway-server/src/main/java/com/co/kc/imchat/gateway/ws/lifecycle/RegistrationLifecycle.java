@@ -8,7 +8,6 @@ import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
 import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,8 +20,6 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = GatewayProperties.PREFIX + ".register", name = "enabled",
-        havingValue = "true", matchIfMissing = true)
 public class RegistrationLifecycle {
     private static final long REGISTER_REFRESH_DELAY_MILLIS = 30_000L;
 

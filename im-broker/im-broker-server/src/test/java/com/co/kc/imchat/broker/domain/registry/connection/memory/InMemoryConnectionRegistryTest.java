@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,6 +52,21 @@ class InMemoryConnectionRegistryTest {
 
         assertEquals(1, store.find(1L).size());
         assertEquals(1, store.list().size());
+        assertEquals(1, store.count());
+    }
+
+    @Test
+    void countsConnectionRoutesAcrossConcurrentUpdates() {
+        InMemoryConnectionRegistry store = new InMemoryConnectionRegistry();
+        IntStream.range(0, 500).parallel()
+                .forEach(index -> store.register((long) index, "gateway-" + index % 5));
+
+        assertEquals(500, store.count());
+
+        IntStream.range(0, 250).parallel()
+                .forEach(index -> store.unregister((long) index, "gateway-" + index % 5));
+
+        assertEquals(250, store.count());
     }
 
     @Test

@@ -2,7 +2,7 @@ package com.co.kc.imchat.service.social.application;
 
 import com.co.kc.imchat.common.exception.BusinessException;
 import com.co.kc.imchat.common.exception.NotFoundException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.service.social.domain.friend.model.Friend;
 import com.co.kc.imchat.service.social.domain.friend.repository.FriendRepository;

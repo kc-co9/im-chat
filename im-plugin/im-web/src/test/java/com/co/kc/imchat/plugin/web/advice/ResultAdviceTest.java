@@ -2,6 +2,7 @@ package com.co.kc.imchat.plugin.web.advice;
 
 import com.co.kc.imchat.common.model.io.HttpResult;
 import com.co.kc.imchat.common.constant.HttpErrorCode;
+import com.co.kc.imchat.common.exception.RpcException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.io.ByteArrayResource;
@@ -82,6 +83,17 @@ class ResultAdviceTest {
                 new HttpMessageNotReadableException("Required request body is missing"));
 
         assertThat(result.getCode()).isEqualTo(HttpErrorCode.PARAMS_ERROR.getCode());
+    }
+
+    @Test
+    void preservesStableRpcErrorCodeAndMessage() {
+        ErrorAdvice errorAdvice = new ErrorAdvice();
+
+        HttpResult<?> result = errorAdvice.rpcExceptionHandler(
+                new RpcException(10004, "用户不存在"));
+
+        assertThat(result.getCode()).isEqualTo(10004);
+        assertThat(result.getMsg()).isEqualTo("用户不存在");
     }
 
     private MethodParameter returnType(String methodName) throws NoSuchMethodException {

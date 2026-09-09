@@ -21,7 +21,7 @@ import com.co.kc.imchat.service.message.domain.message.model.ImMessageType;
 import com.co.kc.imchat.service.message.domain.message.model.ImMessageTypeEnum;
 import com.co.kc.imchat.common.domain.shared.event.DomainEvent;
 import com.co.kc.imchat.common.domain.user.model.UserId;
-import com.co.kc.imchat.common.identity.snowflake.ISnowflakeMachineId;
+import com.co.kc.imchat.plugin.identity.snowflake.ISnowflakeMachineId;
 import com.co.kc.imchat.service.message.model.cqrs.command.chat.ImGroupChatOpenCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.group.GroupChatHideCmd;
 import com.co.kc.imchat.service.message.model.cqrs.command.group.GroupMessageReceiveCmd;
@@ -40,7 +40,7 @@ import com.co.kc.imchat.service.message.application.notification.task.ReceiptTas
 import com.co.kc.imchat.common.exception.BusinessException;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.exception.RepeatException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
 import com.co.kc.imchat.service.message.domain.social.model.FriendDisplay;
 import com.co.kc.imchat.service.message.domain.social.model.GroupMessageRecipient;

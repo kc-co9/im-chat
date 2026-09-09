@@ -32,6 +32,10 @@
         </dependency>
         <dependency>
             <groupId>com.co.kc.im</groupId>
+            <artifactId>im-identity</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
             <artifactId>im-cache</artifactId>
         </dependency>
         <dependency>
@@ -142,10 +146,6 @@
         <dependency>
             <groupId>javax.xml.bind</groupId>
             <artifactId>jaxb-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         </dependency>
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>

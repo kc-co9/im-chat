@@ -32,11 +32,12 @@ public class GossipSynchronizer {
      * @param peerAddress   peer 远端地址
      * @param operations    gossip RPC 操作名
      * @param timeoutMillis RPC 调用超时时间
+     * @return 本次合并和推送的增量条目数
      */
-    public void syncPeer(String localNodeId,
-                         String peerAddress,
-                         GossipSyncOperations operations,
-                         int timeoutMillis) {
+    public Integer syncPeer(String localNodeId,
+                            String peerAddress,
+                            GossipSyncOperations operations,
+                            int timeoutMillis) {
         // 发送本地摘要，并合并 peer 返回的较新状态增量。
         GossipDigestResult result = peerClient.exchangeDigest(
                 peerAddress,
@@ -56,6 +57,7 @@ public class GossipSynchronizer {
                     new GossipDeltaParams(localNodeId, deltas),
                     timeoutMillis);
         }
+        return result.deltas().size() + deltas.size();
     }
 
     /**

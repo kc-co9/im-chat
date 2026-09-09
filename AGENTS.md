@@ -63,6 +63,9 @@ Before editing:
 
 After editing:
 
+1. Assess whether implementation or Review established a reusable engineering convention. If so, update the owning specification and `docs/references/HARNESS_GUIDE.md` in the same task, then add the narrowest reliable checker/test or explicitly mark the rule Review-only with its automation condition.
+2. Do not create one-off class-name exceptions or weaken an existing rule to avoid updating the affected code.
+
 ```bash
 ./scripts/verify.sh quick
 ```
@@ -85,6 +88,7 @@ Only create a Git commit when the user explicitly requests it. Before staging or
 - Architecture tests and drift checks pass.
 - New behavior has focused, deterministic tests at the appropriate boundary; regression tests fail before the corresponding fix.
 - Public contracts, configuration, and module responsibilities are documented when changed.
+- Reusable engineering conventions discovered during implementation or Review are reflected in the owning specification and Harness matrix; Review-only decisions state why they are not mechanically enforced yet.
 - Active execution plans are updated during implementation and moved to `completed` only after verification passes.
 - No generated output, IDE metadata, logs, credentials, or local environment values are committed.
 - The final change contains no unrelated cleanup.

@@ -4,12 +4,14 @@ import com.alicp.jetcache.Cache;
 import com.co.kc.imchat.service.account.domain.session.repository.SessionRepository;
 import com.co.kc.imchat.service.account.domain.user.model.User;
 import com.co.kc.imchat.service.account.domain.user.repository.UserRepository;
+import com.co.kc.imchat.service.account.domain.user.repository.ManagedUserRepository;
 import com.co.kc.imchat.service.account.infrastructure.domain.repository.CachedUserRepository;
+import com.co.kc.imchat.service.account.infrastructure.domain.repository.CachedManagedUserRepository;
 import com.co.kc.imchat.service.account.infrastructure.domain.repository.MysqlUserRepository;
+import com.co.kc.imchat.service.account.infrastructure.domain.repository.MysqlManagedUserRepository;
 import com.co.kc.imchat.service.account.infrastructure.domain.repository.RedisSessionRepository;
 import com.co.kc.imchat.service.account.infrastructure.mybatis.service.DbUserService;
 import com.co.kc.imchat.service.account.model.cqrs.dto.SessionDTO;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -18,7 +20,6 @@ import org.springframework.context.annotation.Primary;
  * 账号仓储 Bean 装配。
  */
 @Configuration
-@ConditionalOnProperty(prefix = "im.account.provider", name = "enabled", havingValue = "true")
 public class RepositoryBeans {
 
     @Bean
@@ -29,6 +30,25 @@ public class RepositoryBeans {
     @Bean
     public MysqlUserRepository mysqlUserRepository(DbUserService dbUserService) {
         return new MysqlUserRepository(dbUserService);
+    }
+
+    @Bean
+    public MysqlManagedUserRepository mysqlManagedUserRepository(DbUserService dbUserService) {
+        return new MysqlManagedUserRepository(dbUserService);
+    }
+
+    @Bean
+    public ManagedUserRepository managedUserRepository(
+            MysqlManagedUserRepository mysqlManagedUserRepository,
+            Cache<Long, User> userIdCache,
+            Cache<String, User> userEmailCache,
+            Cache<String, Boolean> userEmailContainCache
+    ) {
+        return new CachedManagedUserRepository(
+                mysqlManagedUserRepository,
+                userIdCache,
+                userEmailCache,
+                userEmailContainCache);
     }
 
     @Bean

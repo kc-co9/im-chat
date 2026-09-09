@@ -16,7 +16,6 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
-import java.net.ServerSocket;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -39,18 +38,14 @@ class NettyWebSocketServerTest {
 
     @Test
     void startReleasesEventLoopGroupsWhenBindFails() throws Exception {
-        int occupiedPort;
-        try (ServerSocket socket = new ServerSocket(0)) {
-            occupiedPort = socket.getLocalPort();
-            NettyWebSocketServer server = new NettyWebSocketServer(
-                    occupiedPort, "gw-1", "/ws", new CapturingConnectionCleanupClient(),
-                    new ConnectionRegistry(), null, 60, 65536);
+        NettyWebSocketServer server = new NettyWebSocketServer(
+                -1, "gw-1", "/ws", new CapturingConnectionCleanupClient(),
+                new ConnectionRegistry(), null, 60, 65536);
 
-            assertThatThrownBy(server::start).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(server::start).isInstanceOf(IllegalArgumentException.class);
 
-            assertThat(eventLoopGroup(server, "bossGroup").isShuttingDown()).isTrue();
-            assertThat(eventLoopGroup(server, "workerGroup").isShuttingDown()).isTrue();
-        }
+        assertThat(eventLoopGroup(server, "bossGroup").isShuttingDown()).isTrue();
+        assertThat(eventLoopGroup(server, "workerGroup").isShuttingDown()).isTrue();
     }
 
     private EventLoopGroup eventLoopGroup(NettyWebSocketServer server, String fieldName) throws Exception {

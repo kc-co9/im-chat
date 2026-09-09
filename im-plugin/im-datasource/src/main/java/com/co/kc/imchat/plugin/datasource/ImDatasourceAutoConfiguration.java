@@ -1,6 +1,7 @@
 package com.co.kc.imchat.plugin.datasource;
 
 import com.baomidou.mybatisplus.annotation.DbType;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.BlockAttackInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
@@ -8,9 +9,14 @@ import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerIntercept
 import com.co.kc.imchat.plugin.datasource.properties.ImShardingSphereProperties;
 import com.co.kc.imchat.plugin.datasource.transaction.AfterTransactionCommitAspect;
 import com.co.kc.imchat.plugin.datasource.transaction.AfterTransactionCommitTemplate;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.shardingsphere.driver.api.yaml.YamlShardingSphereDataSourceFactory;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,8 +32,21 @@ import java.io.InputStream;
 import java.sql.SQLException;
 
 @AutoConfiguration
+@AutoConfigureAfter(JacksonAutoConfiguration.class)
 @EnableConfigurationProperties(ImShardingSphereProperties.class)
 public class ImDatasourceAutoConfiguration {
+
+    /**
+     * 使 MyBatis-Plus JSON TypeHandler 复用应用统一的 Jackson 配置。
+     *
+     * @param objectMapper 应用 Jackson Mapper
+     * @return TypeHandler 初始化动作
+     */
+    @Bean
+    @ConditionalOnBean(ObjectMapper.class)
+    public InitializingBean mybatisJsonObjectMapper(ObjectMapper objectMapper) {
+        return () -> JacksonTypeHandler.setObjectMapper(objectMapper);
+    }
 
     @Bean
     @ConditionalOnMissingBean

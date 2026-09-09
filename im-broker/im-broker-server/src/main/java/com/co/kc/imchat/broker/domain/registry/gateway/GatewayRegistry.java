@@ -3,6 +3,7 @@ package com.co.kc.imchat.broker.domain.registry.gateway;
 import com.co.kc.imchat.broker.sdk.model.dto.GatewayEndpointDTO;
 
 import java.util.Optional;
+import java.util.List;
 
 /**
  * Broker 网关实例索引。
@@ -39,4 +40,11 @@ public interface GatewayRegistry {
      * @return 网关实例
      */
     Optional<GatewayEndpointDTO> find(String gatewayId);
+
+    /**
+     * 查询当前 Broker 已知的网关实例快照。
+     *
+     * @return 不可变网关实例列表
+     */
+    List<GatewayEndpointDTO> list();
 }

@@ -32,7 +32,7 @@ import com.co.kc.imchat.service.message.domain.message.repository.ImPrivateInbox
 import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.exception.RepeatException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 

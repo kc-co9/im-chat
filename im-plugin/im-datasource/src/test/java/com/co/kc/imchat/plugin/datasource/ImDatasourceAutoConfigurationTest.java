@@ -1,5 +1,8 @@
 package com.co.kc.imchat.plugin.datasource;
 
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.co.kc.imchat.plugin.datasource.properties.ImShardingSphereProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.BeanCreationException;
@@ -11,8 +14,11 @@ import org.springframework.core.io.ResourceLoader;
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 
@@ -27,6 +33,23 @@ class ImDatasourceAutoConfigurationTest {
             assertThat(context).doesNotHaveBean(DataSource.class);
             assertThat(context.getBean(ImShardingSphereProperties.class).isEnabled()).isFalse();
         });
+    }
+
+    @Test
+    void configuresMybatisJsonHandlerWithTheApplicationObjectMapper() {
+        ObjectMapper previousObjectMapper = JacksonTypeHandler.getObjectMapper();
+        ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+
+        try {
+            contextRunner.withBean(ObjectMapper.class, () -> objectMapper).run(context -> {
+                assertThat(JacksonTypeHandler.getObjectMapper()).isSameAs(objectMapper);
+                assertThatCode(() -> JacksonTypeHandler.getObjectMapper().writeValueAsString(
+                        Map.of("exp", Instant.parse("2026-09-07T15:18:47Z"))))
+                        .doesNotThrowAnyException();
+            });
+        } finally {
+            JacksonTypeHandler.setObjectMapper(previousObjectMapper);
+        }
     }
 
     @Test

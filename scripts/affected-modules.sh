@@ -36,6 +36,7 @@ add_module() {
 
 while IFS= read -r file; do
   case "$file" in
+    im-plugin/im-mq/*) add_module "im-plugin/im-mq-kafka" ;;
     im-plugin/*/*) add_module "$(cut -d/ -f1-2 <<< "$file")" ;;
     im-broker/im-broker-sdk/*) add_module "im-broker/im-broker-sdk" ; add_module "im-broker/im-broker-server" ;;
     im-broker/im-broker-server/*) add_module "im-broker/im-broker-server" ;;
@@ -46,6 +47,36 @@ while IFS= read -r file; do
       add_module "im-broker/im-broker-server"
       ;;
     im-gateway/im-ws-gateway/im-ws-gateway-server/*) add_module "im-gateway/im-ws-gateway/im-ws-gateway-server" ;;
+    im-management/im-admin/*) add_module "im-management/im-admin" ;;
+    im-management/im-monitor/*) add_module "im-management/im-monitor" ;;
+    im-management/im-iam/im-iam-sdk/*)
+      add_module "im-management/im-iam/im-iam-sdk"
+      add_module "im-management/im-iam/im-iam-server"
+      add_module "im-management/im-admin"
+      add_module "im-management/im-monitor"
+      add_module "im-management/im-audit/im-audit-server"
+      ;;
+    im-management/im-iam/im-iam-server/*) add_module "im-management/im-iam/im-iam-server" ;;
+    im-management/im-audit/im-audit-sdk/*)
+      add_module "im-management/im-audit/im-audit-sdk"
+      add_module "im-management/im-audit/im-audit-server"
+      add_module "im-management/im-admin"
+      add_module "im-management/im-iam/im-iam-server"
+      ;;
+    im-management/im-audit/im-audit-server/*)
+      add_module "im-management/im-audit/im-audit-server"
+      ;;
+    im-management/*)
+      add_module "im-management/im-iam/im-iam-server"
+      add_module "im-management/im-admin"
+      add_module "im-management/im-monitor"
+      add_module "im-management/im-audit/im-audit-server"
+      ;;
+    im-service/im-account/im-account-admin-facade/*)
+      add_module "im-service/im-account/im-account-admin-facade"
+      add_module "im-service/im-account/im-account-server"
+      add_module "im-management/im-admin"
+      ;;
     im-service/*/*-facade/*)
       service="$(cut -d/ -f1-2 <<< "$file")"
       add_module "$service/$(basename "$service")-facade"

@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,17 +15,27 @@ class DdlSchemaTest {
     void logicDeletedTablesUniqueKeysIncludeLogicDeleteColumn() throws IOException {
         String ddl = readDdl();
 
-        assertThat(ddl).contains("UNIQUE KEY `uk_user_id` (`user_id`, `is_deleted`) USING BTREE");
-        assertThat(ddl).contains("UNIQUE KEY `uk_email` (`email`, `is_deleted`) USING BTREE");
-        assertThat(ddl).contains("UNIQUE KEY `uk_user_friend` (`user_id`, `friend_user_id`, `is_deleted`) USING BTREE");
         assertThat(ddl).contains("UNIQUE KEY `uk_chat_id` (`chat_id`, `is_deleted`) USING BTREE");
         assertThat(ddl).contains("UNIQUE KEY `uk_user_peer` (`user_id`, `peer_user_id`, `is_deleted`) USING BTREE");
-        assertThat(ddl).contains("UNIQUE KEY `uk_group_id` (`group_id`, `is_deleted`) USING BTREE");
         assertThat(ddl).contains("UNIQUE KEY `uk_group_user` (`group_id`, `user_id`, `is_deleted`) USING BTREE");
         assertThat(ddl).contains("UNIQUE KEY `uk_chat_token` (`chat_id`, `token`, `is_deleted`) USING BTREE");
         assertThat(ddl).contains("UNIQUE KEY `uk_chat_message` (`chat_id`, `message_id`, `is_deleted`) USING BTREE");
         assertThat(ddl).contains("UNIQUE KEY `uk_chat_user_token` (`chat_id`, `user_id`, `token`, `is_deleted`) USING BTREE");
         assertThat(ddl).contains("UNIQUE KEY `uk_chat_user_message` (`chat_id`, `user_id`, `message_id`, `is_deleted`) USING BTREE");
+    }
+
+    @Test
+    void ownsOnlyTheMessageSchemaAndConversationTables() throws IOException {
+        String ddl = readDdl();
+
+        assertThat(ddl)
+                .contains("CREATE DATABASE IF NOT EXISTS `im_chat_message`")
+                .contains("USE `im_chat_message`")
+                .contains("CREATE TABLE `db_im_private_chat`")
+                .contains("CREATE TABLE `db_im_group_chat`")
+                .contains("CREATE TABLE `db_im_private_inbox_message`")
+                .contains("CREATE TABLE `db_im_group_inbox_message`")
+                .doesNotContain("`db_user`", "`db_friend`", "CREATE TABLE `db_im_group`");
     }
 
     @Test
@@ -40,19 +49,6 @@ class DdlSchemaTest {
     }
 
     private String readDdl() throws IOException {
-        Path ddlPath = findDdlPath();
-        return new String(Files.readAllBytes(ddlPath), StandardCharsets.UTF_8);
-    }
-
-    private Path findDdlPath() {
-        Path current = Paths.get("").toAbsolutePath();
-        while (current != null) {
-            Path ddlPath = current.resolve("sql/ddl.sql");
-            if (Files.exists(ddlPath)) {
-                return ddlPath;
-            }
-            current = current.getParent();
-        }
-        throw new IllegalStateException("sql/ddl.sql not found from current module path");
+        return Files.readString(Path.of("sql/ddl.sql"), StandardCharsets.UTF_8);
     }
 }

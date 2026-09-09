@@ -51,11 +51,6 @@ public class GatewayProperties {
      */
     private Broker broker = new Broker();
 
-    /**
-     * 网关注册刷新配置。
-     */
-    private Register register = new Register();
-
     public String gatewayId(int boltPort) {
         return "gateway-" + bolt.getHost() + "-" + boltPort;
     }
@@ -97,11 +92,4 @@ public class GatewayProperties {
         private int timeoutMillis = 3000;
     }
 
-    @Data
-    public static class Register {
-        /**
-         * 是否启用网关向 Broker 的注册刷新任务。
-         */
-        private boolean enabled = true;
-    }
 }

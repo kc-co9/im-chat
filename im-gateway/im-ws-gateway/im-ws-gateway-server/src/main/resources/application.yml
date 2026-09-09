@@ -23,7 +23,7 @@ im:
       enabled: true
     server:
       enabled: true
-      port: 12201
+      port: 12202
   gateway:
     ws:
       port: 19090
@@ -32,8 +32,6 @@ im:
       max-frame-payload-length: 65536
       idle:
         reader-idle-seconds: 60
-      register:
-        enabled: true
       bolt:
         host: ${im.gateway.ws.host}
       broker:

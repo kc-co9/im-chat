@@ -24,7 +24,7 @@ import com.co.kc.imchat.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.ListUtils;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 
 import java.util.Collections;
 import java.util.Comparator;

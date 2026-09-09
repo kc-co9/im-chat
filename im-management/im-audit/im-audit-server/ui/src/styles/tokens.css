@@ -1,0 +1,20 @@
+:root {
+  --im-console-bg: #f3f6fa;
+  --im-console-surface: #ffffff;
+  --im-console-sidebar: #172334;
+  --im-console-sidebar-active: #2a425d;
+  --im-console-primary: #247662;
+  --im-console-link: #286493;
+  --im-console-warning: #a36019;
+  --im-console-danger: #b33d3d;
+  --im-console-text: #1f2b3d;
+  --im-console-muted: #718096;
+  --im-console-border: #dfe5ec;
+  --el-color-primary: var(--im-console-primary);
+  --el-color-danger: var(--im-console-danger);
+  --el-color-warning: var(--im-console-warning);
+  --el-border-radius-base: 6px;
+  --el-border-color: var(--im-console-border);
+  --el-text-color-primary: var(--im-console-text);
+  --el-text-color-secondary: var(--im-console-muted);
+}

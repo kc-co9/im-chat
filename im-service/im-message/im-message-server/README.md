@@ -21,6 +21,11 @@
 
 服务名为 `im-message`，默认 HTTP 端口为 `8888`，远程配置从 `SERVICE_GROUP/im-message.yml` 加载。启动依赖 MySQL、Redis、Nacos 和 Dubbo；实时通知通过 Nacos 发现初始 Broker，再由 Broker SDK 定时刷新 Broker 集群快照。
 
+OpenAPI 页面为 `GET /message/api/doc.html`，API description 为 `GET /message/v3/api-docs`。
+
+Message 独占 `im_chat_message` Schema，拥有私聊/群聊会话和收件箱消息表。本地初始化执行模块根目录
+[`sql/ddl.sql`](sql/ddl.sql)；群组与用户事实通过 Social、Account Facade 获取，不执行跨 Schema SQL。
+
 ## 消息写入流程
 
 ```text

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.co.kc.imchat.management.iam.infrastructure.mybatis.mapper.DbIamApplicationAdministratorRoleMapper">
+    <select id="countActive" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT `administrator_role`.`administrator_id`)
+        FROM `db_iam_application_administrator_role` AS `administrator_role`
+        INNER JOIN `db_iam_administrator` AS `administrator`
+            ON `administrator`.`administrator_id` = `administrator_role`.`administrator_id`
+        WHERE `administrator_role`.`role_id` = #{roleId}
+          AND `administrator`.`status` = 1
+          AND `administrator`.`is_deleted` = 0
+    </select>
+</mapper>

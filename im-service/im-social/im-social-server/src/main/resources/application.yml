@@ -3,10 +3,18 @@ server:
   servlet:
     context-path: /social
 
+springdoc:
+  swagger-ui:
+    path: /api/doc.html
+  api-docs:
+    path: /v3/api-docs
+
 im:
-  social:
-    provider:
-      enabled: true
+  identity:
+    snowflake:
+      mode: STATIC
+      data-center-id: 1
+      machine-id: 1
 
 spring:
   application:
@@ -15,7 +23,7 @@ spring:
     import:
       - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.service-group:SERVICE_GROUP}
   datasource:
-    url: jdbc:mysql://localhost:3306/im_chat?characterEncoding=utf-8&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/im_chat_social?characterEncoding=utf-8&serverTimezone=UTC
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver

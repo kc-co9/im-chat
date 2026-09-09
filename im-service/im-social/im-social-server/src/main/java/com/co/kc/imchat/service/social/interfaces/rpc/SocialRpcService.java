@@ -3,7 +3,7 @@ package com.co.kc.imchat.service.social.interfaces.rpc;
 import com.co.kc.imchat.service.social.application.FriendAppService;
 import com.co.kc.imchat.service.social.application.GroupAppService;
 import com.co.kc.imchat.service.social.facade.SocialService;
-import com.co.kc.imchat.service.social.facade.dto.FriendDisplaysDTO;
+import com.co.kc.imchat.service.social.facade.dto.FriendDisplayDTO;
 import com.co.kc.imchat.service.social.facade.dto.FriendRelationCheckDTO;
 import com.co.kc.imchat.service.social.facade.dto.GroupMemberCheckDTO;
 import com.co.kc.imchat.service.social.facade.dto.GroupMembersDTO;
@@ -16,12 +16,12 @@ import com.co.kc.imchat.service.social.facade.params.GroupMembersGetParams;
 import com.co.kc.imchat.service.social.facade.params.GroupMessageRecipientsGetParams;
 import com.co.kc.imchat.service.social.facade.params.GroupSummariesGetParams;
 import org.apache.dubbo.config.annotation.DubboService;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Component
 @DubboService(interfaceClass = SocialService.class, version = "1.0.0")
-@ConditionalOnProperty(prefix = "im.social.provider", name = "enabled", havingValue = "true")
 public class SocialRpcService implements SocialService {
 
     private final FriendAppService friendAppService;
@@ -53,7 +53,7 @@ public class SocialRpcService implements SocialService {
     }
 
     @Override
-    public FriendDisplaysDTO getFriendDisplays(FriendDisplaysGetParams params) {
+    public List<FriendDisplayDTO> getFriendDisplays(FriendDisplaysGetParams params) {
         return friendAppService.getFriendDisplays(params);
     }
 

@@ -5,7 +5,7 @@ import com.co.kc.imchat.service.message.domain.message.model.ImPrivateMessageSta
 import com.co.kc.imchat.service.message.model.cqrs.dto.im.ImPrivateMessageDTO;
 import com.co.kc.imchat.service.message.model.cqrs.query.ImPrivateMessageDetailQuery;
 import com.co.kc.imchat.common.exception.NotFoundException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.service.ImChatService;
 import com.co.kc.imchat.service.message.domain.chat.model.ImPrivateChat;

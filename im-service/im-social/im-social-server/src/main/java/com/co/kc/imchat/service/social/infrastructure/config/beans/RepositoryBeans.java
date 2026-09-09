@@ -16,7 +16,6 @@ import com.co.kc.imchat.service.social.infrastructure.domain.repository.MysqlGro
 import com.co.kc.imchat.service.social.infrastructure.mybatis.service.DbFriendService;
 import com.co.kc.imchat.service.social.infrastructure.mybatis.service.DbImGroupService;
 import com.co.kc.imchat.service.social.infrastructure.mybatis.service.DbImGroupMemberService;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -25,7 +24,6 @@ import org.springframework.context.annotation.Primary;
  * 社交仓储 Bean 装配。
  */
 @Configuration
-@ConditionalOnProperty(prefix = "im.social.provider", name = "enabled", havingValue = "true")
 public class RepositoryBeans {
 
     @Bean

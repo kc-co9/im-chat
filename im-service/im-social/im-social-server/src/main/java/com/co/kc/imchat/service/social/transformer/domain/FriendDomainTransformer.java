@@ -14,7 +14,6 @@ import org.mapstruct.ValueMappings;
 import org.mapstruct.factory.Mappers;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Mapper
 public interface FriendDomainTransformer {
@@ -23,7 +22,7 @@ public interface FriendDomainTransformer {
     default List<Friend> friendListFrom(List<DbFriend> dbFriendList) {
         return dbFriendList.stream()
                 .map(INSTANCE::friendFrom)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     default Friend friendFrom(DbFriend dbFriend) {

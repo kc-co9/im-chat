@@ -144,7 +144,10 @@ public class GroupService {
 
     private MemberDisplayName decideDisplayName(GroupMember member, Friend friend, UserProfile profile) {
         if (friend != null) {
-            return new MemberDisplayName(friend.displayName().value());
+            if (friend.getFriendAlias() != null) {
+                return new MemberDisplayName(friend.getFriendAlias().value());
+            }
+            return new MemberDisplayName(friend.getFriendUserId().stringValue());
         }
         if (member.getUserAlias() != null) {
             return new MemberDisplayName(member.getUserAlias().value());

@@ -1,6 +1,6 @@
 package com.co.kc.imchat.service.message.infrastructure.config.beans;
 
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImGroupChatRepository;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImPrivateChatRepository;
 import com.co.kc.imchat.service.message.domain.chat.service.ImChatService;

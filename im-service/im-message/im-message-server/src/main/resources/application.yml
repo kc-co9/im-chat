@@ -10,7 +10,7 @@ spring:
     import:
       - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.service-group:SERVICE_GROUP}
   datasource:
-    url: jdbc:mysql://localhost:3306/im_chat?characterEncoding=utf-8&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3306/im_chat_message?characterEncoding=utf-8&serverTimezone=UTC
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -86,6 +86,11 @@ spring:
       matching-strategy: ant_path_matcher
 
 im:
+  identity:
+    snowflake:
+      mode: STATIC
+      data-center-id: 1
+      machine-id: 1
   bolt:
     client:
       enabled: true
@@ -97,7 +102,7 @@ im:
 # springdoc-openapi项目配置
 springdoc:
   swagger-ui:
-    path: /swagger-ui.html
+    path: /api/doc.html
     tags-sorter: alpha
     operations-sorter: alpha
   api-docs:

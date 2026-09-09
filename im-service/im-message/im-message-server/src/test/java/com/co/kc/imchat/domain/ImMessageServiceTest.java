@@ -21,8 +21,8 @@ import com.co.kc.imchat.service.message.domain.message.model.ImPrivateInboxMessa
 import com.co.kc.imchat.service.message.domain.message.model.ImPrivateMessageRevocation;
 import com.co.kc.imchat.service.message.domain.message.model.ImPrivateMessageStatus;
 import com.co.kc.imchat.common.domain.user.model.UserId;
-import com.co.kc.imchat.common.identity.snowflake.ISnowflakeMachineId;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.ISnowflakeMachineId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import org.junit.jupiter.api.Test;
 

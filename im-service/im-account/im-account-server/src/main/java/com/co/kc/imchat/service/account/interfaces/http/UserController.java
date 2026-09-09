@@ -14,7 +14,7 @@ import com.co.kc.imchat.service.account.model.io.TokenPairResponse;
 import com.co.kc.imchat.service.account.model.io.TokenRefreshRequest;
 import com.co.kc.imchat.service.account.model.io.UserSignInRequest;
 import com.co.kc.imchat.service.account.model.io.UserSignUpRequest;
-import com.co.kc.imchat.service.account.transformer.application.AccountAppTransformer;
+import com.co.kc.imchat.service.account.transformer.interfaces.UserHttpTransformer;
 import com.co.kc.imchat.plugin.session.context.UserContextUtils;
 import com.co.kc.imchat.plugin.session.context.UserContext;
 import lombok.RequiredArgsConstructor;
@@ -41,14 +41,14 @@ public class UserController {
     public TokenPairResponse signIn(@RequestBody @Validated UserSignInRequest request) {
         UserSignInCmd command = new UserSignInCmd(request.getEmail(), request.getPassword());
         SignInDTO signInDTO = sessionAppService.signIn(command);
-        return AccountAppTransformer.INSTANCE.tokenPairResponseFrom(signInDTO);
+        return UserHttpTransformer.INSTANCE.tokenPairResponseFrom(signInDTO);
     }
 
     @PostMapping(value = "/refreshToken")
     public TokenPairResponse refreshToken(@RequestBody @Validated TokenRefreshRequest request) {
         RefreshTokenCmd command = new RefreshTokenCmd(request.refreshToken());
         SignInDTO signInDTO = sessionAppService.refreshToken(command);
-        return AccountAppTransformer.INSTANCE.tokenPairResponseFrom(signInDTO);
+        return UserHttpTransformer.INSTANCE.tokenPairResponseFrom(signInDTO);
     }
 
     @PostMapping(value = "/signOut")

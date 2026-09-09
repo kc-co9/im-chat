@@ -3,16 +3,20 @@ package com.co.kc.imchat.service.social.domain.friend.service;
 import com.co.kc.imchat.service.social.domain.friend.model.Friend;
 import com.co.kc.imchat.service.social.domain.friend.model.FriendEdge;
 import com.co.kc.imchat.service.social.domain.friend.model.FriendId;
+import com.co.kc.imchat.service.social.domain.friend.model.FriendDisplayName;
+import com.co.kc.imchat.service.social.domain.friend.model.FriendProfile;
 import com.co.kc.imchat.service.social.domain.friend.model.FriendStatus;
+import com.co.kc.imchat.service.social.domain.account.model.UserProfile;
 import com.co.kc.imchat.service.social.domain.friend.repository.FriendRepository;
 import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.common.exception.BusinessException;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RequiredArgsConstructor
@@ -21,7 +25,7 @@ public class FriendService {
 
     public Friend newFriend(UserId userId, UserId friendUserId) {
         FriendId friendId = new FriendId(userId, friendUserId);
-        return new Friend(friendId, userId, friendUserId, null, null, FriendStatus.NORMAL, LocalDateTime.now());
+        return new Friend(friendId, userId, friendUserId, null, FriendStatus.NORMAL, Instant.now());
     }
 
     public List<Friend> addFriend(UserId userId, UserId friendUserId) {
@@ -49,5 +53,27 @@ public class FriendService {
                 || !friendRepository.isFriendshipActive(peerUserId, userId)) {
             throw new NotFoundException("好友不存在");
         }
+    }
+
+    public List<FriendProfile> describeFriends(List<Friend> friends, Map<UserId, UserProfile> userProfiles) {
+        return friends.stream()
+                .map(friend -> describeFriend(friend, userProfiles.get(friend.getFriendUserId())))
+                .toList();
+    }
+
+    private FriendProfile describeFriend(Friend friend, UserProfile userProfile) {
+        FriendDisplayName displayName;
+        if (friend.getFriendAlias() != null) {
+            displayName = new FriendDisplayName(friend.getFriendAlias().value());
+        } else if (userProfile != null) {
+            displayName = new FriendDisplayName(userProfile.username());
+        } else {
+            displayName = new FriendDisplayName(friend.getFriendUserId().stringValue());
+        }
+        return new FriendProfile(
+                friend.getFriendUserId(),
+                displayName,
+                friend.getStatus(),
+                friend.getCreateTime());
     }
 }

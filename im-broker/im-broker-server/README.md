@@ -1,6 +1,6 @@
 # im-broker-server
 
-Broker 运行服务，提供 Bolt RPC 入口、运行态注册表、连接归属迁移和 Broker 间 Gossip 同步。
+Broker 运行服务，提供 Bolt RPC 入口、运行态注册表、连接归属迁移、Broker 间 Gossip 同步，以及独立端口上的只读诊断接口。
 
 ## 代码结构
 
@@ -11,10 +11,17 @@ broker/
   domain/service/            # 用户连接归属与迁移
   domain/store/              # Gossip 业务状态投影
   interfaces/handler/        # Broker/Gateway/Connection/Frame RPC Handler
+  interfaces/http/management # 只读管理 HTTP Controller
   interfaces/listener/       # 注册事件到 Gossip 状态的适配
   lifecycle/                 # 本机注册、Gossip、连接迁移任务
+  support/diagnostic/        # Broker 技术诊断子系统
+    model/                   # DTO、响应及状态模型
+    service/                 # 诊断查询服务
+    tracker/                 # 通用 Tracker 契约及共享状态
+      impl/                  # Gossip、迁移诊断 Tracker 实现
   support/                   # peer client 与内部事件发布
-  transformer/               # SDK、状态对象转换
+  transformer/application/   # Registry 状态到诊断 DTO
+  transformer/interfaces/    # 应用诊断 DTO 到 HTTP Response
 ```
 
 ## 运行模型
@@ -33,8 +40,32 @@ broker/
 - `im.broker.registry`：Broker/Gateway/Connection TTL。
 - `im.broker.gateway-push`、`im.broker.peer-call`：网关与 peer 调用超时。
 - `im.bolt.server.port`：Broker Bolt 端口，同时作为非 Web Nacos 服务端口。
+- `im.broker.management.host`、`port`：管理 HTTP 监听地址和端口，默认 `127.0.0.1:12201`。
+- 用户连接路由诊断中的注册时间来自路由 `connectedAt`，最后活跃时间来自 `refreshedAt`；管理接口分别输出为 `registeredAt` 和 `lastSeenAt`。
+- `im.broker.management.history-capacity`：Gossip 和连接迁移最近记录容量，默认 `100`。
 
-启动类为 `ImBrokerApplication`，默认 Bolt 端口 `12200`。
+启动类为 `ImBrokerApplication`。Bolt 默认监听 `12200`，管理 HTTP 默认监听 `127.0.0.1:12201`，二者不能配置为同一端口。Nacos 实例的主端口仍是 Bolt 端口，管理地址只通过 `management-host`、`management-port` metadata 发布。
+
+管理 HTTP 的 OpenAPI 页面为 `GET /api/doc.html`，API description 为 `GET /v3/api-docs`。
+
+## 只读诊断接口
+
+| 接口 | 内容 |
+|---|---|
+| `GET /management/broker/overview` | 当前节点、注册表统计、Gossip/迁移累计摘要 |
+| `GET /management/brokers` | 当前节点已知 Broker 快照 |
+| `GET /management/gateways` | 当前节点已知 Gateway 快照 |
+| `GET /management/connections?userId=...` | 单个用户的 Gateway 路由 |
+| `GET /management/gossip` | Gossip 累计摘要 |
+| `GET /management/gossip/records?limit=...` | 最近 Gossip 记录，`limit` 为 `1..100` |
+| `GET /management/migrations?limit=...` | 最近迁移记录，`limit` 为 `1..100` |
+
+接口没有写操作，也不允许空条件获取全量用户路由。普通响应和异常由 `im-web` 统一包装为
+`HttpResult`。Gossip 与迁移记录只保存在固定容量内存中，重启即清空；诊断记录失败不会改变
+原业务执行结果。
+
+Gossip 生命周期在每次 peer 同步结束后记录合并与推送条目数；Broker peer 客户端在连接迁移 RPC
+结束后记录成功数量或失败摘要。失败记录的 `processedCount` 为 `0`，不把已尝试的数量当作已处理数量。
 
 ## 关键技术点
 

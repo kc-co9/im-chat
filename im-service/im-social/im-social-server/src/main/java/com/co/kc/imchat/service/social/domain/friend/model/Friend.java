@@ -3,7 +3,6 @@ package com.co.kc.imchat.service.social.domain.friend.model;
 import com.co.kc.imchat.common.domain.shared.model.Identification;
 import com.co.kc.imchat.common.domain.shared.model.Validator;
 import com.co.kc.imchat.common.domain.user.model.UserId;
-import com.co.kc.imchat.common.domain.user.model.UserName;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -11,7 +10,7 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * 聚合根：好友关系。
@@ -27,10 +26,9 @@ public class Friend extends Identification implements Validator, Serializable {
     private FriendId id;
     private UserId userId;
     private UserId friendUserId;
-    private UserName friendName;
     private FriendAlias friendAlias;
     private FriendStatus status;
-    private LocalDateTime createTime;
+    private Instant createTime;
 
     public void block() {
         status = FriendStatus.BLOCKED;
@@ -50,15 +48,6 @@ public class Friend extends Identification implements Validator, Serializable {
 
     public void changeAlias(FriendAlias alias) {
         friendAlias = alias;
-    }
-
-    public FriendDisplayName displayName() {
-        if (friendAlias != null) {
-            return new FriendDisplayName(friendAlias.value());
-        } else if (friendName != null) {
-            return new FriendDisplayName(friendName.value());
-        }
-        return new FriendDisplayName(friendUserId.stringValue());
     }
 
 }

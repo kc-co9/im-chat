@@ -43,6 +43,13 @@ public interface ConnectionRegistry {
     List<UserGatewayDTO> list();
 
     /**
+     * 统计当前 Broker 保存的用户到网关路由数量。
+     *
+     * @return 路由数量
+     */
+    long count();
+
+    /**
      * 以网关上报的用户集合为完整快照，补充缺失路由并清理未上报的过期连接。
      *
      * @param gatewayId 网关实例 ID

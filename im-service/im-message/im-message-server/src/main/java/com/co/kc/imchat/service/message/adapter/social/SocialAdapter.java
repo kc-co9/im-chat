@@ -76,7 +76,6 @@ public class SocialAdapter {
      */
     public List<FriendDisplay> getFriendDisplays(Long userId, List<Long> friendUserIds) {
         return socialService.getFriendDisplays(new FriendDisplaysGetParams(userId, friendUserIds))
-                .friends()
                 .stream()
                 .map(this::toFriendDisplay)
                 .toList();

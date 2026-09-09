@@ -1,5 +1,7 @@
 # Broker 业务监控管理接口设计
 
+实现过程见[已完成执行计划](../exec-plans/completed/2026-08-13-broker-business-monitoring.md)。当前版本保留既有 Micrometer/JMX 指标，并用本设计的有界诊断记录补充最近 Gossip 与迁移结果；两者职责不同。
+
 ## 1. 背景
 
 `im-broker-server` 当前通过 Bolt 承担 Broker、Gateway、用户连接注册以及消息转发，并通过 Gossip 在 Broker 节点间同步状态。Nacos 能展示服务实例是否注册，但无法回答以下业务问题：
@@ -55,8 +57,7 @@ im-management
 ├── pom.xml
 ├── im-admin
 │   ├── pom.xml
-│   ├── ui
-│   └── src
+│   └── README.md          # 本阶段只预留所有权和 Maven 位置
 └── im-monitor
     ├── pom.xml
     ├── ui
@@ -64,7 +65,7 @@ im-management
 ```
 
 - `im-management` 仅负责 Maven 模块聚合，不包含启动类；
-- `im-admin` 是独立的业务管理应用，负责业务数据管理、权限与操作审计；
+- `im-admin` 未来作为独立业务管理应用承载业务数据管理、权限与操作审计；本阶段不创建运行代码或 UI；
 - `im-monitor` 是独立的只读监控应用，负责 Broker 发现、状态聚合、故障诊断和页面展示；
 - 两个应用分别构建、注册到 Nacos、启动和部署，不共享运行进程或页面资源。
 
@@ -297,7 +298,7 @@ Broker 注册到 Nacos 时需要通过实例 metadata 暴露管理地址或管�
 
 - 参数错误返回 HTTP 400；
 - 未找到用户路由时返回 HTTP 200 和空列表，表示用户当前不在线；
-- 管理服务聚合单项失败时不伪造健康数据，应返回 HTTP 500 并记录错误；
+- Broker 节点自身无法完成查询时返回 HTTP 500；Monitor 聚合单节点失败时标记为 `UNREACHABLE`，保留其他节点的有效数据且不伪造健康统计；
 - 所有接口只读，不提供注册、注销、迁移触发或 Gossip 触发能力；
 - 响应不返回消息载荷、认证信息、完整异常堆栈和全量用户路由；
 - 部署层应限制管理端口仅对运维网络开放。
@@ -320,4 +321,4 @@ Broker 注册到 Nacos 时需要通过实例 metadata 暴露管理地址或管�
 
 ## 11. 后续演进
 
-管理查询模型稳定后，可在不改变 HTTP 接口的情况下增加 Micrometer 指标，将相同的聚合状态输出到 Prometheus。若需要跨重启审计，再单独设计持久化事件或日志采集，不在本次内存诊断记录上直接扩展数据库职责。
+当前 Broker 已通过 Micrometer/JMX 暴露实例、连接与 Gossip 条目指标，本设计新增的有界记录用于回答最近一次 Gossip/迁移执行结果，不替代时序指标。后续可将现有 Micrometer 指标接入 Prometheus；若需要跨重启审计，再单独设计持久化事件或日志采集，不在本次内存诊断记录上直接扩展数据库职责。

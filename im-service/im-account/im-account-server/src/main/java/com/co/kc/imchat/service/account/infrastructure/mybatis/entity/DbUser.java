@@ -1,6 +1,7 @@
 package com.co.kc.imchat.service.account.infrastructure.mybatis.entity;
 
 import com.co.kc.imchat.plugin.datasource.dao.BaseEntity;
+import com.co.kc.imchat.service.account.infrastructure.mybatis.enums.DbUserStatus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -29,4 +30,8 @@ public class DbUser extends BaseEntity {
      * 密码。
      */
     private String password;
+    /**
+     * 用户业务状态。
+     */
+    private DbUserStatus status;
 }

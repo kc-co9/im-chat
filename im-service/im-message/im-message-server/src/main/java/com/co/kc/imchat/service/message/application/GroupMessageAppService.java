@@ -31,7 +31,7 @@ import com.co.kc.imchat.service.message.model.cqrs.query.group.GroupMessageDetai
 import com.co.kc.imchat.service.message.model.cqrs.query.group.GroupMessageHistoryQuery;
 import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import com.co.kc.imchat.common.exception.NotFoundException;
-import com.co.kc.imchat.common.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.service.message.application.lock.ImMessageLockScene;
 import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;

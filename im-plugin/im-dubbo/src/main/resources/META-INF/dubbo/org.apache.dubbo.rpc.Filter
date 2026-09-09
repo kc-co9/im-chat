@@ -1,0 +1,2 @@
+imRpcTokenConsumer=com.co.kc.imchat.plugin.dubbo.filter.RpcTokenConsumerFilter
+imRpcTokenProvider=com.co.kc.imchat.plugin.dubbo.filter.RpcTokenProviderFilter

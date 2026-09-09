@@ -109,6 +109,43 @@ public class SessionService {
     }
 
     /**
+     * 校验当前会话版本并退出登录。
+     *
+     * @param userId      用户标识
+     * @param version     期望退出的会话版本
+     * @param signedOutAt 退出时间
+     * @return 已退出的会话版本
+     * @throws AuthException 会话不存在或版本不匹配时抛出
+     */
+    public SessionVersion signOut(
+            UserId userId,
+            SessionVersion version,
+            Instant signedOutAt
+    ) {
+        Session session = sessionRepository.find(userId)
+                .orElseThrow(() -> new AuthException("会话无效"));
+        if (!session.matchesVersion(version)) {
+            throw new AuthException("会话无效");
+        }
+        return signOut(session, signedOutAt);
+    }
+
+    /**
+     * 将用户当前在线会话踢下线。
+     *
+     * <p>用户没有在线会话时保持幂等，不创建或修改会话。</p>
+     *
+     * @param userId   用户标识
+     * @param kickedAt 踢下线时间
+     * @return 被踢下线的会话版本；没有在线会话时返回空
+     */
+    public Optional<SessionVersion> kickOut(UserId userId, Instant kickedAt) {
+        return sessionRepository.find(userId)
+                .filter(Session::isSignIn)
+                .map(session -> signOut(session, kickedAt));
+    }
+
+    /**
      * 认证 Access Token 并转换为领域凭证。
      *
      * @param accessToken 待认证的 Access Token
@@ -130,6 +167,13 @@ public class SessionService {
                 .map(token ->
                         SessionDomainTransformer.INSTANCE.refreshCredentialFrom(
                                 token, tokenCodec.fingerprint(refreshToken)));
+    }
+
+    private SessionVersion signOut(Session session, Instant signedOutAt) {
+        SessionVersion version = session.getSessionVersion();
+        session.signOut(signedOutAt);
+        sessionRepository.save(session);
+        return version;
     }
 
 }

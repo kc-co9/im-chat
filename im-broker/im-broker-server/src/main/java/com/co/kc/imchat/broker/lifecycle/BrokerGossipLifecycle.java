@@ -5,6 +5,9 @@ import com.co.kc.imchat.broker.config.properties.ClusterProperties;
 import com.co.kc.imchat.broker.domain.registry.broker.BrokerRegistry;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
+import com.co.kc.imchat.broker.support.diagnostic.model.dto.GossipRecordDTO;
+import com.co.kc.imchat.broker.support.diagnostic.model.enums.DiagnosticStatus;
+import com.co.kc.imchat.broker.support.diagnostic.tracker.impl.GossipSyncTracker;
 import com.co.kc.imchat.plugin.gossip.sync.GossipSyncOperations;
 import com.co.kc.imchat.plugin.gossip.sync.GossipSynchronizer;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +15,8 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -35,15 +40,18 @@ public class BrokerGossipLifecycle {
     private final GossipSynchronizer gossipSynchronizer;
     private final ClusterProperties clusterProperties;
     private final BrokerProperties brokerProperties;
+    private final GossipSyncTracker gossipSyncTracker;
 
     public BrokerGossipLifecycle(BrokerRegistry brokerRegistry,
                                  GossipSynchronizer gossipSynchronizer,
                                  ClusterProperties clusterProperties,
-                                 BrokerProperties brokerProperties) {
+                                 BrokerProperties brokerProperties,
+                                 GossipSyncTracker gossipSyncTracker) {
         this.brokerRegistry = brokerRegistry;
         this.gossipSynchronizer = gossipSynchronizer;
         this.clusterProperties = clusterProperties;
         this.brokerProperties = brokerProperties;
+        this.gossipSyncTracker = gossipSyncTracker;
     }
 
     /**
@@ -63,14 +71,39 @@ public class BrokerGossipLifecycle {
      * 与单个 peer 交换状态摘要和缺失的增量数据。
      */
     private void syncPeer(String address) {
+        Instant startedAt = Instant.now();
         try {
-            gossipSynchronizer.syncPeer(
+            Integer processedCount = gossipSynchronizer.syncPeer(
                     brokerProperties.getInstance().getId(),
                     address,
                     SYNC_OPERATIONS,
                     clusterProperties.getGossipTimeoutMillis());
-        } catch (RuntimeException ex) {
-            log.warn("failed to gossip broker state to peer:{}, error:{}", address, ex.toString());
+            trackGossip(address, processedCount, startedAt, DiagnosticStatus.SUCCESS, null);
+        } catch (RuntimeException exception) {
+            trackGossip(address, 0, startedAt, DiagnosticStatus.FAILED, exception.getMessage());
+            log.warn("failed to gossip broker state to peer:{}, error:{}", address, exception.toString());
+        }
+    }
+
+    private void trackGossip(
+            String address,
+            Integer processedCount,
+            Instant startedAt,
+            DiagnosticStatus status,
+            String errorSummary
+    ) {
+        try {
+            Instant completedAt = Instant.now();
+            gossipSyncTracker.track(new GossipRecordDTO(
+                    completedAt,
+                    address,
+                    status,
+                    processedCount,
+                    Duration.between(startedAt, completedAt).toMillis(),
+                    errorSummary));
+        } catch (RuntimeException exception) {
+            log.warn("failed to track gossip synchronization, peer:{}, error:{}",
+                    address, exception.toString());
         }
     }
 

@@ -24,12 +24,18 @@ class LayerBoundaryTest {
             };
     private static final String[] DOMAIN_PACKAGES = {
             "com.co.kc.imchat.broker.domain..",
+            "com.co.kc.imchat.management.admin.domain..",
+            "com.co.kc.imchat.management.audit.domain..",
+            "com.co.kc.imchat.management.iam.domain..",
             "com.co.kc.imchat.service.account.domain..",
             "com.co.kc.imchat.service.social.domain..",
             "com.co.kc.imchat.service.message.domain.."
     };
     private static final JavaClasses CLASSES = new ClassFileImporter()
-            .importPackages("com.co.kc.imchat.broker", "com.co.kc.imchat.service");
+            .importPackages(
+                    "com.co.kc.imchat.broker",
+                    "com.co.kc.imchat.management",
+                    "com.co.kc.imchat.service");
 
     @Test
     void domainsMustNotDependOnOuterApplicationLayers() {
@@ -38,6 +44,10 @@ class LayerBoundaryTest {
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "com.co.kc.imchat.broker.interfaces..",
                         "com.co.kc.imchat.broker.lifecycle..",
+                        "com.co.kc.imchat.management..interfaces..",
+                        "com.co.kc.imchat.management..infrastructure..",
+                        "com.co.kc.imchat.management..config..",
+                        "com.co.kc.imchat.management..lifecycle..",
                         "com.co.kc.imchat.service..interfaces..",
                         "com.co.kc.imchat.service..infrastructure..")
                 .check(CLASSES);
@@ -61,6 +71,26 @@ class LayerBoundaryTest {
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "..infrastructure.mybatis..",
                         "..infrastructure.domain.repository..")
+                .check(CLASSES);
+    }
+
+    @Test
+    void managementApplicationsMustNotDependOnOuterLayers() {
+        noClasses()
+                .that().resideInAPackage("com.co.kc.imchat.management..application..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "com.co.kc.imchat.management..interfaces..",
+                        "com.co.kc.imchat.management..infrastructure..",
+                        "com.co.kc.imchat.management..config..",
+                        "com.co.kc.imchat.management..lifecycle..")
+                .check(CLASSES);
+    }
+
+    @Test
+    void applicationServicesMustNotDependOnOtherApplicationServices() {
+        noClasses()
+                .that().haveSimpleNameEndingWith("AppService")
+                .should().dependOnClassesThat().haveSimpleNameEndingWith("AppService")
                 .check(CLASSES);
     }
 

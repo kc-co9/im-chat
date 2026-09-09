@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 public class BaseEntity {
@@ -15,10 +15,10 @@ public class BaseEntity {
     private Long id;
 
     @TableField(value = "create_time")
-    private LocalDateTime createTime;
+    private Instant createTime;
 
     @TableField(value = "update_time")
-    private LocalDateTime updateTime;
+    private Instant updateTime;
 
     @TableLogic(value = "0", delval = "id")
     @TableField(value = "is_deleted")

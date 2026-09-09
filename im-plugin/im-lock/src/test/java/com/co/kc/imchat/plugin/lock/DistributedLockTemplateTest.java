@@ -69,7 +69,7 @@ class DistributedLockTemplateTest {
         template.execute(() -> "ok", "scene", "key", LockOptions.AUTO_RENEW_DEFAULT_WAIT);
 
         assertEquals(LockConstants.AUTO_RENEW, lockClient.expireTimeMs);
-        assertEquals(100, lockClient.waitTimeMs);
+        assertEquals(LockConstants.DEFAULT_WAIT, lockClient.waitTimeMs);
     }
 
     @Test
@@ -84,7 +84,7 @@ class DistributedLockTemplateTest {
         assertTrue(called[0]);
         assertEquals("scene:key", lockClient.unlockKey);
         assertEquals(LockConstants.AUTO_RENEW, lockClient.expireTimeMs);
-        assertEquals(100, lockClient.waitTimeMs);
+        assertEquals(LockConstants.DEFAULT_WAIT, lockClient.waitTimeMs);
     }
 
     @Test

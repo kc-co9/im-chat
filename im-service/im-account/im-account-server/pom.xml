@@ -17,8 +17,17 @@
         </dependency>
         <dependency>
             <groupId>com.co.kc.im</groupId>
+            <artifactId>im-account-admin-facade</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
             <artifactId>im-common</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
+            <artifactId>im-identity</artifactId>
         </dependency>
         <dependency>
             <groupId>com.co.kc.im</groupId>

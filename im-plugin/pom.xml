@@ -12,6 +12,8 @@
 
     <modules>
         <module>im-cache</module>
+        <module>im-identity</module>
+        <module>im-excel</module>
         <module>im-metrics</module>
         <module>im-lock</module>
         <module>im-datasource</module>
@@ -19,7 +21,7 @@
         <module>im-web</module>
         <module>im-dubbo</module>
         <module>im-bolt</module>
-        <module>im-mq</module>
+        <module>im-mq-kafka</module>
         <module>im-gossip</module>
         <module>im-nacos</module>
     </modules>

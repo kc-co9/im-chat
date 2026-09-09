@@ -6,6 +6,9 @@ import com.co.kc.imchat.service.account.facade.dto.UserProfileFindDTO;
 import com.co.kc.imchat.service.account.facade.params.AccessTokenParams;
 import com.co.kc.imchat.service.account.facade.params.UserProfileFindParams;
 import com.co.kc.imchat.service.account.facade.params.UserProfileGetParams;
+import com.co.kc.imchat.service.account.facade.params.UserProfilesGetParams;
+
+import java.util.List;
 
 /**
  * 账号服务契约。
@@ -28,6 +31,14 @@ public interface AccountService {
      * @return 用户资料
      */
     UserProfileDTO getUserProfile(UserProfileGetParams params);
+
+    /**
+     * 批量查询用户基础资料，不存在的用户不会进入结果。
+     *
+     * @param params 用户资料批量查询请求
+     * @return 已存在的用户资料
+     */
+    List<UserProfileDTO> getUserProfiles(UserProfilesGetParams params);
 
     /**
      * 按邮箱查询用户基础资料。

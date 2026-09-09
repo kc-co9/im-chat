@@ -248,10 +248,25 @@ excluded = %r{/(?:src/test|target|fixtures?)(?:/|\z)}
 all_files = Dir.glob(File.join(root, "**", "*"), File::FNM_DOTMATCH).select { |file| File.file?(file) && !file.match?(excluded) }
 
 resource_sql = all_files.select { |file| file.match?(%r{/src/main/resources/.+\.sql\z}i) }
-resource_sql.each { |file| report(groups, "SQL placement", relative(root, file), "Production resource SQL files are forbidden; use root sql/*.sql") }
+resource_sql.each { |file| report(groups, "SQL placement", relative(root, file), "Production resource SQL files are forbidden; use the owning module's sql/*.sql") }
 
-root_sql = Dir.glob(File.join(root, "sql", "*.sql")).select { |file| File.file?(file) }
-root_sql.each do |file|
+sql_files = all_files.select do |file|
+  file.end_with?(".sql") && !file.match?(%r{/src/main/resources/}i)
+end
+owned_sql = sql_files.select do |file|
+  sql_directory = File.dirname(file)
+  module_directory = File.dirname(sql_directory)
+  File.basename(sql_directory) == "sql" && File.directory?(File.join(module_directory, "src", "main"))
+end
+(sql_files - owned_sql).each do |file|
+  report(
+    groups,
+    "SQL placement",
+    relative(root, file),
+    "Service DDL must be placed in the owning Server module's sql/*.sql"
+  )
+end
+owned_sql.each do |file|
   path = relative(root, file)
   content = File.read(file)
   uncommented = sql_mask(content, mask_literals: false)
@@ -261,10 +276,10 @@ root_sql.each do |file|
   report(groups, "Dangerous SQL", path, "DROP DATABASE is forbidden") if keyword_sql.match?(/\bDROP\s+DATABASE\b/i)
   report(groups, "SELECT wildcard", path, "SELECT * and SELECT table.* are forbidden") if select_wildcard?(keyword_sql)
   keyword_sql.scan(/\bDROP\s+TABLE\b.*?(?:;|\z)/i).each do |statement|
-    if path != "sql/ddl.sql"
-      report(groups, "DROP TABLE", path, "DROP TABLE is only allowed in sql/ddl.sql")
+    if File.basename(path) != "ddl.sql"
+      report(groups, "DROP TABLE", path, "DROP TABLE is only allowed in an owned sql/ddl.sql")
     elsif !statement.match?(/\ADROP\s+TABLE\s+IF\s+EXISTS\b/i)
-      report(groups, "DROP TABLE", path, "DROP TABLE IF EXISTS is required in sql/ddl.sql")
+      report(groups, "DROP TABLE", path, "DROP TABLE IF EXISTS is required in an owned sql/ddl.sql")
     end
   end
 
@@ -278,6 +293,18 @@ root_sql.each do |file|
       unless lower_snake_identifier?(column)
         report(groups, "DDL naming", path, "CREATE TABLE requires lower snake_case column names: #{column}")
       end
+    end
+    template_columns = %w[id create_time update_time is_deleted]
+    missing_template_columns = template_columns.reject do |column|
+      body.match?(/(?:\A|,)\s*`?#{Regexp.escape(column)}`?\s+/i)
+    end
+    unless missing_template_columns.empty?
+      report(
+        groups,
+        "DDL structure",
+        path,
+        "CREATE TABLE requires standard template columns id/create_time/update_time/is_deleted; missing: #{missing_template_columns.join(', ')}"
+      )
     end
     report(groups, "DDL structure", path, "CREATE TABLE requires an explicit PRIMARY KEY") unless body.match?(/\bPRIMARY\s+KEY\b/i)
     report(groups, "DDL structure", path, "CREATE TABLE requires ENGINE=InnoDB") unless options.match?(/\bENGINE\s*=\s*InnoDB\b/i)

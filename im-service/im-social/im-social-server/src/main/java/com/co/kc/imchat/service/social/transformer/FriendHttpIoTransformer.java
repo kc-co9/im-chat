@@ -11,6 +11,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Mappings;
 import org.mapstruct.factory.Mappers;
 
+import java.time.Instant;
 import java.util.List;
 
 @Mapper
@@ -39,4 +40,8 @@ public interface FriendHttpIoTransformer {
             @Mapping(target = "username", source = "username"),
     })
     FriendSearchResponse.SearchItem searchDtoFrom(FriendSearchDTO friendSearchDTO);
+
+    default Long epochMillisecondsFrom(Instant instant) {
+        return instant == null ? null : instant.toEpochMilli();
+    }
 }

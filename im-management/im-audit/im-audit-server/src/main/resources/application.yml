@@ -1,0 +1,90 @@
+server:
+  port: 18091
+
+springdoc:
+  swagger-ui:
+    path: /api/doc.html
+  api-docs:
+    path: /v3/api-docs
+
+spring:
+  application:
+    name: im-audit
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
+  datasource:
+    url: jdbc:mysql://localhost:3306/im_chat_audit?characterEncoding=utf-8&serverTimezone=UTC
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+  cloud:
+    function:
+      definition: imAdminAudit;imIamAudit;imMonitorAudit;imAuditAudit
+    stream:
+      bindings:
+        auditOutput:
+          destination: im.audit.im-audit.v1
+        imAdminAudit-in-0:
+          destination: im.audit.im-admin.v1
+          group: im-audit
+          consumer:
+            max-attempts: 3
+        imIamAudit-in-0:
+          destination: im.audit.im-iam.v1
+          group: im-audit
+          consumer:
+            max-attempts: 3
+        imMonitorAudit-in-0:
+          destination: im.audit.im-monitor.v1
+          group: im-audit
+          consumer:
+            max-attempts: 3
+        imAuditAudit-in-0:
+          destination: im.audit.im-audit.v1
+          group: im-audit
+          consumer:
+            max-attempts: 3
+      kafka:
+        bindings:
+          imAdminAudit-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: im.audit.im-admin.v1.dlq
+          imIamAudit-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: im.audit.im-iam.v1.dlq
+          imMonitorAudit-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: im.audit.im-monitor.v1.dlq
+          imAuditAudit-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: im.audit.im-audit.v1.dlq
+
+im:
+  iam:
+    enabled: true
+    issuer: http://localhost:18090
+    application:
+      key: imAudit
+      clients:
+        web:
+          client-id: im-audit-client
+          client-secret: a927495b802ee7c9f195a80430ad9b5a0454ecc0d526ea63
+          redirect-uri: http://localhost:18091/iam/callback
+          post-logout-redirect-uri: http://localhost:18091/
+        catalog:
+          client-id: im-audit-catalog
+          client-secret: b3c12d1ac70d4d499406b02cecc87d1959e60db488e74d6e
+      session:
+        encryption-key: gWeS8nw3NUJfjOM42yOaaAHEAn/ljQ5eYDTre94ohD8=
+        secure-cookie: false
+  audit:
+    enabled: true
+    transport: kafka
+    kafka:
+      binding-name: auditOutput

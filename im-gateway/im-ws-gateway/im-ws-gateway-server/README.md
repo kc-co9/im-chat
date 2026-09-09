@@ -106,9 +106,10 @@ Gateway 返回逐连接接受或失败结果，但该结果只描述本机写入
 - `idle.reader-idle-seconds`：读空闲关闭时间。
 - `broker.bolt.load-balance`：Broker 地址选择策略，默认 `HASH`；可选 `HASH`、`ROUND_ROBIN`、`RANDOM`。
 - `broker.bolt.timeout-millis`：调用 Broker 超时时间。
-- `register.enabled`：是否启用注册刷新任务。
 
 Gateway 通过 Nacos 发现初始 Broker 地址，之后由 Broker SDK 定时读取 Broker 集群快照；不配置固定 Broker 地址或 seed address。`im.bolt.client.enabled=true` 用于创建出站 `BoltInvoker`，`im.bolt.server.enabled=true` 用于接收 Broker 下行调用。
+
+本地默认端口为：浏览器 WebSocket `19090`、Gateway 下行 Bolt `12202`。Gateway Bolt 端口不得与同机 Broker Bolt `12200` 或 Broker 管理 HTTP `12201` 重复，否则 Broker 会把下行帧发送到错误的监听器。
 
 ## 边界说明
 

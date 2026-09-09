@@ -38,6 +38,9 @@ target/
 *.sw?
 
 # 前端项目已独立到 im-chat-frontend 目录
+node_modules/
+coverage/
+dist/
 
 # 日志文件
 /logs/

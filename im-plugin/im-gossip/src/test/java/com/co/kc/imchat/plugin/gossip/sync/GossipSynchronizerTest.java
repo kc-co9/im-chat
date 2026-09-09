@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,12 +37,17 @@ class GossipSynchronizerTest {
                 .thenReturn(new GossipDigestResult(List.of(remoteDelta), List.of(localDelta.key())));
         when(syncStore.deltas(List.of(localDelta.key()))).thenReturn(List.of(localDelta));
 
-        synchronizer.syncPeer("node-1", "127.0.0.1:12200", operations, 3000);
+        Integer processedCount = synchronizer.syncPeer(
+                "node-1",
+                "127.0.0.1:12200",
+                operations,
+                3000);
 
         verify(syncStore).merge(List.of(remoteDelta));
         verify(peerClient).pushDeltas(
                 "127.0.0.1:12200", "broker.sync", "delta",
                 new GossipDeltaParams("node-1", List.of(localDelta)), 3000);
+        assertThat(processedCount).isEqualTo(2);
     }
 
     private GossipDeltaEntry delta(String key, String nodeId, long timestamp) {

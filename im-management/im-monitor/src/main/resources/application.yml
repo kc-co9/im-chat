@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: im-monitor
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
+
+server:
+  port: 18092
+
+springdoc:
+  swagger-ui:
+    path: /api/doc.html
+  api-docs:
+    path: /v3/api-docs
+
+im:
+  iam:
+    enabled: true
+    issuer: http://localhost:18090
+    application:
+      key: imMonitor
+      clients:
+        web:
+          client-id: im-monitor-client
+          client-secret: 297e3fc66f439d21c19e6ba073090dc720d38e6845f54f0b
+          redirect-uri: http://localhost:18092/iam/callback
+          post-logout-redirect-uri: http://localhost:18092/
+        catalog:
+          client-id: im-monitor-catalog
+          client-secret: 2fb89170c2434d2793ef84a4777495907cc4c8763f3e45ba
+      session:
+        encryption-key: x46oSuYFHzztEqo1rrq3a+Px45QglH4n78vY4domdTw=
+        secure-cookie: false
+  monitor:
+    query:
+      threads: 8
+      queue-capacity: 128
+    broker:
+      service-name: im-broker
+      request-timeout-millis: 3000

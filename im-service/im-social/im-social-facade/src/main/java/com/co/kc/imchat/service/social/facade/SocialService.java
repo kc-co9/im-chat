@@ -6,12 +6,14 @@ import com.co.kc.imchat.service.social.facade.params.GroupMemberCheckParams;
 import com.co.kc.imchat.service.social.facade.params.GroupMembersGetParams;
 import com.co.kc.imchat.service.social.facade.params.GroupMessageRecipientsGetParams;
 import com.co.kc.imchat.service.social.facade.params.GroupSummariesGetParams;
-import com.co.kc.imchat.service.social.facade.dto.FriendDisplaysDTO;
+import com.co.kc.imchat.service.social.facade.dto.FriendDisplayDTO;
 import com.co.kc.imchat.service.social.facade.dto.FriendRelationCheckDTO;
 import com.co.kc.imchat.service.social.facade.dto.GroupMemberCheckDTO;
 import com.co.kc.imchat.service.social.facade.dto.GroupMessageRecipientsDTO;
 import com.co.kc.imchat.service.social.facade.dto.GroupMembersDTO;
 import com.co.kc.imchat.service.social.facade.dto.GroupSummariesDTO;
+
+import java.util.List;
 
 /**
  * 社交关系服务契约。
@@ -57,7 +59,7 @@ public interface SocialService {
      * @param params 好友展示信息查询请求
      * @return 好友展示信息列表
      */
-    FriendDisplaysDTO getFriendDisplays(FriendDisplaysGetParams params);
+    List<FriendDisplayDTO> getFriendDisplays(FriendDisplaysGetParams params);
 
     /**
      * 查询群摘要。

@@ -55,6 +55,13 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
     }
 
     @Override
+    public long count() {
+        return userConnections.values().stream()
+                .mapToLong(Map::size)
+                .sum();
+    }
+
+    @Override
     public ConnectionSyncResult sync(String gatewayId, List<Long> userIds) {
         Set<Long> aliveUserIds = userIds == null ? Set.of() : new HashSet<>(userIds);
         List<UserGatewayDTO> addedConnections = new ArrayList<>();

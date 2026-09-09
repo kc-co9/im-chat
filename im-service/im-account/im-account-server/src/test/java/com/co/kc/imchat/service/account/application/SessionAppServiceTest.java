@@ -5,10 +5,10 @@ import com.co.kc.imchat.common.domain.user.model.UserName;
 import com.co.kc.imchat.common.exception.AuthException;
 import com.co.kc.imchat.plugin.lock.core.DistributedLockTemplate;
 import com.co.kc.imchat.plugin.lock.support.LockOptions;
-import com.co.kc.imchat.service.account.application.lock.ImAccountLockScene;
+import com.co.kc.imchat.service.account.support.lock.ImAccountLockScene;
 import com.co.kc.imchat.service.account.domain.session.model.AccessCredential;
 import com.co.kc.imchat.service.account.domain.session.model.AccessToken;
-import com.co.kc.imchat.service.account.adapter.broker.SessionConnectionAdapter;
+import com.co.kc.imchat.service.account.adapter.SessionConnectionAdapter;
 import com.co.kc.imchat.service.account.domain.session.model.CredentialPair;
 import com.co.kc.imchat.service.account.domain.session.model.RefreshFingerprint;
 import com.co.kc.imchat.service.account.domain.session.model.IssuedAccessToken;
@@ -23,6 +23,7 @@ import com.co.kc.imchat.service.account.domain.session.service.SessionService;
 import com.co.kc.imchat.service.account.domain.user.model.User;
 import com.co.kc.imchat.service.account.domain.user.model.UserEmail;
 import com.co.kc.imchat.service.account.domain.user.model.UserPassword;
+import com.co.kc.imchat.service.account.domain.user.model.UserStatus;
 import com.co.kc.imchat.service.account.domain.user.service.UserService;
 import com.co.kc.imchat.service.account.model.cqrs.command.UserSignInCmd;
 import com.co.kc.imchat.service.account.model.cqrs.command.RefreshTokenCmd;
@@ -43,8 +44,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 
 class SessionAppServiceTest {
 
@@ -59,7 +60,8 @@ class SessionAppServiceTest {
                 new UserId(42L),
                 new UserEmail("user@example.com"),
                 new UserName("user"),
-                new UserPassword("encrypted-password"));
+                new UserPassword("encrypted-password"),
+                UserStatus.NORMAL);
         RefreshFingerprint fingerprint = new RefreshFingerprint("fingerprint-1");
         CredentialPair pair = credentials(
                 "access-token", NOW.plusSeconds(7200), "refresh-token",
@@ -127,12 +129,12 @@ class SessionAppServiceTest {
         SessionRepository sessionRepository = mock(SessionRepository.class);
         SessionService credentialService = mock(SessionService.class);
         SessionConnectionAdapter connectionAdapter = mock(SessionConnectionAdapter.class);
-        Session session = new Session(new UserId(42L));
-        session.signIn(
-                new SessionVersion("session-v1"), new RefreshFingerprint("fingerprint"),
-                NOW.plusSeconds(3600),
-                NOW.minusSeconds(60));
-        when(sessionRepository.find(new UserId(42L))).thenReturn(Optional.of(session));
+        when(credentialService.signOut(
+                eq(new UserId(42L)), eq(new SessionVersion("another-session")), any(Instant.class)))
+                .thenThrow(new AuthException("会话无效"));
+        when(credentialService.signOut(
+                eq(new UserId(42L)), eq(new SessionVersion("session-v1")), any(Instant.class)))
+                .thenReturn(new SessionVersion("session-v1"));
         DistributedLockTemplate lockTemplate = executingLockTemplate();
         SessionAppService service = new SessionAppService(
                 sessionRepository, mock(UserService.class), credentialService,
@@ -141,18 +143,15 @@ class SessionAppServiceTest {
         assertThatThrownBy(() -> service.signOut(new UserSignOutCmd(42L, "another-session")))
                 .isInstanceOf(AuthException.class)
                 .hasMessageContaining("会话无效");
-        assertThat(session.matchesVersion(new SessionVersion("session-v1"))).isTrue();
-        verify(sessionRepository, never()).save(session);
 
         service.signOut(new UserSignOutCmd(42L, "session-v1"));
 
-        assertThat(session.isSignIn()).isFalse();
-        org.mockito.InOrder order = inOrder(sessionRepository, connectionAdapter);
-        order.verify(sessionRepository).save(session);
-        order.verify(connectionAdapter).closeConnections(
+        verify(credentialService).signOut(
+                eq(new UserId(42L)), eq(new SessionVersion("session-v1")), any(Instant.class));
+        verify(connectionAdapter).closeConnections(
                 new UserId(42L), new SessionVersion("session-v1"));
         verify(lockTemplate, org.mockito.Mockito.times(2)).execute(
-                any(Callable.class), eq(ImAccountLockScene.SESSION_WRITE), eq("42"),
+                any(Runnable.class), eq(ImAccountLockScene.SESSION_WRITE), eq("42"),
                 eq(LockOptions.AUTO_RENEW_DEFAULT_WAIT));
 
         AccessCredential accessCredential = new AccessCredential(
@@ -222,14 +221,59 @@ class SessionAppServiceTest {
     }
 
     @Test
-    void secondSignInSavesNewSessionBeforeSchedulingOldSessionClose() {
+    void refreshRejectsUserWhoseAccountStateDisallowsAuthentication() {
+        SessionRepository sessionRepository = mock(SessionRepository.class);
+        UserService userService = mock(UserService.class);
+        SessionService sessionService = mock(SessionService.class);
+        UserId userId = new UserId(42L);
+        RefreshCredential credential = new RefreshCredential(
+                userId, new SessionVersion("session-v1"), NOW.plusSeconds(3600),
+                new RefreshFingerprint("fingerprint"));
+        when(sessionService.authenticate(new RefreshToken("refresh-token")))
+                .thenReturn(Optional.of(credential));
+        doThrow(new AuthException("用户认证失败"))
+                .when(userService).ensureActive(userId);
+        SessionAppService service = new SessionAppService(
+                sessionRepository, userService, sessionService,
+                mock(SessionConnectionAdapter.class), executingLockTemplate());
+
+        assertThatThrownBy(() -> service.refreshToken(new RefreshTokenCmd("refresh-token")))
+                .isInstanceOf(AuthException.class)
+                .hasMessageContaining("用户认证失败");
+        verify(sessionService, never()).refresh(any(RefreshCredential.class), any(Instant.class));
+    }
+
+    @Test
+    void accessAuthenticationRejectsUserWhoseAccountStateDisallowsAuthentication() {
+        SessionRepository sessionRepository = mock(SessionRepository.class);
+        UserService userService = mock(UserService.class);
+        SessionService sessionService = mock(SessionService.class);
+        UserId userId = new UserId(42L);
+        AccessCredential credential = new AccessCredential(
+                userId, new SessionVersion("session-v1"), NOW.plusSeconds(3600));
+        when(sessionService.authenticate(new AccessToken("access-token")))
+                .thenReturn(Optional.of(credential));
+        doThrow(new AuthException("用户认证失败"))
+                .when(userService).ensureActive(userId);
+        SessionAppService service = new SessionAppService(
+                sessionRepository, userService, sessionService,
+                mock(SessionConnectionAdapter.class), executingLockTemplate());
+
+        assertThatThrownBy(() -> service.authenticate(new AccessTokenParams("access-token")))
+                .isInstanceOf(AuthException.class)
+                .hasMessageContaining("用户认证失败");
+        verify(sessionRepository, never()).find(userId);
+    }
+
+    @Test
+    void secondSignInRequestsClosingReplacedSession() {
         SessionRepository sessionRepository = mock(SessionRepository.class);
         UserService userService = mock(UserService.class);
         SessionService credentialService = mock(SessionService.class);
         SessionConnectionAdapter connectionAdapter = mock(SessionConnectionAdapter.class);
         User user = new User(
                 new UserId(42L), new UserEmail("user@example.com"), new UserName("user"),
-                new UserPassword("encrypted-password"));
+                new UserPassword("encrypted-password"), UserStatus.NORMAL);
         CredentialPair pair = credentials(
                 "access-new", NOW.plusSeconds(7200), "refresh-new", NOW.plusSeconds(3600),
                 new RefreshFingerprint("fingerprint-new"));
@@ -267,6 +311,11 @@ class SessionAppServiceTest {
         doAnswer(invocation -> ((Callable<?>) invocation.getArgument(0)).call())
                 .when(lockTemplate)
                 .execute(any(Callable.class), any(String.class), any(String.class), any(LockOptions.class));
+        doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(0)).run();
+            return null;
+        }).when(lockTemplate)
+                .execute(any(Runnable.class), any(String.class), any(String.class), any(LockOptions.class));
         return lockTemplate;
     }
 }

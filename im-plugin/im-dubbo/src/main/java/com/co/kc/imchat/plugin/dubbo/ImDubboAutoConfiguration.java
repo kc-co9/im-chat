@@ -1,5 +1,6 @@
 package com.co.kc.imchat.plugin.dubbo;
 
+import com.co.kc.imchat.plugin.dubbo.aspect.RpcExceptionAspect;
 import com.co.kc.imchat.plugin.dubbo.properties.ImDubboProperties;
 import org.apache.dubbo.config.ApplicationConfig;
 import org.apache.dubbo.config.ConsumerConfig;
@@ -22,6 +23,12 @@ import java.util.Map;
 @EnableDubbo(scanBasePackages = "com.co.kc.imchat")
 @EnableConfigurationProperties(ImDubboProperties.class)
 public class ImDubboAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public RpcExceptionAspect rpcExceptionAspect() {
+        return new RpcExceptionAspect();
+    }
 
     @Bean
     @ConditionalOnMissingBean

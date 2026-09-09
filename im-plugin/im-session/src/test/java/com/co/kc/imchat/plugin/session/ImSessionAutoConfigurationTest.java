@@ -1,9 +1,13 @@
 package com.co.kc.imchat.plugin.session;
 
 import com.co.kc.imchat.plugin.session.properties.JwtProperties;
+import com.co.kc.imchat.plugin.session.properties.SessionWebProperties;
 import com.co.kc.imchat.plugin.session.token.codec.JwtTokenCodec;
+import com.co.kc.imchat.plugin.session.web.UserContextInterceptor;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
@@ -20,11 +24,28 @@ class ImSessionAutoConfigurationTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(ImSessionAutoConfiguration.class);
 
+    private final WebApplicationContextRunner webContextRunner =
+            new WebApplicationContextRunner()
+                    .withConfiguration(AutoConfigurations.of(ImSessionAutoConfiguration.class));
+
     @Test
     void doesNotCreateCodecWhileJwtIsDisabled() {
         contextRunner.run(context -> {
             assertThat(context).doesNotHaveBean(JwtTokenCodec.class);
+            assertThat(context).doesNotHaveBean(SessionWebProperties.class);
+            assertThat(context).doesNotHaveBean(UserContextInterceptor.class);
         });
+    }
+
+    @Test
+    void registersServletSessionAdapterFromSingleAutoConfigurationEntry() {
+        webContextRunner
+                .withPropertyValues("im.session.web.public-paths[0]=/user/signIn")
+                .run(context -> {
+                    assertThat(context).hasSingleBean(SessionWebProperties.class);
+                    assertThat(context).hasSingleBean(UserContextInterceptor.class);
+                    assertThat(context).hasBean("sessionWebMvcConfigurer");
+                });
     }
 
     @Test

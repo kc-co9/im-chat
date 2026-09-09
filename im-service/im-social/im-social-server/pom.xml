@@ -32,6 +32,10 @@
         </dependency>
         <dependency>
             <groupId>com.co.kc.im</groupId>
+            <artifactId>im-identity</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
             <artifactId>im-dubbo</artifactId>
         </dependency>
         <dependency>

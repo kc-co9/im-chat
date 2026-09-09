@@ -10,13 +10,11 @@ import com.co.kc.imchat.service.social.facade.SocialService;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@ConditionalOnProperty(prefix = "im.message.remote-adapter", name = "enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(BrokerProperties.class)
 public class RemoteAdapterConfig {
 

@@ -222,10 +222,43 @@ Redis 回执任务提供有界重投，但不是数据库 Outbox，也不承诺�
 | `im-service/im-account` | 用户、凭证和在线会话 |
 | `im-service/im-social` | 好友、群组和成员关系 |
 | `im-service/im-message` | 聊天、消息、收件箱和通知 |
+| `im-management/im-monitor` | Broker 只读业务诊断聚合和独立监控页面 |
+| `im-management/im-iam` | 统一管理端身份、OAuth2/OIDC、机器客户端、应用级 RBAC 与接入 SDK |
+| `im-management/im-admin` | IAM 接入、普通用户管理和管理 UI |
+| `im-management/im-audit` | 集中业务/安全审计 SDK、接收服务、查询 UI 和受限 Excel 导出 |
 | `im-architecture` | ArchUnit 依赖和包边界检查 |
 | `scripts` | Harness、影响分析和验证入口 |
 
 每个模块的运行能力和局部配置由其 README 说明。Coding Agent 修改模块前还需要读取最近的 `AGENTS.md`。
+
+### Broker 监控链路
+
+```text
+operations browser
+        |
+        | /api (read only)
+        v
+    im-monitor ---- Nacos metadata ----> Broker management addresses
+        |
+        +---- concurrent HTTP ----> Broker A :12201
+        +---- concurrent HTTP ----> Broker B :12201
+        `---- concurrent HTTP ----> unavailable node -> UNREACHABLE
+```
+
+Broker 的业务 Bolt 端口仍为 `12200`；只读管理 HTTP 默认绑定 `127.0.0.1:12201`。Monitor 对单节点失败进行隔离，页面不会直接访问 Broker，也不提供全量用户路由或任何写操作。运行方式和接口见 [im-monitor README](im-management/im-monitor/README.md)。
+
+### 业务管理链路
+
+```text
+operations browser -> IAM SSO -> im-admin -> Account Admin Facade -> im-account
+                         |-------> im-monitor -> Broker diagnostics
+                         `-------> im-audit -> immutable audit query/export
+
+im-admin / im-iam / im-monitor
+        `-> source Kafka Topic or authenticated async HTTP -> im-audit
+```
+
+IAM 使用与普通用户完全独立的管理账号、OAuth2/OIDC BFF Session、机器客户端和应用级 RBAC。Admin、Monitor、Audit 均实时查询 IAM 权限，不读取 Account 表也不复用普通用户 Token；普通用户管理命令仍由 Account 执行。Admin 和 IAM 通过 Audit SDK 发布审计事实，不再持有本地审计表。运行方式见 [IAM README](im-management/im-iam/im-iam-server/README.md)、[Admin README](im-management/im-admin/README.md) 与 [Audit README](im-management/im-audit/im-audit-server/README.md)。
 
 ## Harness 与质量门禁
 
@@ -292,7 +325,16 @@ WebSocket 入口为 `/ws`，使用统一 JSON 帧而不是 STOMP destination。�
 - Redis 6+
 - Nacos 2+
 
-根目录 DDL 位于 [`sql/ddl.sql`](sql/ddl.sql)。SQL 编写和 Mapper 约束见 [SQL Guide](docs/references/SQL_GUIDE.md)。
+DDL 与数据所有权一起放在各 Server 模块根目录：
+
+- Account：[`im-service/im-account/im-account-server/sql/ddl.sql`](im-service/im-account/im-account-server/sql/ddl.sql)
+- Social：[`im-service/im-social/im-social-server/sql/ddl.sql`](im-service/im-social/im-social-server/sql/ddl.sql)
+- Message：[`im-service/im-message/im-message-server/sql/ddl.sql`](im-service/im-message/im-message-server/sql/ddl.sql)
+- IAM：[`im-management/im-iam/im-iam-server/sql/ddl.sql`](im-management/im-iam/im-iam-server/sql/ddl.sql)
+- Audit：[`im-management/im-audit/im-audit-server/sql/ddl.sql`](im-management/im-audit/im-audit-server/sql/ddl.sql)
+
+五个服务分别使用 `im_chat_account`、`im_chat_social`、`im_chat_message`、`im_chat_iam` 和
+`im_chat_audit` Schema。SQL 编写和 Mapper 约束见 [SQL Guide](docs/references/SQL_GUIDE.md)。
 
 ### Nacos
 

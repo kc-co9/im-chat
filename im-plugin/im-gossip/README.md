@@ -58,6 +58,8 @@
 3. 根据 peer 返回的 `staleKeys` 读取本地 deltas。
 4. 将这些 deltas 推送给 peer。
 
+方法返回本次合并与推送的 delta 总数，供接入模块记录同步诊断指标；插件本身不保存诊断历史。
+
 响应侧分别调用：
 
 - `handleDigest(GossipDigestParams)`：比较摘要并返回双方差异。

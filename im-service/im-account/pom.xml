@@ -12,6 +12,7 @@
 
     <modules>
         <module>im-account-facade</module>
+        <module>im-account-admin-facade</module>
         <module>im-account-server</module>
     </modules>
 </project>

@@ -6,6 +6,7 @@ import com.co.kc.imchat.broker.transformer.RegistryTransformer;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class InMemoryGatewayRegistry implements GatewayRegistry {
@@ -33,5 +34,10 @@ public class InMemoryGatewayRegistry implements GatewayRegistry {
     @Override
     public Optional<GatewayEndpointDTO> find(String gatewayId) {
         return Optional.ofNullable(gateways.get(gatewayId));
+    }
+
+    @Override
+    public List<GatewayEndpointDTO> list() {
+        return List.copyOf(gateways.values());
     }
 }

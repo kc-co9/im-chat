@@ -39,27 +39,181 @@ Harness 的目标是让仓库能够解释约束、快速发现偏差并留下可
 | 规则 | 规范所有者 | 自动检查 | Review |
 |---|---|---|---|
 | 模块与 DDD 依赖方向 | Architecture/Coding | ArchUnit | 是 |
+| 本地同机运行的 Broker Bolt、Broker 管理 HTTP、Gateway Bolt 与 Gateway WebSocket 默认监听端口互不冲突 | Reliability/Configuration | `BrokerConfigTest`、`BrokerManagementPropertiesTest`、`WsConfigTest` | 是 |
+| 新增业务运行模块纳入 Architecture 导入范围，避免规则因未扫描而假通过；Spring Boot 可执行模块显式加入原始 `target/classes` 测试类路径 | Architecture/Harness | ArchUnit 模块导入、测试类路径与聚焦 RED fixture | 是 |
 | Facade/SDK 不依赖 server | Architecture | ArchUnit | 是 |
+| 管理审计持久化只由 `im-audit-server` 拥有；Admin/IAM 依赖 SDK 而非 Server | Architecture/Coding | Maven 依赖与源码所有权扫描 + ArchUnit | 是 |
+| 审计提交时序、脱敏、失败隔离、来源校验、重试和幂等 | Security/Reliability | SDK/Server 聚焦行为测试；通用源码判断 Review-only | 是 |
+| Facade 公开请求使用 `facade.params/*Params`，不暴露应用层 `command/query` | Coding | Java style checker + fixtures | 是 |
+| Facade 分页参数复用 `Paging`，边界包装属性显式拒绝 `null` | Coding | Facade 契约测试；全仓历史基线未收敛前 Review-only | 是 |
+| Facade 纯集合结果直接返回 `List<DTO>`，只有存在分页、游标、缺失项或其他元数据时才使用结果包装 DTO | Coding | 当前 Review-only；返回包装是否承载真实元数据需要结合契约语义判断 | 是 |
+| Dubbo Provider 通过 `im-dubbo` 统一转换 `RpcException`，不在业务 RPC 实现重复异常包装 | Coding/Reliability | 通用切面单测与自动配置测试；业务侧 Review-only | 是 |
+| RPC Token 使用保留 Attachment 传播，Provider 在接口适配器前建立并在调用后恢复 Spring Security 上下文；业务 Params 不承载 Token 或可信来源 | Coding/Security | `RpcTokenConsumerFilterTest`、`RpcTokenProviderFilterTest`；通用载荷语义 Review-only | 是 |
+| Facade 与 SDK RPC 公开输入使用独立的 `*Params`，不直接暴露 Event、领域对象或 CQRS 模型 | Coding | `check-java-style.sh` + 正反 fixture | 是 |
 | 插件不依赖业务模块 | Architecture | ArchUnit | 是 |
+| Snowflake 算法、机器 ID 契约、实现选择和 Bean 装配只由 `im-identity` 持有；运行模块直接声明依赖并通过必填 STATIC/REDIS 配置选择实现，不直接构造基础设施；Redisson 保持可选 | Architecture/Identity design | `RuntimeDependencyPolicyTest` 源码所有权、生产代码构造扫描、Maven 直接依赖与 optional 属性检查；`ImIdentityAutoConfigurationTest` 模式与失败语义 | 是 |
+| `im-web` 不依赖 Session 或管理身份实现，管理应用与 IAM SDK 显式接入统一 Web 协议 | Architecture/Coding | ArchUnit + Maven 依赖测试 | 是 |
+| 直接依赖 `im-web` 的可部署 Servlet MVC 应用显式配置 `/api/doc.html` 与 `/v3/api-docs`；SDK、Plugin 和 Facade 不声明应用路由 | Architecture/Coding | `RuntimeDependencyPolicyTest.deployableServletApplicationsConfigureOpenApiPaths` | 是 |
+| 插件不硬编码业务 Controller 路径；通用 Web 请求上下文不承载安全身份或业务语义，并由 Servlet Filter 在 Spring Security 前建立 | Coding/Security | 请求上下文 Filter 注册顺序、生命周期及安全端点可见性测试；路径与语义归属 Review-only | 是 |
+| 可部署 HTTP 应用统一使用 `HttpResult`，Security 失败使用相同协议，不重复声明全局错误响应 | Coding | Web/IAM SDK/Admin/Monitor 聚焦行为测试；重复类型识别 Review-only | 是 |
+| 管理 UI 在唯一 HTTP 边界拆解 `HttpResult`、提交同源 CSRF Token，并以契约测试覆盖 URL、Params、Body 和错误映射 | Coding/Security | 各 UI `Http.spec.ts`、API contract tests；跨工程配置一致性暂为 Review-only | 是 |
+| 管理 UI 列表区分 loading/data/empty/error 并在失败时保留成功数据；抽屉保留失败输入，局部写入状态不冻结整页，危险或立即失效操作要求后果确认，状态与反馈具备可访问文本语义 | Coding/Security | IAM `InteractionComponents.spec.ts` 与各 Workspace 行为测试；其他 UI 的业务后果和复用范围 Review-only | 是 |
+| 独立 Vue/TypeScript UI 提供 lint、format check、unit test、typecheck 和 build 门禁，配置由各 UI 自有 | Coding/Test | 各 UI package scripts；根 verification 继续执行测试与构建，lint/format 脚本完整性暂为 Review-only | 是 |
+| 浏览器 wire model 以字符串承载 Java `Long` 业务 ID，禁止用 `Number(id)`；分页总数和 epoch millis 仅在安全整数校验后转换 | Coding/Security | 各 UI wire/date-time tests；待 TypeScript Harness 能区分业务 ID 与计数后再增加静态检查 | 是 |
+| JAR 托管且无 SPA fallback 的 UI 使用 Hash Router；IAM BFF `continue` 仅恢复经过校验的同源相对路径 | Coding/Security | 各 UI Router/Navigation tests 与 IAM SDK Authorization Session tests；服务端 fallback 方案 Review-only | 是 |
+| IAM BFF 公共页面、静态资源、登录与回调跳过 Session Introspection；IAM 会话端点与 API 必须认证，未知路径默认拒绝；已知前端静态资源缺失返回 NOT_FOUND，不能把所有未映射 API 当成静态资源 | Coding/Security | `IamBffRequestPolicyTest`、`IamSecurityFilterTest`、`ErrorAdviceTest`、既有未映射 API 契约测试；应用自定义安全链复用检查 Review-only | 是 |
+| IAM 自身管理登录复用 Spring Form Login 与 CSRF，合法 SPA `continue` 显式恢复；缺少 `continue` 时恢复 OAuth SavedRequest，外部地址不得跳转 | Security/Coding | `IamLoginRedirectHandlerTest`、`IamSecurityBeansTest`、`LoginView.spec.ts`、`Navigation.spec.ts` | 是 |
+| 常见静态资源后缀与 `/assets/**` 跳过完整 HTTP 访问日志；无后缀路径按实际 MVC 静态资源 Handler 判断，不能全局硬编码 `/`；Controller、认证入口和业务 API 仍保留日志 | Coding | `LoggingFilterTest`；其他静态资源归属 Review-only | 是 |
 | 生产代码显式类型、无字段注入 | Coding | Drift checker | 是 |
+| 生产代码优先使用 import，不在方法体、注解和表达式内散落全限定类名 | Coding | 不自动化（Review-only）；同名类型冲突与字符串内容难以由正则可靠区分 | 是 |
 | 生产测试替身、控制台输出、手动 `ObjectMapper` | Coding/Test | Drift checker | 是 |
 | 成组简单 getter/setter | Coding | Java style checker | 是 |
 | AppService 标量业务入参 | Coding | Java style checker | 是 |
+| 直接承载公开用例的应用层入口使用 `*AppService`，并通过单个 Command、Query 或其他明确输入对象表达用例 | Coding | 当前 Review-only；待 `im-monitor` 查询入口收敛后评估窄结构检查 | 是 |
+| AppService 按聚合、用例主体和事务边界组织；同一主体的紧密命令不按方法类别拆成单一调用方的薄服务，不跨聚合或事务边界机械合并 | Coding | Review-only；方法数量、依赖数量和调用方数量都不能可靠表达业务内聚性 | 是 |
+| 拥有独立身份和生命周期且允许分别存在的聚合使用独立注册用例与事务边界；仅业务不变量要求原子共生时组合创建 | Coding | 聚焦应用服务行为测试；聚合生命周期与原子共生语义 Review-only | 是 |
+| AppService 不直接依赖其他 AppService | Coding | ArchUnit | 是 |
+| 跨上下文外部投影只参与派生领域资料，不作为临时字段写回本上下文聚合 | Coding/DDD | Social `FriendServiceTest` 与 `FriendAppServiceTest`；其他上下文组合语义 Review-only | 是 |
+| 可部署应用不使用 `@ConditionalOnProperty` 关闭生产 Bean；条件装配只保留在插件、SDK 和自动配置 | Coding | Java style checker + 正反 fixture | 是 |
+| 稳定横切策略优先使用显式注解/接口契约，避免 AppService 重复 Executor/Lambda 包装 | Coding | 不自动化（Review-only）；具体能力使用注解清单与切面行为测试 | 是 |
+| 安全身份与授权由 Spring Security 管理，审计等业务注解不复制权限策略；自定义跨线程上下文只传播非安全元数据并及时清理 | Coding/Security | 权限注解清单、授权允许/拒绝测试、上下文传播与清理测试；通用静态判断 Review-only | 是 |
+| 管理端业务权限枚举统一承载编码、展示名称和说明，并通过嵌套 `Code` 提供编译期常量；接入应用目录与 `@RequiresPermission` 共源，IAM Server 的标准 `@PreAuthorize` 也引用对应 `Code`，Controller 不重复权限字符串或 Spring EL | Coding/Security | `RequiresPermissionTest` 允许/拒绝测试 + 各管理模块权限元数据和接口授权契约测试；跨模块通用源码识别成熟前不使用全局正则 | 是 |
+| IAM 内部管理权限与外部应用权限必须分属不同领域语义：IAM 内部权限只保护 IAM 自身管理端点，外部应用权限由各应用声明并通过权限目录同步；不得混用 Permission 聚合、权限目录或授权入口 | Coding/Security/DDD | IAM 端点授权契约、外部应用权限目录同步和跨应用隔离测试；领域语义与表复用边界由 Review 检查 | 是 |
+| 声明式锁键不显式调用 `toString()`，统一由锁切面完成字符串转换 | Coding | Java style checker | 是 |
+| CQRS Command/Query/Event 按意图、读取、已发生事实区分并放入对应包；边界对象不直接持有业务领域对象 | Coding | 不自动化（Observed） | 是 |
+| `model/cqrs/dto` 中的应用传输结果统一使用 `*DTO` 后缀，不混用 Data/View/裸 Result | Coding | 当前 Review-only；仓库历史 DTO 目录收敛后增加窄路径命名检查和正反 fixture | 是 |
+| 框架回调提交协议处理后的最终状态时使用统一保存 Command；只有回调要求应用执行不同业务流程时才拆分用例 | Coding | IAM OAuth 应用边界与适配器聚焦测试；通用语义 Review-only | 是 |
+| Spring Security 查询 SPI 不修改领域状态；Authorization Code 单次消费和 Refresh Token 轮换优先使用框架默认 Provider，不增加无明确需求的历史重放状态 | Coding/Security | OAuth Credential 查询无副作用测试、默认 Provider 契约与授权持久化测试；通用语义 Review-only | 是 |
+| 同一应用中的浏览器 Session 与 OAuth Client Bearer 接口按 URL 边界使用独立有序 SecurityFilterChain；Client API 无状态，Web 兜底链不混入 Bearer 认证 | Coding/Security | IAM Security Bean 命名/数量契约与权限目录认证测试；通用链配置语义 Review-only | 是 |
+| 接入服务的 Opaque Client Credentials 身份和 Audience 校验复用 IAM SDK；业务服务不重复声明仅改名的 Principal/Converter | Coding/Security | IAM SDK Audience 允许/拒绝测试与 Audit 身份上下文测试；跨模块重复能力 Review-only | 是 |
+| 通用哈希原语归 `HashUtils`；管理员密码、OAuth Client Secret 与 OAuth Token 保持独立凭据边界，不跨领域复用密码服务和值对象 | Coding/Security | `HashUtilsTest`、OAuth Client Secret 编码/匹配兼容性测试与 IAM Security Bean 测试；跨模块语义 Review-only | 是 |
+| `Query`/`QueryCondition` 命名、分页分离和可选过滤条件；可选文本先将空白归一化为 `null`，再执行关联校验和领域转换 | Coding | Audit 查询转换聚焦测试；通用命名与归一化顺序继续 Review-only | 是 |
+| 边界输入输出使用包装类型并拒绝意外 `null` | Coding | 不自动化（Observed） | 是 |
+| 边界对象与领域对象分别使用 `AssertUtils.arg*`、`domainProp*` 校验 | Coding | 不自动化（Review-only） | 是 |
 | 包内能力接口、技术实现和模型明显混放 | Coding | Java style checker 的窄规则 | 是 |
+| 包层级与稳定职责匹配；单领域模块保持 `domain/model|repository|service` 扁平结构，多领域模块再按能力分组 | Coding | 不自动化（Review-only） | 是 |
+| 运行态诊断属于技术能力，不建模为业务 Domain；技术运行模块可在 `support/<capability>` 下按 model/service/state/tracker 垂直组织，业务服务仍遵循标准 DDD 分层；远端诊断访问使用 Adapter，不命名为持久化 Repository，也不为唯一实现创建同形 Gateway 接口 | Coding | Broker/Monitor 包结构与聚焦行为测试；模块性质、真实替代实现和职责判断 Review-only | 是 |
+| SDK 按稳定能力组织包；协议模型、框架适配和传输实现分离，HTTP/Kafka 等形成独立技术边界时使用二级包；不为服务端 DDD 分层在 SDK 中复制 `application/domain/infrastructure` | Coding | 不自动化（Review-only） | 是 |
+| 可部署 DDD 业务模块使用统一顶层分层骨架，能力差异保留在层内子包 | Coding | 不自动化（Review-only） | 是 |
+| `application` 仅承载应用服务；应用层横切组件、场景常量和应用边界异常放在模块顶层 `support` | Coding | 不自动化（Review-only） | 是 |
+| 应用服务编排按输入转换、用例调用、输出转换分段书写，避免将边界构造、适配器调用和结果映射压缩为单行 | Coding | Review-only；需结合方法语义判断，不做脆弱格式正则 | 是 |
+| 入站框架适配器只转换框架输入输出；认证、权限解析等同一用例的领域协作由应用服务完整编排并返回应用层结果 | Coding | IAM 管理员认证应用服务与 Provider 聚焦测试；通用边界 Review-only，避免误伤 `PasswordEncoder` 等纯技术适配 | 是 |
+| 确定性应用用例优先通过 `@Audited` 记录审计；动态属性由参数级 `@AuditAttribute` 与成功结果的一层属性提供，不记录字段显式使用 `include = false`，不在应用服务创建专用 Resolver 或手写成功/失败控制流 | Coding/Security | SDK Aspect 与 Audit 导出聚焦测试；字段敏感性与注解完整性 Review-only | 是 |
+| 信任来源由认证上下文或固定传输通道注入，不在不可信载荷中重复声明；应用 Command/Event 仅保留一个扁平化来源字段 | Security/Coding | Audit SDK 契约结构测试与 Ingestion Transformer 聚焦测试；通用语义 Review-only | 是 |
+| 普通说明使用块注释，类注释使用多行 Javadoc，字段和 record 组件的简短说明优先使用块注释 | Coding | Review-only；格式和语义需人工判断 | 是 |
+| record 属性较多时每个组件单独换行，并为每个组件提供简短块注释 | Coding | Review-only；不使用固定属性数量阈值 | 是 |
+| MapStruct `@Mapper` 保留生成映射，不退化为全手写 `default` 方法集合 | Coding | 不自动化（Review-only） | 是 |
+| MapStruct 跨层异名属性使用显式映射，关键时间与标识字段不静默丢失 | Coding | `BrokerDiagnosticAppTransformerTest` 等模块转换测试；通用异名语义判断 Review-only | 是 |
+| 无运行时协作者的无状态 MapStruct Transformer 优先使用 `INSTANCE`，需要注入协作者时才使用 Spring component model，且不混用两种获取方式 | Coding | 不自动化（Review-only）；需识别 `uses`、Decorator、抽象 Mapper 及容器协作者，单纯匹配 `componentModel` 会误报 | 是 |
+| Transformer 按转换目标归属；应用/CQRS 输入到领域对象使用 `*DomainTransformer`，领域对象到应用 DTO 使用 `*AppTransformer`，业务推断不放入字段 Mapper | Coding | IAM OAuth 授权边界聚焦测试；通用规则 Review-only，待历史双向 Transformer 收敛并能解析泛型返回类型后再自动化 | 是 |
+| 多参数 HTTP 查询使用 `*Request + @ModelAttribute`，Request 到 CQRS 的跨层转换由接口 Transformer 完成 | Coding | 不自动化（Review-only）；参数多少及是否形成稳定请求语义需结合接口判断 | 是 |
+| HTTP `@RequestBody` 使用接口层独立的 `*Request` 类型，不直接暴露 SDK、领域或 CQRS 对象 | Coding | `check-java-style.sh` + 正反 fixture | 是 |
+| 绝对业务时刻在应用、领域、Java 服务契约和 MyBatis Entity 中使用 `Instant`；浏览器 HTTP 边界使用 epoch milliseconds | Coding | Audit HTTP/Transformer/持久化聚焦测试；通用语义 Review-only | 是 |
+| 领域 `*QueryCondition` 中共同表达闭区间的绝对起止时刻使用共享 `TimeRange` | Coding | `TimeRange` 与 Audit Transformer/Repository 聚焦测试；通用识别 Review-only | 是 |
+| 用户可见时间按显式 IANA 时区格式化为 `yyyy-MM-dd HH:mm:ss`，服务端导出接收用户时区而非使用机器默认时区 | Coding | Audit UI 与 Excel 导出聚焦测试；跨模块通用规则 Review-only | 是 |
 | 领域业务标识使用值对象 | Coding | 不自动化 | 是 |
+| 聚合根继承 `Identification`，按需实现 `Validator`；Lombok 相等性使用 `callSuper = false`，不使用 `onlyExplicitlyIncluded` 定制业务 ID 专属相等性 | Coding | Java style checker 拦截 `Identification` 子类的 `onlyExplicitlyIncluded = true`；是否需要生成相等性由 Review 判断 | 是 |
+| 新增聚合封闭状态写入口，不使用类级 `@Data`/`@Setter`；统一校验不变量，以领域方法维护生命周期，并将同一阶段的成组字段组合为不可变值对象 | Coding | `OAuthGrantTest` 及 OAuth 持久化聚焦测试；通用检查暂为 Review-only，仓库仍有历史可变聚合，待其收敛且具备字段级 setter 误报样例后再启用全局门禁 | 是 |
+| 承担领域校验的聚合 Builder 内部持有私有无参构造的聚合，直接填充其字段而不复制 Builder 属性或保留长参数构造器，`build()` 返回前统一校验；`Identification.pkId` 不进入领域构造器或 Builder，由 Repository 在构建后回填 | Coding | `AuditEventTest` 与 Repository/Transformer 聚焦测试；通用判定 Review-only | 是 |
+| 领域对象必填属性不超过 4 个且顺序清晰时优先直接构造；达到 5 个及以上，或参数组合容易错位时使用手写 Builder 并在 `build()` 统一校验 | Coding | 不自动化（Review-only）；参数阈值与业务语义需结合判断 | 是 |
+| 值对象规范构造入口统一保证格式、容量、归一化和脱敏不变量 | Coding/Security | 聚焦值对象单测；通用静态判断 Review-only | 是 |
+| 聚合相等性由聚合自身字段表达，排除 `Identification.pkId` 技术主键 | Coding | 聚焦相等性单测；Java style checker + 正反 fixture 拦截业务 ID Include 定制 | 是 |
+| 模型名称表达领域事实，不把截断、脱敏等内部处理方式作为类型语义 | Coding | 不自动化（Review-only） | 是 |
+| 对外接口枚举与领域枚举隔离，跨层枚举转换由 Transformer 完成 | Coding | 不自动化（Review-only） | 是 |
+| MyBatis Entity 的闭集状态、动作、结果和种类使用数据库层枚举；数值列枚举声明稳定值和 `@EnumValue` | Coding | Java style checker 检查低误报字段；Audit Schema 聚焦测试验证数值映射；其他列类型与开放协议值 Review-only | 是 |
+| 数据库 JSON 列由 MyBatis TypeHandler 编解码，领域 Transformer 不处理 JSON 存储格式 | Coding | 不自动化（Review-only）；需区分数据库列与协议、缓存等合法显式 JSON 转换 | 是 |
+| 所有 MyBatis Entity 继承 `BaseEntity`，所有表保留 `id/create_time/update_time/is_deleted` 标准模板字段；数据库主键与领域业务 ID 分离 | Coding/SQL | SQL checker + fixture 强制模板字段；Java style checker 拦截重复声明完整公共字段；Entity 继承与双 ID 语义由聚焦测试及 Review 补充 | 是 |
+| `Identification.pkId` 仅标识当前表行；跨表关系使用领域业务 ID；独立身份或生命周期的一对多接入配置拆成独立聚合，不按技术分支复制平行聚合 | Coding | IAM 聚合/Repository/Schema 聚焦测试；字段语义、基数和聚合边界 Review-only | 是 |
+| Repository 通过 MyBatis Service 完成持久化，不为单一查询语义增加透传 QueryCondition 或直接编排 Mapper | Coding | Java style checker 拦截 Repository 直接导入 Mapper；查询语义层次由 Review 判断 | 是 |
+| 承担入站入口职责的框架 SPI 只做协议适配，完整用例经过应用服务，不直接访问领域 Repository 或 MyBatis | Coding | IAM Security SPI 聚焦依赖测试；通用职责识别 Review-only | 是 |
+| 完整聚合由所属 Repository 返回，关联 Repository 仅返回关系事实 | Coding | IAM `RoleRepository`、`AdministratorService` 和 Repository 聚焦测试；聚合所有权通用判断 Review-only | 是 |
+| Repository 使用明确的标识值对象表达查询语义，多种外部标识在应用边界识别，不创建宽泛联合标识或退化为裸 `String` | Coding | 不自动化（Review-only）；需结合调用方是否已知标识类型以及联合标识是否具有真实领域语义判断 | 是 |
+| MyBatis Mapper 扫描策略单一，逐个 `@Mapper` 时不重复声明空 `@MapperScan` 配置；公共 datasource 插件不扫描业务 Mapper | Coding | Java style checker + 正反 fixture；多数据源和跨根包扫描由 Review 判断 | 是 |
+| `im-admin` 通过 Account Admin Facade 管理普通用户，不拥有本地用户持久化，不依赖 `im-datasource` 或保留失效 MyBatis 映射 | Architecture/DDD | `RuntimeDependencyPolicyTest#accountAdminFacadeHasDedicatedRuntimeBoundary` 与 Admin Context 测试 | Account 管理边界或数据所有权迁移 |
+| 四个独立部署的 Management 应用直接依赖 `im-nacos`，统一获得动态配置和服务存活注册 | Architecture/Reliability | `RuntimeDependencyPolicyTest#managementModulesIncludeIamAndIndependentApplications` 检查四个运行 POM | Management 部署拓扑或配置中心方案迁移 |
 | 领域服务包含真实业务决策 | Coding | 不自动化 | 是 |
+| 跨多个领域对象的全量同步、差集计算和状态迁移集中在领域服务；应用服务只做输入转换、调用与持久化编排 | Coding | 不自动化（Review-only） | 是 |
+| CQRS 输入保留边界类型；应用服务在用例入口先统一构造领域值对象和内部查询条件，后续编排不继续传播同义的原始 `String`、数值或集合 | Coding | 不自动化（Review-only）；字段业务语义和合法通用边界类型无法仅按 Java 类型可靠判断 | 是 |
+| 自动过期的限流、防暴力破解计数和临时限制留在 `support`/`infrastructure`，不映射为聚合状态或业务表字段 | Coding/Security | `LoginProtectionTest` 与 IAM 认证/审计聚焦测试；通用语义 Review-only | 是 |
+| 聚合删除校验与 Repository 生命周期删除语义一致 | Coding | 不自动化（Review-only） | 是 |
 | Adapter 使用领域对象作为业务边界 | Coding | 不自动化 | 是 |
 | 条件 Bean 装配闭合 | Coding | 聚焦启动测试 | 是 |
+| Starter/SDK 接入 Bean 只由 AutoConfiguration 注册；Server 不直接或传递获得自身客户端 SDK，可选 SDK 集成依赖由消费者显式选择 | Coding/Architecture | `RuntimeDependencyPolicyTest` 禁止 IAM Server 直接依赖 IAM SDK并要求 Audit SDK 将 IAM SDK 标记为 optional；IAM 真实启动回归 | 是 |
+| 本地配置提供可绑定的 localhost 与开发凭据默认值，生产通过 Nacos 整体覆盖 issuer、签名密钥、Client Secret 和 Session 加密密钥 | Coding/Security | IAM classpath RSA 加载测试 + Admin/Monitor/Audit 配置绑定测试；生产覆盖完整性由部署检查和 Review 验证 | 是 |
+| 可水平扩容服务的分布式 ID 生成器不共享硬编码机器标识 | Coding/Reliability | 当前 Observed + Review-only；待现有 StaticSnowflake 基线收敛后增加配置与多实例唯一性测试 | 是 |
+| 固定提交后 Adapter 副作用使用注解，复合步骤由应用服务显式编排 | Coding/Reliability | 聚焦事务时序测试；通用静态识别易误判，其他场景 Review-only | 是 |
 | 不增加测试专用生产 API | Coding/Test | 本轮不自动化 | 是 |
 | 测试不使用真实等待 | Unit Test | Drift checker | 是 |
 | 禁用测试必须说明原因 | Unit Test | Drift checker | 是 |
 | DDL、危险 SQL、`${...}`、静态无条件写入 | SQL | SQL checker + fixture | 是 |
+| 服务私有 DDL 位于所属 Server 模块根 `sql/`，Schema 与表不能跨服务混放 | SQL/Architecture | SQL checker 递归路径扫描 + 各服务 Schema 所有权测试；表业务归属仍由 Review 判断 | 是 |
 | Mapper `SELECT *` | SQL | SQL checker + fixture | 是 |
 | 动态 SQL、索引合理性和执行计划 | SQL | 不自动化 | 是 |
+| 未上线且无历史数据兼容需求时直接更新当前 DDL，不创建迁移脚本 | SQL | 不自动化（Review-only）；发布状态和历史数据需求无法从文件名可靠推断 | 是 |
 
 “是”表示 Review 仍需检查语义和例外，不代表重复执行同一机械扫描。
 
 ## 从问题到规则
+
+实现或 Review 中确认了可复用的工程约定时，实现者必须在同一任务完成 Harness 反馈评估，不能只修正当前代码。评估至少回答：规则由哪份规范所有、是否代表可复用边界、最窄可靠传感器是什么、仓库基线是否已经满足，以及需要哪些诊断和 fixture。评估结果只能是以下三类之一：
+
+1. **Enforced**：可以低误报机械判断，当前任务同步规范、矩阵、检查器和 fixture。
+2. **Review-only**：规则有效但不适合机械判断，或仓库基线尚未收敛；同步规范和矩阵，明确当前由 Review 负责及转为自动检查的条件。
+3. **Not a Harness rule**：仅是局部命名选择或一次性实现细节，不形成共享规则；无需增加仓库约束。
+
+不得因为当前任务范围较小而静默跳过评估，也不得为了立即自动化而增加脆弱的类名白名单或扩大误报范围。
+
+边界包装类型规则当前处于 **Observed**：Facade、CQRS、HTTP/RPC、事件和跨层快照仍有历史基本类型，且基本类型在内部计算、计数和谓词返回中是合理表达。现阶段由 Review 检查新增或触碰的边界模型是否会用 `0`、`false` 掩盖缺失输入。只有相关历史基线收敛，且结构化检查能够区分边界模型与内部确定值，并具备必填包装值校验的正反 fixture 后，才升级为 Enforced；不得通过目录白名单强行启用。
+
+CQRS 边界值规则当前处于 **Observed**：历史 Command/Query 仍有直接使用业务枚举和值对象的情况，而 `im-common` 中稳定通用边界值对象可以合法复用。现阶段 Review 检查新增或触碰的 CQRS 输入是否把聚合、业务值对象或 Repository 查询条件泄漏到应用边界。只有能够区分业务领域类型与允许的通用边界类型，并完成历史基线收敛及正反 fixture 后，才升级为 ArchUnit 或结构化检查。
+
+框架回调用例规则采用 **聚焦结构/行为测试 + Review-only**：IAM OAuth 边界测试证明 Spring Authorization Server 的 `save` 回调只提交已经完成协议处理的最终授权状态，统一转换为 `OAuthAuthorizationSaveCmd`，不再执行第二遍授权码兑换或 Refresh Token 刷新。Review 先判断回调表达的是最终状态持久化还是要求应用执行业务动作，再决定使用统一保存或独立 Command；仅按 `type`、`save`、`handle` 或空字段扫描无法作出该判断，只有结构化分析能够关联框架回调契约和应用方法后才升级为通用门禁。
+
+应用服务入口转换规则采用 **聚焦行为测试 + Review-only**：Review 检查公开用例是否先将 Command/Query 的基础边界值统一构造成领域值对象和内部查询条件，再执行 Repository 查询与业务编排；后续代码不应同时传播同义的原始值和领域值。聚焦测试应证明无效边界值在访问 Repository 前即由领域构造入口拒绝。通用静态扫描无法可靠判断 `String`、数值和集合是否具有领域语义，也无法区分合法的输出转换与遗漏的输入转换；只有结构化分析能够关联 CQRS 字段、领域构造入口和后续调用数据流，并覆盖可选值、通用 `Paging`/`TimeRange` 与纯技术参数等正反 fixture 后，才升级为自动门禁。
+
+信任来源规则采用 **聚焦行为测试 + Review-only** 边界：Audit SDK 契约测试证明生产者可控载荷不包含 `sourceApp`，Ingestion Transformer 测试证明 HTTP 认证身份或 Kafka Binding 注入的来源会进入扁平 Event 和领域事实。Review 检查新增多租户、身份、来源等信任字段是否仍可被请求体、消息体或多个同义边界字段覆盖。通用检查需要关联认证边界、传输配置与 Event 构建，仅按 `sourceApp` 名称扫描会误伤领域事实和查询条件；只有结构化分析能稳定区分可信注入与不可信载荷，并具备 HTTP、Kafka、领域模型和合法业务来源字段的正反 fixture 后，才升级为自动门禁。
+
+声明式动态审计属性规则采用 **聚焦行为测试 + Review-only** 边界：SDK Aspect 测试证明 `targetId` SpEL 可以按方法声明的真实参数名解析不同参数语义，`@AuditAttribute` 可以采集普通参数、对象的一层属性和成功结果，`include = false` 可以排除明确不记录的字段，并证明属性读取、上下文及提交旁路异常不改变业务结果。Review 检查结果确定的应用用例是否复用 `@Audited`、`targetId` 是否引用真实参数名、是否只在需要采集的参数或字段上声明属性规则，以及应用服务是否重复手写审计成功/失败控制流。登录、Token、Session、协议监听和接收端点等场景可能合法显式提交或禁止递归审计，不能按 `try/catch`、类名或缺少注解机械拦截；只有结构化分析能够识别应用用例、显式事件场景、接收端点和注解属性，并具备跨场景正反 fixture 后，才升级为自动检查。
+
+应用入口命名规则当前处于 **Observed**：直接位于 `application` 根包、向接口层暴露完整用例的服务应使用 `*AppService`，其公开方法继续受单输入对象和跨应用服务依赖规则约束；领域协作、技术客户端和内部通知处理器不因位于应用层附近就机械改名。Broker 与 Monitor 的诊断查询入口已经分别收敛为 `BrokerDiagnosticAppService` 和 `MonitorQueryAppService`；待其他应用入口基线完成收敛后，可增加仅检查 `application` 根包公开入口的正反 fixture，避免误伤应用层内部组件。
+
+`AssertUtils` 分工规则当前为 **Review-only**：相同类可能同时校验外部方法参数和领域属性，单凭包名或方法名无法可靠判断应使用 `arg*` 还是 `domainProp*`。Review 检查边界对象是否显式拒绝无效输入、领域不变量是否使用领域属性语义，以及是否重复手写等价校验。只有结构化分析能够识别校验发生的语义位置并覆盖混合场景后，才升级为自动检查。
+
+领域包深度规则当前为 **Review-only**：Review 检查只有一个领域能力的模块是否直接使用 `domain/model`、`domain/repository` 和按需存在的 `domain/service`，并在多个相对独立的领域能力实际出现后才增加 `domain/<capability>/...` 分组。目录数量、类名前缀和当前文件数量都不能可靠证明领域边界，因此不使用正则或包数量机械推断。只有仓库具备结构化领域所有权元数据，或其他能够稳定区分独立领域能力的信号，并覆盖单领域扁平结构、多领域分组结构及同名前缀误判等正反 fixture 后，才升级为自动检查。
+
+同名领域概念隔离采用 **聚焦 Schema/行为测试 + Review-only**：Review 检查面向不同授权对象、生命周期或可信来源的角色、权限、会话等概念是否各自拥有领域模型、Repository 和持久化关系，并通过 `Iam*`、`Application*`、`OAuthSession*` 等稳定所有权前缀同步区分其直接 Repository、领域服务和边界模型；不能仅依赖类型枚举、固定业务 ID 或调用方约定隔离。IAM 的 Schema 测试明确证明内部角色与外部应用角色使用独立表，认证与角色管理测试证明 IAM 管理权限只读取内部角色链路，Session 转换测试证明 OAuth2 持久化字段不会替代领域会话身份。通用静态扫描无法仅凭 `Role`、`Permission`、`Session` 等类名判断两个概念是否属于同一边界，只有建立可声明的领域所有权元数据并能关联 Entity/TableName、Repository 与调用链后，才升级为自动门禁。
+
+MapStruct 规则当前为 **Review-only**：Review 检查 `@Mapper` 是否至少保留一个由 MapStruct 生成的声明式映射，并优先让框架处理同名属性和枚举。只有检查器能够可靠解析接口方法、排除继承方法、注解辅助方法及含业务逻辑的显式转换，并具备生成映射、纯 `default` 接口和合法混合接口 fixture 后，才升级为自动检查。
+
+HTTP 聚合查询请求规则当前为 **Review-only**：Review 检查参数较多且共同表达一个查询意图的接口是否使用 `*Request + @ModelAttribute`，并由接口 Transformer 一次性构造应用层 Query，而不是在 Controller 中逐字段转换枚举和值。固定参数数量无法证明对象是否形成稳定语义，少量技术参数也不应被强制包装。只有结构化检查能够识别 Controller 参数、Request 绑定和对应 Transformer 调用，并具备简单接口、多参数查询和合法特殊绑定的正反 fixture 后，才升级为自动检查。
+
+时间与时区规则采用 **聚焦行为测试 + Review-only** 边界：`TimeRange` 单测证明闭区间不变量和持续时间，Audit 的应用 Transformer 与 Repository 测试证明领域查询条件使用该值对象；接口 Transformer 测试证明 epoch milliseconds 与 `Instant` 的双向转换，持久化测试证明 `TIMESTAMP(3)` 对应 Entity `Instant`，UI 和导出测试分别证明浏览器 IANA 时区展示与服务端显式时区格式化。全仓中两个时间字段可能表示区间，也可能是创建、失效等独立事实，`LocalDateTime` 也可合法表达本地日历语义和框架技术时间，因此不按字段数量、名称或类型增加全仓正则禁令。Review 检查新增或触碰的领域查询区间是否使用 `TimeRange`、绝对时间是否跨层保持 `Instant`、浏览器边界是否使用时间戳，以及人可读输出是否显式选择时区。只有能够结合契约所有权和字段语义稳定区分区间、独立时间事实、本地日历值及持久化技术字段，并具备跨模块正反 fixture 后，才升级为结构化检查。
+
+数据库 JSON 格式规则当前为 **Review-only**：Review 检查数据库 JSON 列是否由 MyBatis TypeHandler 等持久化机制编解码，Entity 是否使用持久化原生属性承接数据，以及领域 Transformer 是否只做对象映射。`JsonUtils` 在 Bolt、Gossip、缓存和第三方协议适配中仍是合法用法，无法按包名可靠判断某次 JSON 转换是否对应数据库列。只有结构化分析能够关联 Entity 字段、TypeHandler、Transformer 映射并排除非持久化 JSON 场景，且具备正反 fixture 后，才升级为自动检查。
+
+MyBatis JSON TypeHandler 采用 **插件统一装配 + 聚焦测试**：`im-datasource` 将应用 `ObjectMapper` 设置给 `JacksonTypeHandler`，保证 Java Time 与项目 Jackson 配置一致；`ImDatasourceAutoConfigurationTest` 使用包含 `Instant` 的 Claims 验证序列化。业务 Repository 不得为规避 TypeHandler 配置而手工改写时间或 JSON 结构。
+
+数据库 Entity 枚举与基类规则采用 **Enforced + Review-only** 边界：SQL checker 强制每个建表语句声明 `id/create_time/update_time/is_deleted`，Java style checker 拦截 MyBatis Entity 中以 `String` 声明的 `action/status/result/outcome/kind/type` 字段，以及同时重复声明 `id/createTime/updateTime/isDeleted` 却未继承 `BaseEntity` 的标准形状；模块聚焦测试补充验证所有 Entity 的基类。`targetType`、`eventType` 等字段可能是协议扩展值，只有确认其为当前领域闭集时才由 Review 要求数据库层枚举。数据库技术主键与领域业务 ID 是否需要同时存在，也必须依据对象是否拥有稳定业务身份判断，不按类名或字段数量机械推断。
+
+MyBatis Entity 敏感输出规则采用 **聚焦测试 + Review-only**：IAM 持久化映射测试证明管理员密码、OAuth Client Secret 与 Token 摘要不会进入 Entity `toString()`。Review 检查新增认证材料是否使用 `@ToString.Exclude` 或不生成 `toString()`；不能仅按 `secret/password/token` 字段名全仓禁止，因为业务响应可能合法包含一次性密钥、Token 生命周期信息或脱敏展示值。只有结构化检查能限定 MyBatis Entity、识别 Lombok 展开结果并覆盖摘要、普通业务字段与合法边界响应后，才升级为静态门禁。
+
+MyBatis Service 分层规则采用 **Enforced + Review-only** 边界：新增或触碰的 DDD 业务模块应通过 `infrastructure.mybatis.service` 取得表级 CRUD、Wrapper 和可复用查询能力，Repository 技术实现不直接注入或编排 Mapper。仅服务于一个领域 Repository 的查询语义由 Repository 使用 Service 组装，无需创建只为跨层透传的持久化 `*QueryCondition`；确需复用或自定义 SQL 时再下沉到 Service 或 Mapper/XML。Java style checker 已拦截标准 Repository 实现直接导入 Mapper；框架 SPI 是否承担入站入口职责则由 Review 和聚焦依赖测试判断，不能仅按 `infrastructure/security` 包名禁止 MyBatis，因为纯持久化适配器本身可以合法依赖 MyBatis Service。扩展自动检查前必须具备 Repository、入站框架 SPI、纯技术委托 SPI、合法 MyBatis Service 和自定义多表 SQL 的正反 fixture。
+
+框架 SPI 入口规则采用 **聚焦依赖测试 + Review-only**：IAM 的 `OAuthAuthorizationServiceAdapterTest` 证明 Spring Authorization Server 的授权入口依赖 `OAuthAuthorizationAppService`，且不直接依赖领域 Repository 或 MyBatis 类型。Review 判断某个 SPI 是完整用例入口还是 `PasswordEncoder` 一类纯技术能力委托；仅凭实现接口名称或包路径无法稳定区分。只有建立明确的 SPI 角色清单并覆盖两类合法形态后，才升级为通用静态门禁。
+
+MyBatis Mapper 扫描规则采用 **Enforced + Review-only** 边界：Java style checker 拦截扫描范围内 Mapper 已逐个使用 `@Mapper` 时仍存在的空 `@MapperScan` 配置类，并拦截 Repository 技术实现直接导入 Mapper。逐个注解与集中扫描都是合法方案，但同一扫描范围只保留一种；多数据源绑定、跨应用根包扫描或包含额外配置逻辑的场景仍由 Review 判断。公共 `im-datasource` 始终不得通过业务包名承担 Mapper 扫描。
+
+横切关注点规则当前为 **Review-only**：Review 检查重复的前后置技术策略是否已有稳定注解能力，以及切面是否通过显式接口或注解契约取得上下文、是否保持异常与顺序语义。业务是否真的属于横切关注点无法仅靠方法形态可靠判断，因此不做全仓正则扫描；具体能力应通过注解覆盖清单、切面顺序和成功/失败行为测试建立窄门禁。只有能够按已登记注解识别遗漏、同时排除领域规则和一次性编排后，才考虑升级为通用结构检查。
+
+全限定类名规则当前为 **Review-only**：源码正则无法可靠区分类型引用、字符串常量、Javadoc 示例和同名类型冲突。Review 检查新增或触碰的生产代码是否通过 import 保持表达式可读，并仅在同一文件确有同名类型冲突时保留局部全限定名。只有结构化 Java 解析器能识别类型引用并具备同名冲突、字符串和注释的正反 fixture 后，才升级为自动检查。
+
+聚合删除与 Repository 生命周期规则当前为 **Review-only**：Review 检查聚合删除方法修改的状态是否确实由后续 `save` 持久化，以及逻辑删除场景是否仅执行领域资格校验后交给 Repository 删除。只有结构化分析能够关联同一用例中的聚合调用、Repository `save/remove` 调用和持久化映射，并具备软删除与状态保存两类正反 fixture 后，才升级为自动检查。
+
+值对象、实体身份和领域命名规则采用 **Enforced + Review-only + 聚焦单测**：Java style checker 拦截 `Identification` 子类使用 `onlyExplicitlyIncluded = true` 定制业务 ID 专属相等性，允许 `@EqualsAndHashCode(callSuper = false)` 排除技术主键；Review 检查值对象的规范构造入口是否完整执行不可绕过的不变量、承担校验的 Builder 是否手写 `build()`、持久化技术主键是否仅在 Repository 构建后回填、聚合字段是否适合参与相等性，以及类型名称是否表达领域事实而非内部格式化手段。具体值对象和聚合使用单元测试证明归一化、脱敏、容量、序列化、相等性、Builder 校验和主键回填行为；其他构造器、Builder、record 与持久化重建语义仍不做脆弱静态推断。只有引入能区分领域 Builder、Lombok 生成器、MapStruct 目标属性与 Repository 回填路径的 Java 结构化解析，并具备重建聚合、非领域 DTO 和纯便利 Builder 的正反 fixture 后，才升级为通用静态门禁。
+
+技术主键、业务 ID、可识别编码和聚合基数同样采用 **Review-only + 聚焦单测**：Schema 测试可以证明目标表同时具有自增 `id`、唯一业务 ID 以及关联表使用的业务列，Repository 测试可以证明 `pkId` 只在重建和新增持久化后回填；但通用静态 checker 无法可靠判断某个 `*_id` 的领域语义，也无法仅凭类名判断两个 OAuth Grant Type 是否应共享同一客户端聚合，因此不做字段名正则推断。只有建立结构化的 Entity/DDL 关系模型，并能从明确元数据识别聚合业务 ID 与外键语义后，才考虑升级为通用门禁。
+
+Web 基础能力边界采用 **Enforced + Review-only**：ArchUnit 与 Maven 依赖测试阻止 `im-web` 依赖 Session、IAM 或运行时业务模块，并确认 Admin、Monitor、IAM SDK 显式接入统一 Web 能力；聚焦测试证明请求上下文建立、传播、清理及 `HttpResult` 的 MVC/Security 行为。插件中的字符串路径是否属于业务 Controller、重复响应对象是否形成第二套协议、某个上下文属性是否包含业务或安全语义，需要结合路由和调用方判断，当前由 Review 负责。只有结构化检查能够解析 Controller/Security 映射及配置绑定，并具备 Actuator、Swagger、OAuth 回调等技术路径的 false-positive fixture 后，才升级这些语义规则；不得用业务前缀正则代替所有权判断。
 
 Review finding 同时满足以下条件时，才适合转为自动门禁：
 
@@ -95,9 +249,64 @@ Review finding 同时满足以下条件时，才适合转为自动门禁：
 
 ## 维护责任
 
+### 管理端 IAM 边界
+
+| 规则 | 所有者 | 当前传感器 | 退出条件 |
+|---|---|---|---|
+| `im-iam-sdk` 不依赖 `im-iam-server` 实现 | Architecture | Maven/ArchUnit 模块依赖检查 | IAM 模块边界被新协议替代 |
+| Admin、Monitor 不实现第二套管理员密码认证与安全 Session | IAM design | `RuntimeDependencyPolicyTest` 所有权包路径检查与 Review | 引入能识别认证语义且保持低误报的结构化检查 |
+| 健康请求实时 Introspection，仅可用性错误使用不超过五分钟缓存 | IAM reliability | SDK 行为测试 | 授权协议或失效模型变更 |
+| Token 加密、权限语义和撤销覆盖；授权状态变为撤销后，本地资源认证与远程 Introspection 都必须立即返回失效 | Security | OAuth2 授权持久化、撤销、本地 Introspector 与远程 Introspection 聚焦行为测试；跨存储数据流 Review-only | 能低误报跟踪跨存储数据流 |
+| IAM Token 的 `appKey` 表达来源应用，`aud` 表达目标应用；Spring 默认 Introspection Provider 返回签发 Claims，资源服务按自身应用标识校验 `aud`，不使用自定义 Provider 重复标准协议 | IAM security design/Security | IAM Claims Customizer、SDK 标准响应映射与 Audience 拒绝测试；协议语义 Review-only | OAuth Token、资源受众或 Introspection 主体模型变更 |
+| Spring 默认 Introspection 以未知 Token 类型查询授权时，仅将原始 Token 恢复到摘要匹配的凭据，避免已消费授权码遮蔽有效 Access Token | IAM security design/Security | `OAuthAuthorizationServiceAdapterTest` 浏览器授权回归测试；摘要匹配语义 Review-only | Spring Authorization Server 不再使用 `findByToken(token, null)` |
+| OAuth JSON Claims 进入 Spring Authorization Server 时将 `iat/exp/nbf` 恢复为 `Instant`；数据库 Transformer 保留 JSON 边界值，不承担框架类型恢复 | IAM adapter/Security | `OAuthAuthorizationServiceAdapterTest` + 真实 Introspection 流程；其他标准 Claim 类型 Review-only | Claims 不再通过 JSON Map 持久化 |
+| IAM SDK 配置以当前应用为所有者，Web、Catalog OAuth Client 与本地 Session 使用一个嵌套层级；权限目录同步不复用浏览器 BFF Client，机器客户端只允许 `CLIENT_CREDENTIALS` 和 `iam.catalog.write` | IAM configuration/security design | `IamPropertiesTest`、`ImIamSdkAutoConfigurationTest`、三个管理应用配置绑定测试与 `IamPermissionCatalogRegistrarTest`；跨模块配置语义 Review-only，IAM 中实际 Client 注册状态由 Readiness 与运维检查确认 | IAM SDK 接入模型或权限目录同步协议被替代 |
+| SDK 与宿主自有的同类型基础设施 Bean 按稳定名称创建并显式限定注入，不因同时声明多个 `RestClient` 而跳过专用 Client 或注入错误实例 | Configuration/SDK | `ImIamSdkAutoConfigurationTest#createsDedicatedIamRestClientWhenApplicationDefinesAnotherRestClient`、`HttpBrokerManagementClientWiringTest` | SDK 或宿主不再通过 Spring Bean 提供多个专用 HTTP 客户端 |
+| IAM、Admin、Audit、Monitor 管理后台统一使用 Vue 3、Element Plus、Element Plus Icons、质量脚本和同名 Console Token；禁止浏览器原生 `confirm/alert`，且不得跨应用共享 UI 源码 | Management UI | `scripts/check-management-ui.sh` 与正反 Harness fixture；组件行为由各 UI 聚焦测试 | 管理后台技术栈或独立部署边界被替代 |
+| 管理后台采用安静高密度布局、一个行内主操作、Drawer 编辑/详情、明确危险确认、可恢复数据状态和服务端筛选 | Management UI/UX | Drawer、表格、筛选和数据状态聚焦测试；视觉层级、操作优先级、文案与响应式构图 Review-only，并以临时桌面/移动截图验收 | 已批准新的 Management UI 设计 |
+| 本地管理端口固定为 IAM `18090`、Audit `18091`、Monitor `18092`、Admin `18093`，Issuer、OAuth 回调、Vite 代理和前端控制台链接默认值必须一致 | Management configuration/security | 配置绑定测试、OAuth Client 迁移 SQL 测试和 Management UI Harness | 本地拓扑设计被新的统一入口替代 |
+| IAM 内部角色与应用角色保持两套关系边界；应用角色分配只替换指定应用的关系，权限或 Client 访问配置变更撤销受影响 OAuth 授权；关系资源库继续使用 `findRoles/replace`，不引入无业务收益的 Assignment 聚合 | IAM management authorization design | IAM 应用服务、OAuth Client 领域测试与 IAM Console API/component tests；关系范围和撤销语义保留 Review-only，直到出现跨模块重复实现 | 关系模型改为独立授权聚合或权限快照改为实时计算 |
+| OAuth 最终授权状态统一通过 Repository `save` 持久化；查询 SPI 保持无副作用，Authorization Code 单次消费和 Refresh Token 轮换由 Spring 默认 Provider 管理；Repository 不暴露兑换、刷新或历史重放动作 | DDD model/Coding Guide | `IamTokenPersistenceTest`、Spring 默认 Provider 契约与 Repository 查询测试 | OAuth 持久化或 Spring Provider 规范被替代 |
+| IAM SSO 绝对过期对当前请求立即失效；已知与未知管理员邮箱均执行等价 BCrypt 校验工作 | IAM security design/Security | SSO Filter 与管理员认证聚焦行为测试 | 会话装载顺序或密码验证实现变更 |
+
+IAM 静态检查只识别管理应用中明确的密码认证和认证 Session Repository，不扫描普通业务
+密码更新或一般 Redis Repository。跨应用权限隔离、密钥管理和 Token 是否进入日志属于数据流
+语义，现阶段必须由 Review 与行为测试共同确认。
+
+### 管理监控边界
+
+| 规则 | 所有者 | 当前传感器 | 退出条件 |
+|---|---|---|---|
+| Monitor 只读查询使用有界线程数和有界待执行任务容量，节点级超时与失败不得阻塞或丢弃其他健康节点结果 | Reliability | Monitor 并发、超时、拒绝和部分失败聚焦行为测试；执行器队列形状 Review-only | 查询模型不再使用进程内并发扇出 |
+| Monitor 的 HTTP Response、应用 DTO 和 Broker 管理协议模型相互隔离，通过 Transformer 完成边界转换 | Coding/Architecture | 当前 Review-only；待 Monitor DDD/CQRS 基线收敛后评估 ArchUnit 与结构化检查 | Monitor 不再承担 HTTP 聚合边界 |
+
+固定线程数不等于任务容量有界；使用无界队列的固定线程池在请求积压时仍可能耗尽内存。Review
+必须同时检查线程上限、队列容量、拒绝策略、单节点超时和部分成功语义，不能只凭线程池类型判定符合要求。
+
+### 集中管理审计边界
+
+| 规则 | 所有者 | 当前传感器 | 退出条件 |
+|---|---|---|---|
+| 只有 `im-audit-server` 拥有管理审计 Repository/MyBatis 持久化 | Audit design/Architecture | `RuntimeDependencyPolicyTest` 按包职责和类型形状扫描生产源码 | 审计存储所有权迁移到新的独立边界 |
+| Admin/IAM 只能依赖 `im-audit-sdk`，不能依赖 Audit Server 实现 | Architecture | Maven 依赖检查 + ArchUnit | SDK/Server 拆分被新公共协议替代 |
+| Kafka 插件只提供 Binder 运行时，不定义业务 MQ SPI | Architecture | Maven 拓扑与源码存在性测试 | 项目不再使用 Spring Cloud Stream |
+| 事务时序、敏感信息排除、失败隔离、来源校验、重试与幂等 | Security/Reliability | SDK/Server 聚焦行为测试 | 对应传输或一致性模型发生变更 |
+| Audit HTTP 从 IAM 认证上下文取得来源 `appKey`，Token 仅存在于 HTTP Authorization Header；Kafka 来源由独立 Binding 固定注入 | Audit design/Security | Audit HTTP 认证与 Kafka Consumer 聚焦测试；载荷数据流 Review-only | 认证协议或可信来源模型变更 |
+| Audit SDK/Server 与 IAM Server 不为已有 HTTP/Kafka 用例维护并行 Dubbo 入口 | Architecture/Audit design | `RuntimeDependencyPolicyTest` 检查三个模块不依赖 `im-dubbo`；接口形态 Review-only | 出现具有独立同步语义和真实调用方的管理域 RPC 用例 |
+
+源码所有权扫描只检查管理应用中明确的审计 Repository 包和 MyBatis 审计类型形状，允许生产者
+保留 `support.audit` 下的事件监听器、显式发布器和安全上下文适配。它不按旧类名建立例外清单，
+也不尝试从源码文本推断是否泄露 Token、是否在提交后执行或是否发生递归；这些数据流与时序语义
+由契约测试和 Review 负责。
+
+通用 RPC 安全规则仍采用 **聚焦行为测试 + Review-only**：Filter 测试证明 Attachment 与
+`SecurityContext` 的建立、失败关闭和 `finally` 清理。Review 检查新增 RPC Params、DTO、事件中
+是否重复携带 Token、调用方身份或权限。Audit 与 IAM 当前没有 RPC 入口；若未来出现具有独立同步
+语义和真实调用方的管理域 RPC 用例，必须先更新设计与本矩阵，不能仅复制已有 HTTP 用例。
+
 - 修改模块的人同步更新模块 README、测试和相关局部规则。
 - 修改根架构、脚本或 CI 的人评估全仓影响，并更新根级入口和共享规范。
-- Review 发现重复问题时指出规范所有者；实现者负责补充规则、测试或技术债务退出条件。
+- 实现或 Review 确认可复用工程约定时，实现者在同一任务更新规范、矩阵和适用传感器，或明确记录为 Review-only 及其自动化条件。
 - 没有明确所有者、验证方式或使用场景的规则不进入 Harness。
 - 不为让当前变更通过而删除测试、降低断言、关闭规则或扩大排除范围。
 

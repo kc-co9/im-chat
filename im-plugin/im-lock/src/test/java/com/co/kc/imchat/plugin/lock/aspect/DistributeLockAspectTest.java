@@ -83,6 +83,18 @@ class DistributeLockAspectTest {
         assertThat(lockClient.lockKey).isEqualTo("im:friend:add:1:2");
     }
 
+    @Test
+    void annotatedMethodConvertsBusinessIdentifierToString() {
+        RecordingLockClient lockClient = new RecordingLockClient(true);
+        DemoService target = new DemoService();
+        DemoService proxy = proxy(target, lockClient);
+
+        String result = proxy.invokeWithIdentifier(new DemoCommand(42L, "token-1"));
+
+        assertThat(result).isEqualTo("ok");
+        assertThat(lockClient.lockKey).isEqualTo("im:account:user:write:42");
+    }
+
     private DemoService proxy(DemoService target, RecordingLockClient lockClient) {
         AspectJProxyFactory proxyFactory = new AspectJProxyFactory(target);
         proxyFactory.addAspect(new DistributeLockAspect(new DistributedLockTemplate(lockClient)));
@@ -112,6 +124,12 @@ class DistributeLockAspectTest {
 
         @DistributeLock(scene = "im:friend:add", key = "#LockKeys.userPair(#command.id, 1L)")
         public String invokeWithLockKeys(DemoCommand command) {
+            invoked++;
+            return "ok";
+        }
+
+        @DistributeLock(scene = "im:account:user:write", key = "#command.id")
+        public String invokeWithIdentifier(DemoCommand command) {
             invoked++;
             return "ok";
         }

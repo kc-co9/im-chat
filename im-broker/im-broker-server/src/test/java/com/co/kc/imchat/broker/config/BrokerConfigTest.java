@@ -35,16 +35,22 @@ class BrokerConfigTest {
                 .orElseThrow(IllegalStateException::new);
         assertThat(registryProperties.getBrokerTtl()).isNotNull();
         assertThat(environment.getProperty("im.broker.gateway-push.protocol")).isNull();
-        assertThat(environment.getProperty("spring.main.web-application-type")).isEqualTo("none");
-        assertThat(environment.getProperty("server.port")).isNull();
+        assertThat(environment.getProperty("spring.main.web-application-type")).isNull();
+        assertThat(environment.getProperty("spring.cloud.nacos.discovery.port", Integer.class)).isEqualTo(12200);
+        assertThat(environment.getProperty("server.address")).isEqualTo("127.0.0.1");
+        assertThat(environment.getProperty("server.port", Integer.class)).isEqualTo(12201);
+        assertThat(environment.getProperty("spring.cloud.nacos.discovery.metadata.management-host"))
+                .isEqualTo("127.0.0.1");
+        assertThat(environment.getProperty("spring.cloud.nacos.discovery.metadata.management-port", Integer.class))
+                .isEqualTo(12201);
     }
 
     @Test
-    void brokerModulesDoNotDependOnHttpFallbackStack() throws IOException {
+    void brokerSdkDoesNotDependOnHttpFallbackStack() throws IOException {
         String serverPom = Files.readString(Path.of("pom.xml"));
         String sdkPom = Files.readString(Path.of("../im-broker-sdk/pom.xml"));
 
-        assertThat(serverPom).doesNotContain("spring-boot-starter-web");
+        assertThat(serverPom).contains("spring-boot-starter-web");
         assertThat(serverPom).doesNotContain("spring-cloud-starter-openfeign");
         assertThat(serverPom).doesNotContain("spring-cloud-starter-loadbalancer");
         assertThat(sdkPom).doesNotContain("spring-cloud-starter-openfeign");
