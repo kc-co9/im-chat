@@ -40,6 +40,18 @@ client
      -> im-account / im-message / im-social
 ```
 
+认证阶段的关键分支：
+
+```mermaid
+flowchart TD
+    Request[HTTP 请求] --> Public{公开路径 / OPTIONS / 文档端点?}
+    Public -->|是| Permit[按安全策略放行]
+    Public -->|否| Token[提取 Access Token]
+    Token --> Account[有界 Scheduler 调用 Account Facade]
+    Account -->|成功| Trusted[建立 Authentication 并写入可信 Header]
+    Account -->|无效 / 超时 / 不可用| Reject[统一认证失败，不转发业务请求]
+```
+
 ## 路由说明
 
 当前路由配置在 `src/main/resources/application.yml`：
@@ -63,6 +75,14 @@ client
 - TraceId 进入 MDC/请求头后向下游透传，便于跨服务定位请求。
 - HTTP Gateway 只做认证与路由，不承担账号、社交或消息业务规则。
 - 阻塞式账号认证在有界专用调度器执行；Dubbo 调用禁用重试并设置严格超时，调用失败时关闭认证。
+
+## 技术难点与失败边界
+
+- Spring Cloud Gateway 运行在 Reactor/WebFlux 上，Account Facade 是阻塞式 RPC。认证必须切换到专用有界 Scheduler，避免占用 event loop；调度容量耗尽与 RPC 超时都按认证不可用处理。
+- Header 清理必须早于可信身份写入。若只覆盖 Header 而不先清理，后续新增字段可能遗漏并信任客户端输入。
+- TraceId 是诊断元数据，不是身份或授权依据；即使调用方提交 TraceId，也不能影响认证结果。
+- 路由成功只表示请求已交给下游实例。业务事务、幂等和响应语义由目标服务负责。
+- Account 认证/鉴权失败由安全链返回统一 `HttpResult`；Nacos 没有可用实例或下游连接失败属于路由传输失败。两类失败都不得在本地回退为匿名成功，但当前文档不承诺它们使用同一错误适配器。
 
 ## 验证命令
 

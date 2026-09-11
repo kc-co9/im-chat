@@ -20,7 +20,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class RuntimeDependencyPolicyTest {
-    private static final Path REPO_ROOT = Path.of("").toAbsolutePath().getParent();
+    private static final Path REPO_ROOT = repositoryRoot();
     private static final Pattern PUBLIC_RECORD = Pattern.compile("\\bpublic\\s+record\\s+\\w+\\s*\\(");
     private static final Pattern SNOWFLAKE_INFRASTRUCTURE_CONSTRUCTION = Pattern.compile(
             "\\bnew\\s+(?:[\\w.]+\\.)?(?:SnowflakeId|StaticSnowflakeMachineId|RedisSnowflakeMachineId)\\s*\\(");
@@ -515,5 +515,10 @@ class RuntimeDependencyPolicyTest {
         }
         Node node = nodes.item(0);
         return node.getTextContent().trim();
+    }
+
+    private static Path repositoryRoot() {
+        Path current = Path.of("").toAbsolutePath();
+        return current.endsWith("im-architecture-test") ? current.getParent().getParent() : current;
     }
 }

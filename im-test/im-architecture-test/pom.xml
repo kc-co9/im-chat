@@ -5,12 +5,12 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.co.kc.im</groupId>
-        <artifactId>im-chat</artifactId>
+        <artifactId>im-test</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>im-architecture</artifactId>
-    <name>IM Architecture</name>
+    <artifactId>im-architecture-test</artifactId>
+    <name>IM Architecture Test</name>
 
     <dependencies>
         <dependency>

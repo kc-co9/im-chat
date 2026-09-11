@@ -1,33 +1,67 @@
-# IM Realtime Approved Scenarios
+# IM 实时链路已批准场景
 
-这些场景定义实时链路必须保持的可观察行为，是行为 Harness 的稳定输入。实现可以变化，但修改预期结果前必须经过人工确认。
+本文是实时链路可观察行为的权威规格，回答“系统必须表现成什么样”。实现和测试入口可以变化，但修改以下预期结果前必须经过人工确认。
 
-## 用户连接路由
+[关键行为目录](FEATURES.md)负责记录每个场景的验证入口、覆盖状态和证据边界；本文不重复维护测试类名称或某次运行结果。
 
-1. Gateway 为用户上报连接后，负责该用户的 Broker 保存 `userId -> gatewayId`。
-2. 同一用户可以同时存在于多个 Gateway，Broker 不保存 Gateway 本地 `connectionId`。
-3. Gateway 快照中消失的用户路由会被清理，其他 Gateway 上的同一用户路由不受影响。
-4. Broker 成员变化后，不再归属当前 Broker 的路由迁移到新归属节点；远端确认前不得删除本地路由。
+## 连接与身份
+
+### RT-001：认证连接与身份
+
+- 只有 Account 认证成功的 token 才能建立业务 WebSocket 连接。
+- Gateway 使用认证结果中的 `userId` 和 Session version 建立连接上下文。
+- 客户端 Query、Header 或 Frame Body 中自行提交的 `userId` 不能覆盖认证身份。
+- 连接建立后，负责该用户的 Broker 保存 `userId -> gatewayId`；Broker 不保存 Gateway 本地 `connectionId`。
+
+### RT-002：断开与 Gateway 重启恢复
+
+- WebSocket 断开后，Gateway 清理本地 Channel，Broker 删除对应 Gateway 路由。
+- Gateway 重启不会恢复旧 Channel；客户端重新连接后重新建立 Broker 路由。
+- 单个 Gateway 重启不删除同一用户在其他 Gateway 上仍然活跃的路由。
+
+### RT-005：多 Gateway 与快照清理
+
+- 同一用户可以同时连接多个 Gateway。
+- Gateway 快照中消失的用户路由只从该 Gateway 清理，其他 Gateway 上的同一用户路由不受影响。
+- Gateway 快照不拥有或同步远端 `connectionId`。
+
+### RT-006：Broker 归属迁移
+
+- Broker 成员变化后，不再归属当前 Broker 的用户路由迁移到新归属节点。
+- 远端确认迁移成功前不得删除本地路由。
+- 迁移失败或并发成员变化由后续扫描与 Gossip 收敛，不得直接丢失路由。
 
 ## Gossip 收敛
 
-1. Broker 和 Gateway 注册状态通过 digest/delta 最终收敛。
-2. 远端 Connection 状态保留在 Gossip 视图，不直接写入当前 Broker 的归属路由表。
-3. REMOVED 状态必须传播并在 TTL 内阻止旧状态复活，TTL 到期后允许压缩。
+### RT-007：注册状态与删除传播
 
-## 实时投递
+- Broker 和 Gateway 注册状态通过 digest/delta 最终收敛。
+- 远端 Connection 状态保留在 Gossip View，不直接写入当前 Broker 的归属路由表。
+- `REMOVED` 状态必须传播，并在 TTL 内阻止旧状态复活；TTL 到期后允许压缩。
 
-1. 下行帧先定位用户归属 Broker，再定位用户所在 Gateway。
-2. Gateway 仅写入本机活跃连接；单连接失败不应阻断同一用户的其他连接。
-3. Broker 或 Gateway 暂时不可用时，消息持久化事实不被回滚；客户端通过历史查询补齐。
-4. 需要确认的通知允许重复投递，客户端按消息标识幂等，ACK 后停止重试。
+## 消息与通知
 
-## Executable Evidence
+### RT-003：私聊上行发送
 
-已批准的行为证据使用 JUnit `realtime-behavior` 标签，`./scripts/verify.sh behavior` 按标签发现并执行。新增稳定场景时，在对应测试上标记该标签，无需修改验证脚本。
+- 私聊发送 Frame 从 WebSocket Gateway 经 Bolt 进入 Broker，再委托 Message Facade 处理业务语义。
+- Broker 使用连接认证用户覆盖 Frame Body 的发送人字段。
+- 正常响应保留请求的 Command、Sequence 和 TraceId，使客户端可以关联请求结果。
 
-- `BrokerConnectionServiceTest`: Broker 选择、迁移成功和迁移竞争。
-- `BrokerStateStoreTest`: Gossip 合并、删除传播和 removed TTL。
-- `InMemoryConnectionRegistryTest`: 多 Gateway 路由与快照清理。
-- `FrameProcessHandlerTest`: 上下行帧路由与失败语义。
-- `GatewayMetricsTest` and gateway registry tests: 本地连接所有权和活跃视图。
+### RT-004：通知 ACK
+
+- 通知 ACK 从 WebSocket Gateway 经 Broker 到达 Message Facade。
+- ACK 使用连接认证用户，客户端不能替其他用户确认通知。
+- 需要确认的通知允许重复投递；客户端按消息标识幂等，ACK 成功后停止后续重投。
+
+### RT-008：下行投递与连接隔离
+
+- 下行 Frame 先定位用户归属 Broker，再定位用户所在 Gateway。
+- Gateway 只写本机活跃连接。
+- 单连接写入失败不阻断同一用户的其他连接，并在结果中保留成功与失败连接信息。
+
+### MSG-001：持久化与在线投递边界
+
+- Message MySQL 事实提交后才触发在线通知。
+- Broker 或 Gateway 暂时不可用时，持久化消息事实不回滚。
+- 客户端可以通过历史查询补齐未在线收到的消息。
+- 当前没有覆盖 MySQL、Redis、Nacos 和远端 Dubbo 的全栈 E2E；不得用实时链路 E2E 冒充数据基础设施证据。

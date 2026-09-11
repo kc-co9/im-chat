@@ -121,17 +121,17 @@ public class NettyWebSocketServer {
         }
         connectionRegistry.closeAll();
         if (serverChannel != null) {
-            serverChannel.close();
+            serverChannel.close().syncUninterruptibly();
         }
         shutdownEventLoopGroups();
     }
 
     private void shutdownEventLoopGroups() {
         if (workerGroup != null) {
-            workerGroup.shutdownGracefully();
+            workerGroup.shutdownGracefully().syncUninterruptibly();
         }
         if (bossGroup != null) {
-            bossGroup.shutdownGracefully();
+            bossGroup.shutdownGracefully().syncUninterruptibly();
         }
     }
 

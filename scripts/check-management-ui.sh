@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# 用途：校验四个管理 UI 的依赖、质量脚本、设计 token、控制台导航和本地端口约定。
+# 输入：无位置参数；测试可通过 MANAGEMENT_UI_ROOT_DIR 指向隔离 fixture。
+# 输出/副作用：失败时输出具体文件和缺失约定；只读检查 UI 源码。
+# 依赖：node、rg，以及各 UI 的 package.json、Vite 和样式配置。
+# 退出码：全部 UI 满足约定返回 0；首个确定性违规返回 1。
 
 set -euo pipefail
 
@@ -24,6 +29,7 @@ TOKENS=(
   "--im-console-border: #dfe5ec;"
 )
 
+# 逐个 UI 校验其自有依赖、质量脚本、共享视觉契约、导航配置和本地代理端口。
 for index in "${!UI_ROOTS[@]}"; do
   relative_ui_root="${UI_ROOTS[$index]}"
   expected_port="${EXPECTED_PORTS[$index]}"

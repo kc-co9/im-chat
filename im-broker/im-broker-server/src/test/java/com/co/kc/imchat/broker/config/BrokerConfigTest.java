@@ -43,6 +43,8 @@ class BrokerConfigTest {
                 .isEqualTo("127.0.0.1");
         assertThat(environment.getProperty("spring.cloud.nacos.discovery.metadata.management-port", Integer.class))
                 .isEqualTo(12201);
+        assertThat(environment.getProperty("im.session.web.public-paths[0]")).isEqualTo("/management/**");
+        assertThat(environment.getProperty("im.session.web.public-paths[1]")).isEqualTo("/actuator/**");
     }
 
     @Test

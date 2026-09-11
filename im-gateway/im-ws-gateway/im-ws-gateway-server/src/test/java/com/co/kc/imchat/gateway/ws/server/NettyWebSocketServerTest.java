@@ -12,6 +12,7 @@ import com.co.kc.imchat.gateway.ws.support.BrokerClientTestSupport;
 import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.broker.sdk.enums.BrokerLoadBalance;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
@@ -48,10 +49,33 @@ class NettyWebSocketServerTest {
         assertThat(eventLoopGroup(server, "workerGroup").isShuttingDown()).isTrue();
     }
 
+    @Test
+    void stopWaitsUntilServerChannelAndEventLoopsTerminate() throws Exception {
+        NettyWebSocketServer server = new NettyWebSocketServer(
+                0, "gw-1", "/ws", new CapturingConnectionCleanupClient(),
+                new ConnectionRegistry(), null, 60, 65536);
+        server.start();
+        Channel serverChannel = serverChannel(server);
+        EventLoopGroup bossGroup = eventLoopGroup(server, "bossGroup");
+        EventLoopGroup workerGroup = eventLoopGroup(server, "workerGroup");
+
+        server.stop();
+
+        assertThat(serverChannel.closeFuture().isDone()).isTrue();
+        assertThat(bossGroup.isTerminated()).isTrue();
+        assertThat(workerGroup.isTerminated()).isTrue();
+    }
+
     private EventLoopGroup eventLoopGroup(NettyWebSocketServer server, String fieldName) throws Exception {
         Field field = NettyWebSocketServer.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         return (EventLoopGroup) field.get(server);
+    }
+
+    private Channel serverChannel(NettyWebSocketServer server) throws Exception {
+        Field field = NettyWebSocketServer.class.getDeclaredField("serverChannel");
+        field.setAccessible(true);
+        return (Channel) field.get(server);
     }
 
     private static class CapturingConnectionCleanupClient extends BrokerClient {

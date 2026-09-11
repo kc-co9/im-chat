@@ -3,6 +3,9 @@ HELP.md
 target/
 !.mvn/wrapper/maven-wrapper.jar
 
+# 本机 Harness 状态：跨 Maven clean 保留，但不提交到 Git。
+/.harness/
+
 # 编辑器配置文件
 ## IntelliJ IDEA
 .idea/

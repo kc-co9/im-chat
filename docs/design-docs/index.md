@@ -4,6 +4,11 @@ Design documents capture context, alternatives, decisions, and consequences. The
 
 ## Current Designs
 
+- [Harness 交接、启动与质量评审](2026-09-10-harness-handoff-startup-and-quality-design.md)：自动派生 session handoff、验证全部应用的受控启动路径、限界清理，并用独立 AI Reviewer 与机器证据生成模块 A/B/C/D 快照。
+- [Harness 证据与运行闭环](2026-09-10-harness-evidence-and-runtime-loop-design.md)：让验证绑定当前 worktree，建立实时 E2E、行为目录、运行证据和 CI 生命周期。
+- [执行工件模板融合](2026-09-10-execution-artifact-template-integration-design.md)：用唯一计划模板和 active plan 结构门禁吸收 DTPet 模板契约，不建立第二套 Harness 工作区。
+- [Harness 运行门禁增强](2026-09-10-harness-operational-gates-design.md)：在现有验证入口中增加 readiness、clean、五子系统报告和 WHAT/WHY/FIX 诊断。
+- [领域 README 与 Harness 优化](2026-09-09-domain-readme-and-harness-refinement-design.md)：由所属模块维护的领域语言、简明的根开发者入口、有边界的 Netty WebSocket 选型说明，以及面向生命周期的 Harness 改进。
 - [Unified management console](2026-09-09-unified-management-console-design.md): shared quiet high-density Element Plus visual and interaction contract across independently deployed IAM, Admin, Audit and Monitor consoles, including local port convergence.
 - [IAM console interaction](2026-09-08-iam-console-interaction-design.md): scan-first management shell, application detail context, OAuth Client list, drawer-based editing and recoverable operation feedback.
 - [IAM Catalog client and OpenAPI convergence](2026-09-08-iam-catalog-client-and-openapi-convergence-design.md): dedicated permission-catalog machine credentials, Spring-side Claim type restoration and explicit MVC documentation paths.

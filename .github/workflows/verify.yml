@@ -17,6 +17,15 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+      - name: Check environment readiness
+        run: ./scripts/verify.sh readiness
+      - name: Check repository handoff state
+        run: ./scripts/verify.sh clean
       - name: Verify affected modules
         run: ./scripts/verify.sh affected ${{ github.event.pull_request.base.sha || github.event.before }}
       - name: Publish Harness report
@@ -26,7 +35,11 @@ jobs:
         if: always()
         with:
           name: harness-report
-          path: target/harness/report.json
+          include-hidden-files: true
+          path: |
+            .harness/report.json
+            .harness/verifications/*.json
+            .harness/runtime/e2e.log
 
   full:
     if: github.event_name == 'push'
@@ -38,6 +51,19 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+      - name: Check environment readiness
+        run: ./scripts/verify.sh readiness
+      - name: Check repository handoff state
+        run: ./scripts/verify.sh clean
+      - name: Verify realtime E2E and retain runtime evidence
+        run: ./scripts/verify.sh e2e
+      - name: Verify all application startup smoke
+        run: ./scripts/verify.sh startup
       - run: ./scripts/verify.sh full
       - name: Publish full Harness report
         if: always()
@@ -46,4 +72,10 @@ jobs:
         if: always()
         with:
           name: harness-full-report
-          path: target/harness/report.json
+          include-hidden-files: true
+          path: |
+            .harness/report.json
+            .harness/verifications/*.json
+            .harness/runtime/e2e.log
+            .harness/session-handoff.*
+            .harness/startup-manifest.json

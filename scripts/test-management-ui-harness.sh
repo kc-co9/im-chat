@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# 用途：用隔离 UI fixture 验证管理端依赖、脚本、样式 token、端口和导航规则。
+# 输入：无位置参数；fixture 在临时目录内生成。
+# 输出/副作用：创建并清理临时 UI 目录，不修改真实管理端源码。
+# 依赖：bash、node、rg、mktemp 和 check-management-ui.sh。
+# 退出码：正例通过且每个反例产生预期诊断时返回 0，否则返回非 0。
 
 set -euo pipefail
 
@@ -7,6 +12,7 @@ CHECKER="$ROOT_DIR/scripts/check-management-ui.sh"
 FIXTURE_ROOT="$(mktemp -d)"
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 
+# 参数为 UI 根目录和预期端口；生成一套满足当前约定的最小基线。
 create_ui() {
   local ui_root="$1"
   local port="$2"
@@ -56,6 +62,7 @@ EOF
     > "$ui_root/vite.config.ts"
 }
 
+# 重建四个管理端基线，确保每个反例都从干净状态开始。
 create_all() {
   create_ui "$FIXTURE_ROOT/im-management/im-admin/ui" 18093
   create_ui "$FIXTURE_ROOT/im-management/im-audit/im-audit-server/ui" 18091
@@ -63,6 +70,7 @@ create_all() {
   create_ui "$FIXTURE_ROOT/im-management/im-monitor/ui" 18092
 }
 
+# 参数为预期诊断片段；执行 checker 并断言失败输出包含该片段。
 expect_failure() {
   local message="$1"
   if MANAGEMENT_UI_ROOT_DIR="$FIXTURE_ROOT" bash "$CHECKER" >/dev/null 2>&1; then

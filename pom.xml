@@ -31,7 +31,7 @@
         <module>im-broker</module>
         <module>im-service</module>
         <module>im-management</module>
-        <module>im-architecture</module>
+        <module>im-test</module>
     </modules>
 
     <properties>

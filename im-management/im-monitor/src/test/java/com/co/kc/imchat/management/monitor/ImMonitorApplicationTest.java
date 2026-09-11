@@ -1,8 +1,10 @@
 package com.co.kc.imchat.management.monitor;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.context.SpringBootTest;
 
+@Tag("startup-smoke")
 @SpringBootTest(classes = ImMonitorApplication.class, properties = {
         "spring.cloud.nacos.discovery.enabled=false",
         "spring.cloud.nacos.config.enabled=false",

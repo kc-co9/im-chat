@@ -4,6 +4,8 @@
 
 `im-http-gateway` owns HTTP routing and edge authentication. `im-ws-gateway-sdk` owns public WebSocket Gateway contracts. `im-ws-gateway-server` owns Netty connections, protocol handling, registration lifecycle, and Broker communication.
 
+Read `ARCHITECTURE.md` before changing authentication, connection ownership, HTTP/WS process boundaries, or Broker interaction. Use the relevant child README for configuration and concrete processing details.
+
 ## Boundaries
 
 - Gateway SDK code must not depend on Gateway server packages.

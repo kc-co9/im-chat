@@ -5,13 +5,15 @@ import com.co.kc.imchat.broker.interfaces.handler.frame.FrameProcessHandler;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import com.co.kc.imchat.service.message.facade.MessageService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(properties = {
+@Tag("startup-smoke")
+@SpringBootTest(classes = ImBrokerApplication.class, properties = {
         "im.bolt.client.enabled=false",
         "im.bolt.server.enabled=false",
         "im.dubbo.enabled=false",

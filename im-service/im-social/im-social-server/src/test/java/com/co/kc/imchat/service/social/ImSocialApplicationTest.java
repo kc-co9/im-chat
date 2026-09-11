@@ -8,13 +8,15 @@ import com.co.kc.imchat.service.social.infrastructure.mybatis.mapper.DbFriendMap
 import com.co.kc.imchat.service.social.infrastructure.mybatis.mapper.DbImGroupMapper;
 import com.co.kc.imchat.service.social.infrastructure.mybatis.mapper.DbImGroupMemberMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-@SpringBootTest(properties = {
+@Tag("startup-smoke")
+@SpringBootTest(classes = ImSocialApplication.class, properties = {
         "server.port=0",
         "im.dubbo.enabled=false",
         "dubbo.enabled=false",

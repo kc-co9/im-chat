@@ -17,6 +17,36 @@ Dubbo RPC 契约，避免两套入口出现认证、请求模型和行为偏差�
 管理应用通过 SDK 使用 IAM，但仍独立拥有自己的业务接口、页面和权限定义。SDK 不包含 IAM
 服务端的管理员、角色或应用领域实现。
 
+## 领域位置与上下文地图
+
+| 限界上下文 | 主要职责 | 核心模型 |
+|---|---|---|
+| 管理员身份 | 管理员凭据、状态、密码校验及身份生命周期 | `Administrator` |
+| 应用授权 | 业务应用与 OAuth 客户端注册、IAM 内部角色、应用权限目录、应用角色和管理员授权 | `Application`、`OAuthClient`、`IamRole`、`ApplicationPermission`、`ApplicationRole` |
+| OAuth 授权 | 浏览器或机器主体的授权、当前凭据、Scope、撤销以及管理侧授权会话投影 | `OAuthAuthorization`、`OAuthSession` |
+
+三个上下文由同一个 `im-iam-server` 部署承载，但领域模型、仓储和生命周期边界保持独立；部署边界
+不等于领域边界。管理应用中的 BFF Session 属于各应用 SDK 集成状态，不是 IAM Server 的
+`OAuthAuthorization` 或 `OAuthSession`。
+
+## 统一语言
+
+| 上下文 | 业务术语 | 类型 | 建模名称 |
+|---|---|---|---|
+| 管理员身份 | 管理员 | 聚合根 | `Administrator` |
+| 管理员身份 | 管理员标识、用户名、邮箱、原始/加密密码、状态 | 值对象 | `AdministratorId`、`AdministratorUsername`、`AdministratorEmail`、`AdministratorRawPassword`、`AdministratorPassword`、`AdministratorStatus` |
+| 管理员身份 | 管理员与密码规则 | 领域服务 | `AdministratorService`、`PasswordService` |
+| 应用授权 | 接入应用、OAuth 客户端 | 聚合根 | `Application`、`OAuthClient` |
+| 应用授权 | 应用标识与业务编码、OAuth 客户端标识 | 值对象 | `AppId`、`AppKey`、`OAuthClientId` |
+| 应用授权 | IAM 内部角色、应用权限、应用角色 | 聚合根 | `IamRole`、`ApplicationPermission`、`ApplicationRole` |
+| OAuth 授权 | OAuth 授权 | 聚合根 | `OAuthAuthorization` |
+| OAuth 授权 | 授权标识、主体、Access/Refresh Token、授权码 | 值对象 | `OAuthAuthorizationId`、`OAuthPrincipal`、`OAuthAccessToken`、`OAuthRefreshToken`、`OAuthAuthorizationCode` |
+| OAuth 授权 | 管理侧授权会话 | 只读投影 | `OAuthSession` |
+| OAuth 授权 | 授权与撤销规则 | 领域服务 | `OAuthAuthorizationService` |
+
+下文继续说明这些术语在权限目录、Authorization Code + PKCE、Client Credentials、Token
+Introspection 和撤销流程中的具体关系，不在此表重复协议步骤。
+
 ## IAM 解决什么问题
 
 如果每个管理应用分别实现账号、密码、登录 Session 和角色管理，会出现多套安全边界，管理员也需要
@@ -280,6 +310,16 @@ Access Token（有限期访问凭证）
 - `iam:administrator:read` 等业务权限属于管理员在具体应用中的权限，不应与机器 Scope 混为同一概念；
 - Client Secret、Access Token、Refresh Token、Authorization Code 和 Cookie 不能进入日志或普通业务响应；
   OAuth2/OIDC 协议端点只向经过校验的客户端返回流程必需的 Code 或 Token。
+
+## 子模块与验证
+
+- [`im-iam-server`](im-iam-server/README.md)：管理员身份、应用授权、OAuth2/OIDC 协议和 IAM 管理控制台。
+- [`im-iam-sdk`](im-iam-sdk/README.md)：管理应用的 BFF Session、Introspection、权限目录同步和安全适配。
+
+```bash
+mvn -q -pl im-management/im-iam/im-iam-sdk,im-management/im-iam/im-iam-server -am test
+./scripts/verify.sh architecture
+```
 
 ## 进一步阅读
 

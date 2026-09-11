@@ -4,6 +4,10 @@ Completed plans are retained as implementation history. Move a plan here only af
 
 Completed plans:
 
+- [Harness 证据与运行闭环](2026-09-10-harness-evidence-and-runtime-loop.md)
+- [执行工件模板融合](2026-09-10-execution-artifact-template-integration.md)
+- [Harness 运行门禁增强](2026-09-10-harness-operational-gates.md)
+- [领域 README 与 Harness 优化](2026-09-09-domain-readme-and-harness-refinement.md)
 - [Unified management console](2026-09-09-unified-management-console.md)
 - [IAM role and client editing](2026-09-08-iam-role-and-client-editing.md)
 - [IAM console interaction](2026-09-08-iam-console-interaction.md)

@@ -1,6 +1,6 @@
-# im-architecture
+# im-architecture-test
 
-`im-architecture` 是仓库级架构反馈模块，通过 ArchUnit 检查编译后的项目类，防止模块依赖和分层边界在持续修改中发生漂移。
+`im-architecture-test` 是仓库级架构反馈模块，通过 ArchUnit 检查编译后的项目类，防止模块依赖和分层边界在持续修改中发生漂移。它由 `im-test` 聚合，不包含生产代码。
 
 ## 关键技术点
 
@@ -18,7 +18,7 @@
 或者直接运行：
 
 ```bash
-mvn -q -pl im-architecture -am test
+mvn -q -pl im-test/im-architecture-test -am test
 ```
 
 ## 规则维护

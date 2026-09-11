@@ -68,7 +68,7 @@ im-service/im-account
 └── im-account-server
 ```
 
-`im-account-admin-facade` 只包含高权限用户管理契约、Command、Query 和 DTO，不依赖 Server。`im-account-server` 实现普通 Facade 和 Admin Facade。只有 `im-admin` 可以依赖 Admin Facade；其他 Gateway、Broker、Service 和 Plugin 模块不得依赖它，该规则由 `im-architecture` 强制执行。
+`im-account-admin-facade` 只包含高权限用户管理契约、Command、Query 和 DTO，不依赖 Server。`im-account-server` 实现普通 Facade 和 Admin Facade。只有 `im-admin` 可以依赖 Admin Facade；其他 Gateway、Broker、Service 和 Plugin 模块不得依赖它，该规则由 `im-test/im-architecture-test` 强制执行。
 
 `im-admin` 使用独立的管理数据库 schema 和带命名空间的 Redis Key，不与 Account 用户表或 Session 表共享所有权。第一版默认服务名为 `im-admin`，HTTP 端口为 `18091`。
 

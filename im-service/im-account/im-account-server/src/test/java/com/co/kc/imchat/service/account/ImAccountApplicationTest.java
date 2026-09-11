@@ -8,6 +8,7 @@ import com.co.kc.imchat.plugin.lock.core.DistributedLockTemplate;
 import com.co.kc.imchat.plugin.session.token.codec.JwtTokenCodec;
 import com.co.kc.imchat.service.account.infrastructure.mybatis.mapper.DbUserMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
@@ -15,7 +16,8 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-@SpringBootTest(properties = {
+@Tag("startup-smoke")
+@SpringBootTest(classes = ImAccountApplication.class, properties = {
         "server.port=0",
         "im.session.jwt.enabled=false",
         "im.dubbo.enabled=false",

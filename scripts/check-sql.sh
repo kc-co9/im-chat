@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# 用途：扫描 DDL、Mapper XML 和 Java 注解 SQL 中可稳定识别的安全与结构违规。
+# 输入：无位置参数；测试可通过 SQL_HARNESS_ROOT 指向隔离 fixture。
+# 输出/副作用：按规则组输出来源文件与原因；只读解析，不执行任何 SQL。
+# 依赖：Ruby 标准库，以及仓库约定的 sql/resources/mapper/Java 源码目录。
+# 退出码：没有违规返回 0；发现任一违规返回 1。
 
 set -euo pipefail
 
@@ -8,23 +13,28 @@ ruby - "$ROOT_DIR" <<'RUBY'
 root = File.expand_path(ARGV.fetch(0))
 groups = Hash.new { |hash, key| hash[key] = [] }
 
+# 将绝对文件名转换为面向诊断的仓库相对路径。
 def relative(root, file)
   file.delete_prefix(root + "/")
 end
 
+# 把单条诊断追加到规则组，最终统一输出全部违规而不是首错退出。
 def report(groups, group, file, message)
   groups[group] << "#{file}: #{message}"
 end
 
+# 判断去除 MySQL 反引号后的标识符是否为 lower_snake_case。
 def lower_snake_identifier?(token)
   name = token.start_with?("`") && token.end_with?("`") ? token[1...-1] : token
   name.match?(/\A[a-z][a-z0-9]*(?:_[a-z0-9]+)*\z/)
 end
 
+# 压平空白并转小写，供不关心格式的 SQL 结构规则匹配。
 def normalized(sql)
   sql.gsub(/<!--.*?-->/m, " ").gsub(/\s+/, " ").strip
 end
 
+# 识别 SELECT 列表中的 * 或 alias.*，但不误报 COUNT(*)。
 def select_wildcard?(sql)
   normalized(sql).scan(/\bSELECT\b(.*?)\bFROM\b/im).any? do |match|
     projection = match.fetch(0).dup
@@ -39,6 +49,7 @@ def select_wildcard?(sql)
   end
 end
 
+# 屏蔽 SQL 注释，并按调用方选择是否屏蔽字符串字面量，避免文档示例和内容文本误报。
 def sql_mask(source, mask_literals:)
   result = source.dup
   state = :code
@@ -106,6 +117,7 @@ def sql_mask(source, mask_literals:)
   result
 end
 
+# 屏蔽 Java 注释和普通字符串，仅保留可用于定位注解 SQL 的代码形状。
 def java_code_mask(source)
   masked = source.dup
   state = :code
@@ -179,6 +191,7 @@ def java_code_mask(source)
   masked
 end
 
+# 删除 Java 注释但保留字符串内容，供注解 SQL 提取阶段继续解析。
 def without_java_comments(source)
   result = source.dup
   state = :code
@@ -244,6 +257,7 @@ def without_java_comments(source)
   result
 end
 
+# 建立生产文件清单；测试、构建产物和 fixture 由 Harness 自测负责，不进入仓库规则扫描。
 excluded = %r{/(?:src/test|target|fixtures?)(?:/|\z)}
 all_files = Dir.glob(File.join(root, "**", "*"), File::FNM_DOTMATCH).select { |file| File.file?(file) && !file.match?(excluded) }
 
@@ -266,6 +280,7 @@ end
     "Service DDL must be placed in the owning Server module's sql/*.sql"
   )
 end
+# 校验 Server 自有 DDL 的危险语句、命名、模板字段、主键、引擎和索引约定。
 owned_sql.each do |file|
   path = relative(root, file)
   content = File.read(file)
@@ -320,6 +335,7 @@ owned_sql.each do |file|
   end
 end
 
+# Mapper XML 同时检查替换注入、通配列和可确定的无条件静态写入。
 xml_files = all_files.select { |file| file.end_with?(".xml") && File.read(file).include?("<mapper") }
 xml_files.each do |file|
   path = relative(root, file)
@@ -342,6 +358,7 @@ xml_files.each do |file|
   end
 end
 
+# Java 注解 SQL 先按括号深度提取完整表达式，仅对可静态还原的字符串执行内容规则。
 java_files = all_files.select { |file| file.end_with?(".java") }
 java_files.each do |file|
   path = relative(root, file)
@@ -390,11 +407,15 @@ java_files.each do |file|
   end
 end
 
+# 最终一次性输出全部规则组，便于单轮修复多个低噪声问题。
 if groups.empty?
   puts "SQL checks passed."
   exit 0
 end
 
+puts "\n[sql] WHAT: SQL 来源违反了可静态确认的安全、所有权或结构规则。"
+puts "WHY: 这些违规可能造成注入、全表写入、Schema 漂移或不可维护的持久化契约。"
+puts "FIX: 按后续规则组和文件消息修复；动态语义无法确认时补测试并交由 Review。"
 groups.each do |group, messages|
   puts "\n[sql] #{group}"
   messages.uniq.each { |message| puts message }

@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# 用途：分别构建 baseline 与当前公共 SDK/Facade，为发布前 API 兼容检查准备可编译基线。
+# 输入：可选 baseline revision，默认 origin/main。
+# 输出/副作用：创建临时 detached worktree、执行 Maven 构建并在退出时清理；不声明二进制兼容结论。
+# 依赖：git worktree、Maven、可用的 baseline revision 与构建依赖。
+# 退出码：baseline 不存在时提示跳过并返回 0；任一构建或清理前步骤失败时返回非 0。
 
 set -euo pipefail
 
@@ -18,6 +23,7 @@ if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
   exit 0
 fi
 
+# baseline 使用 detached 临时 worktree 构建，避免覆盖当前工作树中的用户改动。
 worktree="$(mktemp -d /tmp/im-chat-api-baseline.XXXXXX)"
 trap 'git worktree remove --force "$worktree" >/dev/null 2>&1 || true' EXIT
 git worktree add --detach "$worktree" "$BASE_REF" >/dev/null

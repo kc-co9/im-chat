@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# 用途：用最小 Java/POM fixture 验证 Java style checker 的正例、反例和误报保护。
+# 输入：无位置参数；fixture 在临时目录内生成。
+# 输出/副作用：打印 checker 自测结果并在退出时删除临时目录。
+# 依赖：bash、mktemp、check-java-style.sh 及其 Ruby 运行环境。
+# 退出码：全部规则产生预期诊断且合法样例通过时返回 0，否则返回非 0。
 
 set -euo pipefail
 
@@ -414,6 +419,12 @@ if [[ "$output" != *"Closed-set database fields must use database-layer enums"* 
   printf 'Expected database enum guidance, got:\n%s\n' "$output" >&2
   exit 1
 fi
+for label in 'WHAT:' 'WHY:' 'FIX:'; do
+  if [[ "$output" != *"$label"* ]]; then
+    printf 'Expected Java style diagnostic to include %s, got:\n%s\n' "$label" "$output" >&2
+    exit 1
+  fi
+done
 rm "$db_entity_package/InvalidDbEvent.java"
 
 cat > "$db_entity_package/InvalidDbUser.java" <<'EOF'

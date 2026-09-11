@@ -33,6 +33,69 @@ broker/
 - 会话关闭控制先按 `userId` 定位归属 Broker，再路由到持有该用户连接的 Gateway。
 - 本模块不保存聊天历史和 WebSocket `connectionId` 集合。
 
+## 核心处理流程
+
+### Broker 与 Gateway 生命周期
+
+```mermaid
+sequenceDiagram
+    participant Broker as Broker Server
+    participant Peer as peer Broker
+    participant Gateway as WS Gateway
+    Broker->>Broker: BrokerRegistrationLifecycle 注册并周期心跳
+    Broker->>Peer: BrokerGossipLifecycle 周期同步
+    Broker->>Broker: BrokerConnectionLifecycle 检查 owner 变化
+    Gateway->>Broker: registerGateway / heartbeatGateway
+    Gateway->>Broker: registerConnection / unregisterConnection
+    Gateway->>Broker: syncConnections(activeUserIds)
+```
+
+Gateway 快照同步按 gatewayId 清理已不在快照中的旧用户映射；Registry TTL 继续处理进程崩溃后没有正常注销的状态。
+
+### 连接归属与迁移
+
+```mermaid
+flowchart TD
+    Operation[连接操作到达任意 Broker] --> Compute[BrokerConnectionService 计算 owner]
+    Compute -->|本机| Registry[更新 ConnectionRegistry]
+    Compute -->|远端| Forward[BrokerPeerClient 转发]
+    OwnerChange[owner 变化] --> Collect["收集 user -> gateway 映射"]
+    Collect --> Migrate[migrateConnections 到新 owner]
+    Migrate -->|成功| Remove[注销本机旧映射]
+    Migrate -->|失败| Retain[保留并等待下一轮]
+```
+
+### Gossip 同步
+
+```mermaid
+sequenceDiagram
+    participant Registry
+    participant Store as BrokerStateStore
+    participant Local as 本机 Broker
+    participant Peer as peer Broker
+    Registry->>Store: Domain Event 经 Listener 写入状态
+    Local->>Peer: gossipDigest
+    Peer-->>Local: 版本摘要
+    Local->>Peer: gossipDelta(entries)
+    Peer-->>Local: 较新状态
+    Local->>Store: 合并状态与 REMOVED tombstone
+```
+
+### 帧与关闭控制
+
+```mermaid
+flowchart LR
+    Up[上行 Frame] --> Process[FrameProcessHandler]
+    Process --> Message[Message Facade]
+    Down[下行 Frame] --> Owner[owner Broker]
+    Close[关闭控制] --> Owner
+    Owner --> Registry[ConnectionRegistry.find userId]
+    Registry --> Write[GatewayClient.writeFrame]
+    Registry --> CloseCall[GatewayClient.closeConnections]
+    Write --> Result[聚合逐连接结果]
+    CloseCall --> Filter[Gateway 按 oldSessionVersion 筛选]
+```
+
 ## 配置
 
 - `im.broker.instance`：本机 Broker 地址，ID 自动生成。
@@ -64,6 +127,10 @@ broker/
 `HttpResult`。Gossip 与迁移记录只保存在固定容量内存中，重启即清空；诊断记录失败不会改变
 原业务执行结果。
 
+`/management/**`、Broker Actuator 和 OpenAPI 路径不建立普通用户 `UserContext`，访问控制依赖
+管理监听地址、网络策略和调用方基础设施。默认只监听 `127.0.0.1`；对其他主机开放时必须由部署
+环境限制来源，不能把可伪造的用户身份 Header 当作管理接口认证。
+
 Gossip 生命周期在每次 peer 同步结束后记录合并与推送条目数；Broker peer 客户端在连接迁移 RPC
 结束后记录成功数量或失败摘要。失败记录的 `processedCount` 为 `0`，不把已尝试的数量当作已处理数量。
 
@@ -77,6 +144,18 @@ Gossip 生命周期在每次 peer 同步结束后记录合并与推送条目数�
 - Gossip 提供最终一致性；连接写入仍由归属 Broker 串联，不能把 Gossip 当作强一致事务日志。
 - 删除状态通过 `REMOVED` 增量和 TTL 传播，防止离线节点重新带回旧注册数据。
 - 关闭控制携带旧 `sessionVersion`，Broker 不解释该字段，只把它透传给 Gateway 做本地连接筛选。
+
+## 故障处理与排查入口
+
+| 故障 | 当前行为 | 主要证据 |
+|---|---|---|
+| peer Broker 调用失败 | 当前写入/迁移失败，保留可重试状态并记录诊断 | Gossip/迁移 Tracker、warn 日志 |
+| Gateway 下行失败 | 保留逐连接失败结果返回调用方 | Frame write result、`im.message.broker.frame.write` |
+| Message Facade 超时 | 上行帧返回未处理，不在 Broker 落消息 | Frame Handler 日志与结果 |
+| Gateway 异常消失 | 心跳/TTL 与后续快照清理路由 | Registry 状态、管理接口 |
+| 诊断记录失败 | 只记录失败，不改变核心操作结果 | Tracker 聚焦测试 |
+
+只读管理端点用于判断当前节点看见的 Registry、最近 Gossip 与迁移结果，不是强一致集群真值。跨节点问题需要同时比较多个 Broker，并结合 [Broker Architecture](../ARCHITECTURE.md) 的最终一致性边界判断。
 
 ```bash
 mvn -q -pl im-broker/im-broker-server -am test

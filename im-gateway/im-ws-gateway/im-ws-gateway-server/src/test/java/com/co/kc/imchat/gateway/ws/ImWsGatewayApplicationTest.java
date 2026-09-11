@@ -5,6 +5,7 @@ import com.co.kc.imchat.gateway.ws.server.NettyWebSocketServer;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import io.netty.channel.ChannelFuture;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -14,6 +15,7 @@ import org.springframework.context.annotation.Primary;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Tag("startup-smoke")
 @SpringBootTest(classes = ImWsGatewayApplication.class, properties = {
         "im.gateway.ws.port=0",
         "im.bolt.client.enabled=false",

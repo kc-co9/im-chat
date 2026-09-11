@@ -29,6 +29,13 @@ springdoc:
     path: /v3/api-docs
 
 im:
+  session:
+    web:
+      public-paths:
+        - /management/**
+        - /actuator/**
+        - /api/doc.html
+        - /v3/api-docs/**
   bolt:
     client:
       enabled: true

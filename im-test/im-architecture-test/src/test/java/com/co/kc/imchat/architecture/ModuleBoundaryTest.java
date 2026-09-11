@@ -182,6 +182,6 @@ class ModuleBoundaryTest {
 
     private static Path repoRoot() {
         Path current = Path.of("").toAbsolutePath();
-        return current.endsWith("im-architecture") ? current.getParent() : current;
+        return current.endsWith("im-architecture-test") ? current.getParent().getParent() : current;
     }
 }

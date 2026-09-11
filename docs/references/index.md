@@ -13,5 +13,6 @@
 - Findings 优先的独立审查流程：[Code Review Guide](CODE_REVIEW_GUIDE.md)
 - 提交边界、验证和提交信息：[Git Guide](GIT_GUIDE.md)
 - 自动规则、fixture、反馈和退出流程：[Harness Guide](HARNESS_GUIDE.md)
+- 机器证据与独立 AI Reviewer 的六维评分：[Quality Model](QUALITY_MODEL.md)
 
 规范正文只在其所有者文档维护。其他 README、设计和计划应链接到这里，不复制整段通用规则。

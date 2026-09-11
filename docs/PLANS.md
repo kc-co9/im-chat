@@ -1,23 +1,48 @@
 # Execution Plan Policy
 
-Execution plans turn an approved design into verifiable repository changes.
+执行计划将已批准设计转换为可验证的仓库变更。
 
-## Lifecycle
+小型单文件维护不要求执行计划。跨模块工作、迁移、新增运行组件和公共契约变更必须使用执行计划。
+新计划从 [执行计划模板](exec-plans/TEMPLATE.md) 创建；模板只固定必要结构，计划事实仍由 `active` 目录中的具体实例拥有。
 
-1. Create a plan in `docs/exec-plans/active` using `YYYY-MM-DD-<topic>.md`.
-2. Link the design document or product specification that defines the intended behavior.
-3. Describe affected modules, ordered implementation tasks, migration or compatibility concerns, and exact verification commands.
-4. Update task status as work progresses. Record deviations that change the intended design.
-5. When all completion criteria pass, move the plan unchanged to `docs/exec-plans/completed` and update relevant indexes.
+## Sprint Contract
 
-## Required Sections
+每份活跃计划定义一个 Sprint Contract，包含：
 
-- Objective and non-goals
-- Design/specification references
-- Affected modules and ownership boundaries
-- Ordered implementation tasks
-- Test and verification strategy
-- Rollout, compatibility, and rollback considerations when runtime behavior changes
-- Completion criteria
+- 目标。
+- 范围和非目标。
+- 验收标准。
+- 风险和依赖；运行行为变化时还包括所需环境或工具权限，以及发布、兼容或回滚事项。
+- 定义预期行为的设计或产品规格引用。
+- 受影响模块和所有权边界。
 
-Small, single-file maintenance changes do not require an execution plan. Cross-module work, migrations, new runtime components, and changes to public contracts do.
+计划还必须包含有序实施任务，以及满足验收标准所需的准确测试与验证策略。
+
+每份活跃计划必须保留以下二级章节，供新会话和机械检查稳定发现：
+
+- `Sprint Contract`；
+- `事实源`；
+- `验证分层`；
+- `任务状态`；
+- `恢复状态`；
+- `回滚与残余风险`。
+
+启动目标、范围、事实源、环境权限和最小验证闭环写入 Sprint Contract、事实源及验证分层，不另建启动就绪文件。跨会话交接写入恢复状态，不另建与计划竞争的 handoff 文件。
+
+## 任务状态
+
+每项任务只能使用一种状态：`not_started`、`active`、`blocked` 或 `passing`。每份活跃计划保持 WIP=1：同一时刻至多一项任务可以为 `active`。`blocked` 任务继续保留记录且不违反该限制，但它不授权开展无关工作；改变范围或优先级必须记录明确的计划或优先级决定。`passing` 必须随任务记录准确的成功命令和实际结果，或链接其他可复查证据。
+
+证据只对其验证过的工作树或 revision 状态、前提假设、共享检查器和验收路径有效。后续修改其中任一输入都会使受影响的 `passing` 状态失效：必须重新打开任务并验证。收尾前，集成验证必须刷新最终变更集影响的全部证据。
+
+为支持跨会话恢复，活跃计划记录当前任务、已完成证据、当前阻塞项或 `none`，以及下一项具体步骤。根 `PROGRESS.md` 只索引全仓活跃计划、当前任务和机器报告入口，详细状态由对应计划拥有，验证结果、耗时和测试数由 `.harness/report.json` 拥有。不要把机器结果复制回 PROGRESS，否则该文档变化会使 revision-bound evidence 产生自引用失效。
+
+## 生命周期
+
+1. 在 `docs/exec-plans/active` 中按 `YYYY-MM-DD-<topic>.md` 命名创建计划。
+2. 实施前写明 Sprint Contract、任务看板、恢复状态和准确验证命令，并把计划登记到根 `PROGRESS.md`。
+3. 随工作进展更新任务、恢复状态和 PROGRESS 摘要；偏离预期设计时记录变化。
+4. 只有记录验收证据后，才能将任务标记为 `passing`。
+5. 全部任务为 `passing` 且满足所有验收标准后，将计划原样移动到 `docs/exec-plans/completed`，更新相关索引，并把 PROGRESS 切换到下一活跃计划或 `none`。
+
+归档计划和更新 PROGRESS 会改变 worktree fingerprint。需要 revision-bound 最终证据的任务必须在计划中定义“归档后关闭审计”：归档前先取得足以将全部任务标为 `passing` 的证据，归档后不再修改 tracked 文件，并重新执行受状态文件变化影响的机器验证。关闭审计不是可提前标记 passing 的实施任务；若失败，必须恢复 active plan 并重新打开受影响任务。语义 Review 只有在其 review scope 明确排除执行状态文件且 scope fingerprint 未变化时才可跨归档复用。

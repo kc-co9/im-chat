@@ -5,6 +5,7 @@ import com.co.kc.imchat.management.iam.sdk.security.IamCsrfTokenRepository;
 import com.co.kc.imchat.management.iam.sdk.security.IamSecurityExceptionHandler;
 import com.co.kc.imchat.management.iam.sdk.security.IamSecurityFilter;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -14,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 import javax.sql.DataSource;
 
+@Tag("startup-smoke")
 @SpringBootTest(classes = ImAdminApplication.class, properties = {
         "spring.autoconfigure.exclude="
                 + "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,"

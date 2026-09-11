@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# 用途：扫描 Java 生产源码中的稳定结构反模式和模块边界违规。
+# 输入：可选仓库根目录，默认脚本父目录；测试 Harness 可传入隔离 fixture 根目录。
+# 输出/副作用：按规则分组输出文件与修复方向；只读扫描，不修改源码。
+# 依赖：Ruby 标准库、Maven POM/XML 与项目约定的 Java 包结构。
+# 退出码：没有违规返回 0；发现任一违规返回 1。
 
 set -euo pipefail
 
@@ -21,12 +26,14 @@ rpc_contract_input_violations = []
 package_types = Hash.new { |types, package_name| types[package_name] = [] }
 deployable_source_roots = []
 
+# 先定位 Spring Boot 可部署模块，后续条件装配规则只作用于真实运行应用。
 Dir.glob(File.join(root, "**/src/main/java/**/*.java")).sort.each do |path|
   next unless File.read(path).match?(/@SpringBootApplication\b/)
 
   deployable_source_roots << path.split("/src/main/java/", 2).first + "/src/main/java/"
 end
 
+# 单次遍历生产源码收集文件级违规和包内类型形状，避免每条规则重复扫描全仓。
 Dir.glob(File.join(root, "**/src/main/java/**/*.java")).sort.each do |path|
   source = File.read(path)
   package_name = source[/^package\s+([^;]+);/, 1]
@@ -128,6 +135,7 @@ Dir.glob(File.join(root, "**/src/main/java/**/*.java")).sort.each do |path|
   end
 end
 
+# 只有同模块 Mapper 已全部显式标注时，空 @MapperScan 配置才属于确定性重复。
 redundant_mapper_scan_violations = redundant_mapper_scan_candidates.map do |path|
   module_root = path.split("/src/main/java/", 2).first
   mapper_paths = Dir.glob(File.join(
@@ -139,6 +147,7 @@ redundant_mapper_scan_violations = redundant_mapper_scan_candidates.map do |path
   path.delete_prefix(root + File::SEPARATOR)
 end.compact
 
+# 包混放规则要求 contract、implementation、model 三类形状同时出现，以控制误报。
 mixed_package_violations = package_types.each_with_object([]) do |(package_name, type_names), result|
   next if type_names.length < 6
 
@@ -150,6 +159,29 @@ mixed_package_violations = package_types.each_with_object([]) do |(package_name,
   result << package_name if has_contract && has_implementation && has_model
 end
 
+# 统一说明结构规则的风险和修复入口，后续各组继续输出具体规则与文件位置。
+all_violation_sets = [
+  violations,
+  application_scalar_violations,
+  declarative_lock_key_violations,
+  facade_request_package_violations,
+  database_enum_violations,
+  base_entity_violations,
+  conditional_application_violations,
+  repository_mapper_violations,
+  redundant_mapper_scan_violations,
+  aggregate_equality_violations,
+  http_request_name_violations,
+  rpc_contract_input_violations,
+  mixed_package_violations
+]
+if all_violation_sets.any? { |items| !items.empty? }
+  warn "[java-style] WHAT: Java 生产源码违反了可机械判断的结构或分层规则。"
+  warn "WHY: 这些规则保护公共契约、领域边界、装配确定性和可维护性。"
+  warn "FIX: 按后续具体规则和文件位置修复；不要增加类名白名单或关闭检查。"
+end
+
+# 统一 WHAT/WHY/FIX 之后，各规则继续输出具体诊断；任一组存在即失败。
 unless violations.empty?
   warn "[java-style] Simple handwritten JavaBean accessors found; use Lombok or a record:"
   violations.each { |path| warn path }

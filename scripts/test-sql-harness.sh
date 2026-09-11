@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# 用途：用隔离 DDL、Mapper XML 和注解 SQL fixture 验证 SQL checker。
+# 输入：无位置参数；fixture 在临时目录内生成。
+# 输出/副作用：反复重建并最终清理临时目录，不连接数据库或执行 SQL。
+# 依赖：bash、mktemp、check-sql.sh 及其 Ruby 运行环境。
+# 退出码：合法样例通过且违规样例产生预期诊断时返回 0，否则返回非 0。
 
 set -euo pipefail
 
@@ -7,6 +12,7 @@ CHECKER="$ROOT_DIR/scripts/check-sql.sh"
 fixture_root="$(mktemp -d)"
 trap 'rm -rf "$fixture_root"' EXIT
 
+# 重建合法的最小 SQL 基线，使每个用例相互隔离且可重复。
 reset_fixture() {
   rm -rf "$fixture_root"
   mkdir -p "$fixture_root/module/sql" \
@@ -71,6 +77,7 @@ CREATE TABLE unquoted_table (
 EOF
 }
 
+# 运行 checker 并要求成功；失败时保留原始诊断便于定位 fixture 回归。
 expect_pass() {
   local name="$1"
   local output
@@ -80,6 +87,7 @@ expect_pass() {
   fi
 }
 
+# 参数为预期诊断片段；要求 checker 失败且输出包含该片段。
 expect_fail() {
   local name="$1"
   local expected="$2"
@@ -92,6 +100,13 @@ expect_fail() {
     printf 'Expected diagnostic "%s" for %s, got:\n%s\n' "$expected" "$name" "$output" >&2
     exit 1
   fi
+  for label in 'WHAT:' 'WHY:' 'FIX:'; do
+    if ! grep -Fq "$label" <<<"$output"; then
+      printf 'Expected SQL diagnostic to include %s for %s, got:\n%s\n' \
+        "$label" "$name" "$output" >&2
+      exit 1
+    fi
+  done
 }
 
 reset_fixture

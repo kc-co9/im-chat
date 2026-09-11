@@ -4,6 +4,8 @@
 
 `im-broker` 是 IM 实时链路的 Broker 聚合模块，负责承接 WS gateway、message service 和 Broker 集群内部的实时调用。
 
+注册表、用户归属、迁移、Gossip 和帧路由的一致性边界以 [Broker Architecture](ARCHITECTURE.md) 为准。
+
 Broker 不处理消息领域业务，也不保存历史消息。它只维护在线投递所需的运行态索引：Broker 实例、WS gateway 实例、用户到 gateway 的连接映射，并把上行帧转交 message service，把下行帧写入目标用户所在的 WS gateway。
 
 ## 模块结构
@@ -46,6 +48,26 @@ im-broker/
         │ business     │          │ gossip sync    │
         └──────────────┘          └────────────────┘
 ```
+
+## 核心流程导航
+
+```mermaid
+flowchart LR
+    Gateway[Gateway 生命周期] --> Registry[注册 / 心跳 / 连接快照]
+    Registry --> BrokerRegistry[Broker Registry]
+    Client[客户端上行帧] --> Any[任意 Broker]
+    Any --> MessageFacade[Message Facade]
+    Message[Message 下行帧] --> Owner[owner Broker]
+    Account[Account 关闭控制] --> Owner
+    Owner --> Route[user 路由]
+    Route --> Target[目标 Gateway / 旧 Session 连接]
+    Change[Registry 变化] --> Store[BrokerStateStore]
+    Store --> Gossip[Gossip digest / delta]
+    Gossip --> Peer[peer Broker]
+    Membership[Broker 成员变化] --> Migration["重算 owner -> 迁移 -> 确认 -> 本地删除"]
+```
+
+稳定的状态所有权和一致性模型见 [Broker Architecture](ARCHITECTURE.md)，具体 Handler、Lifecycle、配置和诊断接口见 [Broker Server README](im-broker-server/README.md)。
 
 ## RPC 边界
 
@@ -128,6 +150,15 @@ Broker server 通过 `BrokerSyncDigestHandler` 和 `BrokerSyncDeltaHandler` 暴�
 - 内部 RPC 契约集中在 SDK，Server Handler 通过泛型基类统一 JSON 解析。
 
 Broker ID 根据 `im.broker.instance.host` 和 `im.broker.instance.port` 自动生成，格式为 `broker-{host}-{port}`。
+
+## 技术难点与故障边界
+
+- 任意 Broker 都能接收请求，但只有计算出的 owner 修改该用户的权威路由；转发失败不能在非 owner 节点静默写入第二份状态。
+- Connection Registry 需要同时支持按用户投递和按 Gateway 快照清理，因此维护 user/gateway 双向索引；两个方向必须在同一注册表操作中更新。
+- 成员变化会改变 owner。迁移采用远端确认后本地删除，失败时保留旧映射等待重试；这降低丢失风险，但不构成跨节点事务。
+- Gossip 同步与业务写入解耦，删除必须使用带 TTL 的 tombstone，避免离线 peer 重新传播旧状态。
+- 下行可能出现部分 Gateway 或部分连接失败。Broker 返回逐连接结果，Message 决定回执与重投；Broker 不把局部成功压缩成客户端已确认。
+- 诊断 Tracker 与管理 HTTP 必须失败隔离，不能因为记录或页面查询失败影响注册、迁移、Gossip 或帧路由。
 
 ## 边界说明
 

@@ -4,6 +4,8 @@
 
 `im-service` contains business capabilities only: account, social, and message. Operational tooling, gateways, Broker coordination, and generic infrastructure do not belong here.
 
+For Message changes, read `im-message/ARCHITECTURE.md` before changing Chat/Message ownership, MySQL/Redis responsibilities, transaction-to-notification sequencing, ACK, or retry behavior.
+
 ## Boundaries
 
 - Facade modules contain RPC contracts, DTOs, and parameters only. They must not depend on server modules.

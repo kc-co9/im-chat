@@ -1,6 +1,20 @@
 # Harness Guide
 
-Harness 的目标是让仓库能够解释约束、快速发现偏差并留下可复现证据，而不是持续增加检查数量。业务和编码规则分别由 [Architecture](../../ARCHITECTURE.md)、[Coding Guide](CODING_GUIDE.md)、[SQL Guide](SQL_GUIDE.md)和[Unit Test Guide](UNIT_TEST_GUIDE.md)定义；本文只说明这些规则如何进入自动反馈和 Review。
+项目采用 Harness 的原因和设计原则见根 [README](../../README.md#harness-与质量门禁)。本文是 Harness 运行规则的所有者：将现有仓库入口映射为五个子系统，登记传感器和规则状态，并定义规则生命周期、失败归因、反馈维护与清洁状态。业务、架构和编码规则由 [Architecture](../../ARCHITECTURE.md)、[Coding Guide](CODING_GUIDE.md)、[SQL Guide](SQL_GUIDE.md)、[Unit Test Guide](UNIT_TEST_GUIDE.md)、[Security](../SECURITY.md)、[Reliability](../RELIABILITY.md)或当前批准的所属设计定义。
+
+## 五个子系统
+
+im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
+
+| 子系统 | 当前事实源或入口 | 用途 |
+|---|---|---|
+| Instruction | 最近的 `AGENTS.md`、根与适用的局部 `ARCHITECTURE.md`、设计/产品规格的索引与状态标记、工程规范和模块 `README.md` | 按任务路由执行规则、跨模块与模块内部边界、当前批准行为及所属模块的统一语言和不变量 |
+| Tools | Maven、`scripts/verify.sh`、`im-test`、`scripts/check-*.sh` 和 Harness fixture | 将可稳定判断的约束变成可重复执行、可诊断的检查 |
+| Environment | `verify.sh readiness`、根及模块 `README.md`、POM/lockfile、应用配置和类型化配置属性 | 说明并验证版本、服务、配置和外部依赖，使本地检查与真实运行环境的边界明确 |
+| State | `PROGRESS.md`、Git 工作树、设计文档、`docs/exec-plans/active` 和 `completed` | PROGRESS 提供全仓索引，计划保存详细任务、证据、阻塞项和下一步，使跨会话工作可恢复 |
+| Feedback | 单元/行为测试、ArchUnit、漂移检查、指标、日志、`.harness/report.json` 和 Harness 反馈台账 | 用分层信号确认行为、定位失败并持续校正规则的精度与成本 |
+
+这些入口共同构成一个 Harness，不另建并行的 `docs/harness` 工作区或第二套事实源。Instruction 路由任务上下文，Tools 执行约束，Environment 明确运行前提，State 保持工作可恢复，Feedback 提供验证与治理信号。
 
 ## 反馈层级
 
@@ -21,7 +35,7 @@ Harness 的目标是让仓库能够解释约束、快速发现偏差并留下可
 
 | 入口 | 责任 | 典型输出 |
 |---|---|---|
-| `im-architecture` | 模块依赖、分层、Facade/SDK 和插件边界 | ArchUnit findings |
+| `im-test/im-architecture-test` | 模块依赖、分层、Facade/SDK 和插件边界 | ArchUnit findings |
 | `scripts/check-java-style.sh` | 低误报 Java 结构规则 | 文件或包级诊断 |
 | `scripts/check-sql.sh` | DDL、Mapper XML 和注解 SQL | SQL 来源及违规原因 |
 | `scripts/check-drift.sh` | 聚合静态检查、文档链接和仓库漂移 | 全部违规组 |
@@ -29,15 +43,47 @@ Harness 的目标是让仓库能够解释约束、快速发现偏差并留下可
 | `scripts/verify.sh affected` | 根据变更范围选择模块 | 受影响模块验证 |
 | `scripts/verify.sh quick` | drift、Harness 自测和架构检查 | 日常快速反馈 |
 | `scripts/verify.sh behavior` | 路由、Gossip、投递和确认行为 | 跨模块行为证据 |
+| `scripts/verify.sh e2e` | 真实 Broker HTTP/Bolt、Netty WebSocket 与受控 Account/Message 边界 | 实时黄金旅程、测试数量和可查询运行日志 |
 | `scripts/verify.sh full` | 完整 Maven 与 Harness 门禁 | 交付前证据 |
-| `scripts/verify.sh report` | 汇总最近验证和治理信号 | `target/harness/report.json` |
+| `scripts/verify.sh report` | 汇总最近验证和治理信号 | `.harness/report.json` |
+| `scripts/verify.sh readiness` | Java/Maven/Node 与 Harness 工具就绪 | 版本或缺失工具的 WHAT/WHY/FIX |
+| `scripts/verify.sh clean` | drift、脚本语法、diff、计划 WIP、恢复区和临时工件 | 可交接状态或聚合诊断 |
+| `scripts/verify.sh handoff` | 当前 report、Git 改动、active plan 恢复状态和下一步命令 | 生成下一会话可直接读取的 JSON/Markdown 交接 |
+| `scripts/verify.sh startup` / `init` | 全部 Spring Boot application 的 startup-smoke；环境、基础门禁和启动命令 | 发现新增 Server 漏测；不替代外部基础设施全栈启动 |
+| `scripts/verify.sh cleanup [--apply]` | Harness 自有 tmp/PID allowlist、canonical path 和 provenance | 默认只读；apply 只清理明确安全目标 |
+| `scripts/verify.sh quality` | AI Reviewer request/response、机器三维分数和硬性上限 | 生成模块 A/B/C/D 快照；缺 response 返回 `review_required` |
+| `docs/exec-plans/TEMPLATE.md` | Sprint Contract、事实源、验证、任务状态、恢复和风险的统一骨架 | active plan 实例；模板本身不作为完成证据 |
 
 脚本只负责它能准确识别的范围。规范中存在但矩阵标记为 Review 的规则，不得在文档中暗示已自动执行。
 
+## 失败归因
+
+验证失败或工作停滞时，先定位失效的 Harness 子系统，再选择修正位置。归因用于改进上下文和反馈链路，不替代对代码缺陷本身的修复。可以在任务范围内直接修正陈旧事实；如果修正会改变已批准的产品意图、设计、Architecture 或其他权威来源，且当前任务没有该权限，必须先升级并取得批准。
+
+| 归因 | 主要子系统 | 识别信号 | Harness 修正 |
+|---|---|---|---|
+| 任务规格 | Instruction | 目标、非目标或验收口径矛盾、缺失 | 在权限范围内澄清 Sprint Contract；涉及批准意图变化时先升级审批，再更新设计或产品规格 |
+| 上下文/文档 | Instruction | 事实源冲突、术语陈旧、入口难以发现 | 更新范围内的所属模块 README、工程规范或文档指针；权威边界变化先审批 |
+| 环境 | Environment | JDK、服务、配置或外部依赖与预期不符 | 修正文档化前置条件、本地默认值、类型化配置或部署检查 |
+| 工具权限 | Tools | 必需命令因文件、网络、凭据或执行权限受阻 | 明确最小所需能力、批准路径和不依赖额外权限的替代检查；改进工具诊断 |
+| 状态 | State | 工作树、当前任务、已完成证据或下一步不清楚 | 重新核对 Git 状态，并在活跃计划内更新跨会话恢复状态 |
+| 验证反馈 | Feedback | 信号缺失、误报、偶发失败、诊断模糊或反馈过慢 | 调整反馈层级、传感器、诊断和正反/误报 fixture，并登记 Harness 反馈 |
+| 范围控制 | State | 变更扩散到非目标文件或夹带无关清理 | 重新确认 Sprint Contract、所有权和非目标；范围或优先级变化先取得决定 |
+| 架构边界 | Instruction / Tools | 依赖方向、数据所有权或公共契约与 Architecture 冲突 | 修复实现以恢复边界；若边界确需改变，先升级审批，再更新批准设计、Architecture 和对应传感器 |
+
 ## 规则矩阵
+
+矩阵是规则登记表，只记录所属规范、当前传感器、Review 状态和升级或退出等自动化条件。Harness 运行规则由本文定义；业务、架构和编码规则的完整解释只存在于 Architecture、Coding、SQL、Unit Test、Security、Reliability 或当前批准的所属设计中。模块 README 只拥有业务统一语言、不变量和当前模块事实，不承载自动门禁规则正文。
 
 | 规则 | 规范所有者 | 自动检查 | Review |
 |---|---|---|---|
+| `AGENTS.md` 等 AI 专用指令文档使用英文；面向开发者的 `README.md`、`ARCHITECTURE.md` 和 `docs/**` 使用中文解释性正文，代码标识符、命令、协议名、既定技术术语和技术图标签在更清晰时可以保留英文 | Harness/Documentation | Review-only；是否清晰取决于语境，无法根据英文 token 的出现可靠判断语言质量，机械检测易产生误报 | 是 |
+| 根 Architecture 只拥有跨模块拓扑、依赖和数据所有权；复杂模块在本地 Architecture 说明内部拓扑与一致性。只有存在多个运行职责、独立一致性模型或重要跨边界流程时才新增，Facade、SDK、聚合 POM 与单一 Plugin 使用 README | Harness/Architecture | `check-drift.sh` 保证已批准的 Gateway/Broker/Message 局部入口存在；是否新增或移除局部 Architecture 仍为 Review-only，不能按目录或 POM 数量机械判断 | 是 |
+| `scripts/*.sh` 文件头说明用途、输入、输出/副作用、依赖和退出码；非显然函数说明参数、算法、隔离或失败传播，简单语句不写逐行旁白 | Harness/Documentation | Review-only；注释质量不能由行数或函数前是否有注释准确判断，`bash -n` 与 Harness fixture 只验证脚本行为 | 是 |
+| 根 `PROGRESS.md` 是有界全仓状态索引，所有 active plan 必须被引用；没有 active plan 时明确写 `none`，详细任务和证据仍由计划拥有 | Harness/Plans | `check-drift.sh` + PROGRESS 正反 fixture 自动检查计划链接；当前任务和验证摘要的新鲜度由 Review 确认 | 是 |
+| 跨模块、跨会话和高风险工作从唯一执行计划模板创建；active plan 必须包含 Sprint Contract、事实源、验证分层、任务状态、恢复状态和回滚与残余风险，启动与交接信息留在计划内，不创建竞争状态文件 | Harness/Plans | `check-drift.sh` 检查 active plan 稳定章节，`verify.sh clean` 复用 drift；内容质量与业务语义由 Review 判断 | 是 |
+| `readiness` 使用 POM/前端工具链约束验证 Java、Maven、Node 和必需命令；`clean` 只读检查可交接状态，不删除文件或误伤正常未跟踪源码 | Harness/Environment | `test-harness.sh` 的兼容/不兼容版本、WIP、恢复区、临时工件与未跟踪源码 fixture | 是 |
+| 核心 checker 失败包含 WHAT/WHY/FIX，并保留具体规则与文件位置 | Harness/Feedback | Drift、Java style、SQL Harness fixture | 是 |
 | 模块与 DDD 依赖方向 | Architecture/Coding | ArchUnit | 是 |
 | 本地同机运行的 Broker Bolt、Broker 管理 HTTP、Gateway Bolt 与 Gateway WebSocket 默认监听端口互不冲突 | Reliability/Configuration | `BrokerConfigTest`、`BrokerManagementPropertiesTest`、`WsConfigTest` | 是 |
 | 新增业务运行模块纳入 Architecture 导入范围，避免规则因未扫描而假通过；Spring Boot 可执行模块显式加入原始 `target/classes` 测试类路径 | Architecture/Harness | ArchUnit 模块导入、测试类路径与聚焦 RED fixture | 是 |
@@ -310,19 +356,68 @@ IAM 静态检查只识别管理应用中明确的密码认证和认证 Session R
 - 没有明确所有者、验证方式或使用场景的规则不进入 Harness。
 - 不为让当前变更通过而删除测试、降低断言、关闭规则或扩大排除范围。
 
+## 外部规范吸收审计
+
+本仓库对照 `walkinglabs/learn-harness-engineering` commit `77e7a3e` 与 DTPet revision `e9fd719f41374a2c2e3525254c24bbf14c5cee7d`，按能力映射吸收规则，不复制目录模板。
+
+2026-09-10 首次运行外部 `tools/audit-harness.sh` 得到 `18/70`、Critical `4/7`。补充 PROGRESS、版本 pin、readiness、clean、五子系统报告和诊断后，复跑结果为 `28/71`、Critical `6/7`。该分数不作为本仓库门禁：剩余 Critical “根目录依赖 lockfile”不能识别 Maven dependencyManagement 和四个 UI 各自的 package-lock，其他建议也把 Makefile、feature list 和固定模板设为唯一实现。下面继续按机制和真实落点评估，不为了提高分数复制不适用文件。
+
+| 外部机制 | im-chat 落点 | 状态与边界 |
+|---|---|---|
+| 仓库作为事实源 | 根/局部 Architecture、模块 README、设计与产品规格、Git | 已应用；权威内容必须可从仓库恢复，不依赖聊天记忆 |
+| 渐进披露 | 根 `AGENTS.md` 路由到局部 AGENTS、Architecture、README 和专题规范 | 已应用；入口保存触发条件，细节靠近所有者 |
+| Instruction / Tools / Environment / State / Feedback | 本文五子系统表 | 已应用；不另建第二套 Harness 工作区 |
+| 初始化与环境就绪 | `verify.sh readiness`、`verify.sh e2e`、AGENTS、README、POM/lockfile、类型化配置 | 部分应用；工具和版本检查、实时 runtime 启动及 Gateway 重启已执行，MySQL/Redis/Nacos 全栈启动检查尚未进入标准入口 |
+| 状态恢复与 WIP | `PROGRESS.md`、`docs/exec-plans/active`、Sprint Contract、单 active task、恢复状态 | 已应用；PROGRESS 只做全仓索引，小型单文件维护不强制建计划 |
+| 功能清单状态机 | `docs/product-specs/FEATURES.md`、active plan | 已应用于关键行为覆盖目录；catalog 保存行为与验证边界，不缓存某次运行结果，也不作为自动任务队列 |
+| 外部化完成判定 | revision-bound verification、`passing` 证据、`quick`/`full` | 已应用；验证记录绑定 HEAD/worktree，旧证据自动标为 stale 或 unavailable |
+| 端到端验证 | `verify.sh e2e`、`im-test/im-e2e-test` | 已应用于实时链路：真实 HTTP/WebSocket/Bolt/Broker runtime 与受控 Account/Message 边界；不等同于数据基础设施全栈 E2E |
+| 过程与运行可观测性 | active plan、revision-bound verification、Harness report、E2E log、Metrics/Logs/Health | 部分应用；实时黄金 workload 已可重跑并关联日志，尚未统一采集应用 Metrics/Trace 或验证 MySQL/Redis/Nacos restart |
+| Review finding 升级 | “从问题到规则”、Fixture 要求、规则生命周期、反馈台账 | 已应用；无法低误报判断的规则保持 Review-only |
+| 清洁状态与交接 | AGENTS Definition of Done、`verify.sh clean`、`verify.sh full`、计划恢复区 | 部分应用；仓库状态和交接已检查，full 自包含 readiness/clean，实时 Gateway 重启已验证；全栈标准启动仍未覆盖 |
+| 自动 Agent loop / 固定多 Agent 流程 | 无 | 暂不采用；当前任务需要人工确认，且用户可选择单 Agent 工作方式 |
+| 有界根 `PROGRESS.md` | 全仓当前状态索引 | 已应用；只引用 active plan 和最近验证，不复制详细任务/证据 |
+| 第二套模板目录 | 无 | 暂不采用；现有 design/exec-plan/feedback 已拥有相同职责 |
+
+DTPet 的七类模板用于提示过程工件字段，但除实施计划外未形成稳定实例消费；其 drift 主要检查模板文件存在。IM Chat 因此只吸收唯一计划模板和证据化 Review 契约。启动、交接和清洁状态继续由可执行入口及 active plan 状态承担，避免“模板存在”被误认为能力已经验证。
+
+`docs/product-specs/FEATURES.md` 已作为关键行为覆盖目录落地，但不作为自动任务调度队列。只有长期跨会话恢复成本持续上升、并发工作需要结构化依赖协调，或现有 active plan 无法表达任务图时，才评估自动 loop 或更强状态机；采用前必须定义唯一状态所有者、迁移路径和退出条件。
+
+验证层按“静态/聚焦 -> 架构/行为 -> full -> 运行信号”逐步提高成本。前一层失败必须先修复或完成明确归因，不能用后一层偶然通过覆盖较早失败；真实环境检查不可用时，应记录证据缺口而不是伪造本地通过。
+
 ## 反馈与报告
 
-[Harness 反馈台账](../feedback/HARNESS_FEEDBACK.md)记录误报、偶发测试和性能问题，至少包含复现证据、所有者、退出条件和状态。开放问题进入每周治理检查；阻塞日常开发的误报应立即处理。
+[Harness Feedback](../feedback/HARNESS_FEEDBACK.md) 台账记录误报、偶发测试和性能问题，至少包含复现证据、所有者、退出条件和状态。开放问题进入每周治理检查；阻塞日常开发的误报应立即处理。
 
-`target/harness/report.json` 汇总：
+本机 Harness 状态统一写入 Git ignore 的 `.harness/`，而不是 Maven 管理的 `target/`。verification、report、handoff、quality response/snapshot、startup manifest 和 E2E log 需要跨 `mvn clean` 保留；full verification 同时保存测试汇总，模块原始 Surefire 报告仍保留在各模块 `target/`。新 clone 没有 `.harness/` 时属于可恢复的空状态：report 必须为 `incomplete`，quality 必须为 `review_required`；response 与当前 request/scope 不匹配时同样要求重新 Review，不能把缺失或陈旧证据解释为通过。
 
-- Harness 传感器是否存在。
-- 最近各验证模式的状态和耗时。
+`.harness/report.json` 汇总：
+
+- 当前 HEAD 与包含 tracked diff、非忽略 untracked 文件内容的 worktree fingerprint。
+- `sensorCoverage` 形式的 Harness 传感器入口覆盖率；兼容字段 `score` 暂时保留，两者都不是质量评分。
+- Instruction、Tools、Environment、State、Feedback 五个子系统的 `missing`、`present`、`verified`、`degraded` 或 `stale` 状态与证据。
+- 外部规范中 implemented、equivalent、not_applicable、deferred 的适配结果。
+- 最近各验证模式的状态、耗时、命令、revision、fingerprint 和 freshness。
 - 最近一次新鲜完整验证的 Surefire 测试统计。
 - active/stale plan 和开放技术债务数量。
-- Harness 反馈台账中的开放误报、偶发测试和性能问题。
+- Harness Feedback 台账中的开放误报、偶发测试和性能问题。
+- E2E workload、测试数、freshness 和 `.harness/runtime/e2e.log` 路径。
 
-这些信号不等于源码质量评分。耗时用于发现反馈变慢，失败和台账用于定位噪声，不能通过减少测试或降低规则改善数字。
+`verified` 只表示对应入口在当前 HEAD/worktree 成功执行；`present` 表示入口存在但没有当前证据；`stale` 表示历史结果与当前代码状态不一致；`degraded` 表示当前执行失败。顶层 `incomplete` 表示尚无 full evidence，不能用 drift 成功冒充完成。无法计算 fingerprint 的升级前记录为 `unavailable`，不得支撑当前通过结论。
+
+根 `PROGRESS.md` 只保存 active plan、当前任务、阻塞项和 report 入口，不复制验证状态、耗时或测试数。机器结果由 `.harness/report.json` 唯一拥有，否则更新 PROGRESS 本身会改变 worktree fingerprint，形成证据自引用。
+
+这些传感器信号不等于源码质量评分。耗时用于发现反馈变慢，失败和台账用于定位噪声，不能通过减少测试或降低规则改善数字。源码质量评分必须使用 `QUALITY_MODEL.md` 定义的机器证据 + 独立 AI Reviewer 流程；任何没有当前 review scope fingerprint 的结果都不能作为交付等级。
+
+## 完成时的清洁状态
+
+任务结束前必须形成可复查的清洁状态：
+
+- 执行任务规定及风险适用的验证，记录准确命令和实际结果；其中无法运行的检查记录具体原因与证据缺口。
+- 更新实际受影响的规范、模块文档和适用的执行计划状态；活跃计划保留当前任务、已完成证据、阻塞项和下一步。
+- 删除或分类任务产生的临时、未跟踪调试工件；`target/` 等标准忽略的验证或构建输出可以保留。
+- 已有范围外修改保持原样，并从暂存、提交和本任务归属的变更清单中排除。
+- 最终回复按任务规模列出适用的验证证据、受影响的计划/文档状态和残余风险；小型维护可以简短，残余风险可以为 `none`。
 
 ## 维护节奏
 
@@ -339,8 +434,8 @@ Gossip TTL 测试曾通过 `Thread.sleep` 等待过期，结果依赖机器调�
 Review finding
   -> Unit Test Guide 禁止真实等待
   -> 可控时间回归测试
-  -> check-drift.sh 扫描 Thread.sleep/TimeUnit.sleep
-  -> quick/full 持续验证
+  -> `check-drift.sh` 扫描 `Thread.sleep`/`TimeUnit.sleep`
+  -> `quick`/`full` 持续验证
 ```
 
 这类链路是 Harness 的基本单位：规范解释原因，测试证明行为，门禁阻止稳定反模式再次出现，Review 处理无法机械判断的语义。

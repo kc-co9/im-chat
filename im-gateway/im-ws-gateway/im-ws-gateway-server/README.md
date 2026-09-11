@@ -54,16 +54,18 @@ IdleStateHandler
   -> HttpObjectAggregator
   -> HandshakeHandler
   -> WebSocketServerProtocolHandler
+  -> HeartbeatHandler
   -> ConnectionIdleHandler
   -> PingFrameHandler
   -> FrameHandler
 ```
 
-- `IdleStateHandler`：产生读空闲事件，避免连接长时间无数据但仍占用网关资源。
+- `IdleStateHandler`：产生读写空闲事件，驱动服务端心跳和失活连接清理。
 - `HttpServerCodec`：处理 WebSocket 握手前的 HTTP 请求编解码。
 - `HttpObjectAggregator`：把 HTTP 握手请求聚合为 `FullHttpRequest`，便于统一读取路径、query 和 header。
 - `HandshakeHandler`：在协议升级前校验 `path` 和 Access Token，认证通过后向 Broker 注册 `userId -> gatewayId` 路由，并把用户、会话版本和连接 ID 写入 Netty Channel。
 - `WebSocketServerProtocolHandler`：执行标准 WebSocket 协议升级，处理 WebSocket 帧编解码，并限制单帧最大载荷。
+- `HeartbeatHandler`：在写空闲时发送 WebSocket ping，浏览器返回 pong 后刷新连接活跃状态。
 - `ConnectionIdleHandler`：接收读空闲事件，主动关闭空闲连接，后续由断开流程清理本机连接表和 Broker 路由。
 - `PingFrameHandler`：处理客户端 ping 心跳，直接返回 pong，避免心跳帧进入业务转发。
 - `FrameHandler`：处理文本业务帧，使用 `JsonFrameCodec` 转为 `FrameRequest`，再交给 `FrameForwardService` 转发到 Broker。
@@ -80,6 +82,34 @@ IdleStateHandler
 - 网关只处理协议、连接和路由转发，不在 Netty handler 中写业务逻辑。
 - 心跳帧和业务文本帧分离处理，避免心跳干扰业务命令分发。
 - 下行推送不经过该入站 pipeline，而是由 Broker 通过 Bolt 调用 `FrameWriteHandler` 后写入本机 Channel。
+
+## 为什么这里使用 Netty，而不是 Tomcat
+
+Tomcat 支持 WebSocket，也可以通过 NIO/NIO2 Connector 使用非阻塞轮询或等待来承载大量连接；本项目没有把“不支持 WebSocket”“一连接一线程”或“无法处理并发”作为排除 Tomcat 的理由。两者的主要差异是应用需要直接控制多少传输细节，以及是否需要 Servlet 容器集成。
+
+| 维度 | Netty | Tomcat |
+|---|---|---|
+| I/O 与线程模型 | 异步、事件驱动的 NIO；EventLoop 复用处理多个 Channel。阻塞操作必须移出 EventLoop，完成后再回到对应 EventLoop 更新连接状态。 | NIO/NIO2 Connector 同样使用非阻塞轮询或等待，不是每条连接固定占用一个线程；容器负责 Connector、执行线程和 WebSocket 调度。 |
+| 协议与生命周期控制 | 直接暴露 ChannelPipeline、Handler、Channel Attribute、EventLoop 和 Channel 生命周期，应用可以明确安排握手、认证、心跳、业务帧与清理顺序。 | 通过 Servlet/Connector 之上的 Jakarta WebSocket Endpoint 和 ServerContainer 暴露标准生命周期，减少底层网络代码，但不提供与 ChannelPipeline 等价的直接处理链编排。 |
+| 背压与资源治理 | 提供 Channel writability、写缓冲区水位和 ChannelFuture，可实现逐连接细粒度策略，但策略、队列上限和失败处理由应用负责。当前项目已有帧大小、空闲连接限制和逐连接写入结果，尚不能据此声称实现了完整的背压队列。 | 容器提供连接数、线程、缓冲区、空闲超时和异步发送超时等配置，应用承担的网络治理较少；定制逐连接策略时需要遵循容器和 Jakarta WebSocket API。 |
+| 生态与开发效率 | 适合专用协议网关：没有 MVC Endpoint，处理器和连接表都围绕长连接职责显式组织。 | 当 Spring MVC、Servlet Filter、Spring Security、Session 与 WebSocket 共享一个运行时，容器集成和标准 API 更有优势。 |
+| 复杂度与运维 | 需要遵守 EventLoop 非阻塞纪律，隔离阻塞认证，正确处理 ByteBuf 引用计数、EventLoop/Channel 优雅关闭，并用聚焦测试覆盖生命周期和 pipeline。 | 减少网络样板并统一生命周期与容器配置；对当前纯 WS 进程而言，代价是引入未使用的 Servlet 容器运行模型。 |
+
+### 专用实时网关的选型因素
+
+大规模 IM、推送和协议网关的负载通常以连接而不是短请求为中心：系统需要长期维护连接身份与状态、心跳和空闲检测、节点亲和、逐连接写入结果以及关闭或迁移控制。随着连接密度增加，少量稳定 EventLoop 复用大量 Channel，以及 Channel Attribute、writability/写缓冲区水位、缓冲区分配与生命周期、可选原生传输和精确 pipeline 顺序等直接控制面，便于实现可预测的资源策略；这些能力本身并不自动保证更高性能，仍依赖正确的应用策略和验证。
+
+Netty 还允许在同一框架内组合 HTTP Upgrade、WebSocket、自定义二进制/TCP codec 和传输 Handler，而不必把所有协议语义放入 Servlet/Jakarta Endpoint 抽象。成熟的实时基础设施可以据此集中复用 Handler、连接注册表和指标，并统一调优，但需要承担更高的网络编程专业度和维护成本。普通 Web 应用、规模有限的 WebSocket 功能、需要复用 MVC/Security/Session/Filter 的运行时，或希望采用标准容器运维方式的团队，通常更适合 Tomcat。
+
+当前仓库提供了以下直接证据：
+
+- Server POM 直接依赖 `io.netty:netty-all` 和非 Web 的 `spring-boot-starter`，没有引入 `spring-boot-starter-web`。
+- `NettyWebSocketServer` 自己创建和释放 EventLoop 与监听 Channel，并显式组装 HTTP codec/aggregator、握手认证、WebSocket 协议、空闲检测、心跳和业务帧处理器。
+- `WsConfigTest#defaultProfileRunsAsNonWebNettyGateway` 验证默认配置使用 `WebApplicationType.NONE` 对应的 `spring.main.web-application-type=none`；`WsConfigTest#serverModuleDoesNotDependOnHttpFallbackStack` 同时约束 Server POM 不引入 Web Starter。
+
+因此，本项目选择 Netty 的原因是 WS Gateway 是专用的纯长连接运行时：每个 Channel 保存用户身份和 `sessionVersion`，本机注册表持有连接，pipeline 负责心跳与空闲检测，Broker 维护用户到 Gateway 的路由，Gateway 执行旧会话关闭控制并返回逐连接写入结果。HTTP 短请求则由 `im-http-gateway` 独立承载。这里对连接、资源策略和协议顺序的控制收益高于 Servlet 容器集成收益，不代表 Netty 在所有场景都更快，也不表示当前实现已经启用原生传输或完整背压机制。
+
+如果未来把 WebSocket 与 Servlet HTTP Endpoint 合并到同一进程，或者团队更重视 Jakarta WebSocket 可移植性和容器统一运维，应重新评估这一选择。协议和线程模型可参阅 [Netty 4.x User Guide](https://netty.io/wiki/user-guide-for-4.x.html)、[Tomcat WebSocket How-To](https://tomcat.apache.org/tomcat-11.0-doc/web-socket-howto.html) 与 [Tomcat HTTP Connector](https://tomcat.apache.org/tomcat-11.0-doc/config/http.html)。
 
 ## 下行流程
 

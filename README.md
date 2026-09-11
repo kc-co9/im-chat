@@ -13,126 +13,33 @@
 - 私聊与群聊消息的发送、接收、已读、撤回和历史查询。
 - WebSocket 认证、在线路由、跨 Gateway 投递和客户端回执重试。
 
-## 领域建模
+## 领域上下文
 
-本项目使用 DDD（Domain-Driven Design，领域驱动设计）组织业务代码。DDD 的目的不是增加目录或对象数量，而是围绕统一语言建立模型，让用户、好友、群组、聊天和消息等业务规则在代码中有明确归属，并与 HTTP、RPC、数据库、缓存等技术细节分离。
+根 README 只提供跨上下文导航；统一语言、业务不变量、协作边界和状态所有权由对应模块 README 维护。
 
-业务服务内部按限界上下文组织聚合、实体、值对象、领域服务、领域事件和仓储接口。应用层负责用例编排，领域层负责业务规则，接口层和基础设施层分别负责协议适配与技术实现。
-
-### 领域对象概念
-
-| 概念 | 在项目中的职责 | 使用边界 |
+| 限界上下文 | 主要业务范围 | 所属模块文档 |
 |---|---|---|
-| 聚合根 | 维护一组对象的一致性边界，对外提供具有业务语义的状态变更方法 | 外部对象通过聚合根修改聚合，不绕过聚合直接改变内部状态 |
-| 实体 | 具有稳定业务身份和生命周期，属性变化后仍表示同一业务对象 | 是否相同由身份判断，而不是比较全部字段 |
-| 值对象 | 表达业务含义、约束和组合关系，例如 `UserId`、`SessionVersion`、`ImChatId` | 通常不可变，按值比较；业务标识和领域属性优先使用值对象而不是裸基础类型 |
-| 领域服务 | 承载无法自然归属于单个聚合或值对象的领域规则、策略或能力抽象 | 不用于包装简单构造、应用编排或对另一个对象的纯委托 |
-| 领域事件 | 表达领域内已经发生的业务事实 | 事件由领域产生，应用层或监听器负责通知、投递等后续动作 |
-| 仓储 | 提供按聚合语义查询和保存的抽象 | 接口位于领域层，MySQL、Redis 等实现位于基础设施层 |
+| User | 用户身份、邮箱、密码和基础信息 | [im-account](im-service/im-account/README.md) |
+| 在线 Session | Token 签发与刷新、登录版本和会话撤销 | [im-account](im-service/im-account/README.md) |
+| Friend | 好友关系、备注、拉黑和展示信息 | [im-social](im-service/im-social/README.md) |
+| Group | 群组、成员、群主和成员设置 | [im-social](im-service/im-social/README.md) |
+| Chat | 私聊与群聊会话、会话列表和当前聊天视图 | [im-message](im-service/im-message/README.md) |
+| Message | 消息、收件箱副本、已读、撤回和通知投递 | [im-message](im-service/im-message/README.md) |
+| 管理 IAM | 管理员身份、应用授权、OAuth2/OIDC 和应用级 RBAC | [im-iam](im-management/im-iam/README.md) |
+| 管理 Audit | 不可变业务/安全审计事实、查询和受限导出 | [im-audit](im-management/im-audit/README.md) |
 
-应用服务、CQRS 命令和 DTO 不属于领域对象。应用服务负责认证、事务、锁、跨服务调用和结果转换，不应把聚合内部的业务判断拆散到用例编排中。
-
-### 子域与限界上下文
-
-| 子域 | 子域类型 | 限界上下文 | 主要职责 |
-|---|---|---|---|
-| 消息子域 | 核心域 | 消息上下文 | 私聊与群聊消息、收件箱副本、已读、撤回和通知投递 |
-| 聊天子域 | 核心域 | 聊天上下文 | 私聊与群聊会话、会话列表、未读状态和当前聊天视图 |
-| 群组子域 | 核心域 | 群组上下文 | 群组、群成员、群主、群昵称和通知设置 |
-| 好友子域 | 支撑子域 | 好友上下文 | 好友关系、备注、拉黑和好友展示信息 |
-| 用户子域 | 通用子域 | 用户上下文 | 用户身份、邮箱、密码和用户基础信息 |
-| 在线会话子域 | 支撑子域 | Session 上下文 | Token 签发、刷新轮换、登录版本和会话撤销 |
-
-限界上下文描述模型语言和规则的边界，不要求每个上下文单独部署。好友和群组当前由 `im-social` 承载，聊天和消息由 `im-message` 承载，用户和在线 Session 由 `im-account` 承载；跨服务协作只通过 Facade 或 SDK 契约进行。
-
-### 统一语言
-
-下面列出当前代码中的主要领域术语，帮助读者从业务概念定位到模型。它是阅读入口，不替代领域代码、已批准的[业务规格](docs/product-specs/index.md)和[设计文档](docs/design-docs/index.md)。
-
-#### 用户与在线 Session
-
-| 业务术语 | DDD 对象类型 | 建模名称 |
-|---|---|---|
-| 用户 | 聚合根 | `User` |
-| 用户 ID | 值对象 | `UserId` |
-| 用户邮箱 | 值对象 | `UserEmail` |
-| 原始密码 | 值对象 | `UserRawPassword` |
-| 加密密码 | 值对象 | `UserPassword` |
-| 在线 Session | 聚合根 | `Session` |
-| Session 版本 | 值对象 | `SessionVersion` |
-| Access Token | 值对象 | `AccessToken` |
-| Refresh Token | 值对象 | `RefreshToken` |
-| Refresh Token 指纹 | 值对象 | `RefreshFingerprint` |
-| Session 领域能力 | 领域服务 | `SessionService`、`SessionTokenCodec` |
-
-#### 好友与群组
-
-| 业务术语 | DDD 对象类型 | 建模名称 |
-|---|---|---|
-| 好友关系 | 聚合根 | `Friend` |
-| 好友关系 ID | 值对象 | `FriendId` |
-| 好友关系边 | 值对象 | `FriendEdge` |
-| 好友备注 | 值对象 | `FriendAlias` |
-| 好友状态 | 值对象 | `FriendStatus` |
-| 群组 | 聚合根 | `Group` |
-| 群成员 | 实体 | `GroupMember` |
-| 群名称 | 值对象 | `GroupName` |
-| 成员数量 | 值对象 | `MemberCount` |
-| 群通知设置 | 值对象 | `GroupNotification` |
-| 好友与群组规则 | 领域服务 | `FriendService`、`GroupService` |
-
-#### 聊天与消息
-
-| 业务术语 | DDD 对象类型 | 建模名称 |
-|---|---|---|
-| 聊天会话 | 聚合根基类 | `ImChat` |
-| 私聊会话 | 聚合根 | `ImPrivateChat` |
-| 群聊会话 | 聚合根 | `ImGroupChat` |
-| 聊天 ID | 值对象 | `ImChatId` |
-| 当前聊天视图 | 值对象 | `ImChatView` |
-| 消息 | 聚合根 | `ImMessage` |
-| 私聊收件箱消息 | 聚合根 | `ImPrivateInboxMessage` |
-| 群聊收件箱消息 | 聚合根 | `ImGroupInboxMessage` |
-| 消息 ID | 值对象 | `ImMessageId` |
-| 消息 Token | 值对象 | `ImMessageToken` |
-| 消息内容 | 值对象 | `ImMessageContent` |
-| 聊天与消息规则 | 领域服务 | `ImChatService`、`ImMessageService` |
-
-### 领域事件
-
-领域事件描述已经发生的业务事实，例如 `FriendAddedEvent`、`GroupCreatedEvent`、`ImPrivateMessageSentEvent` 和 `ImGroupMessageRevokedEvent`。聚合产生事件后，应用层或事件监听器可以执行通知和实时投递；这些后续技术动作不反向进入领域模型。
-
-新增或修改领域代码时遵循[编码规范](docs/references/CODING_GUIDE.md)：业务标识使用值对象表达，领域对象不依赖接口协议或基础设施类型，应用服务的输入输出使用明确的 CQRS 对象。
-
-### DDD 分层与依赖方向
-
-业务服务采用依赖倒置组织代码，领域模型不感知 HTTP、RPC、Spring 或具体存储：
-
-```text
-interfaces -> application -> domain
-                    |          ^
-                    v          |
-                 adapter   infrastructure
-```
-
-- `interfaces` 将 HTTP、RPC 等外部协议转换为应用层命令或查询，不承载业务规则。
-- `application` 使用 CQRS 入参和出参编排用例、事务、锁及跨边界协作，不替代聚合表达业务状态变化。
-- `domain` 保存聚合、实体、值对象、领域服务、领域事件和仓储抽象，只依赖稳定的领域或公共契约。
-- `adapter` 适配外部服务能力，边界方法优先使用本上下文的领域对象，不向领域层泄漏外部 DTO。
-- `infrastructure` 实现仓储、加密、缓存和消息等技术契约；转换集中在 transformer，不让持久化对象进入领域行为。
-
-简单对象创建留在聚合或应用层；只有需要跨对象规则、策略或外部能力抽象时才引入领域服务。完整边界和代码示例见[编码规范](docs/references/CODING_GUIDE.md)。
+模型边界不一定等于部署边界：例如 Friend 与 Group 由同一个 `im-social` 部署承载，Chat 与 Message 由同一个 `im-message` 部署承载，但各自保留独立的模型语言和规则。通用 DDD 分层、依赖方向和编码约束见[编码规范](docs/references/CODING_GUIDE.md)。
 
 ## 运行架构
 
 ```text
-client
-  |-- HTTP ------> im-http-gateway --auth--> im-account
-  |                                  `-----> account/social/message HTTP
-  `-- WebSocket -> im-ws-gateway --auth--> im-account
+客户端
+  |-- HTTP ------> im-http-gateway --认证--> im-account
+  |                                  `-----> 账号/社交/消息 HTTP
+  `-- WebSocket -> im-ws-gateway --认证--> im-account
                          `---------> im-broker -> im-message
                                           |
-                                          `-> target im-ws-gateway -> client
+                                          `-> 目标 im-ws-gateway -> 客户端
 ```
 
 - `im-http-gateway` 负责外部 HTTP 路由、认证和可信用户上下文重建。
@@ -145,11 +52,11 @@ client
 ### 依赖与数据所有权
 
 ```text
-gateway server -> gateway/broker SDK -> service facade
-broker server  -> broker/gateway SDK -> message facade
-service server -> own facade + dependent facade/SDK
-service facade -> im-common
-im-common      -> no business or runtime module
+im-gateway/*-server -> Gateway/Broker SDK -> Service Facade
+im-broker-server    -> Broker/Gateway SDK -> Message Facade
+im-service/*-server -> own Facade + dependent Facade/SDK
+Service Facade      -> im-common
+im-common           -> no business/runtime module dependencies
 ```
 
 | 状态 | 权威所有者 | 说明 |
@@ -170,28 +77,28 @@ HTTP 请求和 WebSocket 握手都通过 Account Facade 校验 Access Token 和�
 ### 消息与通知链路
 
 ```text
-sender client
+发送方客户端
   -> WS Gateway -> Broker -> Message Service
                               |
-                              | transaction
+                              | 数据库事务
                               v
-                    MySQL message/inbox facts
+                    MySQL 消息/收件箱事实
                               |
-                              | domain event after commit
+                              | 提交后领域事件
                               v
-                    create Redis receipt task
+                    创建 Redis 回执任务
                               |
                               v
-                    Broker user route -> target WS Gateway -> receiver client
+                    Broker 用户路由 -> 目标 WS Gateway -> 接收方客户端
                               ^                                  |
-                              | delayed redelivery               | notification ACK
+                              | 延迟重投                           | 通知 ACK
                               +----------------------------------+
                                                                  |
-receiver client -> WS Gateway -> Broker -> Message Service ------+
+接收方客户端 -> WS Gateway -> Broker -> Message Service ---------+
                                               |
                                               v
-                                   update receive state and
-                                   remove Redis receipt task
+                                   更新接收状态并
+                                   删除 Redis 回执任务
 ```
 
 消息服务在事务内完成权限和幂等校验、写入消息及收件箱副本、更新聊天状态并发布领域事件。通知方法通过 `@AfterTransactionCommit` 在事务成功后执行，因此在线推送失败不会回滚已经提交的消息事实。
@@ -226,23 +133,24 @@ Redis 回执任务提供有界重投，但不是数据库 Outbox，也不承诺�
 | `im-management/im-iam` | 统一管理端身份、OAuth2/OIDC、机器客户端、应用级 RBAC 与接入 SDK |
 | `im-management/im-admin` | IAM 接入、普通用户管理和管理 UI |
 | `im-management/im-audit` | 集中业务/安全审计 SDK、接收服务、查询 UI 和受限 Excel 导出 |
-| `im-architecture` | ArchUnit 依赖和包边界检查 |
+| `im-test/im-architecture-test` | ArchUnit 依赖和包边界检查 |
+| `im-test/im-e2e-test` | HTTP、WebSocket、Bolt 与 Broker 实时链路 E2E |
 | `scripts` | Harness、影响分析和验证入口 |
 
-每个模块的运行能力和局部配置由其 README 说明。Coding Agent 修改模块前还需要读取最近的 `AGENTS.md`。
+每个模块的运行能力、局部配置和领域细节由其 README 说明。
 
 ### Broker 监控链路
 
 ```text
-operations browser
+运维浏览器
         |
-        | /api (read only)
+        | /api（只读）
         v
-    im-monitor ---- Nacos metadata ----> Broker management addresses
+    im-monitor ---- Nacos 元数据 ----> Broker 管理地址
         |
-        +---- concurrent HTTP ----> Broker A :12201
-        +---- concurrent HTTP ----> Broker B :12201
-        `---- concurrent HTTP ----> unavailable node -> UNREACHABLE
+        +---- 并发 HTTP ----> Broker A :12201
+        +---- 并发 HTTP ----> Broker B :12201
+        `---- 并发 HTTP ----> 不可用节点 -> UNREACHABLE
 ```
 
 Broker 的业务 Bolt 端口仍为 `12200`；只读管理 HTTP 默认绑定 `127.0.0.1:12201`。Monitor 对单节点失败进行隔离，页面不会直接访问 Broker，也不提供全量用户路由或任何写操作。运行方式和接口见 [im-monitor README](im-management/im-monitor/README.md)。
@@ -250,12 +158,12 @@ Broker 的业务 Bolt 端口仍为 `12200`；只读管理 HTTP 默认绑定 `127
 ### 业务管理链路
 
 ```text
-operations browser -> IAM SSO -> im-admin -> Account Admin Facade -> im-account
-                         |-------> im-monitor -> Broker diagnostics
-                         `-------> im-audit -> immutable audit query/export
+运维浏览器 -> IAM SSO -> im-admin -> Account Admin Facade -> im-account
+                 |-------> im-monitor -> Broker diagnostics
+                 `-------> im-audit -> 不可变审计查询/导出
 
 im-admin / im-iam / im-monitor
-        `-> source Kafka Topic or authenticated async HTTP -> im-audit
+        `-> 固定来源 Kafka Topic 或已认证异步 HTTP -> im-audit
 ```
 
 IAM 使用与普通用户完全独立的管理账号、OAuth2/OIDC BFF Session、机器客户端和应用级 RBAC。Admin、Monitor、Audit 均实时查询 IAM 权限，不读取 Account 表也不复用普通用户 Token；普通用户管理命令仍由 Account 执行。Admin 和 IAM 通过 Audit SDK 发布审计事实，不再持有本地审计表。运行方式见 [IAM README](im-management/im-iam/im-iam-server/README.md)、[Admin README](im-management/im-admin/README.md) 与 [Audit README](im-management/im-audit/im-audit-server/README.md)。
@@ -295,13 +203,40 @@ Harness 将高确定性规则自动化，同时把需要业务判断的 DDD 语�
 | 层级 | 负责内容 | 主要入口 |
 |---|---|---|
 | 静态脚本 | SQL 安全、Java 明确坏味道、文档和计划漂移 | `scripts/check-*.sh` |
-| 架构测试 | 模块依赖、分层边界、包职责和公共契约 | `im-architecture` |
+| 架构测试 | 模块依赖、分层边界、包职责和公共契约 | `im-test/im-architecture-test` |
+| 实时 E2E | WebSocket、Bolt、Broker 路由与 Message Facade 边界 | `im-test/im-e2e-test` |
 | 行为测试 | 认证、路由、投递、确认及领域行为 | 各模块测试与 `verify.sh behavior` |
 | 人工 Review | 领域归属、命名、抽象尺度和难以机械判断的业务语义 | Code Review Guide |
 
 规则新增遵循“先写规范和正反 fixture，再接入门禁”的顺序。机械检查只覆盖可以稳定识别的低误报场景；不能可靠解析的构造器语义、领域服务尺度和业务命名由 Review 判断，不通过放宽门禁来掩盖真实违规。
 
-Harness 是持续演进的工程能力，不追求一次性把所有约定都变成自动检查。只有形成稳定需求、明确维护者和验证方式时才增加新规则或专题入口，避免出现无人维护的文档和高误报门禁。规则生命周期、例外、反馈和移除条件见 [Harness Guide](docs/references/HARNESS_GUIDE.md) 与 [Harness Feedback](docs/feedback/HARNESS_FEEDBACK.md)。
+Harness 是持续演进的工程能力，不追求一次性把所有约定都变成自动检查。只有形成稳定需求、明确维护者和验证方式时才增加新规则或专题入口，避免出现无人维护的文档和高误报门禁。
+
+开始工作时检查环境，日常修改运行快速验证，收尾检查可交接状态，提交或交付前运行完整验证：
+
+```bash
+./scripts/verify.sh readiness
+./scripts/verify.sh quick
+./scripts/verify.sh e2e
+./scripts/verify.sh clean
+./scripts/verify.sh full
+```
+
+`e2e` 启动真实 Broker HTTP/Bolt 与 Netty WebSocket runtime，验证实时链路的认证连接、路由、私聊发送、ACK、断开和 Gateway 重启恢复。Account 认证与 Message Facade 使用受控测试边界，因此它不替代包含 MySQL、Redis、Nacos 的全栈环境验证。完整输出保存在 `.harness/runtime/e2e.log`。
+
+### 为什么保留这些 Harness 能力
+
+- **自动交接（`verify.sh handoff`）**：把当前验证、失败入口、Git 改动和下一步恢复动作从聊天上下文沉淀为可复查工件；报告是派生视图，不替代 `PROGRESS.md` 或 execution plan。
+- **标准启动（`verify.sh startup` / `init`）**：新 Server 如果没有进入启动门禁，很容易只在生产环境才暴露配置装配问题；startup smoke 在受控依赖下逐个验证应用入口，并拒绝零测试假通过。它不冒充 MySQL、Redis、Nacos、Kafka 全栈启动。
+- **受控清理（`verify.sh cleanup`）**：长期运行的 Harness 会留下临时文件和 PID 记录；默认扫描、`--apply` 仅清理 `.harness/tmp` 与有 provenance 的陈旧 PID，避免“自动清理”误删开发者文件或业务数据。
+- **AI Reviewer 质量评审（`verify.sh quality`）**：测试能证明行为和门禁，但不能可靠判断领域归属、范围纪律和可维护性；脚本准备证据，独立上下文 Reviewer 填写三项语义分数，response 缺失或与当前 scope 不匹配时明确返回 `review_required`。
+- **模块 A/B/C/D 快照**：单一总分无法解释哪个边界变弱；快照按 `im-gateway`、`im-broker`、Account、Message、IAM 等质量单元展示机器分数、Reviewer 分数、硬性上限、证据和缺口，便于下一轮只复评受影响单元。
+
+开发者执行质量评审时只需运行 `./scripts/verify.sh quality`，把生成的 `.harness/quality/review-request.json` 交给独立 AI Reviewer，再重复该命令生成中文快照。评分模型、硬性上限和 Reviewer JSON 契约见 [Quality Model](docs/references/QUALITY_MODEL.md)；AI-only 指令见 [Quality Review Prompt](docs/references/QUALITY_REVIEW_PROMPT.md)。
+
+所有本机 Harness 证据统一保存在仓库根目录的 `.harness/`。该目录已加入 `.gitignore`，不会提交到 Git，也不会被 `mvn clean` 删除。新 clone 不包含这些本机结果：开发者或 Coding Agent 通过 `verify.sh init/full/handoff/quality` 重新建立证据；架构、领域、任务和工程规则仍由 Git 内的 Architecture、README、`PROGRESS.md`、execution plan 和 references 负责，因此 `.harness/` 不能保存唯一决策或约束。
+
+具体子系统、验证模式、规则生命周期、例外和移除条件见 [Harness Guide](docs/references/HARNESS_GUIDE.md)，已发现的问题和改进记录见 [Harness Feedback](docs/feedback/HARNESS_FEEDBACK.md)。
 
 ## 外部入口
 
@@ -320,7 +255,11 @@ WebSocket 入口为 `/ws`，使用统一 JSON 帧而不是 STOMP destination。�
 ### 环境
 
 - JDK 21
-- Maven 3.9+
+- Maven 3.8.4+ 且低于 4.0
+- Node.js 20.19+ 或 22.12+（构建 Management UI 时）
+- npm、Ruby、Git、ripgrep
+
+仓库通过 `.java-version` 推荐 JDK 21，通过 `.nvmrc` 推荐 Node.js 20.19.5；`readiness` 按 POM 与 Vite 支持范围接受兼容版本。
 - MySQL 8+
 - Redis 6+
 - Nacos 2+
@@ -349,34 +288,13 @@ DDL 与数据所有权一起放在各 Server 模块根目录：
 - `im-social.yml`
 - `im-message.yml`
 
-### 构建与验证
+### 构建
 
 ```bash
 mvn clean package
 ```
 
-日常修改后运行快速验证：
-
-```bash
-./scripts/verify.sh quick
-```
-
-提交或交付前运行完整验证：
-
-```bash
-./scripts/verify.sh full
-```
-
-需要时可以运行：
-
-```bash
-./scripts/verify.sh affected
-./scripts/verify.sh behavior
-./scripts/verify.sh architecture
-./scripts/verify.sh report
-```
-
-`report` 输出 `target/harness/report.json`，汇总最近验证状态、测试结果、计划、技术债务和 Harness 反馈。验证模式和维护规则见 [Harness Guide](docs/references/HARNESS_GUIDE.md)。
+分层验证命令和维护规则见前文 Harness 入口。
 
 ### 启动顺序
 
@@ -395,6 +313,8 @@ mvn clean package
 | 想了解 | 文档 |
 |---|---|
 | 当前运行拓扑、边界和数据所有权 | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| 当前活跃工作、阻塞项和下一步 | [PROGRESS.md](PROGRESS.md) |
+| Gateway、Broker、Message 内部拓扑与一致性 | [Gateway Architecture](im-gateway/ARCHITECTURE.md)、[Broker Architecture](im-broker/ARCHITECTURE.md)、[Message Architecture](im-service/im-message/ARCHITECTURE.md) |
 | Coding Agent 执行规则 | [AGENTS.md](AGENTS.md) |
 | 设计选择与历史决策 | [Design Documents](docs/design-docs/index.md) |
 | 已确认的业务行为 | [Product Specifications](docs/product-specs/index.md) |

@@ -4,6 +4,8 @@
 
 `im-broker-sdk` owns transport-neutral Broker client contracts. `im-broker-server` owns routing, registries, lifecycle coordination, event publication, Gossip projection, and frame processing.
 
+Read `ARCHITECTURE.md` before changing ownership selection, Registry state, migration, Gossip, frame routing, close controls, or diagnostic isolation. Use the Server README for concrete classes, configuration, and troubleshooting.
+
 ## Boundaries
 
 - SDK code must not depend on server packages or Spring runtime components.
