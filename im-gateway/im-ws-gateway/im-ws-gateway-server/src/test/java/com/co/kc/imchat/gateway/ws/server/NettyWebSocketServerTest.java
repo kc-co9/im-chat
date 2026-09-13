@@ -17,6 +17,7 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.net.InetSocketAddress;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,7 +29,7 @@ class NettyWebSocketServerTest {
         ConnectionRegistry connectionRegistry = new ConnectionRegistry();
         connectionRegistry.register(1L, "session-1", "conn-1", new EmbeddedChannel());
         NettyWebSocketServer server = new NettyWebSocketServer(
-                0, "gw-1", "/ws", brokerClient, connectionRegistry, null, 60, 65536);
+                "127.0.0.1", 0, "gw-1", "/ws", brokerClient, connectionRegistry, null, 60, 65536);
 
         server.stop();
 
@@ -40,7 +41,7 @@ class NettyWebSocketServerTest {
     @Test
     void startReleasesEventLoopGroupsWhenBindFails() throws Exception {
         NettyWebSocketServer server = new NettyWebSocketServer(
-                -1, "gw-1", "/ws", new CapturingConnectionCleanupClient(),
+                "127.0.0.1", -1, "gw-1", "/ws", new CapturingConnectionCleanupClient(),
                 new ConnectionRegistry(), null, 60, 65536);
 
         assertThatThrownBy(server::start).isInstanceOf(IllegalArgumentException.class);
@@ -52,15 +53,17 @@ class NettyWebSocketServerTest {
     @Test
     void stopWaitsUntilServerChannelAndEventLoopsTerminate() throws Exception {
         NettyWebSocketServer server = new NettyWebSocketServer(
-                0, "gw-1", "/ws", new CapturingConnectionCleanupClient(),
+                "127.0.0.1", 0, "gw-1", "/ws", new CapturingConnectionCleanupClient(),
                 new ConnectionRegistry(), null, 60, 65536);
         server.start();
         Channel serverChannel = serverChannel(server);
         EventLoopGroup bossGroup = eventLoopGroup(server, "bossGroup");
         EventLoopGroup workerGroup = eventLoopGroup(server, "workerGroup");
 
+        InetSocketAddress localAddress = (InetSocketAddress) serverChannel.localAddress();
         server.stop();
 
+        assertThat(localAddress.getAddress().isLoopbackAddress()).isTrue();
         assertThat(serverChannel.closeFuture().isDone()).isTrue();
         assertThat(bossGroup.isTerminated()).isTrue();
         assertThat(workerGroup.isTerminated()).isTrue();

@@ -105,7 +105,7 @@ describe("monitor dashboard", () => {
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(wrapper.get('a[href="http://localhost:18090"]').text()).toContain(
+    expect(wrapper.get('a[href="http://localhost:18040"]').text()).toContain(
       "身份与权限",
     );
   });

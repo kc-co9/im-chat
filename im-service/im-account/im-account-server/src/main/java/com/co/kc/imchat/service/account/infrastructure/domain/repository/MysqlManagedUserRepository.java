@@ -14,6 +14,8 @@ import com.co.kc.imchat.service.account.infrastructure.mybatis.service.DbUserSer
 import com.co.kc.imchat.service.account.transformer.db.UserDbTransformer;
 import com.co.kc.imchat.service.account.transformer.domain.ManagedUserDomainTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.util.Optional;
 
@@ -41,7 +43,22 @@ public class MysqlManagedUserRepository implements ManagedUserRepository {
 
     @Override
     public void save(ManagedUser user) {
-        dbUserService.saveOrUpdate(UserDbTransformer.INSTANCE.dbUserFrom(user));
+        DbUser row = UserDbTransformer.INSTANCE.dbUserFrom(user);
+        boolean persisted = dbUserService.saveOrUpdate(row);
+        if (!persisted) {
+            if (user.getPkId() != null) {
+                throw new OptimisticLockingFailureException(
+                        "Managed user was modified concurrently: " + user.getUserId().value());
+            }
+            throw new DataAccessResourceFailureException(
+                    "Managed user was not inserted: " + user.getUserId().value());
+        }
+        if (persisted) {
+            if (row.getId() != null) {
+                user.setPkId(row.getId());
+            }
+            user.setRowVersion(row.getVersion());
+        }
     }
 
     @Override

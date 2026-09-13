@@ -24,8 +24,11 @@ import com.co.kc.imchat.management.iam.domain.application.model.AppStatus;
 import com.co.kc.imchat.management.iam.domain.application.repository.ApplicationRepository;
 import com.co.kc.imchat.management.iam.model.cqrs.command.ApplicationRoleCreateCmd;
 import com.co.kc.imchat.management.iam.model.cqrs.command.ApplicationRoleUpdateCmd;
+import com.co.kc.imchat.management.iam.model.cqrs.command.ApplicationRoleAssignmentChangeCmd;
+import com.co.kc.imchat.management.iam.support.lock.IamLockScene;
 import com.co.kc.imchat.management.iam.domain.authorization.repository.ApplicationAdministratorRoleRepository;
 import com.co.kc.imchat.management.iam.domain.session.repository.OAuthSessionRepository;
+import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
@@ -42,6 +45,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 
 class ApplicationRoleAppServiceTest {
+
+    @Test
+    void serializesApplicationRoleReplacementByAdministrator() throws Exception {
+        DistributeLock lock = ApplicationRoleAppService.class
+                .getMethod("changeAdministratorRoles", ApplicationRoleAssignmentChangeCmd.class)
+                .getAnnotation(DistributeLock.class);
+
+        assertThat(lock).isNotNull();
+        assertThat(lock.scene()).isEqualTo(IamLockScene.APPLICATION_ADMINISTRATOR_ROLE_WRITE);
+        assertThat(lock.key()).isEqualTo("#command.administratorId()");
+    }
 
     @Test
     void createsRoleFromPermissionsOwnedByItsApplication() {

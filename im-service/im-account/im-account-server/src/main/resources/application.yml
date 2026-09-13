@@ -1,7 +1,18 @@
 server:
-  port: 8886
+  port: 18030
   servlet:
     context-path: /account
+
+management:
+  server:
+    port: 19030
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never
 
 springdoc:
   swagger-ui:
@@ -10,6 +21,10 @@ springdoc:
     path: /v3/api-docs
 
 im:
+  datasource:
+    sharding:
+      enabled: true
+      config-location: classpath:im-sharding.yml
   identity:
     snowflake:
       mode: STATIC
@@ -37,9 +52,3 @@ spring:
   config:
     import:
       - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.service-group:SERVICE_GROUP}
-  datasource:
-    url: jdbc:mysql://localhost:3306/im_chat_account?characterEncoding=utf-8&serverTimezone=UTC
-    username: root
-    password: root
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    type: com.alibaba.druid.pool.DruidDataSource

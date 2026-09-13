@@ -14,7 +14,7 @@ import org.springframework.util.CollectionUtils;
 import java.util.Collection;
 import java.util.Optional;
 
-public class BaseMybatisService<M extends BaseMapper<T>, T> extends ServiceImpl<M, T> {
+public class BaseMybatisService<M extends BaseMapper<T>, T extends BaseEntity> extends ServiceImpl<M, T> {
 
     public LambdaQueryWrapper<T> getQueryWrapper() {
         return new LambdaQueryWrapper<>();
@@ -55,4 +55,5 @@ public class BaseMybatisService<M extends BaseMapper<T>, T> extends ServiceImpl<
     public boolean isExist(Wrapper<T> queryWrapper) {
         return this.getFirst(queryWrapper).isPresent();
     }
+
 }

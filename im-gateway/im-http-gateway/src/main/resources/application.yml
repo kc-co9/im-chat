@@ -1,5 +1,16 @@
 server:
-  port: 18080
+  port: 18010
+
+management:
+  server:
+    port: 19010
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never
 
 spring:
   application:

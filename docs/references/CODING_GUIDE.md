@@ -43,7 +43,7 @@ interfaces -> application -> domain
 
 领域模型和领域服务的业务标识、金额和状态载体使用值对象或枚举，不直接传播 `Long`、`String`、`Boolean` 等基础类型。时间类型和枚举可以直接使用；值对象内部、接口 DTO、CQRS 模型、持久化 DTO 和事件边界允许承载基础值，并由 Transformer 转换。值对象的必填、容量、格式、归一化和脱敏规则必须由规范构造入口保证，不依赖调用方选择某个可绕过的工厂方法。
 
-聚合根沿用项目共享领域骨架：继承 `Identification` 获取实体身份能力，并按需要实现 `Validator`；使用 `Serializable` 时声明 `serialVersionUID`。聚合需要由 Lombok 生成相等性时使用 `@EqualsAndHashCode(callSuper = false)`，由聚合自身字段表达相等性并排除持久化技术主键；不使用 `onlyExplicitlyIncluded` 和字段级 `@EqualsAndHashCode.Include` 定制业务 ID 专属相等性。组成可序列化聚合的值对象也必须可序列化。普通领域对象不为了形式强行继承聚合根基类。
+聚合根沿用项目共享领域骨架：继承 `Identification` 获取实体身份和框架无关的持久化并发 `rowVersion`，并按需要实现 `Validator`；使用 `Serializable` 时声明 `serialVersionUID`。聚合需要由 Lombok 生成相等性时使用 `@EqualsAndHashCode(callSuper = false)`，由聚合自身字段表达相等性并排除持久化技术主键与 rowVersion；不使用 `onlyExplicitlyIncluded` 和字段级 `@EqualsAndHashCode.Include` 定制业务 ID 专属相等性。组成可序列化聚合的值对象也必须可序列化。普通领域对象不为了形式强行继承聚合根基类。
 
 继承 `Identification` 只是聚合根的身份骨架，不代表模型已经符合聚合要求。新增聚合不使用类级 `@Data` 或 `@Setter` 暴露任意状态写入；构建入口统一校验不变量，生命周期变化通过具有业务语义的领域方法完成。属于同一协议阶段或生命周期的多组字段应组合为不可变值对象，避免把数据库扁平列原样复制成可任意修改的贫血聚合；聚合负责状态转换是否合法，Repository 在统一保存入口通过乐观锁等技术机制保证持久化并发一致性。
 
@@ -61,7 +61,9 @@ Repository 承担聚合生命周期删除时，聚合只校验删除所需的业
 
 聚合从持久化状态重建时使用 Builder 或明确的重建数据对象承载多字段状态。Transformer 可以直接填充 Builder；只有重建包含业务决策或多对象协作时才进入领域服务。Builder 承担领域不变量校验时必须手写：Builder 内部持有通过私有无参构造器创建的领域对象，各方法直接填充该对象字段，不再重复声明一套 Builder 属性；`build()` 在返回对象前统一执行校验。不使用 Lombok `@Builder` 绕过该入口，也不为此保留长参数构造器。不要为简单 `new` 或 `build()` 增加无价值的委托方法。
 
-数据库自增主键等仅用于持久化映射的标识不进入领域构造器或 Builder。需要恢复此类标识时由 Repository 在领域对象构建完成后，通过持久化基类能力回填；领域构造器和 Builder 只接收业务身份与业务状态。
+数据库技术主键仅用于持久化映射，不进入领域构造器或 Builder。需要恢复该标识时由 Domain Transformer 在领域对象构建完成后，通过持久化基类能力回填；领域构造器和 Builder 只接收业务身份与业务状态。持久化 rowVersion 不是业务状态，但必须在 Entity/Domain 转换时双向携带，并只在成功写入后回写当前聚合；数据库列仍命名为 `version`。公共 MyBatis Service 不统一解释写入 `false`，完整聚合 `save` 等存在后续事件、缓存、会话或关联副作用的 Repository 必须在冲突时中断用例，允许无匹配的 bulk/remove 则按自身契约处理。
+
+事务失败只回滚数据库，不恢复调用方持有的 Java 对象。参与失败事务的聚合视为失效，调用方重试前必须通过 Repository 重新加载；不要为回滚后继续复用同一对象维护内存状态补偿机制。
 
 当前 Broker 的少量历史 `domain` 类仍兼有 Spring 装配和运行编排职责，不是新增代码模板。修改时按风险渐进迁移，不为满足文档进行无关包移动。
 
@@ -168,10 +170,13 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - `*QueryCondition` 只承载过滤条件，分页通过独立的 `Paging` 参数传递。可省略的内部过滤条件使用非空 `Optional<T>`，必填条件使用直接类型；Nullable 来源值在 Transformer 或 Repository Adapter 等边界归一化为 `Optional`，`Optional` 容器本身不得为 `null`。
 - 上述 `Optional` 约定只适用于内部过滤条件，不扩展到公开请求响应、持久化实体、领域聚合或依赖 Nullable 属性完成序列化和框架绑定的类型。
 - MyBatis Mapper、Redis/JetCache/Redisson 和数据库实体只属于 infrastructure。
-- MyBatis 持久化按 `entity`、`enums`、`mapper`、`query`、`service` 分工：Mapper 只声明框架映射或确有必要的自定义 SQL；MyBatis Service 提供表级 CRUD、Wrapper 和可复用查询能力，Repository 技术实现依赖 Service 而不直接编排 Mapper。只服务于某个领域 Repository 的查询语义可以由 Repository 使用 Service 组装 Lambda Wrapper，不为跨一层传参额外创建持久化 `*QueryCondition`；跨 Repository 复用的表查询才下沉到 Service。只有跨表、特殊锁语义或 MyBatis-Plus 无法清晰表达的 SQL 才进入 Mapper/XML，并说明原因。
+- MyBatis 持久化按 `entity`、`enums`、`mapper`、`query`、`service` 分工：Mapper 只声明框架映射或确有必要的自定义 SQL；MyBatis Service 提供表级 CRUD、Wrapper 和可复用查询能力，Repository 技术实现依赖 Service 而不直接编排 Mapper。Repository 组装所属表查询时复用对应 Service 的 `getQueryWrapper()`/`getUpdateWrapper()`，不直接创建同类型 Wrapper。只服务于某个领域 Repository 的查询语义不为跨一层传参额外创建持久化 `*QueryCondition`；跨 Repository 复用的表查询才下沉到 Service。只有跨表、特殊锁语义或 MyBatis-Plus 无法清晰表达的 SQL 才进入 Mapper/XML，并说明原因。
+- Entity 到 Domain 的业务字段和 `pkId/rowVersion` 重建统一由 Domain Transformer 完成；使用领域 Builder 时由 MapStruct 先生成业务字段映射，再由 Transformer default 方法在 `build()` 后通过 setter 回填技术字段。Repository 只查询数据、加载关联并调用完整 Transformer，不保留 `restore`、`build*` 或私有字段映射方法。写成功后将数据库生成的技术状态回填原聚合仍由 Repository 负责。
 - 业务 Mapper 已逐个标注 MyBatis `@Mapper` 且位于应用扫描根包时，依赖 MyBatis Boot 默认扫描即可，不再声明只有 `@MapperScan` 的空配置类。只有 Mapper 未逐个标注、扫描范围跨越应用根包或需要多个数据源分别绑定 Mapper 时，才使用显式 `@MapperScan`。`im-datasource` 提供公共 MyBatis/MyBatis-Plus 能力，不扫描任何业务模块的 Mapper。
-- MyBatis Entity 统一继承 `BaseEntity`，复用数据库自增主键、创建时间、更新时间和逻辑删除字段，不在子类中重复声明这些属性。关联表、只追加事实表和协议状态表也保留完整模板字段，即使当前用例不执行更新或逻辑删除也不例外；DDL 与 Entity 必须同步保持该形状。
-- 数据库自增 `id` 是技术主键；领域中存在稳定业务身份时，Entity 同时声明独立的业务 ID 列，并由 Transformer 在领域业务 ID 与持久化字段之间转换。数据库主键只通过 `Identification.pkId` 恢复和回填，不替代领域业务 ID；使用 `@EqualsAndHashCode(callSuper = false)` 的聚合不将该技术主键纳入相等性。
+- MyBatis Entity 统一继承 `BaseEntity`，复用数据库自增技术主键、创建时间、更新时间、逻辑删除和乐观锁字段，不在子类中重复声明这些属性。关联表、只追加事实表和协议状态表也保留完整模板字段，即使当前用例不执行更新或逻辑删除也不例外；DDL 与 Entity 必须同步保持该形状。
+- `id` 是数据库自增技术主键，用于稳定的 B+Tree 插入和表行定位；领域中存在稳定业务身份时，Entity 同时声明独立的业务 ID 列（如 `message_id`、`chat_id`、`user_id`），并由 Transformer 在领域业务 ID 与持久化字段之间转换。数据库主键只通过 `Identification.pkId` 恢复和回填，不替代领域业务 ID；使用 `@EqualsAndHashCode(callSuper = false)` 的聚合不将该技术主键或 version 纳入相等性。
+- Repository 的单聚合更新直接使用 MyBatis-Plus 普通写入口；是否必须检查受影响行数由具体用例语义决定，公共 Service 不统一将 `false` 转换为异常。Entity version 由 optimistic locker 自动加入更新条件并在成功后递增。集合条件更新不伪造单一 Entity version，但必须通过类型安全的 `setIncrBy` 在同一 SQL 中执行 `version = version + 1`，使此前加载的聚合写入失败。
+- 分片表的 UPDATE/DELETE 条件必须包含分片键。按 `user_id` 分片的 Message 表更新至少包含 `user_id`、全局主键和 version；禁止仅按主键广播到全部物理表。
 - 数据库列具有明确有限集合时，Entity 使用 infrastructure 自己的 `Db*` 枚举，不以 `String` 承载状态、动作、结果、种类等闭集值，也不直接依赖领域枚举。枚举映射到 `TINYINT` 等数值列时必须声明稳定数值和 MyBatis-Plus `@EnumValue`，不能依赖默认枚举名称或 ordinal。领域枚举与数据库枚举由 Transformer 转换；协议扩展码、第三方开放值和自由文本仍可使用 `String`。
 - MyBatis Entity 中的密码摘要、Client Secret、Token/Cookie 摘要等认证材料不得进入 `toString()`；使用 Lombok 时通过 `@ToString.Exclude` 明确排除。Entity 名称与表所表达的事实保持一致，管理查询投影不得因为展示名再创建一套与事实主键重复的领域身份。
 - 锁和事务负责保护应用用例；聚合负责校验业务前置条件和执行状态变化。不要把技术锁操作伪装成 Repository 领域方法。

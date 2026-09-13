@@ -259,7 +259,7 @@ class RuntimeDependencyPolicyTest {
     }
 
     @Test
-    void productionModulesDoNotIncludeH2OutsideTestScope() throws Exception {
+    void onlyDatasourcePluginIncludesH2OutsideTestScope() throws Exception {
         List<Path> poms;
         try (var paths = Files.walk(REPO_ROOT)) {
             poms = paths
@@ -269,7 +269,7 @@ class RuntimeDependencyPolicyTest {
 
         assertThat(poms)
                 .filteredOn(RuntimeDependencyPolicyTest::hasRuntimeH2Dependency)
-                .isEmpty();
+                .containsExactly(REPO_ROOT.resolve("im-plugin/im-datasource/pom.xml"));
     }
 
     @Test
@@ -327,16 +327,16 @@ class RuntimeDependencyPolicyTest {
     void managementApplicationsUseApprovedLocalPortMap() throws IOException {
         assertManagementPort(
                 "im-management/im-iam/im-iam-server/src/main/resources/application.yml",
-                18090);
+                18040);
         assertManagementPort(
                 "im-management/im-audit/im-audit-server/src/main/resources/application.yml",
-                18091);
+                18041);
         assertManagementPort(
                 "im-management/im-monitor/src/main/resources/application.yml",
-                18092);
+                18043);
         assertManagementPort(
                 "im-management/im-admin/src/main/resources/application.yml",
-                18093);
+                18042);
     }
 
     private void assertManagementPort(String relativePath, int port) throws IOException {

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.baomidou.mybatisplus.annotation.Version;
 import lombok.Data;
 
 import java.time.Instant;
@@ -23,4 +24,8 @@ public class BaseEntity {
     @TableLogic(value = "0", delval = "id")
     @TableField(value = "is_deleted")
     private Long isDeleted = 0L;
+
+    @Version
+    @TableField(value = "version")
+    private Long version = 0L;
 }

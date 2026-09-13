@@ -33,7 +33,7 @@ export const http = axios.create({ withCredentials: true, timeout: 5000 });
 http.interceptors.request.use((config) => {
   const method = config.method?.toUpperCase();
   if (method && !["GET", "HEAD", "OPTIONS"].includes(method)) {
-    const csrfToken = cookie("XSRF-TOKEN");
+    const csrfToken = cookie("IM_MONITOR_IAM_SESSION_XSRF_TOKEN");
     if (csrfToken)
       config.headers["X-XSRF-TOKEN"] = decodeURIComponent(csrfToken);
   }

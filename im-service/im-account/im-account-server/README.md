@@ -11,12 +11,14 @@
 - `adapter`：账号服务调用 Broker 等外部系统的出站适配器。
 - `infrastructure`：MySQL 用户仓储、Redis Session、JetCache，以及 BCrypt、JWT、HMAC 等领域服务技术实现和技术配置。
 
-服务名 `im-account`，默认 HTTP 端口 `8886`，远程配置从 `SERVICE_GROUP/im-account.yml` 加载。依赖 MySQL、Redis、Nacos 和至少一个已注册 Broker，并通过 `im.dubbo.enabled` 控制 Dubbo。
+服务名 `im-account`，默认 HTTP 端口 `18030`，Actuator 端口 `19030`，远程配置从 `SERVICE_GROUP/im-account.yml` 加载。依赖 MySQL、Redis、Nacos 和至少一个已注册 Broker，并通过 `im.dubbo.enabled` 控制 Dubbo。
 
 OpenAPI 页面为 `GET /account/api/doc.html`，API description 为 `GET /account/v3/api-docs`。
 
 Account 独占 `im_chat_account` Schema，当前只拥有 `db_user`。本地初始化执行模块根目录
 [`sql/ddl.sql`](sql/ddl.sql)；其他服务通过 Account Facade 读取用户事实，不访问该表。
+
+分片入口为 `im.datasource.sharding`，规则文件默认为 classpath 下的 `im-sharding.yml`。生产必须通过 Nacos 覆盖 `jdbc-url`、`username`、`password`，或将 `config-location` 指向部署系统提供的外部规则文件；仓库内 `root/root` 仅用于本地。
 
 ## 关键技术点
 

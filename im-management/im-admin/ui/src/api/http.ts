@@ -18,7 +18,7 @@ export interface HttpResult<T> {
 http.interceptors.request.use((config) => {
   const method = config.method?.toUpperCase()
   if (method && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-    const csrf = cookie('XSRF-TOKEN')
+    const csrf = cookie('IM_ADMIN_IAM_SESSION_XSRF_TOKEN')
     if (csrf) config.headers['X-XSRF-TOKEN'] = decodeURIComponent(csrf)
   }
   return config

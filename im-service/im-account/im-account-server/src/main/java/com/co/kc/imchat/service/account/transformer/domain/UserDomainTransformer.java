@@ -23,6 +23,7 @@ public interface UserDomainTransformer {
     List<User> userListFrom(List<DbUser> userList);
 
     @Mapping(target = "pkId", source = "id")
+    @Mapping(target = "rowVersion", source = "version")
     @Mapping(target = "id.value", source = "userId")
     @Mapping(target = "email.value", source = "email")
     @Mapping(target = "username.value", source = "username")

@@ -45,7 +45,7 @@ public class AuditSecurityBeans {
         restTemplate.getInterceptors().add(new BasicAuthenticationInterceptor(
                 encodeClientCredential(webClient.clientId()),
                 encodeClientCredential(webClient.clientSecret())));
-        String introspectionUri = properties.issuer()
+        String introspectionUri = properties.serviceUri()
                 .resolve("/oauth2/introspect")
                 .toString();
         return new SpringOpaqueTokenIntrospector(introspectionUri, restTemplate);
@@ -88,6 +88,8 @@ public class AuditSecurityBeans {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/actuator/**")
+                        .permitAll()
                         .requestMatchers(IamBffRequestPolicy.publicPathPatterns())
                         .permitAll()
                         .requestMatchers(IamBffRequestPolicy.authenticatedPathPatterns())

@@ -25,6 +25,7 @@ public interface ImMessageDbTransformer {
 
     @Mappings(value = {
             @Mapping(target = "id", source = "pkId"),
+            @Mapping(target = "version", source = "rowVersion"),
             @Mapping(target = "messageId", source = "id.value"),
             @Mapping(target = "groupId", source = "groupId.value"),
             @Mapping(target = "chatId", source = "chatId.value"),
@@ -93,6 +94,7 @@ public interface ImMessageDbTransformer {
 
     @Mappings(value = {
             @Mapping(target = "id", source = "pkId"),
+            @Mapping(target = "version", source = "rowVersion"),
             @Mapping(target = "messageId", source = "id.value"),
             @Mapping(target = "chatId", source = "chatId.value"),
             @Mapping(target = "userId", source = "userId.value"),

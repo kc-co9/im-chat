@@ -32,9 +32,20 @@ public interface AuditDomainTransformer {
     @Mapping(target = "clientContext", expression = "java(clientFrom(event))")
     @Mapping(target = "traceId", source = "traceId")
     @Mapping(target = "attributes.values", source = "attributes")
-    AuditEvent auditEventFrom(DbAuditEvent event);
+    AuditEvent auditEventFieldsFrom(DbAuditEvent event);
+
+    default AuditEvent auditEventFrom(DbAuditEvent entity) {
+        if (entity == null) {
+            return null;
+        }
+        AuditEvent event = auditEventFieldsFrom(entity);
+        event.setPkId(entity.getId());
+        event.setRowVersion(entity.getVersion());
+        return event;
+    }
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "version", source = "rowVersion")
     @Mapping(target = "auditId", source = "id.value")
     @Mapping(target = "sourceApp", source = "sourceApp.value")
     @Mapping(target = "actionCode", source = "action.value")

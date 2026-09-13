@@ -81,11 +81,13 @@ im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
 | 根 Architecture 只拥有跨模块拓扑、依赖和数据所有权；复杂模块在本地 Architecture 说明内部拓扑与一致性。只有存在多个运行职责、独立一致性模型或重要跨边界流程时才新增，Facade、SDK、聚合 POM 与单一 Plugin 使用 README | Harness/Architecture | `check-drift.sh` 保证已批准的 Gateway/Broker/Message 局部入口存在；是否新增或移除局部 Architecture 仍为 Review-only，不能按目录或 POM 数量机械判断 | 是 |
 | `scripts/*.sh` 文件头说明用途、输入、输出/副作用、依赖和退出码；非显然函数说明参数、算法、隔离或失败传播，简单语句不写逐行旁白 | Harness/Documentation | Review-only；注释质量不能由行数或函数前是否有注释准确判断，`bash -n` 与 Harness fixture 只验证脚本行为 | 是 |
 | 根 `PROGRESS.md` 是有界全仓状态索引，所有 active plan 必须被引用；没有 active plan 时明确写 `none`，详细任务和证据仍由计划拥有 | Harness/Plans | `check-drift.sh` + PROGRESS 正反 fixture 自动检查计划链接；当前任务和验证摘要的新鲜度由 Review 确认 | 是 |
-| 跨模块、跨会话和高风险工作从唯一执行计划模板创建；active plan 必须包含 Sprint Contract、事实源、验证分层、任务状态、恢复状态和回滚与残余风险，启动与交接信息留在计划内，不创建竞争状态文件 | Harness/Plans | `check-drift.sh` 检查 active plan 稳定章节，`verify.sh clean` 复用 drift；内容质量与业务语义由 Review 判断 | 是 |
+| `grill`、brainstorming 或其他需求访谈确认的决策必须先进入设计文档，记录选项的完整语义、理由和影响，不能依赖聊天历史或只保存 A/B/C 字母 | Harness/Design | active plan 的事实源链接由 `check-drift.sh` 检查；会话是否完整转录及理由质量无法从仓库机械推断，由独立设计 Review 判断 | 是 |
+| 跨模块、跨会话和高风险工作从唯一执行计划模板创建；active plan 必须包含 Sprint Contract、事实源、验证分层、任务状态、详细任务、恢复状态和回滚与残余风险；状态表 ID 与详细任务 ID 一一对应，步骤使用 checkbox，`passing` 任务没有未勾选步骤 | Harness/Plans | `check-drift.sh` 检查稳定章节、设计/产品规格链接、任务 ID、checkbox 和 passing 一致性，`verify.sh clean` 复用 drift；步骤粒度、文件范围和业务语义由 Review 判断 | 是 |
 | `readiness` 使用 POM/前端工具链约束验证 Java、Maven、Node 和必需命令；`clean` 只读检查可交接状态，不删除文件或误伤正常未跟踪源码 | Harness/Environment | `test-harness.sh` 的兼容/不兼容版本、WIP、恢复区、临时工件与未跟踪源码 fixture | 是 |
 | 核心 checker 失败包含 WHAT/WHY/FIX，并保留具体规则与文件位置 | Harness/Feedback | Drift、Java style、SQL Harness fixture | 是 |
 | 模块与 DDD 依赖方向 | Architecture/Coding | ArchUnit | 是 |
 | 本地同机运行的 Broker Bolt、Broker 管理 HTTP、Gateway Bolt 与 Gateway WebSocket 默认监听端口互不冲突 | Reliability/Configuration | `BrokerConfigTest`、`BrokerManagementPropertiesTest`、`WsConfigTest` | 是 |
+| 所有 Spring Boot Server 直接依赖 `im-metrics`，业务端口按服务族固定，management port 为业务端口加 1000，并暴露 `health,info,prometheus,metrics`、隐藏 health details；Nacos metadata 统一发布 management port；安全所有者显式放行 Actuator，`im-metrics` 不得声明 `SecurityFilterChain`；management port 必须由内网隔离 | Observability/Sharding runtime design | `ObservabilityConfigurationTest`、`ImMetricsAutoConfigurationTest`、`ImMetricsManagementEndpointTest`、`verify.sh startup`；真实 Prometheus scrape 由 local infra 验证 | 是 |
 | 新增业务运行模块纳入 Architecture 导入范围，避免规则因未扫描而假通过；Spring Boot 可执行模块显式加入原始 `target/classes` 测试类路径 | Architecture/Harness | ArchUnit 模块导入、测试类路径与聚焦 RED fixture | 是 |
 | Facade/SDK 不依赖 server | Architecture | ArchUnit | 是 |
 | 管理审计持久化只由 `im-audit-server` 拥有；Admin/IAM 依赖 SDK 而非 Server | Architecture/Coding | Maven 依赖与源码所有权扫描 + ArchUnit | 是 |
@@ -163,14 +165,21 @@ im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
 | 承担领域校验的聚合 Builder 内部持有私有无参构造的聚合，直接填充其字段而不复制 Builder 属性或保留长参数构造器，`build()` 返回前统一校验；`Identification.pkId` 不进入领域构造器或 Builder，由 Repository 在构建后回填 | Coding | `AuditEventTest` 与 Repository/Transformer 聚焦测试；通用判定 Review-only | 是 |
 | 领域对象必填属性不超过 4 个且顺序清晰时优先直接构造；达到 5 个及以上，或参数组合容易错位时使用手写 Builder 并在 `build()` 统一校验 | Coding | 不自动化（Review-only）；参数阈值与业务语义需结合判断 | 是 |
 | 值对象规范构造入口统一保证格式、容量、归一化和脱敏不变量 | Coding/Security | 聚焦值对象单测；通用静态判断 Review-only | 是 |
-| 聚合相等性由聚合自身字段表达，排除 `Identification.pkId` 技术主键 | Coding | 聚焦相等性单测；Java style checker + 正反 fixture 拦截业务 ID Include 定制 | 是 |
+| 聚合相等性由聚合自身字段表达，排除 `Identification.pkId` 和 `rowVersion` 持久化技术状态 | Coding | `PersistenceConcurrencyArchitectureTest` 聚焦相等性测试；Java style checker + 正反 fixture 拦截业务 ID Include 定制 | 是 |
 | 模型名称表达领域事实，不把截断、脱敏等内部处理方式作为类型语义 | Coding | 不自动化（Review-only） | 是 |
 | 对外接口枚举与领域枚举隔离，跨层枚举转换由 Transformer 完成 | Coding | 不自动化（Review-only） | 是 |
 | MyBatis Entity 的闭集状态、动作、结果和种类使用数据库层枚举；数值列枚举声明稳定值和 `@EnumValue` | Coding | Java style checker 检查低误报字段；Audit Schema 聚焦测试验证数值映射；其他列类型与开放协议值 Review-only | 是 |
 | 数据库 JSON 列由 MyBatis TypeHandler 编解码，领域 Transformer 不处理 JSON 存储格式 | Coding | 不自动化（Review-only）；需区分数据库列与协议、缓存等合法显式 JSON 转换 | 是 |
-| 所有 MyBatis Entity 继承 `BaseEntity`，所有表保留 `id/create_time/update_time/is_deleted` 标准模板字段；数据库主键与领域业务 ID 分离 | Coding/SQL | SQL checker + fixture 强制模板字段；Java style checker 拦截重复声明完整公共字段；Entity 继承与双 ID 语义由聚焦测试及 Review 补充 | 是 |
+| 所有 MyBatis Entity 继承 `BaseEntity`，所有表保留 `id/create_time/update_time/is_deleted/version` 标准模板字段；数据库自增技术主键与领域业务 ID 分离 | Coding/SQL | SQL checker + fixture 强制模板字段；`BaseEntityTest` 检查 `AUTO`/version；Java style checker 拦截重复声明公共字段 | 是 |
+| 聚合 rowVersion 跨 Domain/Entity 双向携带，数据库 Entity 仍使用 version；Repository 使用普通 MyBatis-Plus 写入口，仅在写成功后回填 pkId/rowVersion；完整聚合 save 的冲突和关联 assign/remove/saveBatch 失败必须中断后续事件、缓存、会话及关联副作用，允许无匹配的条件 bulk/remove 按自身契约处理；集合更新原子递增 version | Coding/Reliability | `PersistenceConcurrencyArchitectureTest`、Account/Message 失败更新测试、IAM 父记录及关联写失败测试、权限/角色版本恢复测试、OAuthClient H2 连续更新/冲突测试；公共 Service 不解释业务 false | 是 |
+| Message 分片写保留数据库自增技术主键和 `message_id`/`chat_id` 等业务全局 ID，UPDATE 同时包含 `user_id`、主键和 version | Coding/SQL/Reliability | `DdlSchemaTest`、`MysqlImGroupChatRepositoryTest` 与 `LocalShardingRoutingIntegrationTest` 的跨分片同 ID 隔离场景 | 是 |
+| 事务失败后不继续复用已参与持久化的聚合；调用方重试前通过 Repository 重新加载，避免为普通 Java 对象实现事务回滚补偿 | Coding/Reliability | Review-only；只有出现事务边界捕获异常并复用同一聚合的生产调用方时再引入针对性检查 | 是 |
+| ShardingSphere SQL 日志默认只为本地诊断开启 | Configuration/Security | `ShardingConfigurationTest` 检查五份规则使用 `${im.datasource.sharding.sql-show:true}`；生产由 Nacos 覆盖为 `false` | 是 |
+| 应用不得使用 MyBatis `StdOutImpl` 绕过 ShardingSphere SQL 日志开关 | Configuration/Security | `MessageConfigTest` 检查 MyBatis 与 MyBatis-Plus 未配置 stdout logger | 是 |
 | `Identification.pkId` 仅标识当前表行；跨表关系使用领域业务 ID；独立身份或生命周期的一对多接入配置拆成独立聚合，不按技术分支复制平行聚合 | Coding | IAM 聚合/Repository/Schema 聚焦测试；字段语义、基数和聚合边界 Review-only | 是 |
 | Repository 通过 MyBatis Service 完成持久化，不为单一查询语义增加透传 QueryCondition 或直接编排 Mapper | Coding | Java style checker 拦截 Repository 直接导入 Mapper；查询语义层次由 Review 判断 | 是 |
+| Repository 组装所属表查询时复用对应 MyBatis Service 的 `getQueryWrapper()`/`getUpdateWrapper()`，不直接创建同类型 Wrapper | Coding | Review-only；现有历史调用尚未全量收敛，待完成基线清理后再加入 Java style checker | 是 |
+| Entity 到 Domain 的业务字段和 `pkId/rowVersion` 重建统一由 Domain Transformer 完成；Repository 只加载数据与关联并调用完整 Transformer，写成功后的生成值回填仍由 Repository 负责 | Coding | `PersistenceConcurrencyArchitectureTest#repositoriesDelegateDatabaseToDomainMappingToTransformers` 扫描 Repository 私有 Db 映射 helper 和 Transformer 后技术字段补写；关联加载语义由 Review 判断 | 是 |
 | 承担入站入口职责的框架 SPI 只做协议适配，完整用例经过应用服务，不直接访问领域 Repository 或 MyBatis | Coding | IAM Security SPI 聚焦依赖测试；通用职责识别 Review-only | 是 |
 | 完整聚合由所属 Repository 返回，关联 Repository 仅返回关系事实 | Coding | IAM `RoleRepository`、`AdministratorService` 和 Repository 聚焦测试；聚合所有权通用判断 Review-only | 是 |
 | Repository 使用明确的标识值对象表达查询语义，多种外部标识在应用边界识别，不创建宽泛联合标识或退化为裸 `String` | Coding | 不自动化（Review-only）；需结合调用方是否已知标识类型以及联合标识是否具有真实领域语义判断 | 是 |
@@ -193,6 +202,11 @@ im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
 | 禁用测试必须说明原因 | Unit Test | Drift checker | 是 |
 | DDL、危险 SQL、`${...}`、静态无条件写入 | SQL | SQL checker + fixture | 是 |
 | 服务私有 DDL 位于所属 Server 模块根 `sql/`，Schema 与表不能跨服务混放 | SQL/Architecture | SQL checker 递归路径扫描 + 各服务 Schema 所有权测试；表业务归属仍由 Review 判断 | 是 |
+| Server 模块 `sql/` 只使用 `ddl.sql`/`dml.sql`，交付 DDL 使用 `CREATE TABLE IF NOT EXISTS` 且禁止 `DROP TABLE`；本地 Compose init 按 `ddl/`、`dml/` 分层并由 `00-initialize.sql` 通过原生 `SOURCE` 顺序执行，六个快照必须与所属模块 SQL 字节一致 | SQL/Local runtime design | SQL checker 固定路径、幂等创建与危险语句检查，SQL Harness 正反 fixture、Local Compose Harness `cmp` 与入口顺序检查 | 是 |
+| SkyWalking Agent 9.7.0 与 JDK 21 的本地 full 应用必须通过 `-XX:-UseContainerSupport` 避开启动期容器指标类加载死锁，并同时保留显式 JVM/容器内存上限 | Local runtime design | Local Compose Harness 精确检查统一 JVM 参数与 `mem_limit`；真实 full 启动检查全部应用健康 | 是 |
+| 本地 full 的 IAM 管理客户端必须使用明确的冷启动 read timeout，且不得修改 SDK 的生产默认值来吸收本机并发启动压力 | Local runtime design | Local Compose Harness 检查 Audit/Admin/Monitor 的 `IM_IAM_HTTP_READ_TIMEOUT=10s`；SDK properties 测试保留默认 `2s` | 是 |
+| infra/full 切换必须在移除旧服务后等待应用端口与 Nacos/Dubbo 实例释放，并在启动后校验目标 profile 的精确运行服务集合 | Local runtime design | Local Compose Harness 校验命令顺序、注册残留和集合缺失负例；真实双向切换检查 9/9 与 19/19 | 是 |
+| 非测试 H2 依赖只允许由 `im-datasource` 为 ShardingSphere 5.5.2 的运行期元数据类加载提供，业务和其他插件模块不得直接引入 | Architecture/Dependency | `RuntimeDependencyPolicyTest` 精确断言 runtime H2 的唯一 POM | 是 |
 | Mapper `SELECT *` | SQL | SQL checker + fixture | 是 |
 | 动态 SQL、索引合理性和执行计划 | SQL | 不自动化 | 是 |
 | 未上线且无历史数据兼容需求时直接更新当前 DDL，不创建迁移脚本 | SQL | 不自动化（Review-only）；发布状态和历史数据需求无法从文件名可靠推断 | 是 |
@@ -239,7 +253,7 @@ HTTP 聚合查询请求规则当前为 **Review-only**：Review 检查参数较�
 
 MyBatis JSON TypeHandler 采用 **插件统一装配 + 聚焦测试**：`im-datasource` 将应用 `ObjectMapper` 设置给 `JacksonTypeHandler`，保证 Java Time 与项目 Jackson 配置一致；`ImDatasourceAutoConfigurationTest` 使用包含 `Instant` 的 Claims 验证序列化。业务 Repository 不得为规避 TypeHandler 配置而手工改写时间或 JSON 结构。
 
-数据库 Entity 枚举与基类规则采用 **Enforced + Review-only** 边界：SQL checker 强制每个建表语句声明 `id/create_time/update_time/is_deleted`，Java style checker 拦截 MyBatis Entity 中以 `String` 声明的 `action/status/result/outcome/kind/type` 字段，以及同时重复声明 `id/createTime/updateTime/isDeleted` 却未继承 `BaseEntity` 的标准形状；模块聚焦测试补充验证所有 Entity 的基类。`targetType`、`eventType` 等字段可能是协议扩展值，只有确认其为当前领域闭集时才由 Review 要求数据库层枚举。数据库技术主键与领域业务 ID 是否需要同时存在，也必须依据对象是否拥有稳定业务身份判断，不按类名或字段数量机械推断。
+数据库 Entity 枚举与基类规则采用 **Enforced + Review-only** 边界：SQL checker 强制每个建表语句声明 `id/create_time/update_time/is_deleted/version`，Java style checker 拦截 MyBatis Entity 中以 `String` 声明的 `action/status/result/outcome/kind/type` 字段，以及同时重复声明公共字段却未继承 `BaseEntity` 的标准形状；`BaseEntityTest` 固定 `AUTO` 与 `@Version`。`PersistenceConcurrencyArchitectureTest` 固定 Message 更新含分片键、集合撤销递增 version；具体调用方是否需要检查返回值由 Repository 业务语义决定，公共 Service 不统一将 false 解释为异常。
 
 MyBatis Entity 敏感输出规则采用 **聚焦测试 + Review-only**：IAM 持久化映射测试证明管理员密码、OAuth Client Secret 与 Token 摘要不会进入 Entity `toString()`。Review 检查新增认证材料是否使用 `@ToString.Exclude` 或不生成 `toString()`；不能仅按 `secret/password/token` 字段名全仓禁止，因为业务响应可能合法包含一次性密钥、Token 生命周期信息或脱敏展示值。只有结构化检查能限定 MyBatis Entity、识别 Lombok 展开结果并覆盖摘要、普通业务字段与合法边界响应后，才升级为静态门禁。
 
@@ -257,7 +271,7 @@ MyBatis Mapper 扫描规则采用 **Enforced + Review-only** 边界：Java style
 
 值对象、实体身份和领域命名规则采用 **Enforced + Review-only + 聚焦单测**：Java style checker 拦截 `Identification` 子类使用 `onlyExplicitlyIncluded = true` 定制业务 ID 专属相等性，允许 `@EqualsAndHashCode(callSuper = false)` 排除技术主键；Review 检查值对象的规范构造入口是否完整执行不可绕过的不变量、承担校验的 Builder 是否手写 `build()`、持久化技术主键是否仅在 Repository 构建后回填、聚合字段是否适合参与相等性，以及类型名称是否表达领域事实而非内部格式化手段。具体值对象和聚合使用单元测试证明归一化、脱敏、容量、序列化、相等性、Builder 校验和主键回填行为；其他构造器、Builder、record 与持久化重建语义仍不做脆弱静态推断。只有引入能区分领域 Builder、Lombok 生成器、MapStruct 目标属性与 Repository 回填路径的 Java 结构化解析，并具备重建聚合、非领域 DTO 和纯便利 Builder 的正反 fixture 后，才升级为通用静态门禁。
 
-技术主键、业务 ID、可识别编码和聚合基数同样采用 **Review-only + 聚焦单测**：Schema 测试可以证明目标表同时具有自增 `id`、唯一业务 ID 以及关联表使用的业务列，Repository 测试可以证明 `pkId` 只在重建和新增持久化后回填；但通用静态 checker 无法可靠判断某个 `*_id` 的领域语义，也无法仅凭类名判断两个 OAuth Grant Type 是否应共享同一客户端聚合，因此不做字段名正则推断。只有建立结构化的 Entity/DDL 关系模型，并能从明确元数据识别聚合业务 ID 与外键语义后，才考虑升级为通用门禁。
+技术主键、业务 ID、可识别编码和聚合基数同样采用 **Review-only + 聚焦单测**：Schema 测试可以证明目标表同时具有数据库自增 `id`、唯一业务 ID 以及关联表使用的业务列，Repository 测试可以证明 `pkId` 只在重建和新增持久化后回填；但通用静态 checker 无法可靠判断某个 `*_id` 的领域语义，也无法仅凭类名判断两个 OAuth Grant Type 是否应共享同一客户端聚合，因此不做字段名正则推断。只有建立结构化的 Entity/DDL 关系模型，并能从明确元数据识别聚合业务 ID 与外键语义后，才考虑升级为通用门禁。
 
 Web 基础能力边界采用 **Enforced + Review-only**：ArchUnit 与 Maven 依赖测试阻止 `im-web` 依赖 Session、IAM 或运行时业务模块，并确认 Admin、Monitor、IAM SDK 显式接入统一 Web 能力；聚焦测试证明请求上下文建立、传播、清理及 `HttpResult` 的 MVC/Security 行为。插件中的字符串路径是否属于业务 Controller、重复响应对象是否形成第二套协议、某个上下文属性是否包含业务或安全语义，需要结合路由和调用方判断，当前由 Review 负责。只有结构化检查能够解析 Controller/Security 映射及配置绑定，并具备 Actuator、Swagger、OAuth 回调等技术路径的 false-positive fixture 后，才升级这些语义规则；不得用业务前缀正则代替所有权判断。
 
@@ -310,7 +324,7 @@ Review finding 同时满足以下条件时，才适合转为自动门禁：
 | SDK 与宿主自有的同类型基础设施 Bean 按稳定名称创建并显式限定注入，不因同时声明多个 `RestClient` 而跳过专用 Client 或注入错误实例 | Configuration/SDK | `ImIamSdkAutoConfigurationTest#createsDedicatedIamRestClientWhenApplicationDefinesAnotherRestClient`、`HttpBrokerManagementClientWiringTest` | SDK 或宿主不再通过 Spring Bean 提供多个专用 HTTP 客户端 |
 | IAM、Admin、Audit、Monitor 管理后台统一使用 Vue 3、Element Plus、Element Plus Icons、质量脚本和同名 Console Token；禁止浏览器原生 `confirm/alert`，且不得跨应用共享 UI 源码 | Management UI | `scripts/check-management-ui.sh` 与正反 Harness fixture；组件行为由各 UI 聚焦测试 | 管理后台技术栈或独立部署边界被替代 |
 | 管理后台采用安静高密度布局、一个行内主操作、Drawer 编辑/详情、明确危险确认、可恢复数据状态和服务端筛选 | Management UI/UX | Drawer、表格、筛选和数据状态聚焦测试；视觉层级、操作优先级、文案与响应式构图 Review-only，并以临时桌面/移动截图验收 | 已批准新的 Management UI 设计 |
-| 本地管理端口固定为 IAM `18090`、Audit `18091`、Monitor `18092`、Admin `18093`，Issuer、OAuth 回调、Vite 代理和前端控制台链接默认值必须一致 | Management configuration/security | 配置绑定测试、OAuth Client 迁移 SQL 测试和 Management UI Harness | 本地拓扑设计被新的统一入口替代 |
+| 本地管理业务端口固定为 IAM `18040`、Audit `18041`、Admin `18042`、Monitor `18043`，Issuer、OAuth 回调、Vite 代理和前端控制台链接默认值必须一致 | Observability/Sharding runtime design | 配置绑定测试、临时 OAuth Client 迁移 DDL、`ObservabilityConfigurationTest` 和 Management UI Harness | 本地管理端口设计再次被批准的新拓扑替代 |
 | IAM 内部角色与应用角色保持两套关系边界；应用角色分配只替换指定应用的关系，权限或 Client 访问配置变更撤销受影响 OAuth 授权；关系资源库继续使用 `findRoles/replace`，不引入无业务收益的 Assignment 聚合 | IAM management authorization design | IAM 应用服务、OAuth Client 领域测试与 IAM Console API/component tests；关系范围和撤销语义保留 Review-only，直到出现跨模块重复实现 | 关系模型改为独立授权聚合或权限快照改为实时计算 |
 | OAuth 最终授权状态统一通过 Repository `save` 持久化；查询 SPI 保持无副作用，Authorization Code 单次消费和 Refresh Token 轮换由 Spring 默认 Provider 管理；Repository 不暴露兑换、刷新或历史重放动作 | DDD model/Coding Guide | `IamTokenPersistenceTest`、Spring 默认 Provider 契约与 Repository 查询测试 | OAuth 持久化或 Spring Provider 规范被替代 |
 | IAM SSO 绝对过期对当前请求立即失效；已知与未知管理员邮箱均执行等价 BCrypt 校验工作 | IAM security design/Security | SSO Filter 与管理员认证聚焦行为测试 | 会话装载顺序或密码验证实现变更 |
@@ -408,6 +422,8 @@ DTPet 的七类模板用于提示过程工件字段，但除实施计划外未�
 根 `PROGRESS.md` 只保存 active plan、当前任务、阻塞项和 report 入口，不复制验证状态、耗时或测试数。机器结果由 `.harness/report.json` 唯一拥有，否则更新 PROGRESS 本身会改变 worktree fingerprint，形成证据自引用。
 
 这些传感器信号不等于源码质量评分。耗时用于发现反馈变慢，失败和台账用于定位噪声，不能通过减少测试或降低规则改善数字。源码质量评分必须使用 `QUALITY_MODEL.md` 定义的机器证据 + 独立 AI Reviewer 流程；任何没有当前 review scope fingerprint 的结果都不能作为交付等级。
+
+Quality scope 使用 Git tracked 与非忽略 untracked 文件，不读取 ignored 运行日志。模块外的根构建、Harness、deploy 和稳定规范作为共享输入加入全部十二个 unit fingerprint；fixture 必须同时证明 ignored 文件不触发复评、共享输入变化会使旧 response 失效。
 
 ## 完成时的清洁状态
 

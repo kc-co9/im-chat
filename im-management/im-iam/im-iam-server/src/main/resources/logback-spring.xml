@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="com/co/kc/imchat/plugin/tracing/logback-common.xml"/>
+    <root level="INFO">
+        <appender-ref ref="IM_CONSOLE"/>
+    </root>
+</configuration>

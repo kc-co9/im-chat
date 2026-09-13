@@ -20,6 +20,7 @@ public interface GroupDbTransformer {
     default DbImGroup dbImGroupFrom(Group group) {
         DbImGroup dbGroup = new DbImGroup();
         dbGroup.setId(group.getPkId());
+        dbGroup.setVersion(group.getRowVersion());
         dbGroup.setGroupId(group.getId().value());
         dbGroup.setOwnerId(group.getOwnerId().value());
         dbGroup.setName(group.getName().value());
@@ -34,6 +35,7 @@ public interface GroupDbTransformer {
     default DbImGroupMember dbImGroupMemberFrom(GroupMember member) {
         DbImGroupMember dbGroupMember = new DbImGroupMember();
         dbGroupMember.setId(member.getPkId());
+        dbGroupMember.setVersion(member.getRowVersion());
         dbGroupMember.setGroupId(member.getGroupId().value());
         dbGroupMember.setUserId(member.getUserId().value());
         dbGroupMember.setUserAlias(member.getUserAlias() == null ? "" : member.getUserAlias().value());

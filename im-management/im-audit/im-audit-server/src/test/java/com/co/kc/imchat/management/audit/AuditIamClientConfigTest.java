@@ -21,12 +21,13 @@ class AuditIamClientConfigTest {
         IamProperties.WebClient webClient = properties.application().clients().web();
         IamProperties.Session session = properties.application().session();
 
-        assertThat(properties.issuer()).isEqualTo(URI.create("http://localhost:18090"));
+        assertThat(properties.issuer()).isEqualTo(URI.create("http://localhost:18040"));
         assertThat(properties.application().key()).isEqualTo("imAudit");
+        assertThat(session.cookieName()).isEqualTo("IM_AUDIT_IAM_SESSION");
         assertThat(webClient.redirectUri())
-                .isEqualTo(URI.create("http://localhost:18091/iam/callback"));
+                .isEqualTo(URI.create("http://localhost:18041/iam/callback"));
         assertThat(webClient.postLogoutRedirectUri())
-                .isEqualTo(URI.create("http://localhost:18091/"));
+                .isEqualTo(URI.create("http://localhost:18041/"));
         assertThat(webClient.clientSecret()).hasSize(48);
         assertThat(properties.application().clients().catalog().clientSecret()).hasSize(48);
         assertThat(session.encryptionKeyBytes()).hasSize(32);

@@ -12,10 +12,11 @@
 | `im-gossip` | digest/delta 最终一致性同步算法 |
 | `im-identity` | Redis 租约驱动的 Snowflake 机器 ID 动态分配 |
 | `im-lock` | Redisson 分布式锁和注解切面 |
-| `im-metrics` | 基于 Micrometer 和 Spring AOP 的声明式方法指标采集 |
+| `im-metrics` | 声明式方法指标、Actuator 和 Prometheus registry |
 | `im-mq-kafka` | Spring Cloud Stream Kafka Binder 运行时集成 |
 | `im-nacos` | Nacos 配置中心和服务发现公共配置 |
 | `im-session` | JWT、用户上下文及可选 Servlet 身份适配 |
+| `im-tracing` | SkyWalking Logback toolkit、`%tid` 和公共日志 include |
 | `im-web` | 通用 MVC、`HttpResult`、异常映射、日志、CORS 和请求元数据 |
 
 引入插件即启用其自动配置时，应优先通过插件配置项覆盖默认值，不在业务模块重复装配同类基础 Bean。
@@ -25,6 +26,7 @@
 - 插件通过 AutoConfiguration 暴露能力，并使用 `@ConditionalOnMissingBean` 保留业务覆盖入口。
 - `im-dubbo` 将 Provider 的 `BaseException` 统一转换为不含内部原因的 `RpcException`，未知异常记录完整日志后只暴露系统错误；业务 RPC 实现不重复编写 `try/catch` 翻译模板。
 - `im-metrics` 通过 `@Observed` 记录方法调用次数、失败次数和执行耗时，业务模块不直接组装 Micrometer 指标。
+- `im-tracing` 只提供日志关联能力，不提交或启动 SkyWalking Java Agent；Agent 由部署环境挂载。
 - `im-excel` 管理 Writer 生命周期、分批写入和通用转换器；业务模块保留行模型、权限、查询和导出规则。
 - `META-INF/config` 中的配置只提供低优先级默认值，本地配置、启动参数和配置中心可以覆盖。
 - 基础设施插件隔离业务代码与具体中间件；Kafka 业务契约和 Binding 归使用方所有，具体 Binder 运行时由 `im-mq-kafka` 提供。

@@ -11,12 +11,14 @@
 - `adapter/account`、`adapter/message`：跨服务 Facade 适配。
 - `infrastructure`：MySQL、JetCache 仓储实现与 Bean 装配。
 
-服务名 `im-social`，默认 HTTP 端口 `8887`，远程配置从 `SERVICE_GROUP/im-social.yml` 加载。依赖 Account/Message Facade、MySQL、Redis、Nacos 和 Dubbo。
+服务名 `im-social`，默认 HTTP 端口 `18031`，Actuator 端口 `19031`，远程配置从 `SERVICE_GROUP/im-social.yml` 加载。依赖 Account/Message Facade、MySQL、Redis、Nacos 和 Dubbo。
 
 OpenAPI 页面为 `GET /social/api/doc.html`，API description 为 `GET /social/v3/api-docs`。
 
 Social 独占 `im_chat_social` Schema，拥有好友、群组和群成员表。本地初始化执行模块根目录
 [`sql/ddl.sql`](sql/ddl.sql)；用户与消息数据只通过对应 Facade 访问。
+
+分片入口为 `im.datasource.sharding`，规则文件默认为 classpath 下的 `im-sharding.yml`。生产必须通过 Nacos 覆盖 `jdbc-url`、`username`、`password`，或将 `config-location` 指向部署系统提供的外部规则文件；仓库内 `root/root` 仅用于本地。
 
 ## 关键技术点
 

@@ -1,6 +1,5 @@
 package com.co.kc.imchat.management.iam.infrastructure.domain.repository;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -15,6 +14,8 @@ import com.co.kc.imchat.management.iam.infrastructure.mybatis.entity.DbIamAdmini
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.service.DbIamAdministratorService;
 import com.co.kc.imchat.management.iam.transformer.domain.AdministratorDomainTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.util.Optional;
 
@@ -27,28 +28,24 @@ public class MysqlAdministratorRepository implements AdministratorRepository {
 
     @Override
     public Optional<Administrator> find(AdministratorUsername username) {
-        return find(Wrappers
-                .lambdaQuery(DbIamAdministrator.class)
+        return find(administratorService.getQueryWrapper()
                 .eq(DbIamAdministrator::getUsername, username.value()));
     }
 
     @Override
     public Optional<Administrator> find(AdministratorEmail email) {
-        return find(Wrappers
-                .lambdaQuery(DbIamAdministrator.class)
+        return find(administratorService.getQueryWrapper()
                 .eq(DbIamAdministrator::getEmail, email.value()));
     }
 
     private Optional<Administrator> find(LambdaQueryWrapper<DbIamAdministrator> query) {
-        query.last("LIMIT 1");
-        DbIamAdministrator administrator = administratorService.getOne(query, false);
-        return Optional.ofNullable(administrator)
-                .map(this::administratorFrom);
+        return administratorService.getFirst(query)
+                .map(AdministratorDomainTransformer.INSTANCE::administratorFrom);
     }
 
     @Override
     public Optional<Administrator> find(AdministratorId administratorId) {
-        return find(Wrappers.lambdaQuery(DbIamAdministrator.class)
+        return find(administratorService.getQueryWrapper()
                 .eq(DbIamAdministrator::getAdministratorId, administratorId.value()));
     }
 
@@ -57,11 +54,19 @@ public class MysqlAdministratorRepository implements AdministratorRepository {
         DbIamAdministrator dbAdministrator =
                 AdministratorDomainTransformer.INSTANCE.dbAdministratorFrom(administrator);
         if (administrator.getPkId() == null) {
-            administratorService.save(dbAdministrator);
+            if (!administratorService.save(dbAdministrator)) {
+                throw new DataAccessResourceFailureException(
+                        "Administrator was not inserted: " + administrator.getId().value());
+            }
             administrator.setPkId(dbAdministrator.getId());
+            administrator.setRowVersion(dbAdministrator.getVersion());
             return;
         }
-        administratorService.updateById(dbAdministrator);
+        if (!administratorService.updateById(dbAdministrator)) {
+            throw new OptimisticLockingFailureException(
+                    "Administrator was modified concurrently: " + administrator.getId().value());
+        }
+        administrator.setRowVersion(dbAdministrator.getVersion());
     }
 
     @Override
@@ -76,20 +81,16 @@ public class MysqlAdministratorRepository implements AdministratorRepository {
                 administratorService.getQueryWrapper().orderByDesc(DbIamAdministrator::getId));
         return PagingResult.<Administrator>newBuilder()
                 .paging(paging)
-                .records(page.getRecords().stream().map(this::administratorFrom).toList())
+                .records(page.getRecords().stream()
+                        .map(AdministratorDomainTransformer.INSTANCE::administratorFrom)
+                        .toList())
                 .total(page.getTotal())
                 .build();
     }
 
     @Override
     public boolean exists() {
-        return administratorService.exists(Wrappers.lambdaQuery(DbIamAdministrator.class));
+        return administratorService.exists(administratorService.getQueryWrapper());
     }
 
-    private Administrator administratorFrom(DbIamAdministrator entity) {
-        Administrator administrator =
-                AdministratorDomainTransformer.INSTANCE.administratorFrom(entity);
-        administrator.setPkId(entity.getId());
-        return administrator;
-    }
 }

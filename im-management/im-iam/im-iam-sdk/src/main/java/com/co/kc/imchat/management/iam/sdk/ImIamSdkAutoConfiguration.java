@@ -78,7 +78,7 @@ public class ImIamSdkAutoConfiguration {
                 new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(properties.http().readTimeout());
         return RestClient.builder()
-                .baseUrl(properties.issuer().toString())
+                .baseUrl(properties.serviceUri().toString())
                 .requestFactory(requestFactory)
                 .build();
     }
@@ -198,6 +198,7 @@ public class ImIamSdkAutoConfiguration {
         return new IamCsrfTokenRepository(
                 sessionRepository,
                 sessionCookie,
+                session.cookieName() + "_XSRF_TOKEN",
                 session.secureCookieEnabled(),
                 session.sameSite(),
                 session.ttl());
@@ -240,6 +241,8 @@ public class ImIamSdkAutoConfiguration {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/actuator/**")
+                        .permitAll()
                         .requestMatchers(IamBffRequestPolicy.publicPathPatterns())
                         .permitAll()
                         .requestMatchers(IamBffRequestPolicy.authenticatedPathPatterns())

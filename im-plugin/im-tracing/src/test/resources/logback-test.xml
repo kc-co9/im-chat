@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="com/co/kc/imchat/plugin/tracing/logback-common.xml"/>
+    <appender name="STANDARD_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>STANDARD [%tid] %msg%n</pattern>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="IM_CONSOLE"/>
+        <appender-ref ref="STANDARD_CONSOLE"/>
+    </root>
+</configuration>

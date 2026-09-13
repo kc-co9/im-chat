@@ -8,9 +8,9 @@
 - `BoltClientInvoker`、`BoltRpcClient`：同步 RPC 客户端实现。
 - `BoltRequestHandler`：业务 Handler SPI。
 - `BoltRequestProcessor`：按 service/operation 分发请求。
-- `ImBoltProperties`：客户端、服务端端口和超时配置。
+- `ImBoltProperties`：客户端开关，以及服务端监听地址和端口配置。
 
-依赖方只实现 `BoltRequestHandler`，不直接操作 SOFA Bolt 请求对象。启用服务端时使用 `im.bolt.server.enabled=true` 并配置端口。
+依赖方只实现 `BoltRequestHandler`，不直接操作 SOFA Bolt 请求对象。启用服务端时使用 `im.bolt.server.enabled=true`，通过 `im.bolt.server.host` 和 `im.bolt.server.port` 配置监听地址；host 默认 `0.0.0.0`，容器共享宿主网络时应显式限制为 `127.0.0.1` 或受控接口。
 
 ## 关键技术点
 

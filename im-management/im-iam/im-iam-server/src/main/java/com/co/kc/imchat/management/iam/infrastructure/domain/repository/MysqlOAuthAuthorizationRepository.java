@@ -9,6 +9,8 @@ import com.co.kc.imchat.management.iam.infrastructure.mybatis.entity.DbIamOAuthA
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.service.DbIamOAuthAuthorizationService;
 import com.co.kc.imchat.management.iam.transformer.db.OAuthAuthorizationDbTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,12 +53,18 @@ public class MysqlOAuthAuthorizationRepository implements OAuthAuthorizationRepo
     public void save(OAuthAuthorization authorization) {
         DbIamOAuthAuthorization dbIamOAuthAuthorization = OAuthAuthorizationDbTransformer.INSTANCE.dbAuthorizationFrom(authorization);
         if (authorization.getPkId() == null) {
-            authorizationService.save(dbIamOAuthAuthorization);
-            if (dbIamOAuthAuthorization.getId() != null) {
-                authorization.setPkId(dbIamOAuthAuthorization.getId());
+            if (!authorizationService.save(dbIamOAuthAuthorization)) {
+                throw new DataAccessResourceFailureException(
+                        "OAuth authorization was not inserted: " + authorization.getId().value());
             }
+            authorization.setPkId(dbIamOAuthAuthorization.getId());
+            authorization.setRowVersion(dbIamOAuthAuthorization.getVersion());
         } else {
-            authorizationService.updateById(dbIamOAuthAuthorization);
+            if (!authorizationService.updateById(dbIamOAuthAuthorization)) {
+                throw new OptimisticLockingFailureException(
+                        "OAuth authorization was modified concurrently: " + authorization.getId().value());
+            }
+            authorization.setRowVersion(dbIamOAuthAuthorization.getVersion());
         }
     }
 

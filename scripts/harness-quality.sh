@@ -10,7 +10,7 @@ REQUEST="$QUALITY_DIR/review-request.json"; RESPONSE="$QUALITY_DIR/reviewer-resp
 HEAD="${HARNESS_CURRENT_HEAD:-$(git -C "$ROOT_DIR" rev-parse --verify HEAD 2>/dev/null || printf unavailable)}"
 FINGERPRINT="${HARNESS_CURRENT_WORKTREE_FINGERPRINT:-$(source "$ROOT_DIR/scripts/lib/harness-evidence.sh"; harness_worktree_fingerprint "$ROOT_DIR")}"
 
-ruby -rjson -rdigest -e '
+ruby -rjson -rdigest -ropen3 -e '
   root, output, head, fingerprint = ARGV
   units = {
     "im-common" => ["im-common"], "im-plugin" => ["im-plugin"], "im-gateway" => ["im-gateway"], "im-broker" => ["im-broker"],
@@ -18,18 +18,41 @@ ruby -rjson -rdigest -e '
     "im-iam" => ["im-management/im-iam"], "im-admin" => ["im-management/im-admin"], "im-monitor" => ["im-management/im-monitor"],
     "im-audit" => ["im-management/im-audit"], "im-test" => ["im-test"]
   }
+  shared_review_paths = %w[AGENTS.md ARCHITECTURE.md README.md pom.xml scripts deploy docs]
+  visible_output, visible_status = Open3.capture2(
+    "git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z"
+  )
+  abort "unable to enumerate quality review files" unless visible_status.success?
+  visible_files = visible_output.split("\0").select do |path|
+    File.file?(File.join(root, path)) &&
+      path != "PROGRESS.md" &&
+      !path.start_with?("docs/exec-plans/active/") &&
+      !path.start_with?("docs/exec-plans/completed/")
+  end
+  in_scope = lambda do |file, path|
+    file == path || file.start_with?("#{path}/")
+  end
+  owned_paths = units.values.flatten
+  shared_files = visible_files.reject do |file|
+    owned_paths.any? { |path| in_scope.call(file, path) }
+  end
   entries = units.map do |name, paths|
     digest = Digest::SHA256.new
-    files = paths.flat_map { |path| Dir.glob(File.join(root, path, "**/*")).select { |file| File.file?(file) } }
-      .reject { |file| file.include?("/.harness/") || file.include?("/target/") || file.end_with?("PROGRESS.md") }
-      .sort
-    files.each { |file| digest.update(file.delete_prefix(root + File::SEPARATOR)); digest.update(File.binread(file)) }
+    unit_files = visible_files.select do |file|
+      paths.any? { |path| in_scope.call(file, path) }
+    end
+    files = (shared_files + unit_files).uniq.sort
+    files.each do |file|
+      digest.update(file)
+      digest.update(File.binread(File.join(root, file)))
+    end
     {"unit" => name, "paths" => paths, "unitFingerprint" => digest.hexdigest,
      "evidence" => paths.map { |path| "#{path}/README.md" }}
   end
   review_scope_fingerprint = Digest::SHA256.hexdigest(entries.to_json)
   request = {"requestId" => "quality-#{head}-#{review_scope_fingerprint[0, 12]}", "headRevision" => head,
     "worktreeFingerprint" => fingerprint, "reviewScopeFingerprint" => review_scope_fingerprint,
+    "sharedReviewPaths" => shared_review_paths,
     "reviewerPrompt" => "docs/references/QUALITY_REVIEW_PROMPT.md", "units" => entries,
     "instructions" => "Score correctness, scopeDiscipline, maintainability only; do not edit repository files."}
   File.write(output, JSON.pretty_generate(request) + "\n")

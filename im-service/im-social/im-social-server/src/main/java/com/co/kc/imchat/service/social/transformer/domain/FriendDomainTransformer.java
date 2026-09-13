@@ -20,6 +20,9 @@ public interface FriendDomainTransformer {
     FriendDomainTransformer INSTANCE = Mappers.getMapper(FriendDomainTransformer.class);
 
     default List<Friend> friendListFrom(List<DbFriend> dbFriendList) {
+        if (dbFriendList == null || dbFriendList.isEmpty()) {
+            return List.of();
+        }
         return dbFriendList.stream()
                 .map(INSTANCE::friendFrom)
                 .toList();
@@ -33,6 +36,7 @@ public interface FriendDomainTransformer {
         friend.setStatus(INSTANCE.friendStatusFrom(dbFriend.getFriendStatus()));
         friend.setCreateTime(dbFriend.getCreateTime());
         friend.setPkId(dbFriend.getId());
+        friend.setRowVersion(dbFriend.getVersion());
         if (StringUtils.isNotBlank(dbFriend.getFriendAlias())) {
             friend.setFriendAlias(new FriendAlias(dbFriend.getFriendAlias()));
         }

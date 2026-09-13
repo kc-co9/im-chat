@@ -21,7 +21,14 @@ public class Identification implements Serializable {
     /**
      * 数据库主键ID
      */
+    @EqualsAndHashCode.Exclude
     private Long pkId;
+
+    /**
+     * 持久化并发版本；领域规则不解释其数值，只在仓储更新时用于冲突检测。
+     */
+    @EqualsAndHashCode.Exclude
+    private Long rowVersion = 0L;
 
     public Identification() {
     }
@@ -30,5 +37,11 @@ public class Identification implements Serializable {
         AssertUtils.domainPropNotNull("数据库主键ID不能为空", pkId);
         AssertUtils.domainPropTrue("数据库主键ID必须大于0", pkId > 0L);
         this.pkId = pkId;
+    }
+
+    public void setRowVersion(Long rowVersion) {
+        AssertUtils.domainPropNotNull("持久化版本不能为空", rowVersion);
+        AssertUtils.domainPropTrue("持久化版本不能小于0", rowVersion >= 0L);
+        this.rowVersion = rowVersion;
     }
 }

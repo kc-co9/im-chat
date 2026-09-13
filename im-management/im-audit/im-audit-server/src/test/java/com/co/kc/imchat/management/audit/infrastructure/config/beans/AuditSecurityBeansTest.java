@@ -90,6 +90,7 @@ class AuditSecurityBeansTest {
                         null));
         return new IamProperties(
                 true,
+                URI.create("http://localhost:1"),
                 URI.create("http://localhost:" + port),
                 application,
                 new IamProperties.Http(Duration.ofMillis(100), Duration.ofMillis(200)),

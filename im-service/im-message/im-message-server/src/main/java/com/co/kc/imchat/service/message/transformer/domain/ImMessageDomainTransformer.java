@@ -31,7 +31,6 @@ public interface ImMessageDomainTransformer {
     ImMessageDomainTransformer INSTANCE = Mappers.getMapper(ImMessageDomainTransformer.class);
 
     @Mappings(value = {
-            @Mapping(target = "pkId", source = "id"),
             @Mapping(target = "id.value", source = "messageId"),
             @Mapping(target = "chatId.value", source = "chatId"),
             @Mapping(target = "userId.value", source = "userId"),
@@ -45,13 +44,19 @@ public interface ImMessageDomainTransformer {
             @Mapping(target = "readTime", source = "readTime"),
             @Mapping(target = "revokeTime", source = "revokeTime")
     })
-    ImPrivateInboxMessage imPrivateInboxMessageFrom(DbImPrivateInboxMessage db);
+    ImPrivateInboxMessage imPrivateInboxMessageMapped(DbImPrivateInboxMessage db);
+
+    default ImPrivateInboxMessage imPrivateInboxMessageFrom(DbImPrivateInboxMessage db) {
+        ImPrivateInboxMessage message = imPrivateInboxMessageMapped(db);
+        message.setPkId(db.getId());
+        message.setRowVersion(db.getVersion());
+        return message;
+    }
 
     List<ImGroupInboxMessage> imGroupInboxMessageListFrom(List<DbImGroupInboxMessage> records);
 
     default ImGroupInboxMessage imGroupInboxMessageFrom(DbImGroupInboxMessage db) {
-        return ImGroupInboxMessage.builder()
-                .pkId(db.getId())
+        ImGroupInboxMessage message = ImGroupInboxMessage.builder()
                 .id(new ImMessageId(db.getMessageId()))
                 .groupId(new GroupId(db.getGroupId()))
                 .chatId(new ImChatId(db.getChatId()))
@@ -65,6 +70,9 @@ public interface ImMessageDomainTransformer {
                 .readTime(db.getReadTime())
                 .revokeTime(db.getRevokeTime())
                 .build();
+        message.setPkId(db.getId());
+        message.setRowVersion(db.getVersion());
+        return message;
     }
 
     @ValueMappings(value = {

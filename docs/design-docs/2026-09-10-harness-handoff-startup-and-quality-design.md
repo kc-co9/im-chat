@@ -114,7 +114,7 @@ Harness 运行状态统一保存在仓库根目录的 `.harness/`，并通过 `/
 - Handoff fixture 覆盖成功、失败、陈旧证据和无 active plan。
 - Startup fixture 覆盖应用/测试一一对应、缺失 Tag、零测试和真实启动 smoke。
 - Cleanup fixture 证明默认只读、`--apply` 只删除 Harness 自有目标且幂等。
-- Quality fixture 覆盖首次生成 request、陈旧 response、非法分数、缺证据、上限和 A/B/C/D 映射。
+- Quality fixture 覆盖首次生成 request、陈旧 response、非法分数、缺证据、ignored 输出稳定性、共享范围扩散、上限和 A/B/C/D 映射。
 - 使用一次独立 AI Reviewer 为全部质量单元建立初始语义基线。
 - 最终运行 `startup`、`cleanup`、`quick`、`e2e`、`full`、`quality` 和文档漂移检查。
 
@@ -124,4 +124,4 @@ Harness 运行状态统一保存在仓库根目录的 `.harness/`，并通过 `/
 
 ## 执行计划
 
-实施步骤与证据记录在 [Harness 交接、启动与质量评审实施计划](../exec-plans/active/2026-09-10-harness-handoff-startup-and-quality.md)。
+实施步骤与证据记录在 [Harness 交接、启动与质量评审实施计划](../exec-plans/completed/2026-09-10-harness-handoff-startup-and-quality.md)。

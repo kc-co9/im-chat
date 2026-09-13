@@ -24,18 +24,20 @@ class WsConfigTest {
         assertThat(environment.getProperty("im.gateway.ws.broker.bolt.load-balance")).isEqualTo("HASH");
         assertThat(environment.getProperty("im.bolt.client.enabled", Boolean.class)).isTrue();
         assertThat(environment.getProperty("im.bolt.server.enabled", Boolean.class)).isTrue();
-        assertThat(environment.getProperty("im.bolt.server.port", Integer.class)).isEqualTo(12202);
+        assertThat(environment.getProperty("im.bolt.server.port", Integer.class)).isEqualTo(18012);
+        assertThat(environment.getProperty("im.gateway.ws.bind-host")).isEqualTo("0.0.0.0");
         assertThat(environment.getProperty("spring.config.import[0]"))
                 .isEqualTo("optional:nacos:im-ws-gateway.yml?group=INFRA_GROUP");
     }
 
     @Test
-    void defaultProfileRunsAsNonWebNettyGateway() throws IOException {
+    void defaultProfileRunsWebManagementAlongsideNettyGateway() throws IOException {
         StandardEnvironment environment = load("application.yml");
 
-        assertThat(environment.getProperty("spring.main.web-application-type")).isEqualTo("none");
-        assertThat(environment.getProperty("server.port")).isNull();
-        assertThat(environment.getProperty("spring.cloud.nacos.discovery.port", Integer.class)).isEqualTo(19090);
+        assertThat(environment.getProperty("spring.main.web-application-type")).isNull();
+        assertThat(environment.getProperty("server.port", Integer.class)).isEqualTo(19011);
+        assertThat(environment.getProperty("management.server.port", Integer.class)).isEqualTo(19011);
+        assertThat(environment.getProperty("spring.cloud.nacos.discovery.port", Integer.class)).isEqualTo(18011);
         assertThat(environment.getProperty("im.gateway.ws.gateway-id"))
                 .isNull();
     }
@@ -60,8 +62,8 @@ class WsConfigTest {
                 .bind(GatewayProperties.PREFIX, GatewayProperties.class)
                 .orElseThrow(() -> new IllegalStateException("WS 网关配置绑定失败"));
 
-        assertThat(properties.getPort()).isEqualTo(19090);
-        assertThat(properties.gatewayId(12202)).isEqualTo("gateway-127.0.0.1-12202");
+        assertThat(properties.getPort()).isEqualTo(18011);
+        assertThat(properties.gatewayId(18012)).isEqualTo("gateway-127.0.0.1-18012");
         assertThat(properties.getPath()).isEqualTo("/ws");
         assertThat(properties.getMaxFramePayloadLength()).isEqualTo(65536);
         assertThat(properties.getIdle().getReaderIdleSeconds()).isEqualTo(60);
@@ -71,10 +73,10 @@ class WsConfigTest {
     }
 
     @Test
-    void serverModuleDoesNotDependOnHttpFallbackStack() throws IOException {
+    void serverModuleUsesWebOnlyForManagementEndpoints() throws IOException {
         String pom = Files.readString(Path.of("pom.xml"));
 
-        assertThat(pom).doesNotContain("spring-boot-starter-web");
+        assertThat(pom).contains("spring-boot-starter-web");
         assertThat(pom).doesNotContain("spring-cloud-starter-openfeign");
         assertThat(pom).doesNotContain("spring-cloud-starter-loadbalancer");
     }

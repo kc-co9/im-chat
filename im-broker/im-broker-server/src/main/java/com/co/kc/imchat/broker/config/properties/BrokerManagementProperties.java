@@ -15,11 +15,14 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "im.broker.management")
 public class BrokerManagementProperties {
     @NotBlank
+    private String bindHost = "127.0.0.1";
+
+    @NotBlank
     private String host = "127.0.0.1";
 
     @Min(1)
     @Max(65_535)
-    private int port = 12_201;
+    private int port = 19_020;
 
     @Min(1)
     @Max(1_000)

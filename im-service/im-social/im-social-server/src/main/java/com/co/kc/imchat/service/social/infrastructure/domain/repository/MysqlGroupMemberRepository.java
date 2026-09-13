@@ -9,6 +9,8 @@ import com.co.kc.imchat.service.social.infrastructure.mybatis.service.DbImGroupM
 import com.co.kc.imchat.service.social.transformer.db.GroupDbTransformer;
 import com.co.kc.imchat.service.social.transformer.domain.GroupDomainTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.util.List;
 import java.util.Optional;
@@ -40,7 +42,21 @@ public class MysqlGroupMemberRepository implements GroupMemberRepository {
     @Override
     public void save(GroupMember member) {
         DbImGroupMember row = GroupDbTransformer.INSTANCE.dbImGroupMemberFrom(member);
-        dbImGroupMemberService.saveOrUpdate(row);
+        boolean persisted = dbImGroupMemberService.saveOrUpdate(row);
+        if (!persisted) {
+            if (member.getPkId() != null) {
+                throw new OptimisticLockingFailureException(
+                        "Group member was modified concurrently: " + member.getId());
+            }
+            throw new DataAccessResourceFailureException(
+                    "Group member was not inserted: " + member.getId());
+        }
+        if (persisted) {
+            if (row.getId() != null) {
+                member.setPkId(row.getId());
+            }
+            member.setRowVersion(row.getVersion());
+        }
     }
 
     @Override
@@ -48,8 +64,7 @@ public class MysqlGroupMemberRepository implements GroupMemberRepository {
         if (com.baomidou.mybatisplus.core.toolkit.CollectionUtils.isEmpty(members)) {
             return;
         }
-        List<DbImGroupMember> rows = GroupDbTransformer.INSTANCE.dbImGroupMemberListFrom(members);
-        dbImGroupMemberService.saveOrUpdateBatch(rows);
+        members.forEach(this::save);
     }
 
     @Override

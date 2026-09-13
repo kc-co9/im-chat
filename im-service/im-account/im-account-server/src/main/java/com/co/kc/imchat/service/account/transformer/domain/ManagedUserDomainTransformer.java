@@ -12,6 +12,7 @@ public interface ManagedUserDomainTransformer {
 
     @Mapping(target = "userId.value", source = "userId")
     @Mapping(target = "pkId", source = "id")
+    @Mapping(target = "rowVersion", source = "version")
     @Mapping(target = "username.value", source = "username")
     @Mapping(target = "email.value", source = "email")
     @Mapping(target = "password.value", source = "password")

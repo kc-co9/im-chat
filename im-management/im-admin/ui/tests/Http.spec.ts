@@ -1,13 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cookie, notifyHttpFailure, unwrapHttpResult } from '../src/api/http'
+import { cookie, http, notifyHttpFailure, unwrapHttpResult } from '../src/api/http'
 
 describe('admin HTTP security boundary', () => {
   beforeEach(() => {
-    document.cookie = 'XSRF-TOKEN=csrf%20value; path=/'
+    document.cookie = 'IM_ADMIN_IAM_SESSION_XSRF_TOKEN=csrf%20value; path=/'
   })
 
-  it('reads the non-sensitive CSRF delivery cookie', () => {
-    expect(decodeURIComponent(cookie('XSRF-TOKEN') ?? '')).toBe('csrf value')
+  it('submits the application-specific CSRF delivery cookie', async () => {
+    let csrfHeader: unknown
+    http.defaults.adapter = async (config) => {
+      csrfHeader = config.headers['X-XSRF-TOKEN']
+      return { data: {}, status: 200, statusText: 'OK', headers: {}, config }
+    }
+
+    await http.post('/users')
+
+    expect(decodeURIComponent(cookie('IM_ADMIN_IAM_SESSION_XSRF_TOKEN') ?? '')).toBe('csrf value')
+    expect(csrfHeader).toBe('csrf value')
   })
 
   it('publishes authentication and authorization failures', () => {

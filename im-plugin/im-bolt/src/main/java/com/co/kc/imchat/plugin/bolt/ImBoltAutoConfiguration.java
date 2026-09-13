@@ -35,7 +35,7 @@ public class ImBoltAutoConfiguration {
     @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = "im.bolt.server", name = "enabled", havingValue = "true")
     public RpcServer boltRpcServer(ImBoltProperties properties) {
-        return new RpcServer(properties.getServer().getPort());
+        return new RpcServer(properties.getServer().getHost(), properties.getServer().getPort());
     }
 
     @Bean

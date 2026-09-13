@@ -28,6 +28,7 @@ public class ImDubboProperties {
     @Setter
     public static class Protocol {
         private String name = "dubbo";
+        private String host;
         private int port = -1;
 
     }

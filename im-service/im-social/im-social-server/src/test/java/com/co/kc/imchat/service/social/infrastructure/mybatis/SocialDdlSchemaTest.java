@@ -17,9 +17,9 @@ class SocialDdlSchemaTest {
         assertThat(ddl)
                 .contains("CREATE DATABASE IF NOT EXISTS `im_chat_social`")
                 .contains("USE `im_chat_social`")
-                .contains("CREATE TABLE `db_friend`")
-                .contains("CREATE TABLE `db_im_group`")
-                .contains("CREATE TABLE `db_im_group_member`")
+                .contains("CREATE TABLE IF NOT EXISTS `db_friend`")
+                .contains("CREATE TABLE IF NOT EXISTS `db_im_group`")
+                .contains("CREATE TABLE IF NOT EXISTS `db_im_group_member`")
                 .doesNotContain("`db_user`", "`db_im_private_chat`", "`db_im_group_chat`");
     }
 }

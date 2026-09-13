@@ -16,7 +16,7 @@ describe("monitor detail views", () => {
           value: {
             brokerId: "broker-a",
             host: "10.0.0.1",
-            port: 12201,
+            port: 19020,
             registeredAt: 0,
             lastSeenAt: 0,
           },
@@ -61,7 +61,7 @@ describe("monitor detail views", () => {
   it("shows broker source data and partial failures", async () => {
     const wrapper = mount(BrokersView);
     await flushPromises();
-    expect(wrapper.text()).toContain("10.0.0.1:12201");
+    expect(wrapper.text()).toContain("10.0.0.1:19020");
     expect(wrapper.text()).toContain("broker-b：timeout");
   });
 

@@ -16,6 +16,7 @@ import java.lang.annotation.Target;
                 + "org.springframework.boot.autoconfigure.data.web.SpringDataWebAutoConfiguration",
         "springdoc.api-docs.enabled=false",
         "springdoc.swagger-ui.enabled=false",
+        "im.datasource.sharding.enabled=false",
         "im.message.delay.worker.enabled=false",
         "im.dubbo.enabled=false",
         "dubbo.enabled=false",

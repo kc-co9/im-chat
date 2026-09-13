@@ -14,15 +14,15 @@ SDK 只依赖协议和通用基础设施，不依赖 `im-iam-server` 实现。�
 im:
   iam:
     enabled: true
-    issuer: http://localhost:18090
+    issuer: http://localhost:18040
     application:
       key: imAudit
       clients:
         web:
           client-id: im-audit-client
           client-secret: REQUIRED_FROM_NACOS
-          redirect-uri: http://localhost:18091/iam/callback
-          post-logout-redirect-uri: http://localhost:18091/
+          redirect-uri: http://localhost:18041/iam/callback
+          post-logout-redirect-uri: http://localhost:18041/
         catalog:
           client-id: im-audit-catalog
           client-secret: REQUIRED_FROM_NACOS

@@ -56,6 +56,7 @@ public class GatewayBeans {
             ConnectionRegistry connectionRegistry,
             WsAuthenticationManager authenticationManager) {
         return new NettyWebSocketServer(
+                properties.getBindHost(),
                 properties.getPort(),
                 properties.gatewayId(boltProperties.getServer().getPort()),
                 properties.getPath(),

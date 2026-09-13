@@ -63,7 +63,7 @@ class ImWsGatewayApplicationTest {
     private static class NoopNettyWebSocketServer extends NettyWebSocketServer {
 
         private NoopNettyWebSocketServer() {
-            super(0, "test-gateway", "/ws", null, null, null, 60, 65536);
+            super("127.0.0.1", 0, "test-gateway", "/ws", null, null, null, 60, 65536);
         }
 
         @Override

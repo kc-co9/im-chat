@@ -53,6 +53,7 @@ public final class OAuthAuthorizationDbTransformer {
         if (entity.getId() != null) {
             authorization.setPkId(entity.getId());
         }
+        authorization.setRowVersion(entity.getVersion());
         return authorization;
     }
 
@@ -60,6 +61,7 @@ public final class OAuthAuthorizationDbTransformer {
     public DbIamOAuthAuthorization dbAuthorizationFrom(OAuthAuthorization authorization) {
         DbIamOAuthAuthorization entity = new DbIamOAuthAuthorization();
         entity.setId(authorization.getPkId());
+        entity.setVersion(authorization.getRowVersion());
         entity.setAuthorizationId(authorization.getId().value());
         entity.setAppId(authorization.getAppId().value());
         entity.setOauthClientId(authorization.getClientId().value());

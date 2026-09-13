@@ -52,7 +52,8 @@
         <jetcache.version>2.7.8</jetcache.version>
         <caffeine.version>2.9.3</caffeine.version>
         <springdoc.version>2.8.15</springdoc.version>
-        <shardingsphere.version>5.2.1</shardingsphere.version>
+        <shardingsphere.version>5.5.2</shardingsphere.version>
+        <skywalking.toolkit.version>9.7.0</skywalking.toolkit.version>
         <jaxb.version>2.3.1</jaxb.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <commons-collections4.version>4.4</commons-collections4.version>
@@ -119,6 +120,11 @@
             <dependency>
                 <groupId>com.co.kc.im</groupId>
                 <artifactId>im-metrics</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
+                <artifactId>im-tracing</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -213,8 +219,23 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.shardingsphere</groupId>
-                <artifactId>shardingsphere-jdbc-core</artifactId>
+                <artifactId>shardingsphere-jdbc</artifactId>
                 <version>${shardingsphere.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.shardingsphere</groupId>
+                <artifactId>shardingsphere-infra-data-source-pool-hikari</artifactId>
+                <version>${shardingsphere.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>apm-toolkit-logback-1.x</artifactId>
+                <version>${skywalking.toolkit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.skywalking</groupId>
+                <artifactId>apm-toolkit-trace</artifactId>
+                <version>${skywalking.toolkit.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.mysql</groupId>

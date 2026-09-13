@@ -29,7 +29,10 @@ import com.co.kc.imchat.management.iam.model.cqrs.dto.ApplicationRoleDTO;
 import com.co.kc.imchat.management.iam.model.cqrs.dto.RoleAssignmentDTO;
 import com.co.kc.imchat.management.iam.model.cqrs.query.ApplicationRolePageQuery;
 import com.co.kc.imchat.management.iam.model.cqrs.query.ApplicationRoleAssignmentQuery;
+import com.co.kc.imchat.management.iam.support.lock.IamLockScene;
 import com.co.kc.imchat.management.iam.transformer.application.ApplicationRoleAppTransformer;
+import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
+import com.co.kc.imchat.plugin.lock.support.LockConstants;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,6 +70,8 @@ public class ApplicationRoleAppService {
     }
 
     @Transactional(rollbackFor = Exception.class)
+    @DistributeLock(scene = IamLockScene.APPLICATION_ADMINISTRATOR_ROLE_WRITE,
+            key = "#command.administratorId()", waitTime = LockConstants.DEFAULT_WAIT)
     public void changeAdministratorRoles(ApplicationRoleAssignmentChangeCmd command) {
         AdministratorId administratorId = new AdministratorId(command.administratorId());
         AppId appId = new AppId(command.appId());

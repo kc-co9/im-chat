@@ -2,6 +2,7 @@ package com.co.kc.imchat.management.iam.infrastructure.domain.repository;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration;
 import com.co.kc.imchat.common.model.page.Paging;
@@ -9,6 +10,7 @@ import com.co.kc.imchat.common.model.page.PagingResult;
 import com.co.kc.imchat.management.iam.domain.application.model.AppId;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClient;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientId;
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientSecret;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.entity.DbIamOAuthClient;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.enums.DbIamOAuthClientStatus;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.mapper.DbIamOAuthClientMapper;
@@ -23,6 +25,7 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.junit.jupiter.api.BeforeAll;
@@ -30,8 +33,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -84,7 +89,8 @@ class MysqlOAuthClientRepositoryTest {
                     status TINYINT NOT NULL,
                     create_time TIMESTAMP NULL,
                     update_time TIMESTAMP NULL,
-                    is_deleted BIGINT NOT NULL DEFAULT 0
+                    is_deleted BIGINT NOT NULL DEFAULT 0,
+                    version BIGINT NOT NULL DEFAULT 0
                 )
                 """);
     }
@@ -120,6 +126,7 @@ class MysqlOAuthClientRepositoryTest {
         DbIamOAuthClientService service = mock(DbIamOAuthClientService.class);
         DbIamOAuthClient row = new DbIamOAuthClient();
         row.setId(30L);
+        row.setVersion(3L);
         row.setOauthClientId("client-30");
         row.setAppId(1L);
         row.setAudienceAppId(2L);
@@ -130,14 +137,38 @@ class MysqlOAuthClientRepositoryTest {
         row.setRedirectUris("[]");
         row.setPostLogoutRedirectUris("[]");
         row.setStatus(DbIamOAuthClientStatus.ACTIVE);
-        when(service.getOne(any(Wrapper.class), any(Boolean.class))).thenReturn(row);
+        when(service.getQueryWrapper()).thenReturn(new LambdaQueryWrapper<>());
+        when(service.getFirst(any(Wrapper.class))).thenReturn(Optional.of(row));
         MysqlOAuthClientRepository repository =
                 new MysqlOAuthClientRepository(service);
 
-        assertThat(repository.find(new OAuthClientId("client-30")))
-                .get()
-                .extracting(OAuthClient::getPkId)
-                .isEqualTo(30L);
+        assertThat(repository.find(new OAuthClientId("client-30"))).get().satisfies(client -> {
+            assertThat(client.getPkId()).isEqualTo(30L);
+            assertThat(client.getRowVersion()).isEqualTo(3L);
+        });
+    }
+
+    @Test
+    void preservesVersionAcrossUpdatesAndRejectsStaleWrite() {
+        insertClient(30L, "client-30", 1001L);
+        MysqlOAuthClientRepository repository = new MysqlOAuthClientRepository(oauthClientService);
+        OAuthClient current = repository.find(new OAuthClientId("client-30")).orElseThrow();
+        OAuthClient stale = repository.find(new OAuthClientId("client-30")).orElseThrow();
+
+        current.rotateSecret(new OAuthClientSecret("secret-v1"));
+        repository.save(current);
+        current.rotateSecret(new OAuthClientSecret("secret-v2"));
+        repository.save(current);
+
+        assertThat(current.getRowVersion()).isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT version FROM db_iam_oauth_client WHERE id = 30", Long.class)).isEqualTo(2L);
+        stale.rotateSecret(new OAuthClientSecret("stale-secret"));
+        assertThatThrownBy(() -> repository.save(stale))
+                .isInstanceOf(OptimisticLockingFailureException.class);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT client_secret_hash FROM db_iam_oauth_client WHERE id = 30", String.class))
+                .isEqualTo("secret-v2");
     }
 
     private static DbIamOAuthClient oauthClientRow(Long id, String clientId, Long appId) {

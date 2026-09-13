@@ -32,7 +32,13 @@ public class MysqlAuditEventRepository implements AuditEventRepository {
     @Override
     public boolean append(AuditEvent event) {
         try {
-            return auditEventService.save(AuditDomainTransformer.INSTANCE.dbAuditEventFrom(event));
+            DbAuditEvent entity = AuditDomainTransformer.INSTANCE.dbAuditEventFrom(event);
+            boolean appended = auditEventService.save(entity);
+            if (appended) {
+                event.setPkId(entity.getId());
+                event.setRowVersion(entity.getVersion());
+            }
+            return appended;
         } catch (DuplicateKeyException exception) {
             log.warn("检测到重复审计事实，auditId: {}", event.getId().value());
             return false;
@@ -42,7 +48,7 @@ public class MysqlAuditEventRepository implements AuditEventRepository {
     @Override
     public Optional<AuditEvent> find(AuditId auditId) {
         return auditEventService.getFirst(auditEventService.getQueryWrapper().eq(DbAuditEvent::getAuditId, auditId.value()))
-                .map(this::restore);
+                .map(AuditDomainTransformer.INSTANCE::auditEventFrom);
     }
 
     @Override
@@ -64,14 +70,10 @@ public class MysqlAuditEventRepository implements AuditEventRepository {
                         .orderByDesc(DbAuditEvent::getId));
         return PagingResult.<AuditEvent>newBuilder()
                 .paging(paging)
-                .records(result.getRecords().stream().map(this::restore).toList())
+                .records(result.getRecords().stream()
+                        .map(AuditDomainTransformer.INSTANCE::auditEventFrom)
+                        .toList())
                 .total(result.getTotal())
                 .build();
-    }
-
-    private AuditEvent restore(DbAuditEvent entity) {
-        AuditEvent event = AuditDomainTransformer.INSTANCE.auditEventFrom(entity);
-        event.setPkId(entity.getId());
-        return event;
     }
 }

@@ -52,10 +52,10 @@ EOF
   printf '<script setup lang="ts"></script>\n' > "$ui_root/src/App.vue"
   cat > "$ui_root/src/config/consoleLinks.ts" <<'EOF'
 const locations = {
-  iam: import.meta.env.VITE_IAM_CONSOLE_URL || 'http://localhost:18090',
-  audit: import.meta.env.VITE_AUDIT_CONSOLE_URL || 'http://localhost:18091',
-  monitor: import.meta.env.VITE_MONITOR_CONSOLE_URL || 'http://localhost:18092',
-  admin: import.meta.env.VITE_ADMIN_CONSOLE_URL || 'http://localhost:18093',
+  iam: import.meta.env.VITE_IAM_CONSOLE_URL || 'http://localhost:18040',
+  audit: import.meta.env.VITE_AUDIT_CONSOLE_URL || 'http://localhost:18041',
+  monitor: import.meta.env.VITE_MONITOR_CONSOLE_URL || 'http://localhost:18043',
+  admin: import.meta.env.VITE_ADMIN_CONSOLE_URL || 'http://localhost:18042',
 }
 EOF
   printf "export default { server: { proxy: 'http://127.0.0.1:%s' } }\n" "$port" \
@@ -64,10 +64,10 @@ EOF
 
 # 重建四个管理端基线，确保每个反例都从干净状态开始。
 create_all() {
-  create_ui "$FIXTURE_ROOT/im-management/im-admin/ui" 18093
-  create_ui "$FIXTURE_ROOT/im-management/im-audit/im-audit-server/ui" 18091
-  create_ui "$FIXTURE_ROOT/im-management/im-iam/im-iam-server/ui" 18090
-  create_ui "$FIXTURE_ROOT/im-management/im-monitor/ui" 18092
+  create_ui "$FIXTURE_ROOT/im-management/im-admin/ui" 18042
+  create_ui "$FIXTURE_ROOT/im-management/im-audit/im-audit-server/ui" 18041
+  create_ui "$FIXTURE_ROOT/im-management/im-iam/im-iam-server/ui" 18040
+  create_ui "$FIXTURE_ROOT/im-management/im-monitor/ui" 18043
 }
 
 # 参数为预期诊断片段；执行 checker 并断言失败输出包含该片段。
@@ -118,7 +118,7 @@ expect_failure 'cross-application UI source import'
 rm -rf "$FIXTURE_ROOT"
 FIXTURE_ROOT="$(mktemp -d)"
 create_all
-sed -i.bak 's/18092/18090/' "$FIXTURE_ROOT/im-management/im-monitor/ui/vite.config.ts"
+sed -i.bak 's/18043/18040/' "$FIXTURE_ROOT/im-management/im-monitor/ui/vite.config.ts"
 expect_failure 'stale Vite proxy port'
 
 rm -rf "$FIXTURE_ROOT"

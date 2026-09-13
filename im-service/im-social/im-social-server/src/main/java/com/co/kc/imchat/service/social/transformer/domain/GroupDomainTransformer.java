@@ -35,6 +35,7 @@ public interface GroupDomainTransformer {
                 .status(imGroupStatusFrom(dbImGroup.getStatus()))
                 .build();
         group.setPkId(dbImGroup.getId());
+        group.setRowVersion(dbImGroup.getVersion());
         return group;
     }
 
@@ -43,14 +44,16 @@ public interface GroupDomainTransformer {
     default GroupMember imGroupMemberFrom(DbImGroupMember dbImGroupMember) {
         GroupId groupId = new GroupId(dbImGroupMember.getGroupId());
         UserId userId = new UserId(dbImGroupMember.getUserId());
-        return GroupMember.builder()
-                .pkId(dbImGroupMember.getId())
+        GroupMember member = GroupMember.builder()
                 .id(new MemberId(groupId, userId))
                 .groupId(groupId)
                 .userId(userId)
                 .userAlias(StringUtils.isBlank(dbImGroupMember.getUserAlias()) ? null : new GroupUserAlias(dbImGroupMember.getUserAlias()))
                 .joinTime(dbImGroupMember.getJoinTime())
                 .build();
+        member.setPkId(dbImGroupMember.getId());
+        member.setRowVersion(dbImGroupMember.getVersion());
+        return member;
     }
 
     default GroupStatus imGroupStatusFrom(DbImGroupStatus status) {

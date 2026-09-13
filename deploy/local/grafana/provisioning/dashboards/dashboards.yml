@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: IM Chat
+    orgId: 1
+    folder: IM Chat
+    type: file
+    disableDeletion: true
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

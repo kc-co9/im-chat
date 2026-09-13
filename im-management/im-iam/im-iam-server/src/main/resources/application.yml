@@ -4,12 +4,6 @@ spring:
   config:
     import:
       - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
-  datasource:
-    url: jdbc:mysql://localhost:3306/im_chat_iam?characterEncoding=utf-8&serverTimezone=UTC
-    username: root
-    password: root
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    type: com.alibaba.druid.pool.DruidDataSource
   cloud:
     stream:
       bindings:
@@ -17,7 +11,18 @@ spring:
           destination: im.audit.im-iam.v1
 
 server:
-  port: 18090
+  port: 18040
+
+management:
+  server:
+    port: 19040
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never
 
 springdoc:
   swagger-ui:
@@ -26,9 +31,13 @@ springdoc:
     path: /v3/api-docs
 
 im:
+  datasource:
+    sharding:
+      enabled: true
+      config-location: classpath:im-sharding.yml
   iam:
     authorization:
-      issuer: http://localhost:18090
+      issuer: http://localhost:18040
       key-store-location: classpath:iam/iam-signing.p12
       key-store-password: ImChatIamLocalStore_2026!
       key-alias: im-iam-signing

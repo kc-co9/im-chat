@@ -18,6 +18,7 @@ public interface FriendDbTransformer {
 
     @Mappings(value = {
             @Mapping(target = "id", source = "pkId"),
+            @Mapping(target = "version", source = "rowVersion"),
             @Mapping(target = "userId", source = "userId.value"),
             @Mapping(target = "friendUserId", source = "friendUserId.value"),
             @Mapping(target = "friendAlias", source = "friendAlias.value"),

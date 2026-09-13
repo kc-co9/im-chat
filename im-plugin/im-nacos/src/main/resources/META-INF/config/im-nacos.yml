@@ -13,6 +13,8 @@ spring:
         namespace: ${im.nacos.namespace}
         group: ${im.nacos.discovery.group:IM_CHAT_GROUP}
         fail-fast: true
+        metadata:
+          management-port: ${management.server.port}
       config:
         server-addr: ${im.nacos.server-addr:127.0.0.1:8848}
         namespace: ${im.nacos.namespace}

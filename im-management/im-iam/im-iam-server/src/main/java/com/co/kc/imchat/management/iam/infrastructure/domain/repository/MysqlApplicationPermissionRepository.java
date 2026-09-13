@@ -1,6 +1,5 @@
 package com.co.kc.imchat.management.iam.infrastructure.domain.repository;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -12,12 +11,14 @@ import com.co.kc.imchat.management.iam.domain.authorization.model.ApplicationPer
 import com.co.kc.imchat.management.iam.domain.authorization.repository.ApplicationPermissionRepository;
 import com.co.kc.imchat.management.iam.domain.application.model.AppId;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.entity.DbIamApplicationPermission;
-import com.co.kc.imchat.management.iam.infrastructure.mybatis.enums.DbIamApplicationPermissionStatus;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.service.DbIamApplicationPermissionService;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.entity.DbIamApplicationRolePermission;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.service.DbIamApplicationRolePermissionService;
 import com.co.kc.imchat.management.iam.transformer.domain.ApplicationPermissionDomainTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -32,8 +33,8 @@ public class MysqlApplicationPermissionRepository implements ApplicationPermissi
     @Override
     public List<ApplicationPermission> find(AppId appId) {
         return permissionService.list(
-                        Wrappers.lambdaQuery(DbIamApplicationPermission.class)
-                                .eq(DbIamApplicationPermission::getAppId, appId.value()))
+                permissionService.getQueryWrapper()
+                        .eq(DbIamApplicationPermission::getAppId, appId.value()))
                 .stream()
                 .map(transformer::permissionFrom)
                 .toList();
@@ -41,11 +42,10 @@ public class MysqlApplicationPermissionRepository implements ApplicationPermissi
 
     @Override
     public Optional<ApplicationPermission> find(ApplicationPermissionId permissionId) {
-        DbIamApplicationPermission permission = permissionService.getOne(
-                Wrappers.lambdaQuery(DbIamApplicationPermission.class)
-                        .eq(DbIamApplicationPermission::getPermissionId, permissionId.value())
-                        .last("LIMIT 1"), false);
-        return Optional.ofNullable(permission).map(transformer::permissionFrom);
+        return permissionService.getFirst(
+                        permissionService.getQueryWrapper()
+                                .eq(DbIamApplicationPermission::getPermissionId, permissionId.value()))
+                .map(transformer::permissionFrom);
     }
 
     @Override
@@ -76,34 +76,55 @@ public class MysqlApplicationPermissionRepository implements ApplicationPermissi
     @Override
     public boolean hasRoleAssignments(ApplicationPermissionId permissionId) {
         return rolePermissionService.count(
-                Wrappers.lambdaQuery(DbIamApplicationRolePermission.class)
+                rolePermissionService.getQueryWrapper()
                         .eq(DbIamApplicationRolePermission::getPermissionId, permissionId.value())) > 0;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void saveAll(List<ApplicationPermission> permissions) {
-        permissions.stream()
-                .map(transformer::dbPermissionFrom)
-                .forEach(this::save);
+        List<PermissionWrite> writes = permissions.stream()
+                .map(permission -> new PermissionWrite(
+                        permission,
+                        transformer.dbPermissionFrom(permission)))
+                .toList();
+        List<PermissionWrite> updates = writes.stream()
+                .filter(write -> write.permission().getPkId() != null)
+                .toList();
+        for (PermissionWrite update : updates) {
+            if (!permissionService.updateById(update.row())) {
+                throw new OptimisticLockingFailureException(
+                        "Application permission was modified concurrently: "
+                                + update.permission().getId().value());
+            }
+        }
+        List<DbIamApplicationPermission> inserts = writes.stream()
+                .filter(write -> write.permission().getPkId() == null)
+                .map(PermissionWrite::row)
+                .toList();
+        if (!inserts.isEmpty() && !permissionService.saveBatch(inserts)) {
+            throw new DataAccessResourceFailureException(
+                    "Application permissions were not inserted");
+        }
+        writes.forEach(PermissionWrite::updatePersistenceState);
     }
 
     @Override
     public void remove(ApplicationPermission permission) {
-        permissionService.remove(Wrappers.lambdaQuery(DbIamApplicationPermission.class)
+        permissionService.remove(permissionService.getQueryWrapper()
                 .eq(DbIamApplicationPermission::getPermissionId, permission.getId().value()));
     }
 
-    private void save(DbIamApplicationPermission permission) {
-        DbIamApplicationPermission stored = permissionService.getOne(
-                Wrappers.lambdaQuery(DbIamApplicationPermission.class)
-                        .eq(DbIamApplicationPermission::getPermissionId,
-                                permission.getPermissionId())
-                        .last("LIMIT 1"), false);
-        if (stored == null) {
-            permissionService.save(permission);
-            return;
+    private record PermissionWrite(
+            ApplicationPermission permission,
+            DbIamApplicationPermission row
+    ) {
+        private void updatePersistenceState() {
+            if (permission.getPkId() == null) {
+                permission.setPkId(row.getId());
+            }
+            permission.setRowVersion(row.getVersion());
         }
-        permission.setId(stored.getId());
-        permissionService.updateById(permission);
     }
+
 }

@@ -39,6 +39,6 @@ describe('IAM navigation', () => {
     const wrapper = mount(App)
     await flushPromises()
 
-    expect(wrapper.get('a[href="http://localhost:18091"]').text()).toContain('审计中心')
+    expect(wrapper.get('a[href="http://localhost:18041"]').text()).toContain('审计中心')
   })
 })

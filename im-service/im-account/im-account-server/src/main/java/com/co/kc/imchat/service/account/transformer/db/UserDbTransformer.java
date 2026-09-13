@@ -24,6 +24,7 @@ public interface UserDbTransformer {
     UserDbTransformer INSTANCE = Mappers.getMapper(UserDbTransformer.class);
 
     @Mapping(target = "id", source = "pkId")
+    @Mapping(target = "version", source = "rowVersion")
     @Mapping(target = "userId", source = "id.value")
     @Mapping(target = "email", source = "email.value")
     @Mapping(target = "username", source = "username.value")
@@ -34,6 +35,7 @@ public interface UserDbTransformer {
     DbUser dbUserFrom(User user);
 
     @Mapping(target = "id", source = "pkId")
+    @Mapping(target = "version", source = "rowVersion")
     @Mapping(target = "userId", source = "userId.value")
     @Mapping(target = "email", source = "email.value")
     @Mapping(target = "username", source = "username.value")

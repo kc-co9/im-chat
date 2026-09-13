@@ -21,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
         "im.dubbo.enabled=false",
         "dubbo.enabled=false",
         "jetcache.remote.default.type=mock",
+        "im.datasource.sharding.enabled=false",
         "im.dubbo.registry.address=N/A",
         "spring.autoconfigure.exclude=org.redisson.spring.starter.RedissonAutoConfigurationV2,"
                 + "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,"

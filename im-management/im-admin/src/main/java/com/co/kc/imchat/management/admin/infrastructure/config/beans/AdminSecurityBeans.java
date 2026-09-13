@@ -40,6 +40,8 @@ public class AdminSecurityBeans {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/actuator/**")
+                        .permitAll()
                         .requestMatchers(IamBffRequestPolicy.publicPathPatterns())
                         .permitAll()
                         .requestMatchers(IamBffRequestPolicy.authenticatedPathPatterns())

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -37,6 +38,8 @@ class MysqlApplicationAdministratorRoleRepositoryTest {
     void insertsMissingAndRemovesExtraAssignmentsInBatches() {
         DbIamApplicationAdministratorRoleService service = mockService(List.of(
                 relation(10L, 1L), relation(20L, 2L)));
+        when(service.remove(any(Wrapper.class))).thenReturn(true);
+        when(service.saveBatch(anyCollection())).thenReturn(true);
         MysqlApplicationAdministratorRoleRepository repository = new MysqlApplicationAdministratorRoleRepository(service);
 
         repository.replace(new AdministratorId(100L), Set.of(new ApplicationRoleId(1L), new ApplicationRoleId(3L)));
@@ -49,6 +52,31 @@ class MysqlApplicationAdministratorRoleRepositoryTest {
         DbIamApplicationAdministratorRole added = (DbIamApplicationAdministratorRole) saved.getFirst();
         assertThat(added.getAdministratorId()).isEqualTo(100L);
         assertThat(added.getRoleId()).isEqualTo(3L);
+    }
+
+    @Test
+    void failedBatchInsertAbortsAssignmentReplacement() {
+        DbIamApplicationAdministratorRoleService service = mockService(List.of(relation(10L, 1L)));
+        when(service.saveBatch(anyCollection())).thenReturn(false);
+        MysqlApplicationAdministratorRoleRepository repository =
+                new MysqlApplicationAdministratorRoleRepository(service);
+
+        assertThatThrownBy(() -> repository.replace(
+                new AdministratorId(100L),
+                Set.of(new ApplicationRoleId(1L), new ApplicationRoleId(3L))))
+                .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+    }
+
+    @Test
+    void alreadyRemovedAssignmentsRemainIdempotent() {
+        DbIamApplicationAdministratorRoleService service = mockService(List.of(relation(10L, 1L)));
+        when(service.remove(any(Wrapper.class))).thenReturn(false);
+        MysqlApplicationAdministratorRoleRepository repository =
+                new MysqlApplicationAdministratorRoleRepository(service);
+
+        org.assertj.core.api.Assertions.assertThatCode(() -> repository.replace(
+                new AdministratorId(100L), Set.of()))
+                .doesNotThrowAnyException();
     }
 
     private static DbIamApplicationAdministratorRoleService mockService(List<DbIamApplicationAdministratorRole> current) {

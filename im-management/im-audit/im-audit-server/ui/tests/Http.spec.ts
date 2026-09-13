@@ -3,7 +3,7 @@ import { cookie, http, notifyHttpFailure, unwrapHttpResult } from '../src/api/ht
 
 describe('audit HTTP boundary', () => {
   beforeEach(() => {
-    document.cookie = 'XSRF-TOKEN=audit%20csrf; path=/'
+    document.cookie = 'IM_AUDIT_IAM_SESSION_XSRF_TOKEN=audit%20csrf; path=/'
   })
 
   it('submits the same-origin CSRF token for logout', async () => {
@@ -15,7 +15,7 @@ describe('audit HTTP boundary', () => {
 
     await http.post('/iam/logout')
 
-    expect(decodeURIComponent(cookie('XSRF-TOKEN') ?? '')).toBe('audit csrf')
+    expect(decodeURIComponent(cookie('IM_AUDIT_IAM_SESSION_XSRF_TOKEN') ?? '')).toBe('audit csrf')
     expect(csrfHeader).toBe('audit csrf')
   })
 

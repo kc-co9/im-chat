@@ -15,6 +15,7 @@
         <module>im-identity</module>
         <module>im-excel</module>
         <module>im-metrics</module>
+        <module>im-tracing</module>
         <module>im-lock</module>
         <module>im-datasource</module>
         <module>im-session</module>

@@ -1,6 +1,5 @@
 package com.co.kc.imchat.management.iam.infrastructure.domain.repository;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.co.kc.imchat.common.model.page.Paging;
@@ -16,6 +15,8 @@ import com.co.kc.imchat.management.iam.transformer.domain.ApplicationDomainTrans
 import java.util.Optional;
 import java.util.List;
 import java.util.Set;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 /** 基于 MySQL 的 IAM 注册应用仓储。 */
 public class MysqlApplicationRepository implements ApplicationRepository {
@@ -28,27 +29,24 @@ public class MysqlApplicationRepository implements ApplicationRepository {
     @Override
     public boolean contains(AppKey appKey) {
         return appService.count(
-                Wrappers.lambdaQuery(DbIamApp.class)
+                appService.getQueryWrapper()
                         .eq(DbIamApp::getAppKey, appKey.value())) > 0;
     }
 
     @Override
     public Optional<Application> find(AppKey appKey) {
-        DbIamApp application = appService.getOne(
-                Wrappers.lambdaQuery(DbIamApp.class)
-                        .eq(DbIamApp::getAppKey, appKey.value())
-                        .last("LIMIT 1"), false);
-        return Optional.ofNullable(application).map(this::applicationFrom);
+        return appService.getFirst(
+                        appService.getQueryWrapper()
+                                .eq(DbIamApp::getAppKey, appKey.value()))
+                .map(ApplicationDomainTransformer.INSTANCE::applicationFrom);
     }
 
     @Override
     public Optional<Application> find(AppId appId) {
-        DbIamApp application = appService.getOne(
-                Wrappers.lambdaQuery(DbIamApp.class)
-                        .eq(DbIamApp::getAppId, appId.value())
-                        .last("LIMIT 1"), false);
-        return Optional.ofNullable(application)
-                .map(this::applicationFrom);
+        return appService.getFirst(
+                        appService.getQueryWrapper()
+                                .eq(DbIamApp::getAppId, appId.value()))
+                .map(ApplicationDomainTransformer.INSTANCE::applicationFrom);
     }
 
     @Override
@@ -58,11 +56,11 @@ public class MysqlApplicationRepository implements ApplicationRepository {
         }
         List<Long> ids = appIds.stream().map(AppId::value).toList();
         return appService.list(
-                        Wrappers.lambdaQuery(DbIamApp.class)
+                        appService.getQueryWrapper()
                                 .in(DbIamApp::getAppId, ids)
                                 .orderByAsc(DbIamApp::getAppId))
                 .stream()
-                .map(this::applicationFrom)
+                .map(ApplicationDomainTransformer.INSTANCE::applicationFrom)
                 .toList();
     }
 
@@ -73,7 +71,9 @@ public class MysqlApplicationRepository implements ApplicationRepository {
                 appService.getQueryWrapper().orderByDesc(DbIamApp::getId));
         return PagingResult.<Application>newBuilder()
                 .paging(paging)
-                .records(page.getRecords().stream().map(this::applicationFrom).toList())
+                .records(page.getRecords().stream()
+                        .map(ApplicationDomainTransformer.INSTANCE::applicationFrom)
+                        .toList())
                 .total(page.getTotal())
                 .build();
     }
@@ -82,14 +82,19 @@ public class MysqlApplicationRepository implements ApplicationRepository {
     public void save(Application app) {
         DbIamApp entity = ApplicationDomainTransformer.INSTANCE.dbApplicationFrom(app);
         if (app.getPkId() == null) {
-            appService.save(entity);
+            if (!appService.save(entity)) {
+                throw new DataAccessResourceFailureException(
+                        "Application was not inserted: " + app.getAppId().value());
+            }
             app.setPkId(entity.getId());
+            app.setRowVersion(entity.getVersion());
             return;
         }
-        appService.updateById(entity);
+        if (!appService.updateById(entity)) {
+            throw new OptimisticLockingFailureException(
+                    "Application was modified concurrently: " + app.getAppId().value());
+        }
+        app.setRowVersion(entity.getVersion());
     }
 
-    private Application applicationFrom(DbIamApp entity) {
-        return ApplicationDomainTransformer.INSTANCE.applicationFrom(entity);
-    }
 }

@@ -14,9 +14,11 @@ public interface ApplicationDomainTransformer {
     @Mapping(target = "appKey.value", source = "appKey")
     @Mapping(target = "name.value", source = "name")
     @Mapping(target = "pkId", source = "id")
+    @Mapping(target = "rowVersion", source = "version")
     Application applicationFrom(DbIamApp app);
 
     @Mapping(target = "id", source = "pkId")
+    @Mapping(target = "version", source = "rowVersion")
     @Mapping(target = "appId", source = "appId.value")
     @Mapping(target = "appKey", source = "appKey.value")
     @Mapping(target = "name", source = "name.value")

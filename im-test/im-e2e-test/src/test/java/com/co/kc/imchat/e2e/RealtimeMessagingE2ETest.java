@@ -144,7 +144,7 @@ class RealtimeMessagingE2ETest {
         int webSocketPort = availablePort();
         brokerClient.registerGateway(new GatewayRegisterParams(GATEWAY_ID, "127.0.0.1", availablePort()));
         gatewayServer = new NettyWebSocketServer(
-                webSocketPort, GATEWAY_ID, "/ws", brokerClient, new ConnectionRegistry(),
+                "127.0.0.1", webSocketPort, GATEWAY_ID, "/ws", brokerClient, new ConnectionRegistry(),
                 authenticationManager(), 30, 65_536);
         gatewayServer.start();
         listener = new CollectingWebSocketListener();

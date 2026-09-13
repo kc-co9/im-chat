@@ -1,0 +1,532 @@
+name: im-chat-local
+
+x-infra-profiles: &infra-profiles
+  - infra
+  - full
+
+x-app-environment: &app-environment
+  IM_NACOS_SERVER_ADDR: nacos:8848
+  IM_NACOS_NAMESPACE: ""
+  SPRING_CLOUD_STREAM_KAFKA_BINDER_BROKERS: kafka:29092
+  SPRING_DATA_REDIS_HOST: redis
+  SPRING_DATA_REDIS_SSL_ENABLED: "false"
+  IM_REDIS_REDISSON_ADDRESS: redis://redis:6379
+  SERVER_ADDRESS: 0.0.0.0
+  IM_BOLT_SERVER_HOST: 0.0.0.0
+  IM_GATEWAY_BIND_HOST: 0.0.0.0
+  SW_AGENT_COLLECTOR_BACKEND_SERVICES: skywalking-oap:11800
+  SW_AGENT_LOGGING_LEVEL: INFO
+  # 避免 SkyWalking 9.7.0 与 JDK 21 并发初始化容器指标时发生类加载死锁。
+  JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=192m -XX:-UseContainerSupport
+
+x-app-depends-on: &app-depends-on
+  mysql:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  nacos:
+    condition: service_healthy
+  kafka:
+    condition: service_healthy
+  skywalking-oap:
+    condition: service_healthy
+
+x-management-app-depends-on: &management-app-depends-on
+  <<: *app-depends-on
+  im-iam-server:
+    condition: service_healthy
+
+x-broker-client-app-depends-on: &broker-client-app-depends-on
+  <<: *app-depends-on
+  im-broker-server:
+    condition: service_healthy
+
+x-app: &app
+  profiles:
+    - full
+  restart: unless-stopped
+  mem_limit: 768m
+  depends_on: *app-depends-on
+  environment: *app-environment
+  healthcheck:
+    test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${MANAGEMENT_SERVER_PORT}/actuator/health >/dev/null 2>&1"]
+    interval: 10s
+    timeout: 5s
+    retries: 30
+    start_period: 30s
+  networks:
+    - im-chat-local
+
+services:
+  mysql:
+    profiles: *infra-profiles
+    image: mysql:8.0.39
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - im-chat-local
+
+  redis:
+    profiles: *infra-profiles
+    image: redis:7.2.0
+    restart: unless-stopped
+    mem_limit: 256m
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - im-chat-local
+
+  nacos:
+    profiles: *infra-profiles
+    image: nacos/nacos-server:v3.0.2
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:-aW0tY2hhdC1sb2NhbC1uYWNvcy1hdXRoLXRva2VuLTIwMjYtMDktMTI=}
+      NACOS_AUTH_IDENTITY_KEY: ${NACOS_AUTH_IDENTITY_KEY:-im-chat-local}
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE:-im-chat-local}
+      PREFER_HOST_MODE: hostname
+      JVM_XMS: 256m
+      JVM_XMX: 512m
+      JVM_XMN: 128m
+    ports:
+      - "127.0.0.1:8848:8848"
+      - "127.0.0.1:9848:9848"
+      - "127.0.0.1:9849:9849"
+      - "127.0.0.1:18048:8080"
+    volumes:
+      - nacos-data:/home/nacos/data
+      - nacos-logs:/home/nacos/logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8848'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - im-chat-local
+
+  kafka:
+    profiles: *infra-profiles
+    image: apache/kafka:4.3.1
+    restart: unless-stopped
+    mem_limit: 640m
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx384m
+    ports:
+      - "127.0.0.1:9092:9092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+    networks:
+      - im-chat-local
+
+  skywalking-banyandb:
+    profiles: *infra-profiles
+    image: apache/skywalking-banyandb:0.11.0
+    restart: unless-stopped
+    mem_limit: 768m
+    command:
+      - standalone
+      - --node-host-provider
+      - flag
+      - --node-host
+      - 127.0.0.1
+      - --stream-root-path
+      - /data/stream
+      - --measure-root-path
+      - /data/measure
+      - --trace-root-path
+      - /data/trace
+      - --property-root-path
+      - /data/property
+      - --schema-server-root-path
+      - /data/schema
+    ports:
+      - "127.0.0.1:17913:17913"
+    volumes:
+      - banyan-data:/data
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -nz 127.0.0.1 17912"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 20s
+    networks:
+      - im-chat-local
+
+  skywalking-oap:
+    profiles: *infra-profiles
+    image: apache/skywalking-oap-server:11.0.0
+    restart: unless-stopped
+    mem_limit: 1024m
+    depends_on:
+      skywalking-banyandb:
+        condition: service_healthy
+    environment:
+      SW_STORAGE: banyandb
+      SW_STORAGE_BANYANDB_TARGETS: skywalking-banyandb:17912
+      SW_HEALTH_CHECKER: default
+      SW_TELEMETRY: prometheus
+      JAVA_OPTS: -Xms256m -Xmx512m
+    ports:
+      - "127.0.0.1:1234:1234"
+      - "127.0.0.1:11800:11800"
+      - "127.0.0.1:12800:12800"
+      - "127.0.0.1:17128:17128"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "cat < /dev/null > /dev/tcp/127.0.0.1/12800"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    networks:
+      - im-chat-local
+
+  skywalking-ui:
+    profiles: *infra-profiles
+    image: ghcr.io/apache/skywalking-horizon-ui:1.0.0
+    restart: unless-stopped
+    mem_limit: 384m
+    depends_on:
+      skywalking-oap:
+        condition: service_healthy
+    environment:
+      HORIZON_OAP_QUERY_URL: http://skywalking-oap:12800
+      HORIZON_OAP_ADMIN_URL: http://skywalking-oap:17128
+      HORIZON_TEMPLATES_MODE: live
+      HORIZON_AUTH_BACKEND: local
+      HORIZON_AUTH_LOCAL_USERS: '[{"username":"admin","passwordHash":"$$argon2id$$v=19$$m=65536,t=3,p=4$$K/f0dJqlI/c1I6RPxNhTPg$$sZ2NcLuSPL/o4bqNrARetaLVp4MDmV0xzxdwyYUKh+U","roles":["admin"]}]'
+    ports:
+      - "127.0.0.1:18050:8081"
+    volumes:
+      - horizon-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - im-chat-local
+
+  prometheus-infra:
+    profiles:
+      - infra
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    mem_limit: 256m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+      - --web.listen-address=0.0.0.0:9090
+    ports:
+      - "127.0.0.1:9090:9090"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./prometheus/prometheus-infra.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      im-chat-local:
+        aliases:
+          - prometheus
+
+  prometheus-full:
+    profiles:
+      - full
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    mem_limit: 256m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+      - --web.listen-address=0.0.0.0:9090
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus-full.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      im-chat-local:
+        aliases:
+          - prometheus
+
+  grafana:
+    profiles: *infra-profiles
+    image: grafana/grafana:12.1.1
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_HTTP_ADDR: 0.0.0.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/health >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      - im-chat-local
+  im-http-gateway:
+    <<: *app
+    image: im-chat/im-http-gateway:local
+    ports:
+      - "127.0.0.1:18010:18010"
+      - "127.0.0.1:19010:19010"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-gateway/im-http-gateway/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-http-gateway
+      MANAGEMENT_SERVER_PORT: 19010
+
+  im-ws-gateway-server:
+    <<: *app
+    depends_on: *broker-client-app-depends-on
+    image: im-chat/im-ws-gateway-server:local
+    ports:
+      - "127.0.0.1:18011:18011"
+      - "127.0.0.1:18012:18012"
+      - "127.0.0.1:19011:19011"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-gateway/im-ws-gateway/im-ws-gateway-server/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-ws-gateway-server
+      MANAGEMENT_SERVER_PORT: 19011
+      IM_GATEWAY_HOST: im-ws-gateway-server
+
+  im-broker-server:
+    <<: *app
+    image: im-chat/im-broker-server:local
+    ports:
+      - "127.0.0.1:18020:18020"
+      - "127.0.0.1:19020:19020"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-broker/im-broker-server/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-broker-server
+      MANAGEMENT_SERVER_PORT: 19020
+      IM_BROKER_HOST: im-broker-server
+      IM_BROKER_MANAGEMENT_HOST: im-broker-server
+      IM_BROKER_MANAGEMENT_BIND_HOST: 0.0.0.0
+
+  im-account-server:
+    <<: *app
+    depends_on: *broker-client-app-depends-on
+    image: im-chat/im-account-server:local
+    ports:
+      - "127.0.0.1:18030:18030"
+      - "127.0.0.1:19030:19030"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-service/im-account/im-account-server/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-account-server
+      MANAGEMENT_SERVER_PORT: 19030
+      IM_DATASOURCE_SHARDING_JDBC_URL: jdbc:mysql://mysql:3306/im_chat_account?characterEncoding=utf-8&serverTimezone=UTC
+
+  im-social-server:
+    <<: *app
+    image: im-chat/im-social-server:local
+    ports:
+      - "127.0.0.1:18031:18031"
+      - "127.0.0.1:19031:19031"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-service/im-social/im-social-server/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-social-server
+      MANAGEMENT_SERVER_PORT: 19031
+      IM_DATASOURCE_SHARDING_JDBC_URL: jdbc:mysql://mysql:3306/im_chat_social?characterEncoding=utf-8&serverTimezone=UTC
+
+  im-message-server:
+    <<: *app
+    depends_on: *broker-client-app-depends-on
+    image: im-chat/im-message-server:local
+    ports:
+      - "127.0.0.1:18032:18032"
+      - "127.0.0.1:19032:19032"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-service/im-message/im-message-server/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-message-server
+      MANAGEMENT_SERVER_PORT: 19032
+      IM_DATASOURCE_SHARDING_JDBC_URL: jdbc:mysql://mysql:3306/im_chat_message?characterEncoding=utf-8&serverTimezone=UTC
+
+  im-iam-server:
+    <<: *app
+    image: im-chat/im-iam-server:local
+    ports:
+      - "127.0.0.1:18040:18040"
+      - "127.0.0.1:19040:19040"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-management/im-iam/im-iam-server/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-iam-server
+      MANAGEMENT_SERVER_PORT: 19040
+      IM_DATASOURCE_SHARDING_JDBC_URL: jdbc:mysql://mysql:3306/im_chat_iam?characterEncoding=utf-8&serverTimezone=UTC
+
+  im-audit-server:
+    <<: *app
+    depends_on: *management-app-depends-on
+    image: im-chat/im-audit-server:local
+    ports:
+      - "127.0.0.1:18041:18041"
+      - "127.0.0.1:19041:19041"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-management/im-audit/im-audit-server/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-audit-server
+      MANAGEMENT_SERVER_PORT: 19041
+      IM_DATASOURCE_SHARDING_JDBC_URL: jdbc:mysql://mysql:3306/im_chat_audit?characterEncoding=utf-8&serverTimezone=UTC
+      IM_IAM_SERVICE_URI: http://im-iam-server:18040
+      IM_IAM_HTTP_READ_TIMEOUT: 10s
+
+  im-admin:
+    <<: *app
+    depends_on: *management-app-depends-on
+    image: im-chat/im-admin:local
+    ports:
+      - "127.0.0.1:18042:18042"
+      - "127.0.0.1:19042:19042"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-management/im-admin/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-admin
+      MANAGEMENT_SERVER_PORT: 19042
+      IM_IAM_SERVICE_URI: http://im-iam-server:18040
+      IM_IAM_HTTP_READ_TIMEOUT: 10s
+
+  im-monitor:
+    <<: *app
+    depends_on: *management-app-depends-on
+    image: im-chat/im-monitor:local
+    ports:
+      - "127.0.0.1:18043:18043"
+      - "127.0.0.1:19043:19043"
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-management/im-monitor/target/*-exec.jar
+    environment:
+      <<: *app-environment
+      SW_AGENT_NAME: im-monitor
+      MANAGEMENT_SERVER_PORT: 19043
+      IM_IAM_SERVICE_URI: http://im-iam-server:18040
+      IM_IAM_HTTP_READ_TIMEOUT: 10s
+
+networks:
+  im-chat-local:
+    name: im-chat-local
+
+volumes:
+  mysql-data:
+    name: im-chat-mysql-data
+  redis-data:
+    name: im-chat-redis-data
+  nacos-data:
+    name: im-chat-nacos-data
+  nacos-logs:
+    name: im-chat-nacos-logs
+  kafka-data:
+    name: im-chat-kafka-data
+  prometheus-data:
+    name: im-chat-prometheus-data
+  grafana-data:
+    name: im-chat-grafana-data
+  banyan-data:
+    name: im-chat-banyan-data
+  horizon-data:
+    name: im-chat-horizon-data

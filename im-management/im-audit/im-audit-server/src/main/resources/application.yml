@@ -1,5 +1,16 @@
 server:
-  port: 18091
+  port: 18041
+
+management:
+  server:
+    port: 19041
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never
 
 springdoc:
   swagger-ui:
@@ -13,12 +24,6 @@ spring:
   config:
     import:
       - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
-  datasource:
-    url: jdbc:mysql://localhost:3306/im_chat_audit?characterEncoding=utf-8&serverTimezone=UTC
-    username: root
-    password: root
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    type: com.alibaba.druid.pool.DruidDataSource
   cloud:
     function:
       definition: imAdminAudit;imIamAudit;imMonitorAudit;imAuditAudit
@@ -66,22 +71,27 @@ spring:
               dlq-name: im.audit.im-audit.v1.dlq
 
 im:
+  datasource:
+    sharding:
+      enabled: true
+      config-location: classpath:im-sharding.yml
   iam:
     enabled: true
-    issuer: http://localhost:18090
+    issuer: http://localhost:18040
     application:
       key: imAudit
       clients:
         web:
           client-id: im-audit-client
           client-secret: a927495b802ee7c9f195a80430ad9b5a0454ecc0d526ea63
-          redirect-uri: http://localhost:18091/iam/callback
-          post-logout-redirect-uri: http://localhost:18091/
+          redirect-uri: http://localhost:18041/iam/callback
+          post-logout-redirect-uri: http://localhost:18041/
         catalog:
           client-id: im-audit-catalog
           client-secret: b3c12d1ac70d4d499406b02cecc87d1959e60db488e74d6e
       session:
         encryption-key: gWeS8nw3NUJfjOM42yOaaAHEAn/ljQ5eYDTre94ohD8=
+        cookie-name: IM_AUDIT_IAM_SESSION
         secure-cookie: false
   audit:
     enabled: true

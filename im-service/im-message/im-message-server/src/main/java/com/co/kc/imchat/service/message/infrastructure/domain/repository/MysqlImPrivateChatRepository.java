@@ -5,10 +5,8 @@ import com.co.kc.imchat.common.domain.chat.model.ImChatId;
 import com.co.kc.imchat.service.message.domain.chat.model.ImPrivateChat;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImPrivateChatRepository;
 import com.co.kc.imchat.service.message.domain.message.model.ImMessage;
-import com.co.kc.imchat.service.message.domain.message.model.ImPrivateInboxMessage;
 import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.service.message.infrastructure.mybatis.entity.DbImPrivateChat;
-import com.co.kc.imchat.service.message.infrastructure.mybatis.entity.DbImPrivateInboxMessage;
 import com.co.kc.imchat.service.message.infrastructure.mybatis.service.DbImPrivateChatService;
 import com.co.kc.imchat.service.message.infrastructure.mybatis.service.DbImPrivateInboxMessageService;
 import com.co.kc.imchat.common.utils.FunctionUtils;
@@ -16,7 +14,9 @@ import com.co.kc.imchat.service.message.transformer.db.ImChatDbTransformer;
 import com.co.kc.imchat.service.message.transformer.domain.ImChatDomainTransformer;
 import com.co.kc.imchat.service.message.transformer.domain.ImMessageDomainTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.stereotype.Repository;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,7 +68,7 @@ public class MysqlImPrivateChatRepository implements ImPrivateChatRepository {
                 .filter(c -> c.getLastMessageId() != null && c.getLastMessageId() > 0)
                 .map(c -> dbImPrivateInboxMessageService
                         .getByChatIdAndMessageId(c.getChatId(), c.getLastMessageId())
-                        .map(this::privateInboxRowToDomain)
+                        .map(ImMessageDomainTransformer.INSTANCE::imPrivateInboxMessageFrom)
                         .orElse(null))
                 .filter(Objects::nonNull)
                 .map(m -> (ImMessage) m)
@@ -79,8 +79,30 @@ public class MysqlImPrivateChatRepository implements ImPrivateChatRepository {
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void save(ImPrivateChat imPrivateChat) {
         DbImPrivateChat dbImPrivateChat = ImChatDbTransformer.INSTANCE.dbImPrivateChatFrom(imPrivateChat);
-        // save() 仅为 INSERT；已持久化行需带主键并走 saveOrUpdate / updateById
-        dbImPrivateChatService.saveOrUpdate(dbImPrivateChat);
+        boolean persisted;
+        if (dbImPrivateChat.getId() == null) {
+            persisted = dbImPrivateChatService.saveOrUpdate(dbImPrivateChat);
+        } else {
+            persisted = dbImPrivateChatService.update(dbImPrivateChat,
+                    dbImPrivateChatService.getUpdateWrapper()
+                            .eq(DbImPrivateChat::getId, dbImPrivateChat.getId())
+                            .eq(DbImPrivateChat::getUserId, dbImPrivateChat.getUserId())
+                            .eq(DbImPrivateChat::getVersion, imPrivateChat.getRowVersion()));
+        }
+        if (!persisted) {
+            if (imPrivateChat.getPkId() != null) {
+                throw new OptimisticLockingFailureException(
+                        "Private chat was modified concurrently: " + imPrivateChat.getId().value());
+            }
+            throw new DataAccessResourceFailureException(
+                    "Private chat was not inserted: " + imPrivateChat.getId().value());
+        }
+        if (persisted) {
+            if (dbImPrivateChat.getId() != null) {
+                imPrivateChat.setPkId(dbImPrivateChat.getId());
+            }
+            imPrivateChat.setRowVersion(dbImPrivateChat.getVersion());
+        }
     }
 
     @Override
@@ -88,8 +110,4 @@ public class MysqlImPrivateChatRepository implements ImPrivateChatRepository {
         dbImPrivateChatService.removeByUserIdAndPeerUserId(userId.value(), peerUserId.value());
     }
 
-    /** 发送方会话内副本行 user_id == sender_id，需从会话解析真实接收方。 */
-    private ImPrivateInboxMessage privateInboxRowToDomain(DbImPrivateInboxMessage row) {
-        return ImMessageDomainTransformer.INSTANCE.imPrivateInboxMessageFrom(row);
-    }
 }

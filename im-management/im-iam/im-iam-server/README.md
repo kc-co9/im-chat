@@ -13,7 +13,7 @@ Introspection、Revocation、应用权限目录、角色授权、在线会话和
 im:
   iam:
     authorization:
-      issuer: http://localhost:18090
+      issuer: http://localhost:18040
       key-store-location: classpath:iam/iam-signing.p12
       key-store-password: ImChatIamLocalStore_2026!
       key-alias: im-iam-signing
@@ -117,7 +117,7 @@ UI 变更执行 `npm run lint`、`npm run format:check`、`npm run test:unit`、
 `VITE_IAM_CONSOLE_URL`、`VITE_AUDIT_CONSOLE_URL`、`VITE_MONITOR_CONSOLE_URL` 和
 `VITE_ADMIN_CONSOLE_URL` 在构建时覆盖。创建、编辑和详情使用右侧抽屉，危险操作必须显式确认，
 刷新失败时保留最近一次成功数据。
-IAM 本地服务默认运行在 `http://localhost:18090`。
+IAM 本地服务默认运行在 `http://localhost:18040`，Actuator 使用 `19040`。
 
 `im-iam-sdk` 为接入应用提供的默认 `iamSecurityFilterChain` 不属于 IAM Server；服务端使用独立命名，
 避免混淆两类安全边界或产生 Bean 名冲突。
@@ -340,9 +340,12 @@ OAuth 客户端，也可以拥有多个客户端；浏览器客户端必须声�
 ## 首次初始化
 
 项目尚未上线，不保留旧管理账号和 RBAC 数据的兼容迁移。首次部署执行模块根目录
-[`sql/ddl.sql`](sql/ddl.sql) 创建 `im_chat_iam` 全新结构，再通过 `IamBootstrap` 创建首个管理员和 IAM 超级管理员角色。
+[`sql/ddl.sql`](sql/ddl.sql) 创建 `im_chat_iam` 结构。交付 DDL 只使用 `CREATE ... IF NOT EXISTS`，不会先删除已有表。
+本地 Compose 随后执行 [`sql/dml.sql`](sql/dml.sql)，预置 IAM、Admin、Audit、Monitor 四个本地应用及其 web/catalog OAuth 客户端；该 DML 只使用本地开发密钥，不用于生产。最后由 `IamBootstrap` 创建首个管理员和 IAM 超级管理员角色。
 初始化成功后立即移除初始化密码并关闭 `im.iam.bootstrap.enabled`。
 
-业务应用和 OAuth 客户端通过受保护的管理接口分别创建，不在 DDL 中写入固定业务数据。审计生产者
+分片入口为 `im.datasource.sharding`，规则文件默认为 classpath 下的 `im-sharding.yml`。生产必须通过 Nacos 覆盖 `jdbc-url`、`username`、`password`，或将 `config-location` 指向部署系统提供的外部规则文件；仓库内 `root/root` 仅用于本地。
+
+生产业务应用和 OAuth 客户端通过受保护的管理接口分别创建，不在 DDL 中写入固定业务数据。审计生产者
 使用独立的 Client Credentials 客户端，并仅授予 `audit:ingest` Scope；原始客户端密钥由部署环境
 安全保存，不进入仓库、日志或普通业务响应。

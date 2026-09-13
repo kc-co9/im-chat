@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 public class NettyWebSocketServer {
+    private final String host;
     private final int port;
     private final String gatewayId;
     private final String path;
@@ -44,7 +45,8 @@ public class NettyWebSocketServer {
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
 
-    public NettyWebSocketServer(int port,
+    public NettyWebSocketServer(String host,
+                                int port,
                                 String gatewayId,
                                 String path,
                                 BrokerClient brokerClient,
@@ -52,6 +54,7 @@ public class NettyWebSocketServer {
                                 WsAuthenticationManager authenticationManager,
                                 int readerIdleSeconds,
                                 int maxFramePayloadLength) {
+        this.host = host;
         this.port = port;
         this.gatewayId = gatewayId;
         this.path = path;
@@ -100,9 +103,9 @@ public class NettyWebSocketServer {
                                     .addLast(new FrameHandler(brokerClient));
                         }
                     });
-            ChannelFuture future = bootstrap.bind(port).sync();
+            ChannelFuture future = bootstrap.bind(host, port).sync();
             serverChannel = future.channel();
-            log.info("im ws gateway netty server started on port {}", port);
+            log.info("im ws gateway netty server started on {}:{}", host, port);
             return future;
         } catch (Throwable ex) {
             shutdownEventLoopGroups();

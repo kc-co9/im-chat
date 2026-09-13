@@ -17,6 +17,8 @@ public record IamProperties(
         Boolean enabled,
         /* IAM 服务的 Issuer。 */
         URI issuer,
+        /* 服务端访问 IAM 的内部地址，默认使用 Issuer。 */
+        URI serviceUri,
         /* 当前接入 IAM 的管理应用。 */
         Application application,
         /* 访问 IAM 服务的 HTTP 配置。 */
@@ -40,6 +42,15 @@ public record IamProperties(
         AssertUtils.argTrue(
                 "IAM issuer must use HTTPS outside loopback development",
                 httpsIssuer || localHttpIssuer);
+        serviceUri = serviceUri == null ? issuer : serviceUri;
+        boolean httpsServiceUri = "https".equalsIgnoreCase(serviceUri.getScheme())
+                && serviceUri.getHost() != null;
+        boolean localHttpServiceUri = localHttpIssuer
+                && "http".equalsIgnoreCase(serviceUri.getScheme())
+                && serviceUri.getHost() != null;
+        AssertUtils.argTrue(
+                "IAM service URI must use HTTPS outside loopback development",
+                httpsServiceUri || localHttpServiceUri);
         AssertUtils.argNotNull("IAM application must not be null", application);
         http = http == null ? new Http(null, null) : http;
         introspection = introspection == null ? new Introspection(null) : introspection;

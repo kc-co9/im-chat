@@ -67,8 +67,9 @@ Before editing:
 2. Read root `PROGRESS.md`, then identify the requested scope and non-goals, affected owners, authoritative fact sources, and required environment or tool access.
 3. Run `./scripts/verify.sh readiness` before substantial work; fix or attribute environment failures before implementation.
 4. Read root `ARCHITECTURE.md`, each affected owning module's local `ARCHITECTURE.md` when present, nearest `AGENTS.md`, and the current design or product specification identified by its index or status marker. For business model or behavior changes, also read each affected owning module README.
-5. When an active execution plan applies, resume its current task and recovery state before editing. Keep `PROGRESS.md` synchronized when the active plan or task changes. Small single-file maintenance remains exempt under `docs/PLANS.md`.
-6. Search for existing patterns before introducing a new abstraction.
+5. When requirements are settled through grilling, brainstorming, or another decision interview, write the approved decisions to `docs/design-docs` using its template before creating an execution plan or implementation code. Conversation history is not a repository fact source; preserve the chosen behavior and rationale in a decision record and obtain the required design review.
+6. When an active execution plan applies, resume its current task and recovery state before editing. Keep `PROGRESS.md` synchronized when the active plan or task changes. Each plan task must have matching checkbox steps with exact file scope and verification commands; update checkboxes as steps complete. Small single-file maintenance remains exempt under `docs/PLANS.md`.
+7. Search for existing patterns before introducing a new abstraction.
 
 After editing:
 

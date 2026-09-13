@@ -15,8 +15,9 @@ class BrokerManagementPropertiesTest {
     void bindsSafeLocalDefaults() {
         contextRunner.run(context -> {
             BrokerManagementProperties properties = context.getBean(BrokerManagementProperties.class);
+            assertThat(properties.getBindHost()).isEqualTo("127.0.0.1");
             assertThat(properties.getHost()).isEqualTo("127.0.0.1");
-            assertThat(properties.getPort()).isEqualTo(12201);
+            assertThat(properties.getPort()).isEqualTo(19020);
             assertThat(properties.getHistoryCapacity()).isEqualTo(100);
         });
     }
@@ -30,9 +31,23 @@ class BrokerManagementPropertiesTest {
     @Test
     void rejectsBlankHostAndInvalidPort() {
         contextRunner.withPropertyValues(
+                        "im.broker.management.bind-host= ",
                         "im.broker.management.host= ",
                         "im.broker.management.port=65536")
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void separatesBindAndAdvertisedHosts() {
+        contextRunner.withPropertyValues(
+                        "im.broker.management.bind-host=0.0.0.0",
+                        "im.broker.management.host=im-broker-server")
+                .run(context -> {
+                    BrokerManagementProperties properties =
+                            context.getBean(BrokerManagementProperties.class);
+                    assertThat(properties.getBindHost()).isEqualTo("0.0.0.0");
+                    assertThat(properties.getHost()).isEqualTo("im-broker-server");
+                });
     }
 
     @Test

@@ -2,9 +2,11 @@ package com.co.kc.imchat.management.iam.sdk;
 
 import com.co.kc.imchat.management.iam.sdk.catalog.IamPermissionCatalog;
 import com.co.kc.imchat.management.iam.sdk.catalog.IamPermissionCatalogRegistrar;
+import com.co.kc.imchat.management.iam.sdk.introspection.IamIntrospectionClient;
 import com.co.kc.imchat.management.iam.sdk.introspection.IamIntrospectionService;
 import com.co.kc.imchat.management.iam.sdk.session.crypto.IamSessionCipher;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -16,6 +18,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Base64;
 import java.util.List;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -89,6 +93,36 @@ class ImIamSdkAutoConfigurationTest {
                     assertThat(ReflectionTestUtils.getField(registrar, "restClient"))
                             .isSameAs(context.getBean("iamRestClient", RestClient.class));
                 });
+    }
+
+    @Test
+    void usesServiceUriForServerToServerIamCalls() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/oauth2/introspect", exchange -> {
+            byte[] body = "{\"active\":false}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            contextRunner
+                    .withBean(StringRedisTemplate.class,
+                            () -> mock(StringRedisTemplate.class))
+                    .withBean(ObjectMapper.class, ObjectMapper::new)
+                    .withBean(SecurityFilterChain.class,
+                            () -> mock(SecurityFilterChain.class))
+                    .withPropertyValues(enabledProperties())
+                    .withPropertyValues(
+                            "im.iam.issuer=http://localhost:1",
+                            "im.iam.service-uri=http://localhost:"
+                                    + server.getAddress().getPort())
+                    .run(context -> assertThat(context.getBean(IamIntrospectionClient.class)
+                            .introspect("access-token").active()).isFalse());
+        } finally {
+            server.stop(0);
+        }
     }
 
     private String[] enabledProperties() {

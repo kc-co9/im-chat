@@ -16,9 +16,20 @@ public interface ApplicationPermissionDomainTransformer {
     @Mapping(target = "code.value", source = "code")
     @Mapping(target = "name.value", source = "name")
     @Mapping(target = "description.value", source = "description")
-    ApplicationPermission permissionFrom(DbIamApplicationPermission permission);
+    ApplicationPermission permissionFieldsFrom(DbIamApplicationPermission permission);
 
-    @Mapping(target = "id", ignore = true)
+    default ApplicationPermission permissionFrom(DbIamApplicationPermission entity) {
+        if (entity == null) {
+            return null;
+        }
+        ApplicationPermission permission = permissionFieldsFrom(entity);
+        permission.setPkId(entity.getId());
+        permission.setRowVersion(entity.getVersion());
+        return permission;
+    }
+
+    @Mapping(target = "id", source = "pkId")
+    @Mapping(target = "version", source = "rowVersion")
     @Mapping(target = "permissionId", source = "id.value")
     @Mapping(target = "appId", source = "appId.value")
     @Mapping(target = "code", source = "code.value")

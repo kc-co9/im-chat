@@ -14,7 +14,9 @@ import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.service.message.transformer.db.ImMessageDbTransformer;
 import com.co.kc.imchat.service.message.transformer.domain.ImMessageDomainTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.stereotype.Repository;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,19 +39,36 @@ public class MysqlImPrivateInboxMessageRepository implements ImPrivateInboxMessa
 
     @Override
     public void save(ImPrivateInboxMessage message) {
+        DbImPrivateInboxMessage dbMessage = ImMessageDbTransformer.INSTANCE.dbImPrivateInboxMessageFrom(message);
+        boolean persisted;
         if (message.getPkId() == null) {
-            DbImPrivateInboxMessage dbMessage = ImMessageDbTransformer.INSTANCE.dbImPrivateInboxMessageFrom(message);
-            dbImPrivateInboxMessageService.save(dbMessage);
+            persisted = dbImPrivateInboxMessageService.save(dbMessage);
         } else {
-            dbImPrivateInboxMessageService.update(dbImPrivateInboxMessageService.getUpdateWrapper()
-                    .set(DbImPrivateInboxMessage::getStatus, ImMessageDbTransformer.INSTANCE.dbImMessageStatusFrom(message.getStatus()))
-                    .set(DbImPrivateInboxMessage::getReceiveTime, message.getReceivedTime())
-                    .set(DbImPrivateInboxMessage::getReadTime, message.getReadTime())
-                    .set(DbImPrivateInboxMessage::getRevokeTime, message.getRevokeTime())
-                    .set(DbImPrivateInboxMessage::getContent, message.getContent().value())
-                    .set(DbImPrivateInboxMessage::getType, ImMessageDbTransformer.INSTANCE.dbImMessageTypeFrom(message.getContent().type()))
-                    .eq(DbImPrivateInboxMessage::getId, message.getPkId())
-            );
+            persisted = dbImPrivateInboxMessageService.update(dbMessage,
+                    dbImPrivateInboxMessageService.getUpdateWrapper()
+                            .set(DbImPrivateInboxMessage::getStatus, dbMessage.getStatus())
+                            .set(DbImPrivateInboxMessage::getReceiveTime, dbMessage.getReceiveTime())
+                            .set(DbImPrivateInboxMessage::getReadTime, dbMessage.getReadTime())
+                            .set(DbImPrivateInboxMessage::getRevokeTime, dbMessage.getRevokeTime())
+                            .set(DbImPrivateInboxMessage::getContent, dbMessage.getContent())
+                            .set(DbImPrivateInboxMessage::getType, dbMessage.getType())
+                            .eq(DbImPrivateInboxMessage::getId, message.getPkId())
+                            .eq(DbImPrivateInboxMessage::getUserId, message.getUserId().value())
+                            .eq(DbImPrivateInboxMessage::getVersion, message.getRowVersion()));
+        }
+        if (!persisted) {
+            if (message.getPkId() != null) {
+                throw new OptimisticLockingFailureException(
+                        "Private inbox message was modified concurrently: " + message.getId().value());
+            }
+            throw new DataAccessResourceFailureException(
+                    "Private inbox message was not inserted: " + message.getId().value());
+        }
+        if (persisted) {
+            if (dbMessage.getId() != null) {
+                message.setPkId(dbMessage.getId());
+            }
+            message.setRowVersion(dbMessage.getVersion());
         }
     }
 

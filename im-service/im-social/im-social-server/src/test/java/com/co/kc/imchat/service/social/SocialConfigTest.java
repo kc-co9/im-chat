@@ -1,5 +1,7 @@
 package com.co.kc.imchat.service.social;
 
+import org.apache.shardingsphere.driver.yaml.YamlJDBCConfiguration;
+import org.apache.shardingsphere.infra.util.yaml.YamlEngine;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.env.StandardEnvironment;
@@ -21,16 +23,17 @@ class SocialConfigTest {
     }
 
     @Test
-    void declaresExplicitMysqlDatasource() throws IOException {
+    void declaresOwnedShardingDatasource() throws IOException {
         StandardEnvironment environment = loadApplicationConfig();
+        YamlJDBCConfiguration sharding = YamlEngine.unmarshal(
+                new ClassPathResource("im-sharding.yml").getFile(), YamlJDBCConfiguration.class);
 
-        assertThat(environment.getProperty("spring.datasource.url"))
-                .startsWith("jdbc:mysql://")
+        assertThat(environment.getProperty("im.datasource.sharding.enabled")).isEqualTo("true");
+        assertThat(environment.getProperty("im.datasource.sharding.config-location"))
+                .isEqualTo("classpath:im-sharding.yml");
+        assertThat(environment.getProperty("spring.datasource.url")).isNull();
+        assertThat(sharding.getDataSources().get("ds_0").get("url").toString())
                 .contains("/im_chat_social?");
-        assertThat(environment.getProperty("spring.datasource.driver-class-name"))
-                .isEqualTo("com.mysql.cj.jdbc.Driver");
-        assertThat(environment.getProperty("spring.datasource.type"))
-                .isEqualTo("com.alibaba.druid.pool.DruidDataSource");
     }
 
     @Test

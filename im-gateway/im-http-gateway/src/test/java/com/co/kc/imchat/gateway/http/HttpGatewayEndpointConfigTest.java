@@ -32,7 +32,7 @@ class HttpGatewayEndpointConfigTest {
                 .sorted()
                 .toList();
 
-        assertEquals(18080, environment.getProperty("server.port", Integer.class));
+        assertEquals(18010, environment.getProperty("server.port", Integer.class));
         assertEquals(List.of("im-account", "im-message", "im-social"), routeIds);
         assertEquals("optional:nacos:im-http-gateway.yml?group=INFRA_GROUP",
                 environment.getProperty("spring.config.import[0]"));

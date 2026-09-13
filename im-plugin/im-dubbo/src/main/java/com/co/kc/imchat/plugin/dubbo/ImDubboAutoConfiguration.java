@@ -43,6 +43,10 @@ public class ImDubboAutoConfiguration {
     public ProtocolConfig dubboProtocolConfig(ImDubboProperties properties) {
         ProtocolConfig config = new ProtocolConfig();
         config.setName(properties.getProtocol().getName());
+        // 共享宿主网络下显式限制监听地址；未配置时继续使用 Dubbo 的地址选择规则。
+        if (StringUtils.hasText(properties.getProtocol().getHost())) {
+            config.setHost(properties.getProtocol().getHost());
+        }
         config.setPort(properties.getProtocol().getPort());
         return config;
     }

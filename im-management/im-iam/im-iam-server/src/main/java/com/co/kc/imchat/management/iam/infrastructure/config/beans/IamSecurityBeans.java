@@ -234,6 +234,8 @@ public class IamSecurityBeans {
             IamLoginRedirectHandler loginRedirectHandler
     ) throws Exception {
         http.authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/actuator/**")
+                        .permitAll()
                         .requestMatchers(
                                 "/login",
                                 "/error",

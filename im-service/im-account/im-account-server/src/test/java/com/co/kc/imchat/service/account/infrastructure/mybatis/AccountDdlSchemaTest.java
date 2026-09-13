@@ -17,7 +17,7 @@ class AccountDdlSchemaTest {
         assertThat(ddl)
                 .contains("CREATE DATABASE IF NOT EXISTS `im_chat_account`")
                 .contains("USE `im_chat_account`")
-                .contains("CREATE TABLE `db_user`")
+                .contains("CREATE TABLE IF NOT EXISTS `db_user`")
                 .doesNotContain("`db_friend`", "`db_im_group`", "`db_im_private_chat`");
     }
 }

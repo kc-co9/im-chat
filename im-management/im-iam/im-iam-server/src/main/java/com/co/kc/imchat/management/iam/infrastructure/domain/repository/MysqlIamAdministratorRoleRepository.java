@@ -7,6 +7,7 @@ import com.co.kc.imchat.management.iam.infrastructure.mybatis.entity.DbIamIntern
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.service.DbIamInternalAdministratorRoleService;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
+import org.springframework.dao.DataAccessResourceFailureException;
 
 import java.util.List;
 import java.util.Set;
@@ -29,7 +30,10 @@ public class MysqlIamAdministratorRoleRepository implements IamAdministratorRole
         DbIamInternalAdministratorRole relation = new DbIamInternalAdministratorRole();
         relation.setAdministratorId(administratorId.value());
         relation.setRoleId(roleId.value());
-        administratorRoleService.save(relation);
+        if (!administratorRoleService.save(relation)) {
+            throw new DataAccessResourceFailureException(
+                    "IAM administrator role was not inserted: " + roleId.value());
+        }
     }
 
     @Override
@@ -73,7 +77,10 @@ public class MysqlIamAdministratorRoleRepository implements IamAdministratorRole
                 .map(roleId -> relation(administratorId, roleId))
                 .toList();
         if (CollectionUtils.isNotEmpty(addedRoles)) {
-            administratorRoleService.saveBatch(addedRoles);
+            if (!administratorRoleService.saveBatch(addedRoles)) {
+                throw new DataAccessResourceFailureException(
+                        "IAM administrator roles were not inserted: " + administratorId.value());
+            }
         }
     }
 

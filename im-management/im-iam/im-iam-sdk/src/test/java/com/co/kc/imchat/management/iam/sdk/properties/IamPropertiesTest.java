@@ -23,10 +23,12 @@ class IamPropertiesTest {
         Map<String, Object> values = canonicalValues();
         values.put("im.iam.application.clients.catalog.client-id", "im-admin-catalog");
         values.put("im.iam.application.clients.catalog.client-secret", "catalog-secret");
+        values.put("im.iam.service-uri", "https://iam.internal");
 
         IamProperties properties = bind(values);
 
         assertThat(properties.issuer()).isEqualTo(URI.create("https://iam.example.com"));
+        assertThat(properties.serviceUri()).isEqualTo(URI.create("https://iam.internal"));
         assertThat(properties.application().key()).isEqualTo("imAdmin");
         assertThat(properties.application().clients().web().clientId())
                 .isEqualTo("im-admin-client");
@@ -49,6 +51,7 @@ class IamPropertiesTest {
         assertThat(properties.http().connectTimeout()).isEqualTo(Duration.ofSeconds(1));
         assertThat(properties.http().readTimeout()).isEqualTo(Duration.ofSeconds(2));
         assertThat(properties.introspection().staleTtl()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(properties.serviceUri()).isEqualTo(properties.issuer());
     }
 
     @Test
@@ -78,6 +81,7 @@ class IamPropertiesTest {
         assertThatThrownBy(() -> new IamProperties(
                 true,
                 URI.create("http://iam.example.com"),
+                null,
                 application,
                 null,
                 null))
@@ -86,6 +90,7 @@ class IamPropertiesTest {
         assertThatThrownBy(() -> new IamProperties(
                 true,
                 URI.create("/iam"),
+                null,
                 application,
                 null,
                 null))
@@ -94,10 +99,29 @@ class IamPropertiesTest {
         assertThat(new IamProperties(
                 true,
                 URI.create("http://localhost:18092"),
+                null,
                 application,
                 null,
                 null).issuer())
                 .isEqualTo(URI.create("http://localhost:18092"));
+    }
+
+    @Test
+    void allowsPlaintextServiceUriOnlyForLoopbackDevelopmentIssuer() {
+        Map<String, Object> productionValues = canonicalValues();
+        productionValues.put("im.iam.service-uri", "http://im-iam-server:18040");
+
+        assertThatThrownBy(() -> bind(productionValues))
+                .isInstanceOf(BindException.class)
+                .hasRootCauseMessage(
+                        "IAM service URI must use HTTPS outside loopback development");
+
+        Map<String, Object> localValues = canonicalValues();
+        localValues.put("im.iam.issuer", "http://localhost:18040");
+        localValues.put("im.iam.service-uri", "http://im-iam-server:18040");
+
+        assertThat(bind(localValues).serviceUri())
+                .isEqualTo(URI.create("http://im-iam-server:18040"));
     }
 
     @Test
@@ -124,11 +148,11 @@ class IamPropertiesTest {
         IamProperties.Application application = properties.application();
 
         assertThatThrownBy(() -> new IamProperties(
-                true, null, application, null, null))
+                true, null, null, application, null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("issuer");
         assertThatThrownBy(() -> new IamProperties(
-                true, properties.issuer(), null, null, null))
+                true, properties.issuer(), null, null, null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("application");
         assertThatThrownBy(() -> new IamProperties.Application(
@@ -227,6 +251,7 @@ class IamPropertiesTest {
         return new IamProperties(
                 true,
                 URI.create("https://iam.example.com"),
+                null,
                 application,
                 null,
                 new IamProperties.Introspection(staleTtl));

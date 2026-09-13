@@ -4,6 +4,8 @@ Completed plans are retained as implementation history. Move a plan here only af
 
 Completed plans:
 
+- [可观测性与分片运行接入](2026-09-11-observability-sharding-runtime.md)
+- [Harness 交接、启动与质量评审](2026-09-10-harness-handoff-startup-and-quality.md)
 - [Harness 证据与运行闭环](2026-09-10-harness-evidence-and-runtime-loop.md)
 - [执行工件模板融合](2026-09-10-execution-artifact-template-integration.md)
 - [Harness 运行门禁增强](2026-09-10-harness-operational-gates.md)

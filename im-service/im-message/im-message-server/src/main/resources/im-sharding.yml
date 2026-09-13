@@ -1,0 +1,59 @@
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    url: ${im.datasource.sharding.jdbc-url:jdbc:mysql://localhost:3306/im_chat_message?characterEncoding=utf-8&serverTimezone=UTC}
+    username: ${im.datasource.sharding.username:root}
+    password: ${im.datasource.sharding.password:root}
+    minimumIdle: 50
+    maximumPoolSize: 200
+    connectionTimeout: 60000
+    idleTimeout: 300000
+
+rules:
+  - !SHARDING
+    tables:
+      db_im_private_chat:
+        actualDataNodes: ds_0.db_im_private_chat_${0..7}
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: db_im_private_chat_inline
+      db_im_group_chat:
+        actualDataNodes: ds_0.db_im_group_chat_${0..7}
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: db_im_group_chat_inline
+      db_im_private_inbox_message:
+        actualDataNodes: ds_0.db_im_private_inbox_message_${0..7}
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: db_im_private_inbox_message_inline
+      db_im_group_inbox_message:
+        actualDataNodes: ds_0.db_im_group_inbox_message_${0..7}
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: db_im_group_inbox_message_inline
+    shardingAlgorithms:
+      db_im_private_chat_inline:
+        type: INLINE
+        props:
+          algorithm-expression: db_im_private_chat_${user_id % 8}
+      db_im_group_chat_inline:
+        type: INLINE
+        props:
+          algorithm-expression: db_im_group_chat_${user_id % 8}
+      db_im_private_inbox_message_inline:
+        type: INLINE
+        props:
+          algorithm-expression: db_im_private_inbox_message_${user_id % 8}
+      db_im_group_inbox_message_inline:
+        type: INLINE
+        props:
+          algorithm-expression: db_im_group_inbox_message_${user_id % 8}
+
+props:
+  sql-show: ${im.datasource.sharding.sql-show:true}

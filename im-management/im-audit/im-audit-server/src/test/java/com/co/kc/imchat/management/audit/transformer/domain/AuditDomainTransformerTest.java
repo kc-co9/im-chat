@@ -50,7 +50,8 @@ class AuditDomainTransformerTest {
         assertThat(entity.getAttributes()).isEqualTo(Map.of("channel", "HTTP"));
         assertThat(entity.getOccurredAt()).isEqualTo(event.getOccurredAt());
         assertThat(restored.getAttributes()).isEqualTo(event.getAttributes());
-        assertThat(restored.getPkId()).isNull();
+        assertThat(restored.getPkId()).isEqualTo(9L);
+        assertThat(restored.getRowVersion()).isZero();
     }
 
     private AuditEvent event() {

@@ -58,7 +58,12 @@ class MysqlAuditEventRepositoryTest {
     void appendsNewFactAndTreatsDuplicateIdentityAsIdempotent() {
         DbAuditEventService service = mock(DbAuditEventService.class);
         AuditEvent event = event();
-        when(service.save(any(DbAuditEvent.class))).thenReturn(true)
+        when(service.save(any(DbAuditEvent.class))).thenAnswer(invocation -> {
+                    DbAuditEvent entity = invocation.getArgument(0);
+                    entity.setId(9L);
+                    entity.setVersion(0L);
+                    return true;
+                })
                 .thenThrow(new DuplicateKeyException("duplicate audit_id"));
         MysqlAuditEventRepository repository = new MysqlAuditEventRepository(service);
 
@@ -67,6 +72,8 @@ class MysqlAuditEventRepositoryTest {
 
         assertThat(first).isTrue();
         assertThat(duplicate).isFalse();
+        assertThat(event.getPkId()).isEqualTo(9L);
+        assertThat(event.getRowVersion()).isZero();
         verify(service, org.mockito.Mockito.times(2)).save(argThat(
                 entity -> "audit-1".equals(entity.getAuditId())));
     }
@@ -99,6 +106,7 @@ class MysqlAuditEventRepositoryTest {
 
         assertThat(result).contains(event());
         assertThat(result.orElseThrow().getPkId()).isEqualTo(9L);
+        assertThat(result.orElseThrow().getRowVersion()).isZero();
         verify(service).getFirst(argThat(query ->
                 query.getSqlSegment().contains("audit_id")));
     }

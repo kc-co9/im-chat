@@ -19,7 +19,12 @@ public class GatewayProperties {
     /**
      * Netty WebSocket 监听端口。
      */
-    private int port = 19090;
+    private int port = 18011;
+
+    /**
+     * Netty WebSocket 监听地址。
+     */
+    private String bindHost = "0.0.0.0";
 
     /**
      * WebSocket 握手路径。

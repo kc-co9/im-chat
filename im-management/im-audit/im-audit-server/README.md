@@ -51,7 +51,9 @@ API description 为 `GET /v3/api-docs`，两者均沿用 IAM Session 认证。
 ## 运行验证
 
 执行模块根目录 [`sql/ddl.sql`](sql/ddl.sql) 创建 `im_chat_audit` 及审计表，并在部署配置中覆盖数据库、Kafka、IAM issuer/client、
-Session 加密密钥和回调地址。服务默认端口为 `18091`。
+Session 加密密钥和回调地址。服务默认端口为 `18041`，Actuator 端口为 `19041`。
+
+分片入口为 `im.datasource.sharding`，规则文件默认为 classpath 下的 `im-sharding.yml`。生产必须通过 Nacos 覆盖 `jdbc-url`、`username`、`password`，或将 `config-location` 指向部署系统提供的外部规则文件；仓库内 `root/root` 仅用于本地。
 
 四个管理端使用一致的 Element Plus 高密度运维控制台：页面只展示本应用拥有的功能。
 “其他控制台”链接由各 UI 的 `src/config/consoleLinks.ts` 管理，本地默认地址可分别通过

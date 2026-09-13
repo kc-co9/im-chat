@@ -52,6 +52,7 @@ bash "$ROOT_DIR/scripts/test-sql-harness.sh"
 bash "$ROOT_DIR/scripts/test-java-style-harness.sh"
 bash "$ROOT_DIR/scripts/test-management-ui-harness.sh"
 bash "$ROOT_DIR/scripts/check-management-ui.sh"
+bash "$ROOT_DIR/scripts/test-local-compose-harness.sh"
 
 space_fixture="$(mktemp -d)/repository with spaces"
 ln -s "$ROOT_DIR" "$space_fixture"
@@ -64,6 +65,8 @@ trap 'rm -rf "${space_fixture%/*}" "$fixture_root"' EXIT
 git -C "$fixture_root" init --quiet
 mkdir -p "$fixture_root/scripts" \
   "$fixture_root/module" \
+  "$fixture_root/module/src/main/java/example/domain/model" \
+  "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao" \
   "$fixture_root/im-gateway" \
   "$fixture_root/im-broker" \
   "$fixture_root/im-service/im-message" \
@@ -86,6 +89,23 @@ EOF
 chmod +x "$fixture_root/scripts/check-drift.sh" \
   "$fixture_root/scripts/check-java-style.sh" \
   "$fixture_root/scripts/check-sql.sh"
+cat > "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseEntity.java" <<'EOF'
+@TableId(value = "id", type = IdType.AUTO)
+class BaseEntity {
+}
+EOF
+cat > "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseMybatisService.java" <<'EOF'
+class BaseMybatisService {
+}
+EOF
+cat > "$fixture_root/module/src/main/java/example/domain/model/Sample.java" <<'EOF'
+package example.domain.model;
+class Sample {
+  static class Builder {
+    Builder name(String name) { return this; }
+  }
+}
+EOF
 touch "$fixture_root/README.md" \
   "$fixture_root/PROGRESS.md" \
   "$fixture_root/.java-version" \
@@ -100,6 +120,7 @@ touch "$fixture_root/README.md" \
   "$fixture_root/im-broker/ARCHITECTURE.md" \
   "$fixture_root/im-service/im-message/ARCHITECTURE.md" \
   "$fixture_root/docs/design-docs/index.md" \
+  "$fixture_root/docs/design-docs/TEMPLATE.md" \
   "$fixture_root/docs/exec-plans/TEMPLATE.md" \
   "$fixture_root/docs/exec-plans/active/README.md" \
   "$fixture_root/docs/exec-plans/completed/README.md" \
@@ -205,6 +226,50 @@ if ! markdown_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
   exit 1
 fi
 
+sed -i.bak 's/IdType.AUTO/IdType.ASSIGN_ID/' \
+  "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseEntity.java"
+if persistence_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
+  printf 'Invalid persistence primary-key semantics should fail.\n' >&2
+  exit 1
+fi
+if ! rg -Fq 'Persistence foundation semantics are invalid' <<<"$persistence_output"; then
+  printf 'Persistence semantics output did not identify the rule.\n%s\n' "$persistence_output" >&2
+  exit 1
+fi
+mv "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseEntity.java.bak" \
+  "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseEntity.java"
+
+cp "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseMybatisService.java" \
+  "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseMybatisService.java.valid"
+printf 'boolean update(Object entity) { return true; }\n' >> \
+  "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseMybatisService.java"
+if persistence_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
+  printf 'Public persistence write override should fail.\n' >&2
+  exit 1
+fi
+if ! rg -Fq 'Persistence foundation semantics are invalid' <<<"$persistence_output"; then
+  printf 'Persistence write-semantics output did not identify the rule.\n%s\n' "$persistence_output" >&2
+  exit 1
+fi
+mv "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseMybatisService.java.valid" \
+  "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseMybatisService.java"
+
+cp "$fixture_root/module/src/main/java/example/domain/model/Sample.java" \
+  "$fixture_root/module/src/main/java/example/domain/model/Sample.java.valid"
+sed -i.bak '/Builder name/a\
+    Builder rowVersion(Long rowVersion) { return this; }' \
+  "$fixture_root/module/src/main/java/example/domain/model/Sample.java"
+if persistence_output="$($fixture_root/scripts/check-drift.sh 2>&1)"; then
+  printf 'Domain persistence fields in Builder should fail.\n' >&2
+  exit 1
+fi
+if ! rg -Fq 'domain Builder must not expose persistence field pkId/rowVersion' <<<"$persistence_output"; then
+  printf 'Domain Builder persistence output did not identify the rule.\n%s\n' "$persistence_output" >&2
+  exit 1
+fi
+mv "$fixture_root/module/src/main/java/example/domain/model/Sample.java.valid" \
+  "$fixture_root/module/src/main/java/example/domain/model/Sample.java"
+
 git -C "$fixture_root" rm --cached --force im-broker/ARCHITECTURE.md >/dev/null
 rm "$fixture_root/im-broker/ARCHITECTURE.md"
 if architecture_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
@@ -282,6 +347,139 @@ fi
 
 sed -i.bak 's/`done`/`passing`/' "$fixture_root/docs/exec-plans/active/current.md"
 rm "$fixture_root/docs/exec-plans/active/current.md.bak"
+if plan_detail_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
+  printf 'Active plan without detailed checkbox tasks should fail.\n' >&2
+  exit 1
+fi
+if ! rg -Fq 'Active execution plan task detail is incomplete' <<<"$plan_detail_output"; then
+  printf 'Plan-detail output did not explain the missing task checklist.\n%s\n' \
+    "$plan_detail_output" >&2
+  exit 1
+fi
+if ! rg -Fq 'Active execution plan fact source is incomplete' <<<"$plan_detail_output"; then
+  printf 'Plan-detail output did not explain the missing design or product specification.\n%s\n' \
+    "$plan_detail_output" >&2
+  exit 1
+fi
+
+cat > "$fixture_root/docs/design-docs/current-design.md" <<'EOF'
+# Current Design
+EOF
+cat > "$fixture_root/docs/exec-plans/active/current.md" <<'EOF'
+# Current Plan
+## Sprint Contract
+## 事实源
+- 设计或产品规格：[Current Design](../../design-docs/current-design.md)
+## 验证分层
+## 任务状态
+| ID | 行为目标 | 状态 |
+|---|---|---|
+| T1 | behavior | `passing` |
+## 恢复状态
+## 回滚与残余风险
+## 详细任务
+### T1 behavior
+- [x] Implement and verify the behavior.
+EOF
+
+sed -i.bak 's/| ID | 行为目标 | 状态 |/| Task | 行为目标 | 状态 |/' \
+  "$fixture_root/docs/exec-plans/active/current.md"
+rm "$fixture_root/docs/exec-plans/active/current.md.bak"
+if missing_id_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
+  printf 'Active plan task table without an ID column should fail.\n' >&2
+  exit 1
+fi
+if ! rg -Fq 'task-state table must contain an ID column' <<<"$missing_id_output"; then
+  printf 'Plan-detail output did not explain the missing task ID column.\n%s\n' \
+    "$missing_id_output" >&2
+  exit 1
+fi
+
+cat > "$fixture_root/docs/exec-plans/active/current.md" <<'EOF'
+# Current Plan
+## Sprint Contract
+## 事实源
+- 设计或产品规格：[Current Design](../../design-docs/current-design.md)
+## 验证分层
+## 任务状态
+| ID | 行为目标 | 状态 |
+|---|---|---|
+| T1 | first behavior | `passing` |
+| T1 | duplicate behavior | `passing` |
+| | missing ID | `passing` |
+## 恢复状态
+## 回滚与残余风险
+## 详细任务
+### T1 first behavior
+- [x] Implement and verify the behavior.
+### T1 duplicate behavior
+- [x] Duplicate detail.
+EOF
+if duplicate_id_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
+  printf 'Active plan with empty or duplicate task IDs should fail.\n' >&2
+  exit 1
+fi
+for expected in \
+  'duplicate task ID T1' \
+  'task row ID must not be empty' \
+  'duplicate detail heading for T1'; do
+  if ! rg -Fq "$expected" <<<"$duplicate_id_output"; then
+    printf 'Plan-detail output did not include "%s".\n%s\n' \
+      "$expected" "$duplicate_id_output" >&2
+    exit 1
+  fi
+done
+
+cat > "$fixture_root/docs/exec-plans/active/current.md" <<'EOF'
+# Current Plan
+## Sprint Contract
+## 事实源
+- 设计或产品规格：[Current Design](../../design-docs/current-design.md)
+## 验证分层
+## 任务状态
+| ID | 行为目标 | 状态 |
+|---|---|---|
+| T1 | incomplete passing task | `passing` |
+| T2 | missing detail task | `active` |
+## 恢复状态
+## 回滚与残余风险
+## 详细任务
+### T1 incomplete passing task
+- [ ] Missing verification.
+### T3 orphan detail task
+- [x] Orphan implementation.
+EOF
+if inconsistent_detail_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
+  printf 'Active plan with inconsistent task details should fail.\n' >&2
+  exit 1
+fi
+for expected in \
+  'passing task T1 contains unchecked steps' \
+  'missing detail heading for T2' \
+  'detailed task T3 is missing from the task-state table'; do
+  if ! rg -Fq "$expected" <<<"$inconsistent_detail_output"; then
+    printf 'Plan-detail output did not include "%s".\n%s\n' \
+      "$expected" "$inconsistent_detail_output" >&2
+    exit 1
+  fi
+done
+
+cat > "$fixture_root/docs/exec-plans/active/current.md" <<'EOF'
+# Current Plan
+## Sprint Contract
+## 事实源
+- 设计或产品规格：[Current Design](../../design-docs/current-design.md)
+## 验证分层
+## 任务状态
+| ID | 行为目标 | 状态 |
+|---|---|---|
+| T1 | behavior | `passing` |
+## 恢复状态
+## 回滚与残余风险
+## 详细任务
+### T1 behavior
+- [x] Implement and verify the behavior.
+EOF
 printf '# 项目进度\n\n## 当前工作\n\n- 活跃计划：`none`\n' \
   > "$fixture_root/PROGRESS.md"
 if progress_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then

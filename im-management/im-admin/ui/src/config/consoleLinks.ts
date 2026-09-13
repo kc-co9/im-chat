@@ -9,19 +9,19 @@ export interface ConsoleLink {
 const consoles: Record<ConsoleKey, Omit<ConsoleLink, 'key'>> = {
   iam: {
     name: '身份与权限',
-    location: import.meta.env.VITE_IAM_CONSOLE_URL || 'http://localhost:18090',
+    location: import.meta.env.VITE_IAM_CONSOLE_URL || 'http://localhost:18040',
   },
   audit: {
     name: '审计中心',
-    location: import.meta.env.VITE_AUDIT_CONSOLE_URL || 'http://localhost:18091',
+    location: import.meta.env.VITE_AUDIT_CONSOLE_URL || 'http://localhost:18041',
   },
   monitor: {
     name: '运行监控',
-    location: import.meta.env.VITE_MONITOR_CONSOLE_URL || 'http://localhost:18092',
+    location: import.meta.env.VITE_MONITOR_CONSOLE_URL || 'http://localhost:18043',
   },
   admin: {
     name: '用户管理',
-    location: import.meta.env.VITE_ADMIN_CONSOLE_URL || 'http://localhost:18093',
+    location: import.meta.env.VITE_ADMIN_CONSOLE_URL || 'http://localhost:18042',
   },
 }
 

@@ -11,6 +11,8 @@ import com.co.kc.imchat.service.account.transformer.db.UserDbTransformer;
 import com.co.kc.imchat.service.account.transformer.domain.UserDomainTransformer;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.util.Collections;
 import java.util.List;
@@ -45,7 +47,21 @@ public class MysqlUserRepository implements UserRepository {
     @Override
     public void save(User user) {
         DbUser dbUser = UserDbTransformer.INSTANCE.dbUserFrom(user);
-        dbUserService.saveOrUpdate(dbUser);
+        boolean persisted = dbUserService.saveOrUpdate(dbUser);
+        if (!persisted) {
+            if (user.getPkId() != null) {
+                throw new OptimisticLockingFailureException(
+                        "User was modified concurrently: " + user.getId().value());
+            }
+            throw new DataAccessResourceFailureException(
+                    "User was not inserted: " + user.getId().value());
+        }
+        if (persisted) {
+            if (dbUser.getId() != null) {
+                user.setPkId(dbUser.getId());
+            }
+            user.setRowVersion(dbUser.getVersion());
+        }
     }
 
     @Override

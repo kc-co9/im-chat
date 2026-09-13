@@ -1,6 +1,6 @@
 # im-metrics
 
-基于 Micrometer 和 Spring AOP 的声明式方法指标插件。
+基于 Micrometer 和 Spring AOP 的声明式方法指标插件，同时提供 Actuator 与 Prometheus registry runtime。
 
 ## 主要内容
 
@@ -10,8 +10,9 @@
 - `IgnoreExceptionAspect`：捕获普通异常，可按注解配置记录 warn 日志后忽略。
 - `MetricsCollector`：创建并更新 Micrometer 指标。
 - `ImMetricsAutoConfiguration`：在存在 `MeterRegistry` 时自动装配切面。
+- `spring-boot-starter-actuator`、`micrometer-registry-prometheus`：为可部署应用提供标准健康检查和 Prometheus 抓取端点。
 
-业务模块只依赖 `@Observed`，不直接持有 `MeterRegistry`、`Counter` 或 `Timer`。
+业务模块只依赖 `im-metrics` 和 `@Observed`，不直接持有 `MeterRegistry`、`Counter` 或 `Timer`。应用使用独立 `management.server.port`，暴露 `health,info,prometheus,metrics`，并保持 `health.show-details=never`。拥有 Spring Security 策略的应用必须在自己的安全链中放行 Actuator，`im-metrics` 不声明 `SecurityFilterChain`，避免抑制业务应用的默认或 IAM 安全链。management port 必须通过内网或容器网络隔离，不能直接暴露到公网。
 
 ## 使用方式
 

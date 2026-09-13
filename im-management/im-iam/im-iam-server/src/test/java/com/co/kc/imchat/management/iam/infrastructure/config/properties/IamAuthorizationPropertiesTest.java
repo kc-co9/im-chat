@@ -28,7 +28,7 @@ class IamAuthorizationPropertiesTest {
     @Test
     void acceptsClasspathKeyStoreAndLoopbackHttpIssuer() {
         IamAuthorizationProperties properties = new IamAuthorizationProperties(
-                URI.create("http://localhost:18090"),
+                URI.create("http://localhost:18040"),
                 "classpath:iam-signing.p12",
                 "store-password",
                 "iam-signing",

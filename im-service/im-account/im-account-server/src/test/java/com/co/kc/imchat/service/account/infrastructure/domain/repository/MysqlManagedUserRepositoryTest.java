@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,6 +77,8 @@ class MysqlManagedUserRepositoryTest {
                 new UserName("alice-new"),
                 new UserEmail("new@example.com"),
                 UserStatus.BANNED);
+        managedUser.setPkId(9L);
+        when(service.saveOrUpdate(any(DbUser.class))).thenReturn(true);
 
         repository.save(managedUser);
 
@@ -85,6 +89,48 @@ class MysqlManagedUserRepositoryTest {
                         && row.getEmail().equals("new@example.com")
                         && row.getPassword().equals("encrypted-password")
                         && row.getStatus() == DbUserStatus.BANNED));
+    }
+
+    @Test
+    void successfulInsertRestoresDatabaseIdentity() {
+        DbUserService service = mock(DbUserService.class);
+        when(service.saveOrUpdate(any(DbUser.class))).thenAnswer(invocation -> {
+            DbUser row = invocation.getArgument(0);
+            row.setId(17L);
+            return true;
+        });
+        MysqlManagedUserRepository repository = new MysqlManagedUserRepository(service);
+        ManagedUser managedUser = managedUser(
+                new UserName("alice"),
+                new UserEmail("alice@example.com"),
+                UserStatus.NORMAL);
+
+        repository.save(managedUser);
+
+        assertThat(managedUser.getPkId()).isEqualTo(17L);
+        assertThat(managedUser.getRowVersion()).isZero();
+    }
+
+    @Test
+    void failedUpdateDoesNotAdvanceDomainRowVersion() {
+        DbUserService service = mock(DbUserService.class);
+        when(service.saveOrUpdate(any(DbUser.class))).thenAnswer(invocation -> {
+            DbUser row = invocation.getArgument(0);
+            row.setVersion(5L);
+            return false;
+        });
+        MysqlManagedUserRepository repository = new MysqlManagedUserRepository(service);
+        ManagedUser managedUser = managedUser(
+                new UserName("alice"),
+                new UserEmail("alice@example.com"),
+                UserStatus.NORMAL);
+        managedUser.setPkId(9L);
+        managedUser.setRowVersion(4L);
+
+        assertThatThrownBy(() -> repository.save(managedUser))
+                .isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+
+        assertThat(managedUser.getRowVersion()).isEqualTo(4L);
     }
 
     private static DbUser row(DbUserStatus status, long deleted) {
@@ -102,7 +148,7 @@ class MysqlManagedUserRepositoryTest {
     }
 
     private static ManagedUser managedUser(UserName username, UserEmail email, UserStatus status) {
-        ManagedUser managedUser = new ManagedUser(
+        return new ManagedUser(
                 new UserId(1001L),
                 username,
                 email,
@@ -111,7 +157,5 @@ class MysqlManagedUserRepositoryTest {
                 false,
                 Instant.parse("2026-08-20T00:00:00Z"),
                 Instant.parse("2026-08-24T00:00:00Z"));
-        managedUser.setPkId(9L);
-        return managedUser;
     }
 }

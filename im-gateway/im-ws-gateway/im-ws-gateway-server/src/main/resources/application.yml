@@ -1,8 +1,9 @@
+server:
+  port: 19011
+
 spring:
   application:
     name: im-ws-gateway
-  main:
-    web-application-type: none
   config:
     import:
       - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
@@ -12,10 +13,15 @@ spring:
         port: ${im.gateway.ws.port}
 
 management:
+  server:
+    port: 19011
   endpoints:
-    jmx:
+    web:
       exposure:
-        include: health,metrics
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never
 
 im:
   bolt:
@@ -23,10 +29,11 @@ im:
       enabled: true
     server:
       enabled: true
-      port: 12202
+      port: 18012
   gateway:
     ws:
-      port: 19090
+      port: 18011
+      bind-host: ${IM_GATEWAY_BIND_HOST:0.0.0.0}
       host: ${IM_GATEWAY_HOST:127.0.0.1}
       path: /ws
       max-frame-payload-length: 65536

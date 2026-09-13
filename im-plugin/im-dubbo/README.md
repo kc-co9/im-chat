@@ -16,13 +16,14 @@ im:
       group: DUBBO_GROUP
     protocol:
       name: dubbo
+      host: ${IM_DUBBO_PROTOCOL_HOST:}
       port: -1
     consumer:
       timeout: 3000
       check: false
 ```
 
-`im.dubbo.enabled=false` 会关闭整个自动配置和 `@DubboService` 扫描。Registry 地址不能为空；Namespace 默认复用 `im.nacos.namespace`。这些配置在应用启动时创建 Dubbo 对象，远程修改后不会自动重建运行中的 Dubbo Registry。
+`im.dubbo.enabled=false` 会关闭整个自动配置和 `@DubboService` 扫描。Registry 地址不能为空；Namespace 默认复用 `im.nacos.namespace`。`im.dubbo.protocol.host` 未配置时沿用 Dubbo 的默认监听地址；共享宿主网络的本地容器通过 `IM_DUBBO_PROTOCOL_HOST=127.0.0.1` 限制监听。这些配置在应用启动时创建 Dubbo 对象，远程修改后不会自动重建运行中的 Dubbo Registry。
 
 ## 关键技术点
 

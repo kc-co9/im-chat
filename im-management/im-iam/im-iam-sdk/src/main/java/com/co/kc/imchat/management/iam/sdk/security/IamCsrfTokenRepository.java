@@ -19,12 +19,12 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class IamCsrfTokenRepository implements CsrfTokenRepository {
     public static final String HEADER_NAME = "X-XSRF-TOKEN";
-    public static final String COOKIE_NAME = "XSRF-TOKEN";
     private static final String PARAMETER_NAME = "_csrf";
     private static final int TOKEN_BYTES = 32;
 
     private final IamApplicationSessionRepository sessionRepository;
     private final IamSessionCookie sessionCookie;
+    private final String cookieName;
     private final boolean secure;
     private final String sameSite;
     private final Duration maxAge;
@@ -48,7 +48,7 @@ public class IamCsrfTokenRepository implements CsrfTokenRepository {
                     csrfToken.getToken(), Instant.now()));
         });
         ResponseCookie cookie = ResponseCookie.from(
-                        COOKIE_NAME, csrfToken == null ? "" : csrfToken.getToken())
+                        cookieName, csrfToken == null ? "" : csrfToken.getToken())
                 .httpOnly(false)
                 .secure(secure)
                 .sameSite(sameSite)
@@ -59,7 +59,7 @@ public class IamCsrfTokenRepository implements CsrfTokenRepository {
     }
 
     public void publish(String csrfToken, HttpServletResponse response) {
-        ResponseCookie cookie = ResponseCookie.from(COOKIE_NAME, csrfToken)
+        ResponseCookie cookie = ResponseCookie.from(cookieName, csrfToken)
                 .httpOnly(false)
                 .secure(secure)
                 .sameSite(sameSite)
@@ -70,7 +70,7 @@ public class IamCsrfTokenRepository implements CsrfTokenRepository {
     }
 
     public void clear(HttpServletResponse response) {
-        ResponseCookie cookie = ResponseCookie.from(COOKIE_NAME, "")
+        ResponseCookie cookie = ResponseCookie.from(cookieName, "")
                 .httpOnly(false)
                 .secure(secure)
                 .sameSite(sameSite)

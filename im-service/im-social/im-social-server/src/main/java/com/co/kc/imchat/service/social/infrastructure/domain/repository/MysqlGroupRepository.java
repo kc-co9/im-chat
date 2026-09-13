@@ -11,6 +11,8 @@ import com.co.kc.imchat.service.social.infrastructure.mybatis.service.DbImGroupS
 import com.co.kc.imchat.service.social.transformer.db.GroupDbTransformer;
 import com.co.kc.imchat.service.social.transformer.domain.GroupDomainTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.util.Collections;
 import java.util.List;
@@ -45,6 +47,20 @@ public class MysqlGroupRepository implements GroupRepository {
     @Override
     public void save(Group group) {
         DbImGroup row = GroupDbTransformer.INSTANCE.dbImGroupFrom(group);
-        dbImGroupService.saveOrUpdate(row);
+        boolean persisted = dbImGroupService.saveOrUpdate(row);
+        if (!persisted) {
+            if (group.getPkId() != null) {
+                throw new OptimisticLockingFailureException(
+                        "Group was modified concurrently: " + group.getId().value());
+            }
+            throw new DataAccessResourceFailureException(
+                    "Group was not inserted: " + group.getId().value());
+        }
+        if (persisted) {
+            if (row.getId() != null) {
+                group.setPkId(row.getId());
+            }
+            group.setRowVersion(row.getVersion());
+        }
     }
 }

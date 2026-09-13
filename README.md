@@ -148,12 +148,12 @@ Redis 回执任务提供有界重投，但不是数据库 Outbox，也不承诺�
         v
     im-monitor ---- Nacos 元数据 ----> Broker 管理地址
         |
-        +---- 并发 HTTP ----> Broker A :12201
-        +---- 并发 HTTP ----> Broker B :12201
+        +---- 并发 HTTP ----> Broker A :19020
+        +---- 并发 HTTP ----> Broker B :19020
         `---- 并发 HTTP ----> 不可用节点 -> UNREACHABLE
 ```
 
-Broker 的业务 Bolt 端口仍为 `12200`；只读管理 HTTP 默认绑定 `127.0.0.1:12201`。Monitor 对单节点失败进行隔离，页面不会直接访问 Broker，也不提供全量用户路由或任何写操作。运行方式和接口见 [im-monitor README](im-management/im-monitor/README.md)。
+Broker 的业务 Bolt 端口为 `18020`；只读管理 HTTP 与 Actuator 默认绑定 `127.0.0.1:19020`。Monitor 对单节点失败进行隔离，页面不会直接访问 Broker，也不提供全量用户路由或任何写操作。运行方式和接口见 [im-monitor README](im-management/im-monitor/README.md)。
 
 ### 业务管理链路
 
@@ -258,11 +258,23 @@ WebSocket 入口为 `/ws`，使用统一 JSON 帧而不是 STOMP destination。�
 - Maven 3.8.4+ 且低于 4.0
 - Node.js 20.19+ 或 22.12+（构建 Management UI 时）
 - npm、Ruby、Git、ripgrep
+- Docker 27+ 与 Docker Compose 2.31+（使用本地一键编排时）
 
 仓库通过 `.java-version` 推荐 JDK 21，通过 `.nvmrc` 推荐 Node.js 20.19.5；`readiness` 按 POM 与 Vite 支持范围接受兼容版本。
 - MySQL 8+
 - Redis 6+
-- Nacos 2+
+- Nacos 3+
+
+### 一键编排
+
+```bash
+./scripts/local_up.sh        # 默认只启动 infra
+./scripts/local_up.sh full   # 构建 jar 和镜像后启动全部服务
+./scripts/local_down.sh      # 停止并保留数据卷
+./scripts/local_down.sh --volumes
+```
+
+infra 包含 MySQL、Redis、Nacos、Kafka、Prometheus、Grafana、BanyanDB 和 SkyWalking OAP/Horizon UI。保持 infra 运行时，也可以在 IDE 中只启动当前要调试的服务。Prometheus 位于 `http://localhost:9090`，Grafana 位于 `http://localhost:3000`，SkyWalking UI 位于 `http://localhost:18050`，Nacos Console 位于 `http://localhost:18048`。full 使用 bridge 网络和显式 loopback 端口映射，固定镜像、内存要求、SQL 初始化和数据卷说明见[本地运行编排](deploy/local/README.md)。
 
 DDL 与数据所有权一起放在各 Server 模块根目录：
 

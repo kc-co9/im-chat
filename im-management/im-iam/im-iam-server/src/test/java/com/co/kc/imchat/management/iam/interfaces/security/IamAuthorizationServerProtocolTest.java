@@ -72,7 +72,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(classes = IamAuthorizationServerProtocolTest.TestApplication.class, properties = {
         "spring.cloud.nacos.discovery.enabled=false",
         "spring.cloud.nacos.config.enabled=false",
-        "spring.cloud.discovery.enabled=false"
+        "spring.cloud.discovery.enabled=false",
+        "im.datasource.sharding.enabled=false"
 })
 @AutoConfigureMockMvc
 class IamAuthorizationServerProtocolTest {

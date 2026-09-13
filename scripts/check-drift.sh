@@ -34,7 +34,7 @@ report_matches() {
         why="生成物和本机元数据不可复现，会污染 Review 与发布内容。"
         fix="从版本控制中移除列出的生成物，并由构建流程按需重新生成。"
         ;;
-      "Required Harness documentation is missing"|"PROGRESS.md current-work index is stale"|"Active execution plan structure is incomplete"|"Active execution plan task state is invalid")
+      "Required Harness documentation is missing"|"PROGRESS.md current-work index is stale"|"Active execution plan structure is incomplete"|"Active execution plan task state is invalid"|"Active execution plan task detail is incomplete"|"Active execution plan fact source is incomplete")
         why="缺失或陈旧的状态入口会让新会话无法恢复当前事实。"
         fix="补齐列出的文档或同步 PROGRESS 与 active execution plan。"
         ;;
@@ -50,6 +50,10 @@ report_matches() {
         why="真实等待依赖机器调度，会产生慢且偶发的测试。"
         fix="注入可控 Clock、Scheduler 或同步信号替代 sleep。"
         ;;
+      "Persistence foundation semantics are invalid")
+        why="技术主键、乐观锁插件和业务更新结果的职责边界被改变，会让所有持久化模块产生错误假设。"
+        fix="恢复 BaseEntity 的数据库自增技术主键；领域 Builder 不接收 pkId/rowVersion；具体 Repository 按业务语义决定是否检查 MyBatis-Plus 返回值。"
+        ;;
     esac
     printf '\n[drift] WHAT: %s\nWHY: %s\nFIX: %s\n%s\n' \
       "$title" "$why" "$fix" "$matches"
@@ -59,6 +63,28 @@ report_matches() {
 
 tracked_generated="$(git ls-files | rg '(^|/)(target|node_modules|dist|\.idea)(/|$)|(^|/)\.DS_Store$|\.log$' || true)"
 report_matches "Generated output or local metadata is tracked" "$tracked_generated"
+
+# 持久化基础契约：技术主键、业务 ID 和 version 的职责必须分离；公共 Service 不改变普通 MyBatis-Plus 更新结果语义。
+persistence_contract_violations="$(ruby -e '
+  base_entity = "im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseEntity.java"
+  base_service = "im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseMybatisService.java"
+  if File.file?(base_entity)
+    source = File.read(base_entity, encoding: "UTF-8")
+    puts "#{base_entity}: BaseEntity.id must use IdType.AUTO" unless source.match?(/@TableId\s*\(\s*value\s*=\s*"id"\s*,\s*type\s*=\s*IdType\.AUTO\s*\)/)
+  end
+  if File.file?(base_service)
+    source = File.read(base_service, encoding: "UTF-8")
+    puts "#{base_service}: BaseMybatisService must not expose *Versioned persistence APIs" if source.match?(/Versioned/)
+    puts "#{base_service}: BaseMybatisService must not override ordinary write result semantics" if source.match?(/boolean\s+(?:saveOrUpdate|updateById|update)\s*\(/)
+  end
+  Dir.glob("**/src/main/java/**/*.java").sort.each do |path|
+    next unless path.include?("/domain/")
+    next if path.include?("/infrastructure/")
+    source = File.read(path, encoding: "UTF-8")
+    puts "#{path}: domain Builder must not expose persistence field pkId/rowVersion" if source.match?(/\bBuilder\s+(?:pkId|rowVersion)\s*\(/)
+  end
+')"
+report_matches "Persistence foundation semantics are invalid" "$persistence_contract_violations"
 
 java_var="$(rg -n --glob '*.java' --glob '!**/target/**' '(^|[[:space:]])var[[:space:]]+[A-Za-z_$][A-Za-z0-9_$]*[[:space:]]*=' . || true)"
 report_matches "Java var declarations are not allowed; use an explicit type" "$java_var"
@@ -103,6 +129,7 @@ required_docs="$(for file in \
   im-broker/ARCHITECTURE.md \
   im-service/im-message/ARCHITECTURE.md \
   docs/design-docs/index.md \
+  docs/design-docs/TEMPLATE.md \
   docs/exec-plans/TEMPLATE.md \
   docs/exec-plans/active/README.md \
   docs/exec-plans/completed/README.md \
@@ -179,6 +206,7 @@ if [[ -n "$active_plan_paths" ]]; then
       '^## 事实源$' \
       '^## 验证分层$' \
       '^## 任务状态$' \
+      '^## 详细任务$' \
       '^## (跨会话)?恢复状态$' \
       '^## 回滚与残余风险$'; do
       if ! rg -q "$required_heading" "$active_plan"; then
@@ -222,6 +250,111 @@ invalid_plan_states="$(ruby -e '
   end
 ')"
 report_matches "Active execution plan task state is invalid" "$invalid_plan_states"
+
+# 每个状态表任务必须有可勾选的详细步骤；passing 表示该任务的步骤已经全部完成。
+invalid_plan_details="$(ruby -e '
+  Dir.glob("docs/exec-plans/active/*.md").sort.each do |file|
+    next if File.basename(file) == "README.md"
+    lines = File.readlines(file, encoding: "UTF-8")
+    states = {}
+    in_task_section = false
+    id_column = nil
+    state_column = nil
+    task_header_seen = false
+    lines.each_with_index do |line, index|
+      if line.start_with?("## ")
+        in_task_section = line.strip == "## 任务状态"
+        next
+      end
+      next unless in_task_section && line.start_with?("|")
+      cells = line.split("|", -1)[1...-1].map(&:strip)
+      unless task_header_seen
+        id_column = cells.index("ID")
+        state_column = cells.index("状态") || cells.index("Status")
+        task_header_seen = true
+        next
+      end
+      next if cells.all? { |cell| cell.match?(/\A:?-+:?\z/) }
+      next if id_column.nil? || state_column.nil?
+      task_id = cells.fetch(id_column, "").delete("`").strip
+      state = cells.fetch(state_column, "").delete("`").strip
+      if task_id.empty?
+        puts "#{file}:#{index + 1}: task row ID must not be empty"
+      elsif states.key?(task_id)
+        puts "#{file}:#{index + 1}: duplicate task ID #{task_id}"
+      else
+        states[task_id] = state
+      end
+    end
+    puts "#{file}: task-state table must contain an ID column" if task_header_seen && id_column.nil?
+
+    detail_start = lines.index { |line| line.strip == "## 详细任务" }
+    if detail_start.nil?
+      puts "#{file}: missing ## 详细任务 section"
+      next
+    end
+    details = {}
+    current_task = nil
+    lines[(detail_start + 1)..].to_a.each_with_index do |line, offset|
+      break if line.start_with?("## ")
+      if (match = line.match(/\A###\s+(\S+)(?:\s|$)/))
+        current_task = match[1].delete("`")
+        line_number = detail_start + offset + 2
+        if details.key?(current_task)
+          puts "#{file}:#{line_number}: duplicate detail heading for #{current_task}"
+        else
+          details[current_task] = {line: line_number, checks: []}
+        end
+      elsif current_task && (match = line.match(/\A- \[([ xX])\]\s+\S/))
+        details[current_task][:checks] << !match[1].strip.empty?
+      end
+    end
+
+    states.each do |task_id, state|
+      detail = details[task_id]
+      if detail.nil?
+        puts "#{file}: missing detail heading for #{task_id}"
+      elsif detail[:checks].empty?
+        puts "#{file}:#{detail[:line]}: #{task_id} must contain at least one checkbox step"
+      elsif state == "passing" && detail[:checks].any? { |checked| !checked }
+        puts "#{file}:#{detail[:line]}: passing task #{task_id} contains unchecked steps"
+      end
+    end
+    (details.keys - states.keys).each do |task_id|
+      puts "#{file}:#{details[task_id][:line]}: detailed task #{task_id} is missing from the task-state table"
+    end
+  end
+')"
+report_matches "Active execution plan task detail is incomplete" "$invalid_plan_details"
+
+# Active plan 必须指向一个实际存在的设计或产品规格，避免实现决策只留在会话历史中。
+invalid_plan_fact_sources="$(ruby -e '
+  Dir.glob("docs/exec-plans/active/*.md").sort.each do |file|
+    next if File.basename(file) == "README.md"
+    lines = File.readlines(file, encoding: "UTF-8")
+    in_fact_section = false
+    source = nil
+    lines.each do |line|
+      if line.start_with?("## ")
+        in_fact_section = line.strip == "## 事实源"
+        next
+      end
+      next unless in_fact_section
+      match = line.match(/\A- 设计或产品规格：\[[^\]]+\]\(([^)]+)\)/)
+      source = match[1] if match
+    end
+    if source.nil?
+      puts "#{file}: 事实源 must contain a Markdown link in 设计或产品规格"
+      next
+    end
+    target = source.split("#", 2).first
+    resolved = File.expand_path(target, File.dirname(file))
+    unless File.file?(resolved) && resolved.match?(%r{/docs/(design-docs|product-specs)/})
+      puts "#{file}: design or product specification does not resolve inside docs/design-docs or docs/product-specs: #{source}"
+    end
+  end
+')"
+report_matches "Active execution plan fact source is incomplete" "$invalid_plan_fact_sources"
 
 progress_drift=""
 if [[ -f PROGRESS.md ]]; then

@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
-  server: { proxy: { '/api': 'http://127.0.0.1:18091', '/iam': 'http://127.0.0.1:18091' } },
+  server: { proxy: { '/api': 'http://127.0.0.1:18041', '/iam': 'http://127.0.0.1:18041' } },
   build: {
     outDir: '../target/classes/static',
     emptyOutDir: true,

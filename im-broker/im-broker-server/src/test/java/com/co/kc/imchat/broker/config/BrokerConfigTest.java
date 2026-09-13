@@ -29,22 +29,24 @@ class BrokerConfigTest {
         BrokerProperties brokerProperties = Binder.get(environment)
                 .bind("im.broker", BrokerProperties.class)
                 .orElseThrow(IllegalStateException::new);
-        assertThat(brokerProperties.getInstance().getId()).isEqualTo("broker-127.0.0.1-12200");
+        assertThat(brokerProperties.getInstance().getId()).isEqualTo("broker-127.0.0.1-18020");
         RegistryProperties registryProperties = Binder.get(environment)
                 .bind("im.broker.registry", RegistryProperties.class)
                 .orElseThrow(IllegalStateException::new);
         assertThat(registryProperties.getBrokerTtl()).isNotNull();
         assertThat(environment.getProperty("im.broker.gateway-push.protocol")).isNull();
         assertThat(environment.getProperty("spring.main.web-application-type")).isNull();
-        assertThat(environment.getProperty("spring.cloud.nacos.discovery.port", Integer.class)).isEqualTo(12200);
+        assertThat(environment.getProperty("spring.cloud.nacos.discovery.port", Integer.class)).isEqualTo(18020);
         assertThat(environment.getProperty("server.address")).isEqualTo("127.0.0.1");
-        assertThat(environment.getProperty("server.port", Integer.class)).isEqualTo(12201);
+        assertThat(environment.getProperty("server.port", Integer.class)).isEqualTo(19020);
         assertThat(environment.getProperty("spring.cloud.nacos.discovery.metadata.management-host"))
                 .isEqualTo("127.0.0.1");
-        assertThat(environment.getProperty("spring.cloud.nacos.discovery.metadata.management-port", Integer.class))
-                .isEqualTo(12201);
+        assertThat(environment.getProperty("spring.cloud.nacos.discovery.metadata.management-port")).isNull();
         assertThat(environment.getProperty("im.session.web.public-paths[0]")).isEqualTo("/management/**");
         assertThat(environment.getProperty("im.session.web.public-paths[1]")).isEqualTo("/actuator/**");
+        assertThat(Files.readString(Path.of("src/main/resources/application.yml")))
+                .contains("address: ${im.broker.management.bind-host}")
+                .contains("management-host: ${im.broker.management.host}");
     }
 
     @Test

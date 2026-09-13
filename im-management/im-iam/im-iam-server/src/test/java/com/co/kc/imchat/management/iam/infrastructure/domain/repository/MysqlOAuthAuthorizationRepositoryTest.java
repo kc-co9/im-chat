@@ -62,6 +62,7 @@ class MysqlOAuthAuthorizationRepositoryTest {
         MysqlOAuthAuthorizationRepository repository =
                 new MysqlOAuthAuthorizationRepository(authorizationService);
         OAuthAuthorization authorization = authorization("refresh-digest");
+        when(authorizationService.updateById(any())).thenReturn(true);
 
         repository.save(authorization);
 

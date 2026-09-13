@@ -28,7 +28,8 @@ Repository，也不为单一实现额外声明 Gateway 接口。集群查询并�
 
 | 配置 | 默认值 | 说明 |
 |---|---:|---|
-| `server.port` | `18092` | Monitor HTTP 和 UI 端口 |
+| `server.port` | `18043` | Monitor HTTP 和 UI 端口 |
+| `management.server.port` | `19043` | Actuator 与 Prometheus 抓取端口 |
 | `im.monitor.broker.service-name` | `im-broker` | Nacos 中的 Broker 服务名 |
 | `im.monitor.broker.request-timeout-millis` | `3000` | 每个 Broker 管理请求的连接和读取超时 |
 | `im.monitor.query.threads` | `8` | Broker 节点查询工作线程数，必须为正数 |
@@ -68,7 +69,7 @@ npm run test:unit
 npm run typecheck
 ```
 
-Vite 开发服务把 `/api` 代理到 `127.0.0.1:18092`。Maven 在 `package` 阶段自动执行 `npm ci` 和生产构建，产物写入 `target/classes/static` 并进入 `im-monitor.jar`；不会复制到源码资源目录。
+Vite 开发服务把 `/api` 代理到 `127.0.0.1:18043`。Maven 在 `package` 阶段自动执行 `npm ci` 和生产构建，产物写入 `target/classes/static` 并进入 `im-monitor.jar`；不会复制到源码资源目录。
 
 ```bash
 mvn -q -pl im-management/im-monitor -am test

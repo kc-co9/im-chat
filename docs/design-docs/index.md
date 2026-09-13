@@ -1,9 +1,12 @@
 # Design Documents
 
-Design documents capture context, alternatives, decisions, and consequences. They describe why the system is shaped a certain way; execution status belongs in `docs/exec-plans`.
+设计文档记录背景、备选方案、决策和后果，解释系统为什么采用当前形态；执行状态属于 `docs/exec-plans`。新设计从[设计模板](TEMPLATE.md)开始。通过 `grill`、brainstorming 或其他访谈确认的选择必须写入“决策记录”，记录完整语义和影响，不能只保留 A/B/C 字母或依赖聊天历史。
+
+设计应先完成批准和独立 Review，再创建 execution plan 或实施代码。active plan 必须链接一个实际存在的设计或产品规格；机械检查保证链接和结构存在，内容是否完整仍由 Review 判断。
 
 ## Current Designs
 
+- [可观测性与分片运行接入](2026-09-11-observability-sharding-runtime-design.md)：记录本轮 `$grill-me` 确认的数据库 `version` 字段、MyBatis-Plus 插件、ShardingSphere 配置、Prometheus、SkyWalking、端口治理和本地启动编排决策。
 - [Harness 交接、启动与质量评审](2026-09-10-harness-handoff-startup-and-quality-design.md)：自动派生 session handoff、验证全部应用的受控启动路径、限界清理，并用独立 AI Reviewer 与机器证据生成模块 A/B/C/D 快照。
 - [Harness 证据与运行闭环](2026-09-10-harness-evidence-and-runtime-loop-design.md)：让验证绑定当前 worktree，建立实时 E2E、行为目录、运行证据和 CI 生命周期。
 - [执行工件模板融合](2026-09-10-execution-artifact-template-integration-design.md)：用唯一计划模板和 active plan 结构门禁吸收 DTPet 模板契约，不建立第二套 Harness 工作区。

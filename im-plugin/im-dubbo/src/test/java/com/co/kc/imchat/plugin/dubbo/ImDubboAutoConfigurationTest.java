@@ -35,6 +35,7 @@ class ImDubboAutoConfigurationTest {
         assertThat(application.getName()).isEqualTo("im-test");
         assertThat(protocol.getName()).isEqualTo("dubbo");
         assertThat(protocol.getPort()).isEqualTo(-1);
+        assertThat(protocol.getHost()).isNull();
         assertThat(registry.getAddress()).isEqualTo("N/A");
         assertThat(consumer.isCheck()).isFalse();
     }
@@ -53,6 +54,15 @@ class ImDubboAutoConfigurationTest {
         assertThat(registryConfig.getAddress()).isEqualTo("nacos://127.0.0.1:8848");
         assertThat(registryConfig.getGroup()).isEqualTo("DUBBO_GROUP");
         assertThat(registryConfig.getParameters()).containsEntry("namespace", "namespace-id");
+    }
+
+    @Test
+    void configuresProtocolBindHost() {
+        ImDubboProperties properties = properties("N/A", null, "DUBBO_GROUP");
+        properties.getProtocol().setHost("127.0.0.1");
+
+        assertThat(autoConfiguration.dubboProtocolConfig(properties).getHost())
+                .isEqualTo("127.0.0.1");
     }
 
     @Test

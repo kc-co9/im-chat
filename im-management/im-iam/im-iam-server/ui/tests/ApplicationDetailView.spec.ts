@@ -81,8 +81,8 @@ describe('application detail workspace', () => {
           name: '审计 Web',
           grantTypes: ['AUTHORIZATION_CODE', 'REFRESH_TOKEN'],
           scopes: ['openid', 'profile'],
-          redirectUris: ['http://localhost:18091/iam/callback'],
-          postLogoutRedirectUris: ['http://localhost:18091/'],
+          redirectUris: ['http://localhost:18041/iam/callback'],
+          postLogoutRedirectUris: ['http://localhost:18041/'],
           status: 'ACTIVE',
         },
       ]) as never,
@@ -249,8 +249,8 @@ describe('application detail workspace', () => {
     await wrapper.get('[data-testid="client-scopes"]').setValue('openid, profile')
     await wrapper
       .get('[data-testid="client-redirect-uri"]')
-      .setValue('http://localhost:18091/iam/callback')
-    await wrapper.get('[data-testid="client-logout-uri"]').setValue('http://localhost:18091/')
+      .setValue('http://localhost:18041/iam/callback')
+    await wrapper.get('[data-testid="client-logout-uri"]').setValue('http://localhost:18041/')
     await wrapper.get('[data-testid="client-form"]').trigger('submit')
     await flushPromises()
 
@@ -258,8 +258,8 @@ describe('application detail workspace', () => {
       expect.objectContaining({
         grantTypes: ['AUTHORIZATION_CODE', 'REFRESH_TOKEN'],
         scopes: ['openid', 'profile'],
-        redirectUris: ['http://localhost:18091/iam/callback'],
-        postLogoutRedirectUris: ['http://localhost:18091/'],
+        redirectUris: ['http://localhost:18041/iam/callback'],
+        postLogoutRedirectUris: ['http://localhost:18041/'],
       }),
     )
   })
@@ -367,15 +367,15 @@ describe('application detail workspace', () => {
     await wrapper.get('[data-testid="edit-client-scopes"]').setValue('openid, profile, audit:read')
     await wrapper
       .get('[data-testid="edit-client-redirect-uri"]')
-      .setValue('http://localhost:18091/iam/updated-callback')
+      .setValue('http://localhost:18041/iam/updated-callback')
     await wrapper.get('[data-testid="client-access-form"]').trigger('submit')
     await flushPromises()
 
     expect(iamApi.updateOAuthClientAccess).toHaveBeenCalledWith({
       clientId: 'im-audit-client',
       scopes: ['openid', 'profile', 'audit:read'],
-      redirectUris: ['http://localhost:18091/iam/updated-callback'],
-      postLogoutRedirectUris: ['http://localhost:18091/'],
+      redirectUris: ['http://localhost:18041/iam/updated-callback'],
+      postLogoutRedirectUris: ['http://localhost:18041/'],
     })
   })
 

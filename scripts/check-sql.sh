@@ -270,18 +270,30 @@ end
 owned_sql = sql_files.select do |file|
   sql_directory = File.dirname(file)
   module_directory = File.dirname(sql_directory)
-  File.basename(sql_directory) == "sql" && File.directory?(File.join(module_directory, "src", "main"))
+  File.basename(sql_directory) == "sql" &&
+    %w[ddl.sql dml.sql].include?(File.basename(file)) &&
+    File.directory?(File.join(module_directory, "src", "main"))
 end
-(sql_files - owned_sql).each do |file|
+local_init_paths = %w[
+  deploy/local/mysql/init/00-initialize.sql
+  deploy/local/mysql/init/ddl/01-account.sql
+  deploy/local/mysql/init/ddl/02-social.sql
+  deploy/local/mysql/init/ddl/03-message.sql
+  deploy/local/mysql/init/ddl/04-iam.sql
+  deploy/local/mysql/init/ddl/05-audit.sql
+  deploy/local/mysql/init/dml/06-iam-seed.sql
+]
+local_init_sql = sql_files.select { |file| local_init_paths.include?(relative(root, file)) }
+(sql_files - owned_sql - local_init_sql).each do |file|
   report(
     groups,
     "SQL placement",
     relative(root, file),
-    "Service DDL must be placed in the owning Server module's sql/*.sql"
+    "Service SQL must be named sql/ddl.sql or sql/dml.sql, or be an approved local init snapshot"
   )
 end
-# 校验 Server 自有 DDL 的危险语句、命名、模板字段、主键、引擎和索引约定。
-owned_sql.each do |file|
+# 校验 Server 自有 DDL 与固定本地快照的幂等创建、危险语句、命名、模板字段、主键、引擎和索引约定。
+(owned_sql + local_init_sql).each do |file|
   path = relative(root, file)
   content = File.read(file)
   uncommented = sql_mask(content, mask_literals: false)
@@ -290,15 +302,17 @@ owned_sql.each do |file|
   report(groups, "Dangerous SQL", path, "TRUNCATE is forbidden") if keyword_sql.match?(/\bTRUNCATE\b/i)
   report(groups, "Dangerous SQL", path, "DROP DATABASE is forbidden") if keyword_sql.match?(/\bDROP\s+DATABASE\b/i)
   report(groups, "SELECT wildcard", path, "SELECT * and SELECT table.* are forbidden") if select_wildcard?(keyword_sql)
-  keyword_sql.scan(/\bDROP\s+TABLE\b.*?(?:;|\z)/i).each do |statement|
-    if File.basename(path) != "ddl.sql"
-      report(groups, "DROP TABLE", path, "DROP TABLE is only allowed in an owned sql/ddl.sql")
-    elsif !statement.match?(/\ADROP\s+TABLE\s+IF\s+EXISTS\b/i)
-      report(groups, "DROP TABLE", path, "DROP TABLE IF EXISTS is required in an owned sql/ddl.sql")
-    end
+  if keyword_sql.match?(/\bDROP\s+TABLE\b/i)
+    report(groups, "DROP TABLE", path, "DROP TABLE is forbidden in delivery SQL")
   end
 
-  compact.split(";").map { |statement| /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(`[^`]+`|\S+)\s*\((.*)\)\s*(.*)\z/im.match(statement) }.compact.each do |create_match|
+  compact.split(";").each do |statement|
+    next unless statement.match?(/\bCREATE\s+TABLE\b/i)
+    unless statement.match?(/\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\b/i)
+      report(groups, "DDL structure", path, "Initialization DDL requires CREATE TABLE IF NOT EXISTS")
+    end
+    create_match = /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(`[^`]+`|\S+)\s*\((.*)\)\s*(.*)\z/im.match(statement)
+    next unless create_match
     table_token, body, options = create_match.captures
     unless lower_snake_identifier?(table_token)
       report(groups, "DDL naming", path, "CREATE TABLE requires a lower snake_case table name: #{table_token}")
@@ -309,7 +323,7 @@ owned_sql.each do |file|
         report(groups, "DDL naming", path, "CREATE TABLE requires lower snake_case column names: #{column}")
       end
     end
-    template_columns = %w[id create_time update_time is_deleted]
+    template_columns = %w[id create_time update_time is_deleted version]
     missing_template_columns = template_columns.reject do |column|
       body.match?(/(?:\A|,)\s*`?#{Regexp.escape(column)}`?\s+/i)
     end
@@ -318,8 +332,11 @@ owned_sql.each do |file|
         groups,
         "DDL structure",
         path,
-        "CREATE TABLE requires standard template columns id/create_time/update_time/is_deleted; missing: #{missing_template_columns.join(', ')}"
+        "CREATE TABLE requires standard template columns id/create_time/update_time/is_deleted/version; missing: #{missing_template_columns.join(', ')}"
       )
+    end
+    unless body.match?(/(?:\A|,)\s*`?id`?\s+[^,]*\bAUTO_INCREMENT\b/i)
+      report(groups, "DDL structure", path, "id must remain a database AUTO_INCREMENT technical primary key")
     end
     report(groups, "DDL structure", path, "CREATE TABLE requires an explicit PRIMARY KEY") unless body.match?(/\bPRIMARY\s+KEY\b/i)
     report(groups, "DDL structure", path, "CREATE TABLE requires ENGINE=InnoDB") unless options.match?(/\bENGINE\s*=\s*InnoDB\b/i)

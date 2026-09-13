@@ -38,6 +38,7 @@ class MysqlApplicationRepositoryTest {
     @Test
     void checksApplicationKeyIdentity() {
         DbIamAppService service = mock(DbIamAppService.class);
+        when(service.getQueryWrapper()).thenReturn(new LambdaQueryWrapper<>());
         when(service.count(any(Wrapper.class))).thenReturn(1L);
         MysqlApplicationRepository repository = new MysqlApplicationRepository(service);
 
@@ -72,19 +73,22 @@ class MysqlApplicationRepositoryTest {
         row.setAppId(1L);
         row.setAppKey("imAdmin");
         row.setName("IM Admin");
+        row.setVersion(3L);
         row.setStatus(com.co.kc.imchat.management.iam.infrastructure.mybatis.enums.DbIamAppStatus.ACTIVE);
-        when(service.getOne(any(Wrapper.class), any(Boolean.class))).thenReturn(row);
+        when(service.getQueryWrapper()).thenReturn(new LambdaQueryWrapper<>());
+        when(service.getFirst(any(Wrapper.class))).thenReturn(java.util.Optional.of(row));
         MysqlApplicationRepository repository = new MysqlApplicationRepository(service);
 
-        assertThat(repository.find(new AppId(1L)))
-                .get()
-                .extracting(Application::getPkId)
-                .isEqualTo(100L);
+        assertThat(repository.find(new AppId(1L))).get().satisfies(application -> {
+            assertThat(application.getPkId()).isEqualTo(100L);
+            assertThat(application.getRowVersion()).isEqualTo(3L);
+        });
     }
 
     @Test
     void findsRequestedApplicationsInOneBoundedLookup() {
         DbIamAppService service = mock(DbIamAppService.class);
+        when(service.getQueryWrapper()).thenReturn(new LambdaQueryWrapper<>());
         when(service.list(any(Wrapper.class))).thenReturn(List.of(
                 dbApplication(100L, 1L, "imAdmin"),
                 dbApplication(200L, 2L, "imAudit")));

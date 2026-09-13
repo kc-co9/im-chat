@@ -36,14 +36,14 @@
 | T3 | 验证全部应用标准启动路径 | startup tags、verify、fixture | `passing` | `bash scripts/test-startup-harness.sh`、真实 `harness-startup.sh`：10 application smoke 通过 | - |
 | T4 | 提供只读及显式受控清理 | cleanup script、verify、fixture | `passing` | `bash scripts/test-cleanup-harness.sh` | - |
 | T5 | 生成并校验 AI Reviewer 质量评审 | quality script、prompt、model、fixture | `passing` | `bash scripts/test-quality-harness.sh`；缺 response 返回 3，合法 response 生成快照 | - |
-| T6 | 更新说明、CI 并完成质量评审与归档 | docs、workflow、independent reviewer、snapshot | `active` | `.harness` 迁移及聚合 fixture 通过；`mvn -q clean` 前后关键证据 SHA-1 一致；沙箱外 `full` 通过 1003 tests | 仍需刷新独立 Reviewer evidence 后归档 |
+| T6 | 更新说明、CI 并完成质量评审与归档 | docs、workflow、independent reviewer、snapshot | `passing` | `.harness` 迁移及聚合 fixture 通过；`mvn -q clean` 前后关键证据 SHA-1 一致；沙箱外 `full` 通过 1003 tests；`./scripts/verify.sh quality` 通过并生成当前质量快照 | - |
 
 ## 恢复状态
 
-- 当前任务：T6，更新说明、CI 并完成质量评审与归档。
-- 已完成：T1-T5 既有能力；Harness 状态已从 Maven 输出目录迁移到 Git ignore 的 `.harness/`，保留原 Reviewer response；新 clone、E2E 日志缺失、full 测试摘要、CI hidden artifact、陈旧 response 和相同 review scope 复用 fixture 已通过；`mvn -q clean` 前后关键证据 SHA-1 一致；沙箱外 `./scripts/verify.sh full` 通过 1003 tests、零失败。
+- 当前任务：none。
+- 已完成：T1-T6；Harness 状态已从 Maven 输出目录迁移到 Git ignore 的 `.harness/`，保留原 Reviewer response；新 clone、E2E 日志缺失、full 测试摘要、CI hidden artifact、陈旧 response 和相同 review scope 复用 fixture 已通过；`mvn -q clean` 前后关键证据 SHA-1 一致；沙箱外 `./scripts/verify.sh full` 通过 1003 tests、零失败；`./scripts/verify.sh quality` 已用当前 request/scope 生成质量快照。
 - 阻塞项：`none`。
-- 下一步：刷新 E2E 和当前 scope 的独立 AI Review，完成提交；计划归档在最终质量结论和关闭审计完成后执行。
+- 下一步：归档计划并执行归档后关闭审计。
 - 不要修改：现有业务行为、未知 untracked 文件、真实 Git index 和外部基础设施数据。
 
 ## 任务 1：固化契约
@@ -88,8 +88,8 @@
 - [x] README 分点说明各 Harness 能力为什么存在、入口、证据和边界。
 - [x] 更新 Harness Guide、reference/design/plan indexes、AGENTS workflow 和 CI artifact。
 - [x] 运行 fixture、startup、cleanup、architecture、quick、e2e、clean、full 的预归档验证。
-- [ ] 生成最终 review scope 的质量请求，使用独立上下文 AI Reviewer 完成全部待评审单元，并校验 A/B/C/D 快照。
-- [ ] 所有实施任务拥有证据后写为 passing，归档计划并把 PROGRESS 切回 `none`；此后禁止修改 tracked 文件。
+- [x] 生成最终 review scope 的质量请求，使用独立上下文 AI Reviewer 完成全部待评审单元，并校验 A/B/C/D 快照。
+- [x] 所有实施任务拥有证据后写为 passing，归档计划并把 PROGRESS 切回 `none`；此后禁止修改 tracked 文件。
 
 ## 归档后关闭审计
 

@@ -4,4 +4,4 @@
 
 ## Active plans
 
-- [Harness 交接、启动与质量评审](2026-09-10-harness-handoff-startup-and-quality.md)：自动交接、全部应用 startup smoke、受控清理、AI Reviewer 六维评分和模块质量快照。
+当前无活跃计划。

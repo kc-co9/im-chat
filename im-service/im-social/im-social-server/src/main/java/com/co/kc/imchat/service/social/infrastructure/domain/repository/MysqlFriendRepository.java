@@ -12,6 +12,8 @@ import com.co.kc.imchat.service.social.transformer.db.FriendDbTransformer;
 import com.co.kc.imchat.service.social.transformer.domain.FriendDomainTransformer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.CollectionUtils;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.util.Collections;
 import java.util.List;
@@ -24,7 +26,7 @@ public class MysqlFriendRepository implements FriendRepository {
     @Override
     public List<Friend> find(UserId userId) {
         List<DbFriend> dbFriendList = dbFriendService.getListByUserId(userId.value());
-        return this.buildFriends(dbFriendList);
+        return FriendDomainTransformer.INSTANCE.friendListFrom(dbFriendList);
     }
 
     @Override
@@ -34,7 +36,7 @@ public class MysqlFriendRepository implements FriendRepository {
         }
         List<Long> friendUserIdValueList = FunctionUtils.mappingList(friendUserIds, UserId::value);
         List<DbFriend> dbFriendList = dbFriendService.getListByUserIdAndFriendUserIds(userId.value(), friendUserIdValueList);
-        return this.buildFriends(dbFriendList);
+        return FriendDomainTransformer.INSTANCE.friendListFrom(dbFriendList);
     }
 
     @Override
@@ -63,20 +65,26 @@ public class MysqlFriendRepository implements FriendRepository {
     @Override
     public void save(Friend friend) {
         DbFriend dbFriend = FriendDbTransformer.INSTANCE.dbFriendFrom(friend);
-        dbFriendService.saveOrUpdate(dbFriend);
+        boolean persisted = dbFriendService.saveOrUpdate(dbFriend);
+        if (!persisted) {
+            if (friend.getPkId() != null) {
+                throw new OptimisticLockingFailureException(
+                        "Friend was modified concurrently: " + friend.getId());
+            }
+            throw new DataAccessResourceFailureException("Friend was not inserted: " + friend.getId());
+        }
+        if (persisted) {
+            if (dbFriend.getId() != null) {
+                friend.setPkId(dbFriend.getId());
+            }
+            friend.setRowVersion(dbFriend.getVersion());
+        }
     }
 
     @Override
     public void remove(Friend friend) {
         dbFriendService.removeByUserIdAndFriendUserId(
                 friend.getUserId().value(), friend.getFriendUserId().value());
-    }
-
-    private List<Friend> buildFriends(List<DbFriend> dbFriendList) {
-        if (CollectionUtils.isEmpty(dbFriendList)) {
-            return Collections.emptyList();
-        }
-        return FriendDomainTransformer.INSTANCE.friendListFrom(dbFriendList);
     }
 
 }

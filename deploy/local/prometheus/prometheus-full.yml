@@ -1,0 +1,49 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: im-http-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-http-gateway:19010]
+  - job_name: im-ws-gateway-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-ws-gateway-server:19011]
+  - job_name: im-broker-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-broker-server:19020]
+  - job_name: im-account-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-account-server:19030]
+  - job_name: im-social-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-social-server:19031]
+  - job_name: im-message-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-message-server:19032]
+  - job_name: im-iam-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-iam-server:19040]
+  - job_name: im-audit-server
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-audit-server:19041]
+  - job_name: im-admin
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-admin:19042]
+  - job_name: im-monitor
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [im-monitor:19043]
+  - job_name: skywalking-oap
+    metrics_path: /metrics
+    static_configs:
+      - targets: [skywalking-oap:1234]

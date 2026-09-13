@@ -32,7 +32,7 @@ describe('administration shell', () => {
     const wrapper = mount(App, { global: { stubs: { ElButton: true } } })
     await flushPromises()
 
-    const link = wrapper.get('a[href="http://localhost:18090"]')
+    const link = wrapper.get('a[href="http://localhost:18040"]')
     expect(link.text()).toContain('身份与权限')
   })
 })

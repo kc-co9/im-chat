@@ -1,0 +1,16 @@
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    url: ${im.datasource.sharding.jdbc-url:jdbc:mysql://localhost:3306/im_chat_iam?characterEncoding=utf-8&serverTimezone=UTC}
+    username: ${im.datasource.sharding.username:root}
+    password: ${im.datasource.sharding.password:root}
+
+rules:
+  - !SINGLE
+    tables:
+      - ds_0.*
+    defaultDataSource: ds_0
+
+props:
+  sql-show: ${im.datasource.sharding.sql-show:true}

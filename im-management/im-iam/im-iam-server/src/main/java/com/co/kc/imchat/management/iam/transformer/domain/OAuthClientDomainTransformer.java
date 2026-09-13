@@ -27,9 +27,20 @@ public interface OAuthClientDomainTransformer {
     @Mapping(target = "audienceAppId.value", source = "audienceAppId")
     @Mapping(target = "name.value", source = "name")
     @Mapping(target = "clientSecret.value", source = "clientSecretHash")
-    OAuthClient oauthClientFrom(DbIamOAuthClient oauthClient);
+    OAuthClient oauthClientFieldsFrom(DbIamOAuthClient oauthClient);
+
+    default OAuthClient oauthClientFrom(DbIamOAuthClient entity) {
+        if (entity == null) {
+            return null;
+        }
+        OAuthClient oauthClient = oauthClientFieldsFrom(entity);
+        oauthClient.setPkId(entity.getId());
+        oauthClient.setRowVersion(entity.getVersion());
+        return oauthClient;
+    }
 
     @Mapping(target = "id", source = "pkId")
+    @Mapping(target = "version", source = "rowVersion")
     @Mapping(target = "oauthClientId", source = "clientId.value")
     @Mapping(target = "appId", source = "appId.value")
     @Mapping(target = "audienceAppId", source = "audienceAppId.value")

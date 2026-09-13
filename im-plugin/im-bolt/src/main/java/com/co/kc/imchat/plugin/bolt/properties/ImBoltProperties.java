@@ -19,6 +19,8 @@ public class ImBoltProperties {
     public static class Server {
         private boolean enabled;
 
+        private String host = "0.0.0.0";
+
         private int port = 12200;
     }
 }

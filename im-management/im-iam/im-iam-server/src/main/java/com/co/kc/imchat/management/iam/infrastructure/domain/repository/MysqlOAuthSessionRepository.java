@@ -1,6 +1,7 @@
 package com.co.kc.imchat.management.iam.infrastructure.domain.repository;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.co.kc.imchat.common.model.page.Paging;
 import com.co.kc.imchat.common.model.page.PagingResult;
@@ -82,16 +83,14 @@ public class MysqlOAuthSessionRepository implements OAuthSessionRepository {
 
     @Override
     public boolean revoke(OAuthAuthorizationId authorizationId, Instant revokedAt) {
-        DbIamOAuthAuthorization update = revoked(revokedAt);
-        return authorizationService.update(update, authorizationService.getUpdateWrapper()
+        return authorizationService.update(revoked(revokedAt)
                 .eq(DbIamOAuthAuthorization::getAuthorizationId, authorizationId.value())
                 .eq(DbIamOAuthAuthorization::getStatus, DbIamOAuthAuthorizationStatus.ACTIVE));
     }
 
     @Override
     public void revoke(AdministratorId administratorId, Instant revokedAt) {
-        DbIamOAuthAuthorization update = revoked(revokedAt);
-        authorizationService.update(update, authorizationService.getUpdateWrapper()
+        authorizationService.update(revoked(revokedAt)
                 .eq(DbIamOAuthAuthorization::getPrincipalType, "ADMINISTRATOR")
                 .eq(DbIamOAuthAuthorization::getPrincipalName, administratorId.value().toString())
                 .eq(DbIamOAuthAuthorization::getStatus, DbIamOAuthAuthorizationStatus.ACTIVE));
@@ -99,16 +98,15 @@ public class MysqlOAuthSessionRepository implements OAuthSessionRepository {
 
     @Override
     public void revoke(OAuthClientId clientId, Instant revokedAt) {
-        DbIamOAuthAuthorization update = revoked(revokedAt);
-        authorizationService.update(update, authorizationService.getUpdateWrapper()
+        authorizationService.update(revoked(revokedAt)
                 .eq(DbIamOAuthAuthorization::getOauthClientId, clientId.value())
                 .eq(DbIamOAuthAuthorization::getStatus, DbIamOAuthAuthorizationStatus.ACTIVE));
     }
 
-    private DbIamOAuthAuthorization revoked(Instant revokedAt) {
-        DbIamOAuthAuthorization authorization = new DbIamOAuthAuthorization();
-        authorization.setStatus(DbIamOAuthAuthorizationStatus.REVOKED);
-        authorization.setRevokedAt(revokedAt);
-        return authorization;
+    private LambdaUpdateWrapper<DbIamOAuthAuthorization> revoked(Instant revokedAt) {
+        return authorizationService.getUpdateWrapper()
+                .set(DbIamOAuthAuthorization::getStatus, DbIamOAuthAuthorizationStatus.REVOKED)
+                .set(DbIamOAuthAuthorization::getRevokedAt, revokedAt)
+                .setIncrBy(DbIamOAuthAuthorization::getVersion, 1);
     }
 }

@@ -103,11 +103,11 @@ flowchart LR
 - `im.broker.registry`：Broker/Gateway/Connection TTL。
 - `im.broker.gateway-push`、`im.broker.peer-call`：网关与 peer 调用超时。
 - `im.bolt.server.port`：Broker Bolt 端口，同时作为非 Web Nacos 服务端口。
-- `im.broker.management.host`、`port`：管理 HTTP 监听地址和端口，默认 `127.0.0.1:12201`。
+- `im.broker.management.host`、`port`：管理 HTTP 与 Actuator 监听地址和端口，默认 `127.0.0.1:19020`。
 - 用户连接路由诊断中的注册时间来自路由 `connectedAt`，最后活跃时间来自 `refreshedAt`；管理接口分别输出为 `registeredAt` 和 `lastSeenAt`。
 - `im.broker.management.history-capacity`：Gossip 和连接迁移最近记录容量，默认 `100`。
 
-启动类为 `ImBrokerApplication`。Bolt 默认监听 `12200`，管理 HTTP 默认监听 `127.0.0.1:12201`，二者不能配置为同一端口。Nacos 实例的主端口仍是 Bolt 端口，管理地址只通过 `management-host`、`management-port` metadata 发布。
+启动类为 `ImBrokerApplication`。Bolt 默认监听 `18020`，管理 HTTP 与 Actuator 默认监听 `127.0.0.1:19020`，二者不能配置为同一端口。Nacos 实例的主端口仍是 Bolt 端口，管理地址通过 `management-host` 与 `im-nacos` 统一提供的 `management-port` metadata 发布。
 
 管理 HTTP 的 OpenAPI 页面为 `GET /api/doc.html`，API description 为 `GET /v3/api-docs`。
 

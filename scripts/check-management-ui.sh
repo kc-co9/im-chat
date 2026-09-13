@@ -14,7 +14,7 @@ UI_ROOTS=(
   "im-management/im-iam/im-iam-server/ui"
   "im-management/im-monitor/ui"
 )
-EXPECTED_PORTS=(18093 18091 18090 18092)
+EXPECTED_PORTS=(18042 18041 18040 18043)
 TOKENS=(
   "--im-console-bg: #f3f6fa;"
   "--im-console-surface: #ffffff;"
@@ -63,10 +63,10 @@ NODE
     exit 1
   fi
   for console_location in \
-      "VITE_IAM_CONSOLE_URL|http://localhost:18090" \
-      "VITE_AUDIT_CONSOLE_URL|http://localhost:18091" \
-      "VITE_MONITOR_CONSOLE_URL|http://localhost:18092" \
-      "VITE_ADMIN_CONSOLE_URL|http://localhost:18093"; do
+      "VITE_IAM_CONSOLE_URL|http://localhost:18040" \
+      "VITE_AUDIT_CONSOLE_URL|http://localhost:18041" \
+      "VITE_MONITOR_CONSOLE_URL|http://localhost:18043" \
+      "VITE_ADMIN_CONSOLE_URL|http://localhost:18042"; do
     environment_name="${console_location%%|*}"
     local_default="${console_location#*|}"
     if ! rg -q --fixed-strings "$environment_name" "$console_links_file" \

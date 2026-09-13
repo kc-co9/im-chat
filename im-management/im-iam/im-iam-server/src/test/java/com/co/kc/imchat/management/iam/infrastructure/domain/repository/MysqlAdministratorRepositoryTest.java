@@ -1,6 +1,7 @@
 package com.co.kc.imchat.management.iam.infrastructure.domain.repository;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.co.kc.imchat.management.iam.domain.administrator.model.Administrator;
@@ -38,7 +39,8 @@ class MysqlAdministratorRepositoryTest {
     @Test
     void findsByUsernameOrEmailWithoutExposingPersistenceEntity() {
         DbIamAdministratorService service = mock(DbIamAdministratorService.class);
-        when(service.getOne(any(Wrapper.class), any(Boolean.class))).thenReturn(dbAdministrator());
+        when(service.getQueryWrapper()).thenReturn(new LambdaQueryWrapper<>());
+        when(service.getFirst(any(Wrapper.class))).thenReturn(Optional.of(dbAdministrator()));
         MysqlAdministratorRepository repository = new MysqlAdministratorRepository(service);
 
         Optional<Administrator> result = repository.find(
@@ -53,7 +55,7 @@ class MysqlAdministratorRepositoryTest {
         assertThat(administrator.getStatus()).isEqualTo(AdministratorStatus.ACTIVE);
         assertThat(administrator.getPkId()).isEqualTo(1L);
         ArgumentCaptor<Wrapper<DbIamAdministrator>> wrapper = ArgumentCaptor.forClass(Wrapper.class);
-        verify(service).getOne(wrapper.capture(), any(Boolean.class));
+        verify(service).getFirst(wrapper.capture());
         assertThat(wrapper.getValue().getSqlSegment())
                 .contains("email")
                 .doesNotContain("username", "OR");
@@ -70,6 +72,7 @@ class MysqlAdministratorRepositoryTest {
             entity.setId(1L);
             return true;
         }).when(service).save(any(DbIamAdministrator.class));
+        when(service.updateById(any(DbIamAdministrator.class))).thenReturn(true);
         repository.save(administrator);
         assertThat(administrator.getPkId()).isEqualTo(1L);
         repository.save(administrator);
@@ -81,6 +84,7 @@ class MysqlAdministratorRepositoryTest {
     @Test
     void checksWhetherAnyAdministratorExistsWithoutCountingAllRows() {
         DbIamAdministratorService service = mock(DbIamAdministratorService.class);
+        when(service.getQueryWrapper()).thenReturn(new LambdaQueryWrapper<>());
         when(service.exists(any(Wrapper.class))).thenReturn(true);
         MysqlAdministratorRepository repository = new MysqlAdministratorRepository(service);
 

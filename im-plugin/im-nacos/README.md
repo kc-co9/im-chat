@@ -8,6 +8,7 @@ Nacos 配置中心与服务发现插件。引入依赖后会自动加载公共 N
 - 服务发现 Group：`IM_CHAT_GROUP`。
 - 公共配置：`common.yml` / `COMMON_GROUP`。
 - 各服务配置由应用自行导入 `SERVICE_GROUP` 或 `INFRA_GROUP`。
+- 服务 metadata：统一发布 `management-port=${management.server.port}`，业务调用仍使用 Nacos 注册的业务端口。
 
 核心配置位于 `META-INF/config/im-nacos.yml`，可通过本地配置、启动参数或 Nacos 配置覆盖。非 Web 应用必须配置 `spring.cloud.nacos.discovery.port`，插件会在应用启动阶段主动注册。`spring.cloud.discovery.enabled=false` 或 `spring.cloud.nacos.discovery.enabled=false` 可关闭发现扩展。
 

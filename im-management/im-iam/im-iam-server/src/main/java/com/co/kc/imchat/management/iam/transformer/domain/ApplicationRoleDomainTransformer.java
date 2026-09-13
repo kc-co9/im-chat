@@ -21,9 +21,23 @@ public interface ApplicationRoleDomainTransformer {
     @Mapping(target = "code.value", source = "role.code")
     @Mapping(target = "name.value", source = "role.name")
     @Mapping(target = "permissionIds", source = "permissionIds")
-    ApplicationRole roleFrom(DbIamApplicationRole role, Set<ApplicationPermissionId> permissionIds);
+    ApplicationRole roleFieldsFrom(DbIamApplicationRole role, Set<ApplicationPermissionId> permissionIds);
+
+    default ApplicationRole roleFrom(
+            DbIamApplicationRole entity,
+            Set<ApplicationPermissionId> permissionIds
+    ) {
+        if (entity == null) {
+            return null;
+        }
+        ApplicationRole role = roleFieldsFrom(entity, permissionIds);
+        role.setPkId(entity.getId());
+        role.setRowVersion(entity.getVersion());
+        return role;
+    }
 
     @Mapping(target = "id", source = "pkId")
+    @Mapping(target = "version", source = "rowVersion")
     @Mapping(target = "roleId", source = "id.value")
     @Mapping(target = "appId", source = "appId.value")
     @Mapping(target = "code", source = "code.value")

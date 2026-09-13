@@ -72,13 +72,6 @@ public class ImGroupInboxMessage extends ImMessage {
     public static class Builder {
         private final ImGroupInboxMessage message = new ImGroupInboxMessage();
 
-        public Builder pkId(Long pkId) {
-            if (pkId != null) {
-                message.setPkId(pkId);
-            }
-            return this;
-        }
-
         public Builder id(ImMessageId id) {
             message.setId(id);
             return this;

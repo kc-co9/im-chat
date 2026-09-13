@@ -68,13 +68,6 @@ public class ImGroupChat extends ImChat {
     public static class Builder {
         private final ImGroupChat chat = new ImGroupChat();
 
-        public Builder pkId(Long pkId) {
-            if (pkId != null) {
-                chat.setPkId(pkId);
-            }
-            return this;
-        }
-
         public Builder id(ImChatId id) {
             chat.setId(id);
             return this;

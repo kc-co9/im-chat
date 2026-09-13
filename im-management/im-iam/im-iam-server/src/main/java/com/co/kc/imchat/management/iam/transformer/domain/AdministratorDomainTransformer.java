@@ -16,9 +16,20 @@ public interface AdministratorDomainTransformer {
     @Mapping(target = "username.value", source = "username")
     @Mapping(target = "email.value", source = "email")
     @Mapping(target = "password.value", source = "passwordHash")
-    Administrator administratorFrom(DbIamAdministrator administrator);
+    Administrator administratorFieldsFrom(DbIamAdministrator administrator);
+
+    default Administrator administratorFrom(DbIamAdministrator entity) {
+        if (entity == null) {
+            return null;
+        }
+        Administrator administrator = administratorFieldsFrom(entity);
+        administrator.setPkId(entity.getId());
+        administrator.setRowVersion(entity.getVersion());
+        return administrator;
+    }
 
     @Mapping(target = "id", source = "pkId")
+    @Mapping(target = "version", source = "rowVersion")
     @Mapping(target = "administratorId", source = "id.value")
     @Mapping(target = "username", source = "username.value")
     @Mapping(target = "email", source = "email.value")

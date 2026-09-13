@@ -24,13 +24,19 @@ class ImBoltAutoConfigurationTest {
     }
 
     @Test
-    void bindsServerPort() {
+    void bindsServerAddressAndPort() {
         contextRunner
-                .withPropertyValues("im.bolt.server.port=12345")
+                .withPropertyValues(
+                        "im.bolt.server.host=127.0.0.1",
+                        "im.bolt.server.port=12345")
                 .run(context -> {
                     ImBoltProperties properties = context.getBean(ImBoltProperties.class);
 
+                    assertThat(properties.getServer().getHost()).isEqualTo("127.0.0.1");
                     assertThat(properties.getServer().getPort()).isEqualTo(12345);
+                    RpcServer rpcServer = new ImBoltAutoConfiguration().boltRpcServer(properties);
+                    assertThat(rpcServer.ip()).isEqualTo("127.0.0.1");
+                    assertThat(rpcServer.port()).isEqualTo(12345);
                 });
     }
 }

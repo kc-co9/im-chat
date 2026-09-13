@@ -19,7 +19,7 @@
 - `adapter`：Social Facade 与其他外部能力适配。
 - `infrastructure`：MySQL、Redis、缓存、锁、Broker 通知和仓储实现。
 
-服务名为 `im-message`，默认 HTTP 端口为 `8888`，远程配置从 `SERVICE_GROUP/im-message.yml` 加载。启动依赖 MySQL、Redis、Nacos 和 Dubbo；实时通知通过 Nacos 发现初始 Broker，再由 Broker SDK 定时刷新 Broker 集群快照。
+服务名为 `im-message`，默认 HTTP 端口为 `18032`，Actuator 端口为 `19032`，远程配置从 `SERVICE_GROUP/im-message.yml` 加载。启动依赖 MySQL、Redis、Nacos 和 Dubbo；实时通知通过 Nacos 发现初始 Broker，再由 Broker SDK 定时刷新 Broker 集群快照。
 
 OpenAPI 页面为 `GET /message/api/doc.html`，API description 为 `GET /message/v3/api-docs`。
 
@@ -230,6 +230,9 @@ Redis 中没有单独的 `PENDING` 或 `CONFIRMED` 状态。任务内容存在�
 ## 关键约束
 
 - 应用服务在事务内完成校验与落库，事务提交后再触发通知。
+- 四张消息事实/收件箱逻辑表按 `user_id` 路由到 `_0.._7`；`id` 是数据库自增技术主键，`message_id`、`chat_id` 等字段承载业务全局 ID。任何 UPDATE 必须同时包含 `user_id`、主键和 version，禁止只按主键广播更新。
+- 分片入口为 `im.datasource.sharding`。生产必须通过 Nacos 覆盖 `jdbc-url`、`username`、`password`，或将 `config-location` 指向部署系统提供的外部 `im-sharding.yml`；仓库内 `root/root` 仅用于本地。
+- Redis 本地默认使用明文 `redis://127.0.0.1:6379`。生产使用 TLS 时必须同时设置 `spring.data.redis.ssl.enabled=true` 和 `im.redis.redisson.address=rediss://<host>:<port>`，避免 Spring Data Redis 与 Redisson 传输协议不一致。
 - 分布式锁保护消息幂等临界区，数据库约束仍负责最终防重。
 - Message 只通过 Facade 读取 Social 投影，不访问其他服务数据库。
 - Broker 和 Gateway DTO 不进入消息领域模型，转换在边界完成。

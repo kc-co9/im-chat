@@ -20,7 +20,9 @@ import com.co.kc.imchat.service.message.transformer.db.ImMessageDbTransformer;
 import com.co.kc.imchat.service.message.transformer.domain.ImMessageDomainTransformer;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.stereotype.Repository;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.util.Collections;
 import java.util.Arrays;
@@ -36,7 +38,31 @@ public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRe
 
     @Override
     public void save(ImGroupInboxMessage message) {
-        dbImGroupInboxMessageService.saveOrUpdate(ImMessageDbTransformer.INSTANCE.dbImGroupInboxMessageFrom(message));
+        DbImGroupInboxMessage row = ImMessageDbTransformer.INSTANCE.dbImGroupInboxMessageFrom(message);
+        boolean persisted;
+        if (row.getId() == null) {
+            persisted = dbImGroupInboxMessageService.saveOrUpdate(row);
+        } else {
+            persisted = dbImGroupInboxMessageService.update(row,
+                    dbImGroupInboxMessageService.getUpdateWrapper()
+                            .eq(DbImGroupInboxMessage::getId, row.getId())
+                            .eq(DbImGroupInboxMessage::getUserId, row.getUserId())
+                            .eq(DbImGroupInboxMessage::getVersion, message.getRowVersion()));
+        }
+        if (!persisted) {
+            if (message.getPkId() != null) {
+                throw new OptimisticLockingFailureException(
+                        "Group inbox message was modified concurrently: " + message.getId().value());
+            }
+            throw new DataAccessResourceFailureException(
+                    "Group inbox message was not inserted: " + message.getId().value());
+        }
+        if (persisted) {
+            if (row.getId() != null) {
+                message.setPkId(row.getId());
+            }
+            message.setRowVersion(row.getVersion());
+        }
     }
 
     @Override
@@ -44,10 +70,7 @@ public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRe
         if (CollectionUtils.isEmpty(messages)) {
             return;
         }
-        List<DbImGroupInboxMessage> rows = messages.stream()
-                .map(ImMessageDbTransformer.INSTANCE::dbImGroupInboxMessageFrom)
-                .collect(Collectors.toList());
-        dbImGroupInboxMessageService.saveOrUpdateBatch(rows);
+        messages.forEach(this::save);
     }
 
     @Override

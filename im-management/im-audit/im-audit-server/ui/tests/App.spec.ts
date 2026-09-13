@@ -25,6 +25,6 @@ describe('audit shell', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('审计记录')
-    expect(wrapper.get('a[href="http://localhost:18093"]').text()).toContain('用户管理')
+    expect(wrapper.get('a[href="http://localhost:18042"]').text()).toContain('用户管理')
   })
 })

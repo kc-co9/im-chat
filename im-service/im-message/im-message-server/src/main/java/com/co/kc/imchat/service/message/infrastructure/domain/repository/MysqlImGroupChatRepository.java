@@ -14,7 +14,9 @@ import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.service.message.transformer.db.ImChatDbTransformer;
 import com.co.kc.imchat.service.message.transformer.domain.ImChatDomainTransformer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.stereotype.Repository;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -91,14 +93,36 @@ public class MysqlImGroupChatRepository implements ImGroupChatRepository {
     @Override
     public void save(ImGroupChat groupChat) {
         DbImGroupChat row = ImChatDbTransformer.INSTANCE.dbImGroupChatFrom(groupChat);
-        dbImGroupChatService.saveOrUpdate(row);
+        boolean persisted;
+        if (row.getId() == null) {
+            persisted = dbImGroupChatService.saveOrUpdate(row);
+        } else {
+            persisted = dbImGroupChatService.update(row,
+                    dbImGroupChatService.getUpdateWrapper()
+                            .eq(DbImGroupChat::getId, row.getId())
+                            .eq(DbImGroupChat::getUserId, row.getUserId())
+                            .eq(DbImGroupChat::getVersion, groupChat.getRowVersion()));
+        }
+        if (!persisted) {
+            if (groupChat.getPkId() != null) {
+                throw new OptimisticLockingFailureException(
+                        "Group chat was modified concurrently: " + groupChat.getId().value());
+            }
+            throw new DataAccessResourceFailureException(
+                    "Group chat was not inserted: " + groupChat.getId().value());
+        }
+        if (persisted) {
+            if (row.getId() != null) {
+                groupChat.setPkId(row.getId());
+            }
+            groupChat.setRowVersion(row.getVersion());
+        }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void save(List<ImGroupChat> groupChats) {
-        List<DbImGroupChat> rows = ImChatDbTransformer.INSTANCE.dbImGroupChatListFrom(groupChats);
-        dbImGroupChatService.saveOrUpdateBatch(rows);
+        groupChats.forEach(this::save);
     }
 
     @Override

@@ -51,13 +51,6 @@ public class GroupMember extends Identification implements Validator, Serializab
     public static class Builder {
         private final GroupMember member = new GroupMember();
 
-        public Builder pkId(Long pkId) {
-            if (pkId != null) {
-                member.setPkId(pkId);
-            }
-            return this;
-        }
-
         public Builder id(MemberId id) {
             member.setId(id);
             return this;

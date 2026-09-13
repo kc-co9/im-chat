@@ -52,6 +52,7 @@ class IamTokenPersistenceTest {
     @Test
     void persistsOnlyTokenDigestsAndRestoresThePresentedAccessToken() {
         DbIamOAuthAuthorizationService authorizationService = mock(DbIamOAuthAuthorizationService.class);
+        stubSuccessfulSave(authorizationService);
         RegisteredClientRepository clients = clients();
         AdministratorRepository administrators = administrators();
         Sha256OAuthTokenDigester tokenDigester = new Sha256OAuthTokenDigester();
@@ -98,6 +99,7 @@ class IamTokenPersistenceTest {
     @Test
     void persistsMachineAuthorizationWithoutBrowserOrAdministratorIdentity() {
         DbIamOAuthAuthorizationService authorizationService = mock(DbIamOAuthAuthorizationService.class);
+        stubSuccessfulSave(authorizationService);
         RegisteredClient machineClient = machineClient();
         RegisteredClientRepository clients = mock(RegisteredClientRepository.class);
         when(clients.findById("im-admin-audit")).thenReturn(machineClient);
@@ -154,6 +156,7 @@ class IamTokenPersistenceTest {
         reset(authorizationService);
         when(authorizationService.getByAuthorizationId(stored.getAuthorizationId()))
                 .thenReturn(Optional.of(stored));
+        when(authorizationService.updateById(any())).thenReturn(true);
         OAuth2Authorization source = authorization();
         OAuth2AuthorizationCode code = source.getToken(OAuth2AuthorizationCode.class).getToken();
         OAuth2Authorization exchanged = OAuth2Authorization.from(source)
@@ -193,6 +196,7 @@ class IamTokenPersistenceTest {
     private OAuthAuthorizationServiceAdapter service(
             DbIamOAuthAuthorizationService authorizationService
     ) {
+        stubSuccessfulSave(authorizationService);
         Sha256OAuthTokenDigester tokenDigester = new Sha256OAuthTokenDigester();
         Clock clock = Clock.fixed(ISSUED_AT.plusSeconds(60), ZoneOffset.UTC);
         OAuthAuthorizationRepository authorizationRepository =
@@ -219,6 +223,14 @@ class IamTokenPersistenceTest {
         DbIamOAuthAuthorization stored = captor.getValue();
         stored.setId(1L);
         return stored;
+    }
+
+    private static void stubSuccessfulSave(DbIamOAuthAuthorizationService authorizationService) {
+        when(authorizationService.save(any())).thenAnswer(invocation -> {
+            DbIamOAuthAuthorization entity = invocation.getArgument(0);
+            entity.setId(1L);
+            return true;
+        });
     }
 
     private static OAuth2Authorization authorization() {

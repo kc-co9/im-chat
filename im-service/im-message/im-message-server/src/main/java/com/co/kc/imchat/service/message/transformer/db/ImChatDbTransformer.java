@@ -23,6 +23,7 @@ public interface ImChatDbTransformer {
     default DbImPrivateChat dbImPrivateChatFrom(ImPrivateChat imPrivateChat) {
         DbImPrivateChat row = new DbImPrivateChat();
         row.setId(imPrivateChat.getPkId());
+        row.setVersion(imPrivateChat.getRowVersion());
         row.setChatId(imPrivateChat.getId().value());
         row.setUserId(imPrivateChat.getUserId().value());
         row.setPeerUserId(imPrivateChat.getPeerUserId().value());
@@ -39,6 +40,7 @@ public interface ImChatDbTransformer {
     default DbImGroupChat dbImGroupChatFrom(ImGroupChat groupChat) {
         DbImGroupChat dbGroupChat = new DbImGroupChat();
         dbGroupChat.setId(groupChat.getPkId());
+        dbGroupChat.setVersion(groupChat.getRowVersion());
         dbGroupChat.setChatId(groupChat.getId().value());
         dbGroupChat.setGroupId(groupChat.getGroupId().value());
         dbGroupChat.setUserId(groupChat.getUserId().value());

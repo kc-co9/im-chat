@@ -17,20 +17,32 @@ reset_fixture() {
   rm -rf "$fixture_root"
   mkdir -p "$fixture_root/module/sql" \
     "$fixture_root/module/src/main/resources/mapper" \
-    "$fixture_root/module/src/main/java/example/infrastructure/mapper"
-  cat > "$fixture_root/module/sql/schema.sql" <<'EOF'
+    "$fixture_root/module/src/main/java/example/infrastructure/mapper" \
+    "$fixture_root/deploy/local/mysql/init/ddl" \
+    "$fixture_root/deploy/local/mysql/init/dml"
+  cat > "$fixture_root/module/sql/ddl.sql" <<'EOF'
 -- Documentation example only: DROP DATABASE ignored_db;
 /* Documentation example only: TRUNCATE TABLE ignored_table; */
-CREATE TABLE `sample_table` (
-  `id` BIGINT NOT NULL,
+CREATE TABLE IF NOT EXISTS `sample_table` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `display_name` VARCHAR(32),
   `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `is_deleted` BIGINT NOT NULL DEFAULT 0,
+  `version` BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_display_name` (`display_name`),
   UNIQUE KEY `uk_display_name` (`display_name`)
 ) ENGINE = InnoDB COMMENT = 'sample';
+EOF
+  cp "$fixture_root/module/sql/ddl.sql" "$fixture_root/deploy/local/mysql/init/ddl/01-account.sql"
+  printf 'INSERT INTO sample_table (id, display_name) VALUES (1, '\''sample'\'');\n' \
+    > "$fixture_root/module/sql/dml.sql"
+  cp "$fixture_root/module/sql/dml.sql" \
+    "$fixture_root/deploy/local/mysql/init/dml/06-iam-seed.sql"
+  cat > "$fixture_root/deploy/local/mysql/init/00-initialize.sql" <<'EOF'
+SOURCE /docker-entrypoint-initdb.d/ddl/01-account.sql;
+SOURCE /docker-entrypoint-initdb.d/dml/06-iam-seed.sql;
 EOF
   cat > "$fixture_root/module/src/main/resources/mapper/SampleMapper.xml" <<'EOF'
 <mapper namespace="example.SampleMapper">
@@ -61,16 +73,14 @@ interface SampleMapper {
       """) void delete();
 }
 EOF
-  cat > "$fixture_root/module/sql/ddl.sql" <<'EOF'
-DROP TABLE IF EXISTS `old_table`;
-EOF
-  cat > "$fixture_root/module/sql/unquoted.sql" <<'EOF'
-CREATE TABLE unquoted_table (
-  id BIGINT NOT NULL PRIMARY KEY,
+  cat >> "$fixture_root/module/sql/ddl.sql" <<'EOF'
+CREATE TABLE IF NOT EXISTS unquoted_table (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   display_name VARCHAR(32),
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   is_deleted BIGINT NOT NULL DEFAULT 0,
+  version BIGINT NOT NULL DEFAULT 0,
   KEY idx_display_name (display_name),
   UNIQUE KEY uk_display_name (display_name)
 ) ENGINE = InnoDB COMMENT = 'unquoted identifiers and inline primary key are valid';
@@ -117,15 +127,18 @@ interface UnsupportedForms {
   @Update("UPDATE sample_table " + "SET display_name = #{name}") void concatForm();
 }
 EOF
-expect_pass "valid DDL, XML, annotations, COUNT star, allowed drop, and review-only forms"
+expect_pass "valid DDL/DML, XML, annotations, COUNT star, and review-only forms"
 
-for case_name in resource_sql root_sql module_bad_table missing_template_fields missing_primary missing_engine missing_comment bad_table bad_column bad_index bad_unique if_not_exists_bypass truncate drop_database bare_ddl_drop other_root_drop xml_select_star xml_qualified_select_star annotation_select_star xml_drop xml_cdata_drop long_header_xml_substitution annotation_drop annotation_value_drop annotation_text_drop qualified_annotation invalid_location xml_substitution xml_fragment_substitution annotation_substitution xml_update xml_update_where_literal xml_update_where_comment xml_delete annotation_update annotation_update_where_literal annotation_update_where_comment annotation_value_update annotation_delete unsupported_substitution; do
+for case_name in resource_sql root_sql local_unknown_snapshot module_unknown_sql module_bad_table missing_if_not_exists missing_template_fields missing_auto_increment missing_primary missing_engine missing_comment bad_table bad_column bad_index bad_unique if_not_exists_bypass truncate drop_database bare_ddl_drop other_root_drop xml_select_star xml_qualified_select_star annotation_select_star xml_drop xml_cdata_drop long_header_xml_substitution annotation_drop annotation_value_drop annotation_text_drop qualified_annotation invalid_location xml_substitution xml_fragment_substitution annotation_substitution xml_update xml_update_where_literal xml_update_where_comment xml_delete annotation_update annotation_update_where_literal annotation_update_where_comment annotation_value_update annotation_delete unsupported_substitution; do
   reset_fixture
   expected=""
   case "$case_name" in
     resource_sql) mkdir -p "$fixture_root/module/src/main/resources/db"; echo 'SELECT 1;' > "$fixture_root/module/src/main/resources/db/schema.sql"; expected="Production resource SQL" ;;
-    root_sql) mkdir -p "$fixture_root/sql"; cp "$fixture_root/module/sql/schema.sql" "$fixture_root/sql/schema.sql"; expected="owning Server module" ;;
-    module_bad_table) cat > "$fixture_root/module/sql/schema.sql" <<'EOF'
+    root_sql) mkdir -p "$fixture_root/sql"; cp "$fixture_root/module/sql/ddl.sql" "$fixture_root/sql/schema.sql"; expected="sql/ddl.sql or sql/dml.sql" ;;
+    local_unknown_snapshot) cp "$fixture_root/module/sql/ddl.sql" "$fixture_root/deploy/local/mysql/init/ddl/99-unknown.sql"; expected="approved local init snapshot" ;;
+    module_unknown_sql) cp "$fixture_root/module/sql/ddl.sql" "$fixture_root/module/sql/schema.sql"; expected="sql/ddl.sql or sql/dml.sql" ;;
+    missing_if_not_exists) sed -i.bak 's/CREATE TABLE IF NOT EXISTS/CREATE TABLE/' "$fixture_root/module/sql/ddl.sql"; expected="CREATE TABLE IF NOT EXISTS" ;;
+    module_bad_table) cat > "$fixture_root/module/sql/ddl.sql" <<'EOF'
 CREATE TABLE `BadModuleTable` (
   `id` BIGINT NOT NULL PRIMARY KEY,
   `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -134,22 +147,23 @@ CREATE TABLE `BadModuleTable` (
 ) ENGINE = InnoDB COMMENT = 'bad';
 EOF
       expected="lower snake_case table" ;;
-    missing_template_fields) sed -i.bak '/`update_time`/d' "$fixture_root/module/sql/schema.sql"; expected="standard template columns" ;;
-    missing_primary) sed -i.bak '/PRIMARY KEY/d' "$fixture_root/module/sql/schema.sql"; expected="explicit PRIMARY KEY" ;;
-    missing_engine) sed -i.bak 's/ENGINE = InnoDB/ENGINE = Other/' "$fixture_root/module/sql/schema.sql"; expected="ENGINE=InnoDB" ;;
-    missing_comment) sed -i.bak "s/ COMMENT = 'sample'//" "$fixture_root/module/sql/schema.sql"; expected="table COMMENT" ;;
-    bad_table) sed -i.bak 's/`sample_table`/`SampleTable`/' "$fixture_root/module/sql/schema.sql"; expected="lower snake_case table" ;;
-    bad_column) sed -i.bak 's/`display_name` VARCHAR/`displayName` VARCHAR/' "$fixture_root/module/sql/schema.sql"; expected="lower snake_case column" ;;
-    bad_index) sed -i.bak 's/`idx_display_name`/`display_name`/' "$fixture_root/module/sql/schema.sql"; expected="idx_" ;;
-    bad_unique) sed -i.bak 's/`uk_display_name`/`unique_display_name`/' "$fixture_root/module/sql/schema.sql"; expected="uk_" ;;
-    if_not_exists_bypass) cat > "$fixture_root/module/sql/schema.sql" <<'EOF'
+    missing_template_fields) sed -i.bak '/`update_time`/d' "$fixture_root/module/sql/ddl.sql"; expected="standard template columns" ;;
+    missing_auto_increment) sed -i.bak 's/ AUTO_INCREMENT//' "$fixture_root/module/sql/ddl.sql"; expected="database AUTO_INCREMENT technical primary key" ;;
+    missing_primary) sed -i.bak '/PRIMARY KEY/d' "$fixture_root/module/sql/ddl.sql"; expected="explicit PRIMARY KEY" ;;
+    missing_engine) sed -i.bak 's/ENGINE = InnoDB/ENGINE = Other/' "$fixture_root/module/sql/ddl.sql"; expected="ENGINE=InnoDB" ;;
+    missing_comment) sed -i.bak "s/ COMMENT = 'sample'//" "$fixture_root/module/sql/ddl.sql"; expected="table COMMENT" ;;
+    bad_table) sed -i.bak 's/`sample_table`/`SampleTable`/' "$fixture_root/module/sql/ddl.sql"; expected="lower snake_case table" ;;
+    bad_column) sed -i.bak 's/`display_name` VARCHAR/`displayName` VARCHAR/' "$fixture_root/module/sql/ddl.sql"; expected="lower snake_case column" ;;
+    bad_index) sed -i.bak 's/`idx_display_name`/`display_name`/' "$fixture_root/module/sql/ddl.sql"; expected="idx_" ;;
+    bad_unique) sed -i.bak 's/`uk_display_name`/`unique_display_name`/' "$fixture_root/module/sql/ddl.sql"; expected="uk_" ;;
+    if_not_exists_bypass) cat > "$fixture_root/module/sql/ddl.sql" <<'EOF'
 CREATE TABLE IF NOT EXISTS `BadTable` (`BadColumn` BIGINT) ENGINE = Other;
 EOF
       expected="lower snake_case table" ;;
-    truncate) echo 'TrUnCaTe TABLE sample_table;' >> "$fixture_root/module/sql/schema.sql"; expected="TRUNCATE" ;;
-    drop_database) printf 'DROP\n DATABASE sample;\n' >> "$fixture_root/module/sql/schema.sql"; expected="DROP DATABASE" ;;
-    bare_ddl_drop) printf 'DrOp\n TABLE `old_table`;\n' > "$fixture_root/module/sql/ddl.sql"; expected="DROP TABLE IF EXISTS" ;;
-    other_root_drop) echo 'DROP TABLE IF EXISTS `old_table`;' >> "$fixture_root/module/sql/schema.sql"; expected="DROP TABLE is only allowed" ;;
+    truncate) echo 'TrUnCaTe TABLE sample_table;' >> "$fixture_root/module/sql/ddl.sql"; expected="TRUNCATE" ;;
+    drop_database) printf 'DROP\n DATABASE sample;\n' >> "$fixture_root/module/sql/ddl.sql"; expected="DROP DATABASE" ;;
+    bare_ddl_drop) printf 'DrOp\n TABLE `old_table`;\n' > "$fixture_root/module/sql/ddl.sql"; expected="DROP TABLE is forbidden" ;;
+    other_root_drop) echo 'DROP TABLE IF EXISTS `old_table`;' >> "$fixture_root/module/sql/dml.sql"; expected="DROP TABLE is forbidden" ;;
     xml_select_star) sed -i.bak 's/SELECT id, display_name FROM sample_table/SELECT * FROM sample_table/' "$fixture_root/module/src/main/resources/mapper/SampleMapper.xml"; expected="SELECT wildcard" ;;
     xml_qualified_select_star) sed -i.bak 's/SELECT id, display_name FROM sample_table/SELECT sample_table.* FROM sample_table/' "$fixture_root/module/src/main/resources/mapper/SampleMapper.xml"; expected="SELECT wildcard" ;;
     annotation_select_star) sed -i.bak 's/SELECT id, display_name FROM sample_table WHERE id = #{id}/SELECT * FROM sample_table WHERE id = #{id}/' "$fixture_root/module/src/main/java/example/infrastructure/mapper/SampleMapper.java"; expected="SELECT wildcard" ;;

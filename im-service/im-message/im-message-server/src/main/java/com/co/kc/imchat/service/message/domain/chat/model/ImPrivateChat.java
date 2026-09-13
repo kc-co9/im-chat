@@ -75,13 +75,6 @@ public class ImPrivateChat extends ImChat {
     public static class Builder {
         private final ImPrivateChat chat = new ImPrivateChat();
 
-        public Builder pkId(Long pkId) {
-            if (pkId != null) {
-                chat.setPkId(pkId);
-            }
-            return this;
-        }
-
         public Builder id(ImChatId id) {
             chat.setId(id);
             return this;
