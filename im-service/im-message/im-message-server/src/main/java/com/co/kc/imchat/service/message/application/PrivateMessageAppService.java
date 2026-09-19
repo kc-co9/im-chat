@@ -27,7 +27,11 @@ import com.co.kc.imchat.service.message.model.cqrs.command.im.ImPrivateMessageRe
 import com.co.kc.imchat.service.message.model.cqrs.query.ImPrivateMessageHistoryQuery;
 import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import com.co.kc.imchat.service.message.application.lock.ImMessageLockScene;
+import com.co.kc.imchat.plugin.lock.core.DistributedLockTemplate;
+import com.co.kc.imchat.plugin.metrics.annotation.Observed;
 import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
+import com.co.kc.imchat.plugin.lock.support.LockOptions;
+import com.co.kc.imchat.plugin.lock.support.LockKeys;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
 import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.service.message.transformer.ImMessageAppTransformer;
@@ -54,6 +58,7 @@ public class PrivateMessageAppService {
     private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
     private final TransactionOperations transactionOperations;
+    private final DistributedLockTemplate distributedLockTemplate;
 
     public PrivateMessageAppService(ImPrivateChatRepository imPrivateChatRepository,
                                     ImPrivateInboxMessageRepository imPrivateInboxMessageRepository,
@@ -64,7 +69,8 @@ public class PrivateMessageAppService {
                                     SnowflakeId snowflakeId,
                                     ImMessageNotifierInvoker imMessageNotifierInvoker,
                                     DomainEventPublisher imMessageEventPublisher,
-                                    TransactionOperations transactionOperations) {
+                                    TransactionOperations transactionOperations,
+                                    DistributedLockTemplate distributedLockTemplate) {
         this.imPrivateChatRepository = imPrivateChatRepository;
         this.imPrivateInboxMessageRepository = imPrivateInboxMessageRepository;
         this.imChatViewRepository = imChatViewRepository;
@@ -75,9 +81,10 @@ public class PrivateMessageAppService {
         this.imMessageNotifierInvoker = imMessageNotifierInvoker;
         this.imMessageEventPublisher = imMessageEventPublisher;
         this.transactionOperations = transactionOperations;
+        this.distributedLockTemplate = distributedLockTemplate;
     }
 
-    @DistributeLock(scene = ImMessageLockScene.PRIVATE_MESSAGE_SEND, key = "#command.chatId() + ':' + #command.messageToken()")
+    @Observed(name = "im.message.private.send")
     public void sendMessage(ImPrivateMessageSendCmd command) {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
         UserId userId = new UserId(command.userId());
@@ -85,55 +92,71 @@ public class PrivateMessageAppService {
         ImMessageToken messageToken = new ImMessageToken(command.messageToken());
         ImMessageContent messageContent = new ImMessageContent(command.messageType(), command.messageContent());
 
-        ImPrivateChat senderChat = imPrivateChatRepository.find(chatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
-        imChatService.ensureBelongsTo(senderChat, userId);
+        // 锁外查询用于校验发送者并解析双方用户锁键；获取锁后重新查询，避免使用等待期间已更新的 Chat。
+        ImPrivateChat imPrivateChat = imPrivateChatRepository.find(chatId)
+                .orElseThrow(() -> new NotFoundException("聊天不存在"));
+        imChatService.ensureBelongsTo(imPrivateChat, userId);
 
-        ImPrivateChat receiverChat = imChatService.getPeerChat(senderChat).orElseThrow(() -> new NotFoundException("接收方会话不存在"));
-        imChatService.ensureBelongsTo(receiverChat, senderChat.getPeerUserId());
+        ImPrivateMessageSentEvent event = distributedLockTemplate.execute(
+                () -> {
+                    ImPrivateChat senderChat = imPrivateChatRepository.find(chatId)
+                            .orElseThrow(() -> new NotFoundException("聊天不存在"));
+                    imChatService.ensureBelongsTo(senderChat, userId);
 
-        socialAdapter.ensureFriendshipActive(senderChat.getUserId().value(), receiverChat.getUserId().value());
-        imMessageService.ensurePrivateMessageUnique(chatId, messageToken);
-        boolean receiverChatting = imChatViewRepository.isViewing(receiverChat.getUserId(), receiverChat.getId());
+                    ImPrivateChat receiverChat = imChatService.getPeerChat(senderChat)
+                            .orElseThrow(() -> new NotFoundException("接收方会话不存在"));
+                    imChatService.ensureBelongsTo(receiverChat, senderChat.getPeerUserId());
 
-        ImPrivateInboxMessage senderInboxMessage = ImPrivateInboxMessage.builder()
-                .id(messageId)
-                .token(messageToken)
-                .content(messageContent)
-                .chatId(senderChat.getId())
-                .userId(senderChat.getUserId())
-                .senderId(userId)
-                .status(ImPrivateMessageStatus.SENT)
-                .sendTime(LocalDateTime.now())
-                .receivedTime(LocalDateTime.now())
-                .readTime(LocalDateTime.now())
-                .build();
-        ImPrivateInboxMessage receiverInboxMessage = ImPrivateInboxMessage.builder()
-                .id(messageId)
-                .token(messageToken)
-                .content(messageContent)
-                .chatId(receiverChat.getId())
-                .userId(receiverChat.getUserId())
-                .senderId(userId)
-                .status(ImPrivateMessageStatus.SENT)
-                .sendTime(LocalDateTime.now())
-                .build();
+                    socialAdapter.ensureFriendshipActive(
+                            senderChat.getUserId().value(), receiverChat.getUserId().value());
+                    imMessageService.ensurePrivateMessageUnique(chatId, messageToken);
+                    boolean receiverChatting =
+                            imChatViewRepository.isViewing(receiverChat.getUserId(), receiverChat.getId());
 
-        transactionOperations.executeWithoutResult(status -> {
-            imPrivateInboxMessageRepository.save(senderInboxMessage);
-            imPrivateInboxMessageRepository.save(receiverInboxMessage);
+                    ImPrivateInboxMessage senderInboxMessage = ImPrivateInboxMessage.builder()
+                            .id(messageId)
+                            .token(messageToken)
+                            .content(messageContent)
+                            .chatId(senderChat.getId())
+                            .userId(senderChat.getUserId())
+                            .senderId(userId)
+                            .status(ImPrivateMessageStatus.SENT)
+                            .sendTime(LocalDateTime.now())
+                            .receivedTime(LocalDateTime.now())
+                            .readTime(LocalDateTime.now())
+                            .build();
+                    ImPrivateInboxMessage receiverInboxMessage = ImPrivateInboxMessage.builder()
+                            .id(messageId)
+                            .token(messageToken)
+                            .content(messageContent)
+                            .chatId(receiverChat.getId())
+                            .userId(receiverChat.getUserId())
+                            .senderId(userId)
+                            .status(ImPrivateMessageStatus.SENT)
+                            .sendTime(LocalDateTime.now())
+                            .build();
+                    ImPrivateMessageSentEvent messageSentEvent =
+                            imMessageService.newImMessageSentEvent(receiverInboxMessage);
 
-            senderChat.receiveLatestMessage(senderInboxMessage, true);
-            imPrivateChatRepository.save(senderChat);
+                    transactionOperations.executeWithoutResult(status -> {
+                        imPrivateInboxMessageRepository.save(senderInboxMessage);
+                        imPrivateInboxMessageRepository.save(receiverInboxMessage);
 
-            receiverChat.receiveLatestMessage(
-                    receiverInboxMessage,
-                    receiverChatting
-            );
-            imPrivateChatRepository.save(receiverChat);
+                        senderChat.receiveLatestMessage(senderInboxMessage, true);
+                        imPrivateChatRepository.save(senderChat);
 
-            ImPrivateMessageSentEvent imMessageSentEvent = imMessageService.newImMessageSentEvent(receiverInboxMessage);
-            imMessageEventPublisher.publish(imMessageSentEvent);
-        });
+                        receiverChat.receiveLatestMessage(
+                                receiverInboxMessage,
+                                receiverChatting
+                        );
+                        imPrivateChatRepository.save(receiverChat);
+                    });
+                    return messageSentEvent;
+                },
+                ImMessageLockScene.PRIVATE_MESSAGE_SEND,
+                LockKeys.userPair(imPrivateChat.getUserId().value(), imPrivateChat.getPeerUserId().value()), LockOptions.AUTO_RENEW_DEFAULT_WAIT);
+
+        imMessageEventPublisher.publish(event);
     }
 
     @AfterTransactionCommit

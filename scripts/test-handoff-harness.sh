@@ -61,6 +61,12 @@ cat > "$FIXTURE_ROOT/.harness/report.json" <<'EOF'
   "status": "passed",
   "repository": {"headRevision": "fixture-head", "worktreeFingerprint": "fixture-fingerprint"},
   "tests": {"status": "current", "total": 12, "failures": 0, "errors": 0, "skipped": 0},
+  "runtimeEvidence": {
+    "loadTest": {
+      "smoke": {"status": "verified", "freshness": "fresh", "batchId": "smk001", "cleanupStatus": "passed", "ordinaryDataUnchanged": true},
+      "capacity": {"status": "missing", "freshness": "missing", "batchId": null, "cleanupStatus": null, "ordinaryDataUnchanged": null}
+    }
+  },
   "verifications": [
     {"mode": "full", "status": "passed", "freshness": "fresh", "command": "./scripts/verify.sh full"},
     {"mode": "e2e", "status": "passed", "freshness": "fresh", "command": "./scripts/verify.sh e2e"}
@@ -80,6 +86,8 @@ if ! ruby -rjson -e '
   valid = report["evidenceFreshness"] == "fresh" &&
     report.dig("currentlyVerified", "status") == "passed" &&
     report.dig("currentlyVerified", "testTotal") == 12 &&
+    report.dig("currentlyVerified", "loadTest", "smoke", "batchId") == "smk001" &&
+    report.dig("currentlyVerified", "loadTest", "capacity", "status") == "missing" &&
     report.dig("workState", "activePlan") == "docs/exec-plans/active/current.md" &&
     report.dig("nextAction", "priority").include?("实现 handoff") &&
     report.dig("nextAction", "doNotTouch").include?("业务代码")

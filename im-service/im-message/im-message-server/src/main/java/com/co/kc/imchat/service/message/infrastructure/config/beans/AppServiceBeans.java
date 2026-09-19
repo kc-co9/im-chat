@@ -8,6 +8,7 @@ import com.co.kc.imchat.service.message.application.notification.ImMessageNotifi
 import com.co.kc.imchat.service.message.application.notification.confirmable.ImMessageConfirmableService;
 import com.co.kc.imchat.service.message.application.notification.receiver.NotificationAckReceiver;
 import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.lock.core.DistributedLockTemplate;
 import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImGroupChatRepository;
 import com.co.kc.imchat.service.message.domain.chat.repository.ImPrivateChatRepository;
@@ -53,12 +54,14 @@ public class AppServiceBeans {
                                                              SocialAdapter socialAdapter,
                                                              ImMessageNotifierInvoker imMessageNotifierInvoker,
                                                              DomainEventPublisher imMessageEventPublisher,
-                                                             PlatformTransactionManager transactionManager) {
+                                                             PlatformTransactionManager transactionManager,
+                                                             DistributedLockTemplate distributedLockTemplate) {
         return new PrivateMessageAppService(
                 imPrivateChatRepository, imPrivateInboxMessageRepository,
                 imChatViewRepository, imChatService, imMessageService, socialAdapter,
                 snowflakeId, imMessageNotifierInvoker,
-                imMessageEventPublisher, new TransactionTemplate(transactionManager));
+                imMessageEventPublisher, new TransactionTemplate(transactionManager),
+                distributedLockTemplate);
     }
 
     @Bean
@@ -71,12 +74,13 @@ public class AppServiceBeans {
                                                          ImChatService imChatService,
                                                          ImMessageNotifierInvoker imMessageNotifierInvoker,
                                                          DomainEventPublisher imMessageEventPublisher,
-                                                         PlatformTransactionManager transactionManager) {
+                                                         PlatformTransactionManager transactionManager,
+                                                         DistributedLockTemplate distributedLockTemplate) {
         return new GroupMessageAppService(
                 imGroupChatRepository, imGroupInboxMessageRepository,
                 imChatViewRepository, socialAdapter, imMessageService, imChatService,
                 snowflakeId, imMessageNotifierInvoker, imMessageEventPublisher,
-                new TransactionTemplate(transactionManager));
+                new TransactionTemplate(transactionManager), distributedLockTemplate);
     }
 
     @Bean

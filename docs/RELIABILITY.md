@@ -18,12 +18,14 @@
 - 启动失败必须指出缺失依赖或非法配置，不能静默降级关键路径。
 - 定时注册、心跳、迁移和 Gossip 任务必须幂等，并隔离单个 Peer 故障。
 - Timeout、重试上限、Tombstone/Removed Entry 保留时间和 Gossip fanout 归入类型化配置属性。
+- Dubbo Consumer 默认 `retries=0`，禁止框架在超时后自动重放业务 RPC。需要重试时由调用方基于明确的幂等键、响应语义和有界策略实现；调整全局 retries 前必须证明所有受影响调用可安全重放。
 - 业务监控必须暴露连接、投递、重试和同步健康状态，但监控数据不得进入投递正确性路径。
 - `im-monitor` 使用有界 Executor 和单节点 Timeout 并发查询 Broker management endpoint。部分失败返回 `UNREACHABLE`，健康节点数据仍可用；全部失败时不得伪造健康汇总。
 - Session 关闭控制发布暴露有限基数的 `success`/`failure` Counter 与 Duration Timer，不包含用户、Session、Connection 或 Token Label。
 - Account 状态变化只在数据库事务提交后安排 Session 踢出。Post-commit Callback 获取 Session 写锁、更新 Redis Session 状态，然后立即发布 best-effort 连接关闭控制；不能为了再注册一个 Post-commit Callback 单独开启数据库事务。
 - 待确认通知由 Redis Receipt Task 是否存在表示。客户端 ACK 删除 Task、延迟标识和重试计数；不存在单独持久化的 `CONFIRMED` 状态。
 - Message 通知在首次 Push 后最多重投三次。允许重复投递，因此客户端和 ACK Handler 必须幂等。
+- Broker 必须透传 Message Provider 的稳定 `RpcException` 错误码；Dubbo 运行时包装仅可沿 cause 链识别本项目 `RpcException`，未知异常继续映射为 `BROKER_UNAVAILABLE`，不得解析异常文本恢复业务码。
 - Management Producer 提交已完成 Audit 事实，不改变原业务结果或异常。事务成功只在 Commit 后提交；Rollback 不发成功事实，失败时保留并重新抛出原异常。
 - Kafka 至少投递一次，Audit 按 `auditId` 幂等写入。Source Consumer 持久化失败最多重试三次，再进入独立 DLQ。HTTP 只重试 Timeout 和 `5xx`，`4xx` 为最终结果。Kafka 与 HTTP 独立选择，不静默互相回退。
 - Audit 导出要求不超过 31 天的有界时间范围，以每页 100 行流式写入 Workbook。

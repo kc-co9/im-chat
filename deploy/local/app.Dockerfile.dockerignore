@@ -1,4 +1,9 @@
 **
+!deploy/
+!deploy/local/
+!deploy/local/jdk-class-preloader-agent/
+!deploy/local/jdk-class-preloader-agent/MANIFEST.MF
+!deploy/local/jdk-class-preloader-agent/JdkClassPreloaderAgent.java
 !im-gateway/
 !im-gateway/im-http-gateway/
 !im-gateway/im-http-gateway/target/

@@ -33,7 +33,10 @@ import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
 import com.co.kc.imchat.service.message.application.lock.ImMessageLockScene;
+import com.co.kc.imchat.plugin.lock.core.DistributedLockTemplate;
+import com.co.kc.imchat.plugin.metrics.annotation.Observed;
 import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
+import com.co.kc.imchat.plugin.lock.support.LockOptions;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
 import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.service.message.transformer.ImMessageAppTransformer;
@@ -61,6 +64,7 @@ public class GroupMessageAppService {
     private final ImMessageNotifierInvoker imMessageNotifierInvoker;
     private final DomainEventPublisher imMessageEventPublisher;
     private final TransactionOperations transactionOperations;
+    private final DistributedLockTemplate distributedLockTemplate;
 
     public GroupMessageAppService(ImGroupChatRepository imGroupChatRepository,
                                   ImGroupInboxMessageRepository imGroupInboxMessageRepository,
@@ -71,7 +75,8 @@ public class GroupMessageAppService {
                                   SnowflakeId snowflakeId,
                                   ImMessageNotifierInvoker imMessageNotifierInvoker,
                                   DomainEventPublisher imMessageEventPublisher,
-                                  TransactionOperations transactionOperations) {
+                                  TransactionOperations transactionOperations,
+                                  DistributedLockTemplate distributedLockTemplate) {
         this.imGroupChatRepository = imGroupChatRepository;
         this.imGroupInboxMessageRepository = imGroupInboxMessageRepository;
         this.imChatViewRepository = imChatViewRepository;
@@ -82,9 +87,10 @@ public class GroupMessageAppService {
         this.imMessageNotifierInvoker = imMessageNotifierInvoker;
         this.imMessageEventPublisher = imMessageEventPublisher;
         this.transactionOperations = transactionOperations;
+        this.distributedLockTemplate = distributedLockTemplate;
     }
 
-    @DistributeLock(scene = ImMessageLockScene.GROUP_MESSAGE_SEND, key = "#command.chatId() + ':' + #command.messageToken()")
+    @Observed(name = "im.message.group.send")
     public void sendMessage(GroupMessageSendCmd command) {
         ImMessageId messageId = new ImMessageId(snowflakeId.next());
         ImChatId senderChatId = new ImChatId(command.chatId());
@@ -92,27 +98,33 @@ public class GroupMessageAppService {
         ImMessageToken messageToken = new ImMessageToken(command.messageToken());
         ImMessageContent messageContent = new ImMessageContent(command.messageType(), command.messageContent());
 
-        ImGroupChat senderChat = imGroupChatRepository.find(senderChatId).orElseThrow(() -> new NotFoundException("聊天不存在"));
+        ImGroupChat senderChat = imGroupChatRepository.find(senderChatId)
+                .orElseThrow(() -> new NotFoundException("聊天不存在"));
         imChatService.ensureBelongsTo(senderChat, senderId);
 
-        socialAdapter.ensureGroupMember(senderChat.getGroupId().value(), senderId.value());
+        ImGroupMessageSentEvent event = distributedLockTemplate.execute(
+                () -> {
+                    socialAdapter.ensureGroupMember(senderChat.getGroupId().value(), senderId.value());
 
-        imMessageService.ensureGroupMessageUnique(senderChatId, senderId, messageToken);
+                    imMessageService.ensureGroupMessageUnique(senderChatId, senderId, messageToken);
 
-        ImMessageSender imMessageSender = new ImMessageSender(senderChat, senderId);
-        ImOutboundMessage outboundMessage = new ImOutboundMessage(messageId, messageToken, messageContent);
-        List<ImMessageRecipient> recipients = findMessageRecipients(senderChat.getGroupId());
-        ImGroupMessageTransmission transmission =
-                imMessageService.transmitGroupMessage(outboundMessage, imMessageSender, recipients);
+                    ImMessageSender imMessageSender = new ImMessageSender(senderChat, senderId);
+                    ImOutboundMessage outboundMessage = new ImOutboundMessage(messageId, messageToken, messageContent);
+                    List<ImMessageRecipient> recipients = findMessageRecipients(senderChat.getGroupId());
+                    ImGroupMessageTransmission transmission =
+                            imMessageService.transmitGroupMessage(outboundMessage, imMessageSender, recipients);
+                    ImGroupMessageSentEvent messageSentEvent = imMessageService.newImMessageSentEvent(
+                            senderChat.getGroupId(), transmission.getSenderMessage(senderId));
 
-        transactionOperations.executeWithoutResult(status -> {
-            imGroupInboxMessageRepository.save(transmission.inboxMessages());
-            imGroupChatRepository.save(transmission.groupChats());
+                    transactionOperations.executeWithoutResult(status -> {
+                        imGroupInboxMessageRepository.save(transmission.inboxMessages());
+                        imGroupChatRepository.save(transmission.groupChats());
+                    });
+                    return messageSentEvent;
+                },
+                ImMessageLockScene.GROUP_MESSAGE_SEND, String.valueOf(senderChat.getGroupId().value()), LockOptions.AUTO_RENEW_DEFAULT_WAIT);
 
-            ImGroupMessageSentEvent event =
-                    imMessageService.newImMessageSentEvent(senderChat.getGroupId(), transmission.getSenderMessage(senderId));
-            imMessageEventPublisher.publish(event);
-        });
+        imMessageEventPublisher.publish(event);
     }
 
     @AfterTransactionCommit

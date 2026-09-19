@@ -1,6 +1,7 @@
 package com.co.kc.imchat.service.social.adapter.message;
 
 import com.co.kc.imchat.common.domain.group.model.MemberDescriptor;
+import com.co.kc.imchat.plugin.datasource.transaction.AfterTransactionCommit;
 import com.co.kc.imchat.service.message.facade.ChatService;
 import com.co.kc.imchat.service.message.facade.dto.UserGroupChatSummaryDTO;
 import com.co.kc.imchat.service.message.facade.params.PrivateChatPrepareParams;
@@ -39,6 +40,7 @@ public class MessageSocialAdapter {
      * @param userId       用户 ID
      * @param friendUserId 好友用户 ID
      */
+    @AfterTransactionCommit
     public void onFriendAdded(Long userId, Long friendUserId) {
         chatService.preparePrivateChat(new PrivateChatPrepareParams(userId, friendUserId));
     }

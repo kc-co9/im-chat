@@ -150,7 +150,9 @@ Gossip 生命周期在每次 peer 同步结束后记录合并与推送条目数�
 | 故障 | 当前行为 | 主要证据 |
 |---|---|---|
 | peer Broker 调用失败 | 当前写入/迁移失败，保留可重试状态并记录诊断 | Gossip/迁移 Tracker、warn 日志 |
-| Gateway 下行失败 | 保留逐连接失败结果返回调用方 | Frame write result、`im.message.broker.frame.write` |
+| Gateway 下行失败 | 保留逐连接失败结果返回调用方 | Frame write result、`im.message.broker.frame.write`、`im.broker.gateway.frame.write` |
+
+`im.broker.gateway.frame.write` 记录 Broker 调用目标 Gateway 的次数、失败和 duration，不携带 userId、messageId、connectionId 或 gatewayId。它表示 Gateway RPC 阶段，不代表客户端已经收到或 ACK。
 | Message Facade 超时 | 上行帧返回未处理，不在 Broker 落消息 | Frame Handler 日志与结果 |
 | Gateway 异常消失 | 心跳/TTL 与后续快照清理路由 | Registry 状态、管理接口 |
 | 诊断记录失败 | 只记录失败，不改变核心操作结果 | Tracker 聚焦测试 |

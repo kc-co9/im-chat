@@ -59,6 +59,10 @@ ruby -rjson -ropen3 -rtime -e '
     "stale"
   end
   verified_status = freshness == "fresh" ? report.fetch("status", "incomplete") : freshness
+  load_test = report.dig("runtimeEvidence", "loadTest") || {
+    "smoke" => {"status" => "missing", "freshness" => "missing"},
+    "capacity" => {"status" => "missing", "freshness" => "missing"}
+  }
 
   active_plans = Dir.glob(File.join(root, "docs/exec-plans/active/*.md"))
     .reject { |path| File.basename(path) == "README.md" }
@@ -110,7 +114,8 @@ ruby -rjson -ropen3 -rtime -e '
       "status" => verified_status,
       "testStatus" => report.dig("tests", "status") || "unknown",
       "testTotal" => report.dig("tests", "total").to_i,
-      "verifications" => verification_summary
+      "verifications" => verification_summary,
+      "loadTest" => load_test
     },
     "changes" => {
       "count" => changes.length,
@@ -162,6 +167,8 @@ ruby -rjson -ropen3 -rtime -e '
 
     - 综合状态：`#{verified_status}`；证据新鲜度：`#{freshness}`。
     - 测试状态：`#{handoff.dig("currentlyVerified", "testStatus")}`；当前统计：#{handoff.dig("currentlyVerified", "testTotal")}。
+    - 压测 smoke：`#{load_test.dig("smoke", "status") || "missing"}` / `#{load_test.dig("smoke", "freshness") || "missing"}`；batch：`#{load_test.dig("smoke", "batchId") || "none"}`。
+    - 正式容量：`#{load_test.dig("capacity", "status") || "missing"}` / `#{load_test.dig("capacity", "freshness") || "missing"}`；batch：`#{load_test.dig("capacity", "batchId") || "none"}`。
     #{verification_lines.join("\n")}
 
     ## 本轮改动

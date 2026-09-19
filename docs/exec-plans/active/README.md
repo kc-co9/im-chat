@@ -4,4 +4,4 @@
 
 ## Active plans
 
-当前无活跃计划。
+当前没有 active execution plan。

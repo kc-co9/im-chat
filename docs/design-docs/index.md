@@ -6,6 +6,7 @@
 
 ## Current Designs
 
+- [IM 核心链路容量压测](2026-09-14-im-load-test-design.md)：设计已批准并通过三轮独立 Review 和用户委托主审；实施与真实压测已完成并按 completed execution plan 归档，记录宿主 k6、本机连接/消息容量探索、批次数据清理与测量安全边界。
 - [可观测性与分片运行接入](2026-09-11-observability-sharding-runtime-design.md)：记录本轮 `$grill-me` 确认的数据库 `version` 字段、MyBatis-Plus 插件、ShardingSphere 配置、Prometheus、SkyWalking、端口治理和本地启动编排决策。
 - [Harness 交接、启动与质量评审](2026-09-10-harness-handoff-startup-and-quality-design.md)：自动派生 session handoff、验证全部应用的受控启动路径、限界清理，并用独立 AI Reviewer 与机器证据生成模块 A/B/C/D 快照。
 - [Harness 证据与运行闭环](2026-09-10-harness-evidence-and-runtime-loop-design.md)：让验证绑定当前 worktree，建立实时 E2E、行为目录、运行证据和 CI 生命周期。

@@ -38,6 +38,7 @@ class ImDubboAutoConfigurationTest {
         assertThat(protocol.getHost()).isNull();
         assertThat(registry.getAddress()).isEqualTo("N/A");
         assertThat(consumer.isCheck()).isFalse();
+        assertThat(consumer.getRetries()).isZero();
     }
 
     @Test

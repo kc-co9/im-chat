@@ -13,11 +13,12 @@ import com.co.kc.imchat.broker.sdk.model.dto.UserGatewayDTO;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.support.client.BrokerPeerClient;
+import com.co.kc.imchat.broker.support.client.GatewayFrameWriter;
 import com.co.kc.imchat.broker.transformer.MessageFrameTransformer;
 import com.co.kc.imchat.common.constant.FrameCommand;
 import com.co.kc.imchat.common.constant.FrameErrorCode;
 import com.co.kc.imchat.common.exception.BaseException;
-import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
+import com.co.kc.imchat.common.exception.RpcException;
 import com.co.kc.imchat.gateway.ws.sdk.model.dto.GatewayFrameWriteDTO;
 import com.co.kc.imchat.gateway.ws.sdk.model.result.GatewayFrameWriteResult;
 import com.co.kc.imchat.gateway.ws.sdk.model.params.GatewayFrameWriteParams;
@@ -43,21 +44,21 @@ public class FrameProcessHandler extends AbstractBrokerRpcHandler<BrokerFrameWri
     private final ConnectionRegistry connectionRegistry;
     private final GatewayRegistry gatewayRegistry;
     private final MessageService messageService;
-    private final GatewayClient gatewayClient;
+    private final GatewayFrameWriter gatewayFrameWriter;
     private final BrokerConnectionService brokerConnectionService;
     private final BrokerPeerClient brokerPeerClient;
 
     public FrameProcessHandler(ConnectionRegistry connectionRegistry,
                                GatewayRegistry gatewayRegistry,
                                MessageService messageService,
-                               GatewayClient gatewayClient,
+                               GatewayFrameWriter gatewayFrameWriter,
                                BrokerConnectionService brokerConnectionService,
                                BrokerPeerClient brokerPeerClient) {
         super(BrokerBoltOperation.WRITE_FRAME);
         this.connectionRegistry = connectionRegistry;
         this.gatewayRegistry = gatewayRegistry;
         this.messageService = messageService;
-        this.gatewayClient = gatewayClient;
+        this.gatewayFrameWriter = gatewayFrameWriter;
         this.brokerConnectionService = brokerConnectionService;
         this.brokerPeerClient = brokerPeerClient;
     }
@@ -104,7 +105,14 @@ public class FrameProcessHandler extends AbstractBrokerRpcHandler<BrokerFrameWri
             return BrokerFrameWriteResult.failed(FrameErrorCode.BAD_REQUEST, ex.getMessage());
         } catch (BaseException ex) {
             return BrokerFrameWriteResult.failed(String.valueOf(ex.getCode()), exceptionMessage(ex));
+        } catch (RpcException ex) {
+            return BrokerFrameWriteResult.failed(String.valueOf(ex.getCode()), ex.getMessage());
         } catch (RuntimeException ex) {
+            RpcException rpcException = findRpcException(ex);
+            if (rpcException != null) {
+                return BrokerFrameWriteResult.failed(
+                        String.valueOf(rpcException.getCode()), rpcException.getMessage());
+            }
             log.warn("failed to process message frame, cmd:{}, error:{}", params.request().cmd(), ex.toString());
             return BrokerFrameWriteResult.failed(FrameErrorCode.BROKER_UNAVAILABLE);
         }
@@ -127,7 +135,7 @@ public class FrameProcessHandler extends AbstractBrokerRpcHandler<BrokerFrameWri
                 if (gateway.isEmpty()) {
                     continue;
                 }
-                GatewayFrameWriteResult writeResult = gatewayClient.writeFrame(gateway.get(),
+                GatewayFrameWriteResult writeResult = gatewayFrameWriter.writeFrame(gateway.get(),
                         new GatewayFrameWriteParams(params.userId(), params.response()));
                 results.addAll(writeResult.writeList().stream()
                         .map(this::toBrokerWriteResult)
@@ -155,8 +163,7 @@ public class FrameProcessHandler extends AbstractBrokerRpcHandler<BrokerFrameWri
     }
 
     private BrokerFrameWriteDTO toBrokerWriteResult(GatewayFrameWriteDTO result) {
-        return new BrokerFrameWriteDTO(result.connectionId(),
-                BrokerFrameWriteStatus.valueOf(result.status().name()));
+        return new BrokerFrameWriteDTO(result.connectionId(), BrokerFrameWriteStatus.valueOf(result.status().name()));
     }
 
     private String exceptionMessage(BaseException ex) {
@@ -164,5 +171,20 @@ public class FrameProcessHandler extends AbstractBrokerRpcHandler<BrokerFrameWri
             return ex.getReason();
         }
         return ex.getMsg();
+    }
+
+    private RpcException findRpcException(Throwable failure) {
+        Throwable current = failure.getCause();
+        for (int depth = 0; current != null && current != failure && depth < 10; depth++) {
+            if (current instanceof RpcException rpcException) {
+                return rpcException;
+            }
+            Throwable cause = current.getCause();
+            if (cause == current) {
+                break;
+            }
+            current = cause;
+        }
+        return null;
     }
 }

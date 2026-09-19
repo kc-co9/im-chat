@@ -11,10 +11,12 @@ set -euo pipefail
 ROOT_DIR="${HARNESS_ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 OUTPUT="${1:-$ROOT_DIR/.harness/report.json}"
 source "$ROOT_DIR/scripts/lib/harness-evidence.sh"
+source "$ROOT_DIR/scripts/lib/load-test-evidence.sh"
 mkdir -p "$(dirname "$OUTPUT")"
 
 current_head="${HARNESS_CURRENT_HEAD:-$(harness_head_revision "$ROOT_DIR")}"
 current_fingerprint="${HARNESS_CURRENT_WORKTREE_FINGERPRINT:-$(harness_worktree_fingerprint "$ROOT_DIR")}"
+current_load_test_scope="${HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT:-$(load_test_scope_fingerprint "$ROOT_DIR" 2>/dev/null || printf unavailable)}"
 
 # 根据验证记录与当前仓库状态返回 fresh、stale 或 unavailable。
 verification_freshness() {
@@ -217,6 +219,99 @@ else
   e2e_runtime_json='{"status":"missing","freshness":"missing","logPath":null,"logAvailable":false,"testCount":0,"workload":null}'
 fi
 
+# 压测证据按专用 scope 判断 freshness，使计划状态更新不使已完成的真实运行失效。
+load_test_runtime_evidence() {
+  local kind="$1"
+  local file="$ROOT_DIR/.harness/verifications/load-test-$kind.json"
+  if [[ ! -f "$file" ]]; then
+    printf '{"status":"missing","freshness":"missing","batchId":null,"configDigest":null,"worktreeStable":null,"cleanupStatus":null,"ordinaryDataUnchanged":null,"perRoundDecisions":[]}'
+    return
+  fi
+  local resolved_config_json
+  local current_config_digest
+  if [[ "$kind" == smoke ]]; then
+    resolved_config_json="$(load_test_smoke_resolved_config 2>/dev/null || printf '{}')"
+  else
+    resolved_config_json="$(ruby -rjson -e '
+      value = JSON.parse(File.read(ARGV.fetch(0)))["resolvedConfig"]
+      print JSON.generate(value || {})
+    ' "$file")"
+  fi
+  current_config_digest="${HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST:-$(load_test_config_digest "$ROOT_DIR" "$resolved_config_json" 2>/dev/null || printf unavailable)}"
+  ruby -rjson -e '
+    evidence = JSON.parse(File.read(ARGV.fetch(0)))
+    current_scope = ARGV.fetch(1)
+    kind = ARGV.fetch(2)
+    current_config_digest = ARGV.fetch(3)
+    recorded_scope = evidence["loadTestScopeFingerprint"]
+    config_fresh = current_config_digest != "unavailable" &&
+      evidence["configDigest"] == current_config_digest
+    freshness = if current_scope == "unavailable" || recorded_scope.nil? || current_config_digest == "unavailable"
+      "unavailable"
+    elsif evidence["loadTestScopeStable"] == true && current_scope == recorded_scope && config_fresh
+      "fresh"
+    else
+      "stale"
+    end
+    rounds = Array(evidence["perRoundDecisions"])
+    decisions_valid = !rounds.empty? && rounds.all? do |round|
+      %w[stable service_failed uncertain skipped].include?(round.dig("decision", "status"))
+    end
+    smoke_stable = kind != "smoke" || (
+      rounds.map { |round| round["kind"] } == %w[connection message] &&
+      rounds.fetch(0).dig("decision", "status") == "stable" &&
+      %w[stable service_failed].include?(rounds.fetch(1).dig("decision", "status"))
+    )
+    capacity_complete = kind != "capacity" || (
+      rounds.count { |round| round["kind"] == "connection" } >= 1 &&
+      rounds.select { |round| round["kind"] == "connection" }
+        .all? { |round| round.dig("decision", "status") == "stable" } &&
+      rounds.count { |round| round["kind"] == "message" } == 1 &&
+      %w[stable service_failed skipped].include?(
+        rounds.find { |round| round["kind"] == "message" }.dig("decision", "status")
+      )
+    )
+    verified = freshness == "fresh" && evidence["status"] == "passed" &&
+      evidence["cleanupStatus"] == "passed" && evidence["ordinaryDataUnchanged"] == true &&
+      evidence["worktreeStable"] == true && decisions_valid && smoke_stable && capacity_complete
+    status = if verified
+      "verified"
+    elsif freshness == "stale"
+      "stale"
+    elsif freshness == "unavailable"
+      "present"
+    else
+      "degraded"
+    end
+    print JSON.generate({
+      "status" => status,
+      "freshness" => freshness,
+      "batchId" => evidence["batchId"],
+      "configDigest" => evidence["configDigest"],
+      "configFresh" => config_fresh,
+      "worktreeStable" => evidence["worktreeStable"],
+      "cleanupStatus" => evidence["cleanupStatus"],
+      "ordinaryDataUnchanged" => evidence["ordinaryDataUnchanged"],
+      "perRoundDecisions" => rounds
+    })
+  ' "$file" "$current_load_test_scope" "$kind" "$current_config_digest"
+}
+
+load_test_smoke_runtime_json="$(load_test_runtime_evidence smoke)"
+load_test_capacity_runtime_json="$(load_test_runtime_evidence capacity)"
+load_test_runtime_statuses="$(ruby -rjson -e '
+  puts [JSON.parse(ARGV.fetch(0))["status"], JSON.parse(ARGV.fetch(1))["status"]].join(" ")
+' "$load_test_smoke_runtime_json" "$load_test_capacity_runtime_json")"
+for load_test_runtime_status in $load_test_runtime_statuses; do
+  case "$load_test_runtime_status" in
+    degraded) overall_status=failed ;;
+    stale) [[ "$overall_status" == failed ]] || overall_status=stale ;;
+    missing|present)
+      [[ "$overall_status" == failed || "$overall_status" == stale ]] || overall_status=incomplete
+      ;;
+  esac
+done
+
 cat > "$OUTPUT" <<EOF
 {
   "generatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -246,7 +341,10 @@ cat > "$OUTPUT" <<EOF
       {"status": "deferred", "capability": "automatic agent loop", "reason": "requires a machine task queue and explicit user authorization"}
     ]
   },
-  "runtimeEvidence": {"e2e": $e2e_runtime_json},
+  "runtimeEvidence": {
+    "e2e": $e2e_runtime_json,
+    "loadTest": {"smoke": $load_test_smoke_runtime_json, "capacity": $load_test_capacity_runtime_json}
+  },
   "drift": {"status": "$status", "durationSeconds": $duration},
   "tests": {"status": "$test_status", "total": $tests, "failures": $failures, "errors": $errors, "skipped": $skipped},
   "governance": {"activePlans": $active_plans, "stalePlans": $stale_plans, "openTechnicalDebt": $open_debt},

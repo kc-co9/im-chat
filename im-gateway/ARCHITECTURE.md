@@ -59,6 +59,7 @@ sequenceDiagram
 - Broker 只获得 `userId -> gatewayId`，不获得 Channel 或 connectionId。
 - 心跳、读空闲、帧大小和协议升级由显式 Netty pipeline 管理；阻塞认证使用专用有界线程池，完成后回到 Channel EventLoop。
 - 下行写入结果逐连接返回，只表示 Gateway 接受写入，不等于客户端业务 ACK。
+- 本机 `ConnectionRegistry.writeFrame` 使用 `im.gateway.frame.write` 记录 Channel 写入处理结果和 duration，不记录用户、连接或消息身份标签。该 duration 截止于 Gateway 接受 Netty write，不包含客户端事件循环处理或业务 ACK。
 - Account 退出或替换 Session 时，Gateway 只关闭匹配旧 `sessionVersion` 的连接，避免乱序关闭新会话。
 
 ## 状态与失败边界

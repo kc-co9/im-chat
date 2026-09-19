@@ -1,0 +1,28 @@
+services:
+  mysql:
+    mem_limit: 768m
+  skywalking-oap:
+    mem_limit: 1536m
+  im-http-gateway:
+    environment: &load-test-app-environment
+      IM_DATASOURCE_SHARDING_SQL_SHOW: "false"
+      LOGGING_LEVEL_ROOT: INFO
+  im-ws-gateway-server:
+    environment: *load-test-app-environment
+  im-broker-server:
+    environment: *load-test-app-environment
+  im-account-server:
+    environment: *load-test-app-environment
+  im-social-server:
+    environment: *load-test-app-environment
+  im-message-server:
+    environment: *load-test-app-environment
+    mem_limit: 2g
+  im-iam-server:
+    environment: *load-test-app-environment
+  im-audit-server:
+    environment: *load-test-app-environment
+  im-admin:
+    environment: *load-test-app-environment
+  im-monitor:
+    environment: *load-test-app-environment

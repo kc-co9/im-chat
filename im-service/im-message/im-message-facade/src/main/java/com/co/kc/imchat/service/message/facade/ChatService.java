@@ -35,7 +35,7 @@ public interface ChatService {
     List<UserGroupChatSummaryDTO> getUserGroupChatSummaries(UserGroupChatSummariesGetParams params);
 
     /**
-     * 预创建私聊会话。
+     * 幂等预创建好友双方的私聊会话视角。
      *
      * @param params 私聊会话预创建请求
      */

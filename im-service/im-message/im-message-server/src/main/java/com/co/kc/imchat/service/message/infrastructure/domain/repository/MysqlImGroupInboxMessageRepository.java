@@ -38,30 +38,28 @@ public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRe
 
     @Override
     public void save(ImGroupInboxMessage message) {
-        DbImGroupInboxMessage row = ImMessageDbTransformer.INSTANCE.dbImGroupInboxMessageFrom(message);
+        DbImGroupInboxMessage dbImGroupInboxMessage = ImMessageDbTransformer.INSTANCE.dbImGroupInboxMessageFrom(message);
         boolean persisted;
-        if (row.getId() == null) {
-            persisted = dbImGroupInboxMessageService.saveOrUpdate(row);
+        if (dbImGroupInboxMessage.getId() == null) {
+            persisted = dbImGroupInboxMessageService.saveOrUpdate(dbImGroupInboxMessage);
         } else {
-            persisted = dbImGroupInboxMessageService.update(row,
+            persisted = dbImGroupInboxMessageService.update(dbImGroupInboxMessage,
                     dbImGroupInboxMessageService.getUpdateWrapper()
-                            .eq(DbImGroupInboxMessage::getId, row.getId())
-                            .eq(DbImGroupInboxMessage::getUserId, row.getUserId())
+                            .eq(DbImGroupInboxMessage::getId, dbImGroupInboxMessage.getId())
+                            .eq(DbImGroupInboxMessage::getUserId, dbImGroupInboxMessage.getUserId())
                             .eq(DbImGroupInboxMessage::getVersion, message.getRowVersion()));
         }
-        if (!persisted) {
-            if (message.getPkId() != null) {
-                throw new OptimisticLockingFailureException(
-                        "Group inbox message was modified concurrently: " + message.getId().value());
-            }
-            throw new DataAccessResourceFailureException(
-                    "Group inbox message was not inserted: " + message.getId().value());
-        }
         if (persisted) {
-            if (row.getId() != null) {
-                message.setPkId(row.getId());
+            if (dbImGroupInboxMessage.getId() != null) {
+                message.setPkId(dbImGroupInboxMessage.getId());
             }
-            message.setRowVersion(row.getVersion());
+            message.setRowVersion(dbImGroupInboxMessage.getVersion());
+        } else {
+            if (message.getPkId() != null) {
+                throw new OptimisticLockingFailureException("Group inbox message was modified concurrently: " + message.getId().value());
+            } else {
+                throw new DataAccessResourceFailureException("Group inbox message was not inserted: " + message.getId().value());
+            }
         }
     }
 
@@ -70,7 +68,20 @@ public class MysqlImGroupInboxMessageRepository implements ImGroupInboxMessageRe
         if (CollectionUtils.isEmpty(messages)) {
             return;
         }
-        messages.forEach(this::save);
+        List<DbImGroupInboxMessage> groupInboxMessages =
+                ImMessageDbTransformer.INSTANCE.dbImGroupInboxMessageListFrom(messages);
+        List<DbImGroupInboxMessage> inserts = groupInboxMessages.stream()
+                .filter(row -> row.getId() == null)
+                .toList();
+        List<DbImGroupInboxMessage> updates = groupInboxMessages.stream()
+                .filter(row -> row.getId() != null)
+                .toList();
+        if (!inserts.isEmpty() && !dbImGroupInboxMessageService.saveBatch(inserts)) {
+            throw new DataAccessResourceFailureException("Group inbox messages were not inserted");
+        }
+        if (!updates.isEmpty() && !dbImGroupInboxMessageService.updateMessageStates(updates)) {
+            throw new OptimisticLockingFailureException("Group inbox message was modified concurrently: " + updates.getFirst().getMessageId());
+        }
     }
 
     @Override

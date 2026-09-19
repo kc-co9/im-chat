@@ -160,6 +160,7 @@ Gateway 通过 Nacos 发现初始 Broker 地址，之后由 Broker SDK 定时读
 - Gateway 周期性上报活跃用户快照，Broker 通过快照清理异常断连遗留映射。
 - Broker 客户端支持 HASH、ROUND_ROBIN、RANDOM；Hash 策略用于相同路由键的稳定选择。
 - 下行写入逐连接返回状态，调用方可以区分已接受和失败连接。
+- `im.gateway.frame.write` 记录 Gateway 本机 Channel 写入处理的次数、失败和 duration；不携带用户、连接、消息等高基数标签，且不把 Netty 接受写入解释为客户端 ACK。
 
 ## 验证命令
 

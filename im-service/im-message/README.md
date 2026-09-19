@@ -31,6 +31,10 @@
 ## 关键不变量与生命周期
 
 - 聊天记录属于单个用户视角：私聊双方各有自己的 `ImPrivateChat`，群成员各有自己的 `ImGroupChat`；隐藏或已读状态不会改写他人的会话。
+- 好友关系提交后，Social 只调用一次 `preparePrivateChat(userId, friendUserId)`；Message 按 canonical user pair 加锁，并在一个事务内幂等补齐双方隐藏私聊视角。历史单侧状态只补缺失侧，不覆盖已有会话状态。
+- 同一私聊双方的发送按排序后的 userId 对串行，同一群聊的发送按 groupId 串行；获取发送锁最多等待项目默认的 100 ms，热点过载时返回操作频繁而不占住 RPC 线程无限排队。客户端重试必须复用同一 messageToken；锁内重新读取所有待更新 Chat，保证用户视角的最新消息和未读状态不会因正常并发触发乐观锁冲突。
+- 群消息写入按 fanout 批量保存新 Inbox，并以固定字段集合的 MyBatis-Plus Lambda Update 批量更新已有 Inbox 状态与成员 Chat；每条更新均携带 `user_id` 分片键和旧版本，MyBatis Batch 由 ShardingSphere 路由后返回 `BatchResult`，任一影响行数不是 `1` 即中止并回滚，不再通过事后版本回查推断更新结果。成员 Chat 只更新最新消息、已读消息、未读数、状态和活跃时间，避免通用批量更新入口被误用。批量保存后的领域对象不再继续持久化，因此不回填数据库技术状态。
+- Confirmable 通知在首次 Broker 推送前先保存 ReceiptTask，首次投递由独立虚拟线程执行；虚拟线程启动失败或推送 RuntimeException 不改变已提交消息的发送结果，后续由 Receipt 重试处理。未创建重试任务的通知保持同步，失败继续向调用方传播。
 - `ImChat` 和 `ImMessage` 复用公共标识、校验与行为，但没有独立的通用仓储；应用通过 `ImPrivateChatRepository`、`ImGroupChatRepository`、`ImPrivateInboxMessageRepository` 和 `ImGroupInboxMessageRepository` 直接持久化、查询具体聚合根。
 - 每条消息先形成发送方和接收方各自的收件箱副本，再与对应聊天状态在 MySQL 事务内提交；消息 Token 的唯一性由领域检查和数据库约束共同保证。
 - 只有消息归属方可以接收或读取自己的副本，只有发送者可以撤回；已撤回消息不再暴露原内容。

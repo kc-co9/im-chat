@@ -10,6 +10,8 @@ Apply the root `AGENTS.md` first. This subtree contains repository-level test mo
 - State every replaced boundary explicitly. Do not describe a test as proving MySQL, Redis, Nacos, or a remote service when that dependency is substituted.
 - Use bounded synchronization or Awaitility for asynchronous runtime state. Never use real sleeps.
 - A new repository-level test capability requires a focused `verify.sh` mode, documentation, and impact mapping.
+- Load-test fixtures remain deterministic and dependency-explicit. Only `verify.sh load-test-smoke` and the explicit load-test runner may create real users, connections, messages, or runtime evidence.
+- Load-test completion evidence must bind the full worktree observed during execution and the dedicated load-test scope. Execution-state documents may be excluded from scope freshness; production code, test code, configuration, scripts, and stable documentation may not.
 
 ## Verification
 

@@ -106,6 +106,7 @@ while IFS= read -r file; do
     im-service/*/*-server/*) add_module "$(cut -d/ -f1-3 <<< "$file")" ;;
     im-test/im-architecture-test/*) add_module "im-test/im-architecture-test" ;;
     im-test/im-e2e-test/*) add_module "im-test/im-e2e-test" ;;
+    im-test/im-load-test/*) add_module "im-test/im-load-test" ;;
   esac
 done <<< "$changed_files"
 

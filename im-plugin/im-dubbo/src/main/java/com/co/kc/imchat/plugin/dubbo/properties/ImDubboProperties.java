@@ -37,6 +37,7 @@ public class ImDubboProperties {
     @Setter
     public static class Consumer {
         private int timeout = 3000;
+        private int retries;
         private boolean check;
 
     }

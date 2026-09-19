@@ -4,6 +4,8 @@ import com.co.kc.imchat.service.message.application.notification.task.ReceiptTas
 import com.co.kc.imchat.service.message.application.notification.task.ReceiptType;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.redisson.api.RBlockingDeque;
 import org.redisson.api.RDelayedQueue;
 import org.redisson.api.RMapCache;
@@ -18,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
@@ -29,6 +32,7 @@ import static org.mockito.Mockito.when;
 
 class RedisImMessageConfirmableStoreTest {
     private static final long POLL_TIMEOUT_MILLIS = 100L;
+    private static final String VALID_RECEIPT_ID = "PRIVATE_MESSAGE_SEND:2:102:900";
 
     @Test
     void offerAddsDelayedReceiptIdAndStoresTask() {
@@ -309,21 +313,202 @@ class RedisImMessageConfirmableStoreTest {
     }
 
     @Test
-    void confirmRemovesReceiptTaskByReceiptId() {
+    void confirmRemovesTaskAttemptsAndBothQueueEntriesWhenTaskExists() {
         RedissonClient redissonClient = mock(RedissonClient.class);
-        RBlockingDeque<String> receiptQueue = mockQueue(redissonClient, ReceiptType.PRIVATE_MESSAGE_SEND, "ack:1");
+        RBlockingDeque<String> receiptQueue = mockQueue(redissonClient, ReceiptType.PRIVATE_MESSAGE_SEND, VALID_RECEIPT_ID);
         RDelayedQueue<String> delayedReceiptQueue = mockDelayedQueue(redissonClient, receiptQueue);
         RMapCache<String, String> receiptTasks = mockTasks(redissonClient);
         RMapCache<String, Integer> receiptAttempts = mockAttempts(redissonClient);
-        when(receiptTasks.get("ack:1")).thenReturn(JsonUtils.toJson(task()));
+        when(receiptTasks.fastRemove(VALID_RECEIPT_ID)).thenReturn(1L);
+        when(delayedReceiptQueue.size()).thenReturn(1);
+        when(delayedReceiptQueue.remove(VALID_RECEIPT_ID)).thenReturn(true);
+        when(receiptQueue.size()).thenReturn(1);
+        when(receiptQueue.remove(VALID_RECEIPT_ID)).thenReturn(true);
         RedisImMessageConfirmableStore store = new RedisImMessageConfirmableStore(redissonClient);
 
-        store.confirm("ack:1");
+        store.confirm(VALID_RECEIPT_ID);
 
-        verify(receiptTasks).fastRemove("ack:1");
-        verify(delayedReceiptQueue).remove("ack:1");
-        verify(receiptQueue).remove("ack:1");
-        verify(receiptAttempts).fastRemove("ack:1");
+        verify(receiptTasks).fastRemove(VALID_RECEIPT_ID);
+        verify(delayedReceiptQueue).remove(VALID_RECEIPT_ID);
+        verify(receiptQueue).remove(VALID_RECEIPT_ID);
+        verify(receiptAttempts).fastRemove(VALID_RECEIPT_ID);
+    }
+
+    @Test
+    void confirmRemovesDelayedQueueResidueAndAttemptsWhenTaskHasExpired() {
+        RedissonClient redissonClient = mock(RedissonClient.class);
+        RBlockingDeque<String> receiptQueue = mockQueue(redissonClient, ReceiptType.PRIVATE_MESSAGE_SEND, VALID_RECEIPT_ID);
+        RDelayedQueue<String> delayedReceiptQueue = mockDelayedQueue(redissonClient, receiptQueue);
+        RMapCache<String, String> receiptTasks = mockTasks(redissonClient);
+        RMapCache<String, Integer> receiptAttempts = mockAttempts(redissonClient);
+        when(receiptTasks.fastRemove(VALID_RECEIPT_ID)).thenReturn(0L);
+        when(delayedReceiptQueue.size()).thenReturn(1);
+        when(delayedReceiptQueue.remove(VALID_RECEIPT_ID)).thenReturn(true);
+        when(receiptQueue.size()).thenReturn(0);
+        RedisImMessageConfirmableStore store = new RedisImMessageConfirmableStore(redissonClient);
+
+        store.confirm(VALID_RECEIPT_ID);
+
+        verify(receiptTasks).fastRemove(VALID_RECEIPT_ID);
+        verify(delayedReceiptQueue).remove(VALID_RECEIPT_ID);
+        verify(receiptQueue, never()).remove(VALID_RECEIPT_ID);
+        verify(receiptAttempts).fastRemove(VALID_RECEIPT_ID);
+    }
+
+    @Test
+    void confirmRemovesBlockingDequeResidueAndAttemptsWhenTaskHasExpired() {
+        RedissonClient redissonClient = mock(RedissonClient.class);
+        RBlockingDeque<String> receiptQueue = mockQueue(redissonClient, ReceiptType.PRIVATE_MESSAGE_SEND, VALID_RECEIPT_ID);
+        RDelayedQueue<String> delayedReceiptQueue = mockDelayedQueue(redissonClient, receiptQueue);
+        RMapCache<String, String> receiptTasks = mockTasks(redissonClient);
+        RMapCache<String, Integer> receiptAttempts = mockAttempts(redissonClient);
+        when(receiptTasks.fastRemove(VALID_RECEIPT_ID)).thenReturn(0L);
+        when(delayedReceiptQueue.size()).thenReturn(0);
+        when(receiptQueue.size()).thenReturn(1);
+        when(receiptQueue.remove(VALID_RECEIPT_ID)).thenReturn(true);
+        RedisImMessageConfirmableStore store = new RedisImMessageConfirmableStore(redissonClient);
+
+        store.confirm(VALID_RECEIPT_ID);
+
+        verify(receiptTasks).fastRemove(VALID_RECEIPT_ID);
+        verify(receiptQueue).remove(VALID_RECEIPT_ID);
+        verify(receiptAttempts).fastRemove(VALID_RECEIPT_ID);
+        verify(delayedReceiptQueue, never()).remove(VALID_RECEIPT_ID);
+    }
+
+    @Test
+    void confirmDrainsDuplicateOccurrencesFromExactDelayedAndBlockingQueues() {
+        RedissonClient redissonClient = mock(RedissonClient.class);
+        RBlockingDeque<String> receiptQueue = mockQueue(redissonClient, ReceiptType.PRIVATE_MESSAGE_SEND, VALID_RECEIPT_ID);
+        RDelayedQueue<String> delayedReceiptQueue = mockDelayedQueue(redissonClient, receiptQueue);
+        RMapCache<String, String> receiptTasks = mockTasks(redissonClient);
+        RMapCache<String, Integer> receiptAttempts = mockAttempts(redissonClient);
+        when(delayedReceiptQueue.size()).thenReturn(3);
+        when(delayedReceiptQueue.remove(VALID_RECEIPT_ID)).thenReturn(true, true, false);
+        when(receiptQueue.size()).thenReturn(3);
+        when(receiptQueue.remove(VALID_RECEIPT_ID)).thenReturn(true, true, false);
+        RedisImMessageConfirmableStore store = new RedisImMessageConfirmableStore(redissonClient);
+
+        store.confirm(VALID_RECEIPT_ID);
+
+        verify(receiptTasks).fastRemove(VALID_RECEIPT_ID);
+        verify(delayedReceiptQueue, times(3)).remove(VALID_RECEIPT_ID);
+        verify(receiptQueue, times(3)).remove(VALID_RECEIPT_ID);
+        verify(receiptAttempts).fastRemove(VALID_RECEIPT_ID);
+    }
+
+    @Test
+    void confirmRemovesExactGroupQueueEntriesWhenTaskHasExpired() {
+        String receiptId = ReceiptType.GROUP_MESSAGE_SEND.receiptId(3L, 203L, 901L);
+        RedissonClient redissonClient = mock(RedissonClient.class);
+        RBlockingDeque<String> privateQueue = mockQueue(redissonClient, ReceiptType.PRIVATE_MESSAGE_SEND, receiptId);
+        RBlockingDeque<String> groupQueue = mockQueue(redissonClient, ReceiptType.GROUP_MESSAGE_SEND, receiptId);
+        RDelayedQueue<String> privateDelayedQueue = mockDelayedQueue(redissonClient, privateQueue);
+        RDelayedQueue<String> groupDelayedQueue = mockDelayedQueue(redissonClient, groupQueue);
+        RMapCache<String, String> receiptTasks = mockTasks(redissonClient);
+        RMapCache<String, Integer> receiptAttempts = mockAttempts(redissonClient);
+        when(groupDelayedQueue.size()).thenReturn(1);
+        when(groupDelayedQueue.remove(receiptId)).thenReturn(true);
+        when(groupQueue.size()).thenReturn(1);
+        when(groupQueue.remove(receiptId)).thenReturn(true);
+        RedisImMessageConfirmableStore store = new RedisImMessageConfirmableStore(redissonClient);
+
+        store.confirm(receiptId);
+
+        verify(receiptTasks).fastRemove(receiptId);
+        verify(groupDelayedQueue).remove(receiptId);
+        verify(groupQueue).remove(receiptId);
+        verify(receiptAttempts).fastRemove(receiptId);
+        verify(privateDelayedQueue, never()).remove(receiptId);
+        verify(privateQueue, never()).remove(receiptId);
+    }
+
+    @Test
+    void repeatedConfirmRemainsIdempotentWhenTaskHasExpired() {
+        RedissonClient redissonClient = mock(RedissonClient.class);
+        RBlockingDeque<String> receiptQueue = mockQueue(redissonClient, ReceiptType.PRIVATE_MESSAGE_SEND, VALID_RECEIPT_ID);
+        RDelayedQueue<String> delayedReceiptQueue = mockDelayedQueue(redissonClient, receiptQueue);
+        RMapCache<String, String> receiptTasks = mockTasks(redissonClient);
+        RMapCache<String, Integer> receiptAttempts = mockAttempts(redissonClient);
+        when(delayedReceiptQueue.size()).thenReturn(1, 0);
+        when(delayedReceiptQueue.remove(VALID_RECEIPT_ID)).thenReturn(true);
+        when(receiptQueue.size()).thenReturn(1, 0);
+        when(receiptQueue.remove(VALID_RECEIPT_ID)).thenReturn(true);
+        RedisImMessageConfirmableStore store = new RedisImMessageConfirmableStore(redissonClient);
+
+        store.confirm(VALID_RECEIPT_ID);
+        store.confirm(VALID_RECEIPT_ID);
+
+        verify(receiptTasks, times(2)).fastRemove(VALID_RECEIPT_ID);
+        verify(delayedReceiptQueue).remove(VALID_RECEIPT_ID);
+        verify(receiptQueue).remove(VALID_RECEIPT_ID);
+        verify(receiptAttempts, times(2)).fastRemove(VALID_RECEIPT_ID);
+    }
+
+    @Test
+    void confirmRejectsNullAndBlankReceiptIdsBeforeRemovingState() {
+        assertMalformedReceiptIdRejected(null);
+        assertMalformedReceiptIdRejected("");
+        assertMalformedReceiptIdRejected("   ");
+    }
+
+    @Test
+    void confirmRejectsUnsupportedReceiptTypeBeforeRemovingState() {
+        assertMalformedReceiptIdRejected("UNKNOWN:2:102:900");
+    }
+
+    @Test
+    void confirmRejectsIncompleteReceiptIdBeforeRemovingState() {
+        assertMalformedReceiptIdRejected("PRIVATE_MESSAGE_SEND:2:102");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "PRIVATE_MESSAGE_SEND:not-a-number:102:900",
+            "PRIVATE_MESSAGE_SEND:2:not-a-number:900",
+            "PRIVATE_MESSAGE_SEND:2:102:not-a-number",
+            "PRIVATE_MESSAGE_SEND:0:102:900",
+            "PRIVATE_MESSAGE_SEND:2:0:900",
+            "PRIVATE_MESSAGE_SEND:2:102:0",
+            "PRIVATE_MESSAGE_SEND:-2:102:900",
+            "PRIVATE_MESSAGE_SEND:2:-102:900",
+            "PRIVATE_MESSAGE_SEND:2:102:-900",
+            "PRIVATE_MESSAGE_SEND:+2:102:900",
+            "PRIVATE_MESSAGE_SEND:2:+102:900",
+            "PRIVATE_MESSAGE_SEND:2:102:+900",
+            "PRIVATE_MESSAGE_SEND: 2:102:900",
+            "PRIVATE_MESSAGE_SEND:2:102 :900",
+            "PRIVATE_MESSAGE_SEND:2:102:900 ",
+            "PRIVATE_MESSAGE_SEND:9223372036854775808:102:900",
+            "PRIVATE_MESSAGE_SEND:2:9223372036854775808:900",
+            "PRIVATE_MESSAGE_SEND:2:102:9223372036854775808",
+            "PRIVATE_MESSAGE_SEND:02:102:900",
+            "PRIVATE_MESSAGE_SEND:2:0102:900",
+            "PRIVATE_MESSAGE_SEND:2:102:0900",
+            "PRIVATE_MESSAGE_SEND:00:102:900",
+            "PRIVATE_MESSAGE_SEND:2:00:900",
+            "PRIVATE_MESSAGE_SEND:2:102:00"
+    })
+    void confirmRejectsNonCanonicalNumericSegmentsBeforeRemovingState(String receiptId) {
+        assertMalformedReceiptIdRejected(receiptId);
+    }
+
+    private void assertMalformedReceiptIdRejected(String receiptId) {
+        RedissonClient redissonClient = mock(RedissonClient.class);
+        RBlockingDeque<String> receiptQueue = mockQueue(redissonClient, ReceiptType.PRIVATE_MESSAGE_SEND, VALID_RECEIPT_ID);
+        RDelayedQueue<String> delayedReceiptQueue = mockDelayedQueue(redissonClient, receiptQueue);
+        RMapCache<String, String> receiptTasks = mockTasks(redissonClient);
+        RMapCache<String, Integer> receiptAttempts = mockAttempts(redissonClient);
+        RedisImMessageConfirmableStore store = new RedisImMessageConfirmableStore(redissonClient);
+
+        assertThatThrownBy(() -> store.confirm(receiptId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("receiptId");
+
+        verify(receiptTasks, never()).fastRemove(any());
+        verify(delayedReceiptQueue, never()).remove(any());
+        verify(receiptQueue, never()).remove(any());
+        verify(receiptAttempts, never()).fastRemove(any());
     }
 
     @SuppressWarnings("unchecked")

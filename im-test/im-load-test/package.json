@@ -1,0 +1,17 @@
+{
+  "name": "@im-chat/load-test",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
+  },
+  "dependencies": {
+    "lossless-json": "4.3.1",
+    "mysql2": "3.24.4",
+    "ws": "8.21.3"
+  }
+}

@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
@@ -119,8 +120,52 @@ public class RedisImMessageConfirmableStore implements ImMessageConfirmableStore
 
     @Override
     public void confirm(String receiptId) {
-        receiptTaskQueue.remove(receiptId);
+        ReceiptType receiptType = parseReceiptType(receiptId);
+        receiptTaskQueue.remove(receiptId, receiptType);
         clearAttempts(receiptId);
+    }
+
+    private static ReceiptType parseReceiptType(String receiptId) {
+        if (StringUtils.isBlank(receiptId)) {
+            throw new IllegalArgumentException("receiptId must use TYPE:receiverId:chatId:messageId format");
+        }
+        String[] segments = receiptId.split(":", -1);
+        if (segments.length != 4) {
+            throw new IllegalArgumentException("receiptId must use TYPE:receiverId:chatId:messageId format");
+        }
+        for (String segment : segments) {
+            if (StringUtils.isBlank(segment)) {
+                throw new IllegalArgumentException("receiptId must contain four nonblank segments");
+            }
+        }
+        for (int i = 1; i < segments.length; i++) {
+            validatePositiveLongSegment(segments[i]);
+        }
+        try {
+            return ReceiptType.valueOf(segments[0]);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("receiptId contains unsupported receipt type: " + segments[0], exception);
+        }
+    }
+
+    private static void validatePositiveLongSegment(String segment) {
+        if (segment.length() > 1 && segment.charAt(0) == '0') {
+            throw new IllegalArgumentException("receiptId numeric segments must use canonical positive decimal Long values");
+        }
+        for (int i = 0; i < segment.length(); i++) {
+            char character = segment.charAt(i);
+            if (character < '0' || character > '9') {
+                throw new IllegalArgumentException("receiptId numeric segments must be positive decimal Long values");
+            }
+        }
+        try {
+            if (Long.parseLong(segment) <= 0) {
+                throw new IllegalArgumentException("receiptId numeric segments must be positive decimal Long values");
+            }
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    "receiptId numeric segments must be positive decimal Long values", exception);
+        }
     }
 
     private void consumeBatch(int queue, int shard, Consumer<ReceiptTask> consumer) {
@@ -261,12 +306,11 @@ public class RedisImMessageConfirmableStore implements ImMessageConfirmableStore
          * 按 receiptType 和 receiptId 定位分片，删除队列中的未消费任务。
          * DelayedQueue 未到期时从 delayedQueue 删除，到期后从 receiptQueue 删除。
          */
-        private void remove(String receiptId) {
-            ReceiptTask task = get(receiptId);
-            if (task != null) {
-                receiptTasks.fastRemove(receiptId);
-                shardQueues[queueIdxOf(task)][shardIdxOf(task)].remove(receiptId);
-            }
+        private void remove(String receiptId, ReceiptType receiptType) {
+            receiptTasks.fastRemove(receiptId);
+            int queueIdx = receiptType.ordinal() % queueSize;
+            int shardIdx = Math.floorMod(receiptId.hashCode(), shardSize);
+            shardQueues[queueIdx][shardIdx].remove(receiptId);
         }
 
         private int queueIdxOf(ReceiptTask task) {
@@ -311,8 +355,15 @@ public class RedisImMessageConfirmableStore implements ImMessageConfirmableStore
         }
 
         private void remove(String receiptId) {
-            receiptDelayedQueue.remove(receiptId);
-            receiptQueue.remove(receiptId);
+            removeAllOccurrences(receiptDelayedQueue, receiptId);
+            removeAllOccurrences(receiptQueue, receiptId);
+        }
+
+        private static void removeAllOccurrences(Collection<String> queue, String receiptId) {
+            int remainingAttempts = queue.size();
+            while (remainingAttempts-- > 0 && queue.remove(receiptId)) {
+                // Bound removal by the initial queue size so concurrent producers cannot keep this loop alive.
+            }
         }
     }
 

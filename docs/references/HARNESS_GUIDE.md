@@ -44,13 +44,15 @@ im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
 | `scripts/verify.sh quick` | drift、Harness 自测和架构检查 | 日常快速反馈 |
 | `scripts/verify.sh behavior` | 路由、Gossip、投递和确认行为 | 跨模块行为证据 |
 | `scripts/verify.sh e2e` | 真实 Broker HTTP/Bolt、Netty WebSocket 与受控 Account/Message 边界 | 实时黄金旅程、测试数量和可查询运行日志 |
+| `scripts/verify.sh load-test` | Node/Java 压测契约、Compose/runner/resource 与失败恢复 fixture | 确定性工具验证，不启动真实负载 |
+| `scripts/verify.sh load-test-smoke` | 本机 full 上的 20 用户连接与 70/30 消息链路 | revision/scope/config/data/cleanup/round-bound 真实证据 |
 | `scripts/verify.sh full` | 完整 Maven 与 Harness 门禁 | 交付前证据 |
 | `scripts/verify.sh report` | 汇总最近验证和治理信号 | `.harness/report.json` |
 | `scripts/verify.sh readiness` | Java/Maven/Node 与 Harness 工具就绪 | 版本或缺失工具的 WHAT/WHY/FIX |
 | `scripts/verify.sh clean` | drift、脚本语法、diff、计划 WIP、恢复区和临时工件 | 可交接状态或聚合诊断 |
 | `scripts/verify.sh handoff` | 当前 report、Git 改动、active plan 恢复状态和下一步命令 | 生成下一会话可直接读取的 JSON/Markdown 交接 |
 | `scripts/verify.sh startup` / `init` | 全部 Spring Boot application 的 startup-smoke；环境、基础门禁和启动命令 | 发现新增 Server 漏测；不替代外部基础设施全栈启动 |
-| `scripts/verify.sh cleanup [--apply]` | Harness 自有 tmp/PID allowlist、canonical path 和 provenance | 默认只读；apply 只清理明确安全目标 |
+| `scripts/verify.sh cleanup [--apply]` | Harness 自有 tmp/PID allowlist、canonical path、provenance 及压测恢复现场 | 默认只读；apply 只清理明确安全目标，压测凭据/锁/中断批次只诊断并指向 runner 恢复 |
 | `scripts/verify.sh quality` | AI Reviewer request/response、机器三维分数和硬性上限 | 生成模块 A/B/C/D 快照；缺 response 返回 `review_required` |
 | `docs/exec-plans/TEMPLATE.md` | Sprint Contract、事实源、验证、任务状态、恢复和风险的统一骨架 | active plan 实例；模板本身不作为完成证据 |
 
@@ -83,11 +85,11 @@ im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
 | 根 `PROGRESS.md` 是有界全仓状态索引，所有 active plan 必须被引用；没有 active plan 时明确写 `none`，详细任务和证据仍由计划拥有 | Harness/Plans | `check-drift.sh` + PROGRESS 正反 fixture 自动检查计划链接；当前任务和验证摘要的新鲜度由 Review 确认 | 是 |
 | `grill`、brainstorming 或其他需求访谈确认的决策必须先进入设计文档，记录选项的完整语义、理由和影响，不能依赖聊天历史或只保存 A/B/C 字母 | Harness/Design | active plan 的事实源链接由 `check-drift.sh` 检查；会话是否完整转录及理由质量无法从仓库机械推断，由独立设计 Review 判断 | 是 |
 | 跨模块、跨会话和高风险工作从唯一执行计划模板创建；active plan 必须包含 Sprint Contract、事实源、验证分层、任务状态、详细任务、恢复状态和回滚与残余风险；状态表 ID 与详细任务 ID 一一对应，步骤使用 checkbox，`passing` 任务没有未勾选步骤 | Harness/Plans | `check-drift.sh` 检查稳定章节、设计/产品规格链接、任务 ID、checkbox 和 passing 一致性，`verify.sh clean` 复用 drift；步骤粒度、文件范围和业务语义由 Review 判断 | 是 |
-| `readiness` 使用 POM/前端工具链约束验证 Java、Maven、Node 和必需命令；`clean` 只读检查可交接状态，不删除文件或误伤正常未跟踪源码 | Harness/Environment | `test-harness.sh` 的兼容/不兼容版本、WIP、恢复区、临时工件与未跟踪源码 fixture | 是 |
+| `readiness` 使用 POM/前端工具链约束验证 Java、Maven、Node 和必需命令；`clean` 只读检查可交接状态，不删除文件或误伤正常未跟踪源码；只有 blocked、零 active 的计划符合 WIP=1，计数只容忍 rg 无匹配退出码 1，不吞掉读取错误 | Harness/Environment | `test-harness.sh` 的兼容/不兼容版本、WIP、零 active blocked 计划、恢复区、临时工件与未跟踪源码 fixture | 是 |
 | 核心 checker 失败包含 WHAT/WHY/FIX，并保留具体规则与文件位置 | Harness/Feedback | Drift、Java style、SQL Harness fixture | 是 |
 | 模块与 DDD 依赖方向 | Architecture/Coding | ArchUnit | 是 |
 | 本地同机运行的 Broker Bolt、Broker 管理 HTTP、Gateway Bolt 与 Gateway WebSocket 默认监听端口互不冲突 | Reliability/Configuration | `BrokerConfigTest`、`BrokerManagementPropertiesTest`、`WsConfigTest` | 是 |
-| 所有 Spring Boot Server 直接依赖 `im-metrics`，业务端口按服务族固定，management port 为业务端口加 1000，并暴露 `health,info,prometheus,metrics`、隐藏 health details；Nacos metadata 统一发布 management port；安全所有者显式放行 Actuator，`im-metrics` 不得声明 `SecurityFilterChain`；management port 必须由内网隔离 | Observability/Sharding runtime design | `ObservabilityConfigurationTest`、`ImMetricsAutoConfigurationTest`、`ImMetricsManagementEndpointTest`、`verify.sh startup`；真实 Prometheus scrape 由 local infra 验证 | 是 |
+| 所有 Spring Boot Server 直接依赖 `im-metrics`，业务端口按服务族固定，management port 为业务端口加 1000，并暴露 `health,info,prometheus,metrics`、隐藏 health details；Nacos metadata 统一发布 management port；安全所有者显式放行 Actuator，`im-metrics` 不得声明 `SecurityFilterChain`；management port 必须由内网隔离；`@Observed` 自动配置须晚于 MeterRegistry 创建，且代理调用后计数器与 duration 能实际导出 | Observability/Sharding runtime design | `ObservabilityConfigurationTest`、`ImMetricsAutoConfigurationTest`、`ImMetricsManagementEndpointTest` 真实代理调用及 Prometheus 双指标断言、`verify.sh startup`；真实 Prometheus scrape 由 local infra 验证 | 是 |
 | 新增业务运行模块纳入 Architecture 导入范围，避免规则因未扫描而假通过；Spring Boot 可执行模块显式加入原始 `target/classes` 测试类路径 | Architecture/Harness | ArchUnit 模块导入、测试类路径与聚焦 RED fixture | 是 |
 | Facade/SDK 不依赖 server | Architecture | ArchUnit | 是 |
 | 管理审计持久化只由 `im-audit-server` 拥有；Admin/IAM 依赖 SDK 而非 Server | Architecture/Coding | Maven 依赖与源码所有权扫描 + ArchUnit | 是 |
@@ -203,7 +205,32 @@ im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
 | DDL、危险 SQL、`${...}`、静态无条件写入 | SQL | SQL checker + fixture | 是 |
 | 服务私有 DDL 位于所属 Server 模块根 `sql/`，Schema 与表不能跨服务混放 | SQL/Architecture | SQL checker 递归路径扫描 + 各服务 Schema 所有权测试；表业务归属仍由 Review 判断 | 是 |
 | Server 模块 `sql/` 只使用 `ddl.sql`/`dml.sql`，交付 DDL 使用 `CREATE TABLE IF NOT EXISTS` 且禁止 `DROP TABLE`；本地 Compose init 按 `ddl/`、`dml/` 分层并由 `00-initialize.sql` 通过原生 `SOURCE` 顺序执行，六个快照必须与所属模块 SQL 字节一致 | SQL/Local runtime design | SQL checker 固定路径、幂等创建与危险语句检查，SQL Harness 正反 fixture、Local Compose Harness `cmp` 与入口顺序检查 | 是 |
-| SkyWalking Agent 9.7.0 与 JDK 21 的本地 full 应用必须通过 `-XX:-UseContainerSupport` 避开启动期容器指标类加载死锁，并同时保留显式 JVM/容器内存上限 | Local runtime design | Local Compose Harness 精确检查统一 JVM 参数与 `mem_limit`；真实 full 启动检查全部应用健康 | 是 |
+| SkyWalking Agent 9.7.0 与 JDK 21 的本地 full 应用必须通过 `-XX:-UseContainerSupport` 避开容器指标初始化死锁，并在 SkyWalking 前用独立 premain Agent 预加载 `jdk.internal.misc.ThreadTracker`，避免 gRPC 后台线程与主线程形成 `JarFile`/`AppClassLoader` 锁顺序反转；同时显式限制 heap、线程栈、metaspace、direct memory、code cache 和容器总内存 | Local runtime design | Local Compose Harness 精确检查统一 JVM 参数、`mem_limit`、预加载源码/manifest 和两个 Agent 的启动顺序；真实 full 启动和 load-test smoke 检查全部应用健康及非预期重启 | 是 |
+| 单机核心链路压测必须从健康的 19 服务 base 切换为 15 服务 load profile，暂停 IAM/Audit/Admin/Monitor；轮次结束检查六个核心容器健康且零重启，清理后恢复 19/19 | Load-test design | Load-test runner fake fixture 检查 stop allowlist 和运行集合；真实 smoke 检查 profile、容器 restart count 与 base restore | 是 |
+| 十个本地应用在 base 使用 1 GiB；load profile 中 Message 使用 2 GiB、SkyWalking OAP 使用 1536 MiB、MySQL 使用 768 MiB，其余核心应用保持 1 GiB；恢复 base 时 OAP/MySQL 回到 1 GiB/512 MiB | Load-test/Local runtime design | Local Compose Harness 检查 base 上限；Load-test Compose Harness 精确检查合并配置和 runner 显式重建 OAP/MySQL | 是 |
+| base restore 对 management readiness 只允许一次 restart；restart 前健康失败可快速触发恢复，restart 后的短暂 `unhealthy` 必须在 120 秒内继续轮询，最终未恢复才失败 | Load-test design | Load-test runner 动态健康 fixture 模拟 restart 后先 unhealthy、再 healthy，要求最终进入 `BASE_READY` | 是 |
+| 准备阶段的群通知/ACK deadline 与完成后的重试静默窗口必须串行，全部 ACK 完成后旧 deadline 不得抢先终止静默窗口 | Load-test design | Setup WebSocket 确定性 scheduler 测试：deadline 晚于最后 ACK、早于 quiet 完成时仍成功；缺通知继续超时 | 是 |
+| 准备阶段对同 receiver + 同 receipt 的 at-least-once 重投幂等重发 ACK，durable intent 只写一次，并重新开始完整 quiet horizon；同 receiver 的不同 receipt 继续失败 | Load-test design/Reliability | Setup WebSocket 测试覆盖 ACK 前重投、ACK 后 quiet 内重投、单 intent journal 和不同 receipt 反例 | 是 |
+| 压测资源采样周期包含采集耗时，采集后只等待到目标周期剩余时间；目标进程在采集中结束时正常停止且不追加残缺样本。证据中位间隔保持目标周期正负 25%，单个间隔不得超出 0.5-1.5 倍 | Load-test design | Resource sampler fixture 注入受控 `docker stats` 延迟并检查时间戳间隔、JSON 完整性和 0600 权限；Node 正反例覆盖偶发采集超时、持续漂移和断档 | 是 |
+| 消息压测 summary 以固定低基数桶记录 private/group 发送失败、错误帧 `body.code` 中的 10010 busy、10007 repeat、其他业务错误和响应超时，禁止将任意业务错误码放入动态指标名或标签 | Load-test design | message scenario 源码契约 + `send-timeout`/`send-busy`/`send-repeat` 生产形态错误帧的真实 k6 mock fixture 精确核对 | 是 |
+| 消息压测 push 先于发送响应到达时，缓冲仅延后核对，不得延后用于传输延迟的接收时间戳 | Load-test design | `response-after-push` 真实 k6 mock fixture 人为延后发送响应 600ms，精确核对 20 次发送、68 次 ACK、P95 和分类；源码契约核对缓冲保留时间戳 | 是 |
+| 消息压测必须分别记录发送到业务 response 与发送到首个 push 的 P95/P99；无响应只进入 timeout counter，不得伪造延迟样本 | Load-test design | message summary 源码契约；`response-after-push` 真实 k6 mock fixture 以 response P99 下界和 push P95 上界证明两类时间独立 | 是 |
+| 压测 Node 合约按测试文件串行执行，避免 timer、HTTP/WS、fsync fixture 在单机高负载下因文件并行争用宿主调度；不得借此放宽单个测试的断言或业务超时 | Unit-test/Load-test Harness | `package.json` 固定 `node --test --test-concurrency=1`，`verify.sh load-test` 统一走 npm test | 是 |
+| 真实 smoke 顶层状态验证 workflow/evidence/cleanup/checksum；connection 必须 stable，message 可 stable 或明确 service_failed。message uncertain、缺轮次、工具错误或恢复失败不得通过 | Load-test design | `test-load-test-harness.sh` 覆盖 stable、message service_failed、scope/data/cleanup 失败；报告始终展示逐轮 decision | 是 |
+| 连接轮 route cleanup 只查询该轮 effective users 对应的凭据前缀，不得用整个已准备批次的用户数冒充本轮 evidence | Load-test design | runner 显式传 `--user-count effective`；route-cleanup 正反测试覆盖凭据前缀和超界拒绝；round classifier 要求 evidence userCount 等于 effective users | 是 |
+| Broker 到 Gateway RPC 与 Gateway 本机 Channel write 必须使用两个固定名称的低基数 duration 指标，禁止加入 userId、messageId、connectionId 或 gatewayId 标签 | Broker/Gateway Architecture、Load-test design | `GatewayFrameWriterTest` 与 `ConnectionRegistryMetricsTest` 通过真实 AOP proxy 检查 outcome counter 和 duration；真实短批次检查两个服务 Actuator 样本 | 是 |
+| Message private/group 发送入口使用独立固定 duration 指标，覆盖锁、业务校验、事务和提交后动作；不得增加用户、会话、群、消息或 token 标签 | Message Architecture、Load-test design | AppService 注解契约测试；真实短批次检查两个 Actuator 指标的 count/sum/max | 是 |
+| 消息轮 drain 后正常关闭 WebSocket；close grace 到期仍在线时记录 `forcedStops` 并强制结束，runner 只对合法 message summary 的该标记接受 k6 108 | Load-test design | 场景源码契约、round classifier forced-stop 用例、runner fake/static 契约和真实过载轮次 | 是 |
+| 会更新双方/全体成员 Chat 的消息发送按事实范围互斥：私聊使用 canonical user pair，群聊使用 groupId；自动续期锁最多等待 100 ms，锁内读取待更新 Chat 并提交成员副本，释放锁后发布发送事件，messageToken 只负责幂等而不参与互斥 key | Message Architecture/Reliability | GroupChat/PrivateChat Application Service 测试验证 scoped lock key、有界 `tryLock` 参数、两类发送均先解锁再发布事件；真实消息 smoke 验证过载不再无限增加 RPC 等待线程 | 是 |
+| 群消息 fanout 新记录使用 batch insert；已有 Inbox 和成员 Chat 必须通过固定字段集合的 MyBatis-Plus Lambda Update，以参与当前 Spring 事务的临时 BATCH session 更新，每条携带 `user_id` 分片键和旧版本，并在提交前要求每个 `BatchResult` 影响行数为 `1`；不得在已绑定 SIMPLE session 的同一事务中切换 Batch `SqlSessionTemplate`，成员 Chat 入口仅允许更新最新消息、已读消息、未读数、状态和活跃时间 | Message Architecture | Group Inbox/Chat Repository 与 MyBatis Service 测试检查限定字段的 Lambda Update、BATCH session、分片键和旧版本、部分乐观锁冲突、未知影响行数以及领域状态不回填；真实 smoke 覆盖 Spring/ShardingSphere 事务组合 | 是 |
+| Confirmable 消息通知在首次推送前持久化 ReceiptTask，再交给独立虚拟线程；虚拟线程启动失败或首次 RuntimeException 不占用发送线程且不否定已提交事实，禁用重试时保持同步传播 | Message Architecture/Reliability | `ImMessageNotifierInvokerTest` 覆盖虚拟线程异步边界、失败隔离、禁用重试传播和正常通知 | 是 |
+| Dubbo Consumer 默认禁止框架自动重试；稳定 `RpcException` 即使被运行时异常包装也应按 cause 类型透传，未知异常不得按文本还原业务码 | Reliability/im-dubbo | `DubboEnvironmentPostProcessorTest` 与 `ImDubboAutoConfigurationTest` 检查默认/覆盖及 ConsumerConfig；`FrameProcessHandlerTest` 覆盖直接、包装和未知异常 | 是 |
+| 压测 `logout-round` 必须可从部分成功恢复：受控批次 Token 的 AUTH_FAIL 表示已失效并按成功继续，其他业务或网络错误保持失败 | Load-test design | Node logout-round 正反 fixture 覆盖 10001 幂等与 10000 传播；真实中断批次从 DRAINING 重跑 cleanup | 是 |
+| cleanup 已恢复到 `BASE_READY` 但敏感文件尚未销毁时，只允许对六位合法 batch ID 且 manifest SHA-256、batch 绑定、七个 cleanup checkpoint 全部匹配的批次执行受限收尾；校验失败必须保留现场 | Load-test design/Reliability/Security | runner fixture 覆盖完整 checkpoint 成功、摘要不匹配拒绝和 batch 路径穿越拒绝；cleanup Harness 继续只诊断不直接删除 | 是 |
+| 20 用户真实 smoke 的连接测量为 20 秒；消息为 1 msg/s、1005 秒测量和 10 秒排空，保持至少 1000 次发送且不降低正确性阈值 | Load-test design | resolved-config fixture 检查分阶段时长、目标速率与乘积；smoke evidence 绑定 config digest 和逐轮结论 | 是 |
+| Social 好友提交后只发一次 Message 私聊准备 RPC；Message 按 canonical user pair 有界加锁，并在同一事务中幂等补齐双方视角，单侧历史状态只补缺失侧 | Social/Message Architecture/Reliability | `FriendAppServiceTest` 验证单次 after-commit 调用；`PrivateChatAppServiceTest` 验证双侧创建、单侧修复、重复幂等和锁参数；真实 prepare smoke 验证两侧事实收敛 | 是 |
+| 消息轮的结构/发压证据无效优先判 uncertain；证据有效且存在发送、投递、延迟等已知服务失败时，增长 backlog 不得覆盖为 uncertain | Load-test design | round-result 正反 fixture 覆盖已知失败 + 增长 backlog；`j4xrkw` 真实 summary 重算为 service_failed 并保留四条阈值原因 | 是 |
+| 连接人数按 groupSize 对齐，消息目标速率不得按 cohort 取整；消息连接数单独对齐 | Load-test design | fake runner 以 `messages --connections 20 --levels 5` 验证 k6 参数保留 `TARGET_RATE=5`、`EFFECTIVE_USERS=20`；连接小于完整 cohort 仍拒绝 | 是 |
 | 本地 full 的 IAM 管理客户端必须使用明确的冷启动 read timeout，且不得修改 SDK 的生产默认值来吸收本机并发启动压力 | Local runtime design | Local Compose Harness 检查 Audit/Admin/Monitor 的 `IM_IAM_HTTP_READ_TIMEOUT=10s`；SDK properties 测试保留默认 `2s` | 是 |
 | infra/full 切换必须在移除旧服务后等待应用端口与 Nacos/Dubbo 实例释放，并在启动后校验目标 profile 的精确运行服务集合 | Local runtime design | Local Compose Harness 校验命令顺序、注册残留和集合缺失负例；真实双向切换检查 9/9 与 19/19 | 是 |
 | 非测试 H2 依赖只允许由 `im-datasource` 为 ShardingSphere 5.5.2 的运行期元数据类加载提供，业务和其他插件模块不得直接引入 | Architecture/Dependency | `RuntimeDependencyPolicyTest` 精确断言 runtime H2 的唯一 POM | 是 |
@@ -416,6 +443,11 @@ DTPet 的七类模板用于提示过程工件字段，但除实施计划外未�
 - active/stale plan 和开放技术债务数量。
 - Harness Feedback 台账中的开放误报、偶发测试和性能问题。
 - E2E workload、测试数、freshness 和 `.harness/runtime/e2e.log` 路径。
+- 压测 smoke 与正式容量分别显示 status/freshness、batch、config digest、worktree 稳定性、清理、普通数据校验和逐轮三态结论；两类证据不互相替代。
+
+压测运行开始和结束都记录完整 worktree fingerprint；运行期间任何 Git-visible 内容变化都会使本轮失败。后续 freshness 另用 load-test scope：覆盖全部 tracked 与非忽略 untracked 文件，只排除 `PROGRESS.md` 和 `docs/exec-plans/active|completed/**` 执行状态。因此仅同步任务状态不会迫使容量复测，任何代码、配置、Harness、稳定规范或其他文档变化都会使旧证据陈旧。scope 不包含 HEAD SHA 本身，HEAD 仍作为审计字段单独保存。
+
+真实连接轮在 k6 受控关闭后，通过 Broker `GET /management/connections?userId=...` 对本轮全部用户做有界查询；剩余路由属于 `service_failed`，管理查询不完整属于 `uncertain`。资源 NDJSON 与 k6 summary 由 `round-report.mjs` 合成为 `*-round.json`，消息轮同样以三态结论进入 smoke/formal evidence。普通数据校验使用三业务 Schema 的有序纯数据 dump，不包含 DDL、AUTO_INCREMENT 或 dump 时间；前后不一致直接使 smoke/formal evidence 失败。
 
 `verified` 只表示对应入口在当前 HEAD/worktree 成功执行；`present` 表示入口存在但没有当前证据；`stale` 表示历史结果与当前代码状态不一致；`degraded` 表示当前执行失败。顶层 `incomplete` 表示尚无 full evidence，不能用 drift 成功冒充完成。无法计算 fingerprint 的升级前记录为 `unavailable`，不得支撑当前通过结论。
 

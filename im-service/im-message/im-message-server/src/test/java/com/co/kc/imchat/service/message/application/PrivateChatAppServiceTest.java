@@ -41,6 +41,9 @@ import com.co.kc.imchat.service.message.application.notification.task.ReceiptTas
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.exception.RepeatException;
 import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.lock.core.DistributedLockTemplate;
+import com.co.kc.imchat.plugin.lock.spi.LockClient;
+import com.co.kc.imchat.plugin.lock.support.LockConstants;
 import com.co.kc.imchat.service.message.domain.social.model.FriendDisplay;
 import com.co.kc.imchat.service.message.domain.social.model.GroupMessageRecipient;
 import com.co.kc.imchat.service.message.domain.chat.model.ImChatView;
@@ -49,6 +52,7 @@ import com.co.kc.imchat.service.message.domain.social.model.GroupSummary;
 import com.co.kc.imchat.service.message.adapter.social.SocialAdapter;
 import com.co.kc.imchat.service.message.application.lock.ImMessageLockScene;
 import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
+import com.co.kc.imchat.plugin.metrics.annotation.Observed;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,6 +75,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PrivateChatAppServiceTest {
 
+    private static DistributedLockTemplate testLockTemplate() {
+        LockClient client = org.mockito.Mockito.mock(LockClient.class);
+        org.mockito.Mockito.when(client.tryLock(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.eq(LockConstants.DEFAULT_WAIT))).thenReturn(true);
+        return new DistributedLockTemplate(client);
+    }
+
     private static TransactionOperations testTransactionOperations() {
         return new TransactionOperations() {
             @Override
@@ -88,6 +101,53 @@ class PrivateChatAppServiceTest {
         assertThat(lock.scene()).isEqualTo(ImMessageLockScene.PRIVATE_CHAT_OPEN);
         assertThat(lock.key()).isEqualTo(
                 "#LockKeys.userPair(#command.userId(), #command.peerUserId())");
+    }
+
+    @Test
+    void privateMessageSendDeclaresStableMetricName() throws NoSuchMethodException {
+        Method method = PrivateMessageAppService.class.getMethod("sendMessage", ImPrivateMessageSendCmd.class);
+
+        assertThat(method.getAnnotation(Observed.class).name()).isEqualTo("im.message.private.send");
+    }
+
+    @Test
+    void preparePrivateChatCreatesBothHiddenViewsAndRepairsMissingPeerIdempotently()
+            throws NoSuchMethodException {
+        Method method = ChatAppService.class.getMethod(
+                "preparePrivateChat", com.co.kc.imchat.service.message.facade.params.PrivateChatPrepareParams.class);
+        DistributeLock lock = method.getAnnotation(DistributeLock.class);
+        assertThat(lock.scene()).isEqualTo(ImMessageLockScene.PRIVATE_CHAT_PREPARE);
+        assertThat(lock.key()).isEqualTo("#LockKeys.userPair(#params.userId(), #params.friendUserId())");
+        assertThat(lock.waitTime()).isEqualTo(LockConstants.DEFAULT_WAIT);
+
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        ImPrivateChat existingChat = privateChat(101L, 1L, 2L);
+        existingChat.hide();
+        privateChatRepository.chats.add(existingChat);
+        ChatAppService appService = new ChatAppService(
+                privateChatRepository,
+                null,
+                null,
+                new ImChatService(privateChatRepository, null, new FixedSnowflakeId(102L)),
+                null,
+                null,
+                null,
+                presenceService());
+        com.co.kc.imchat.service.message.facade.params.PrivateChatPrepareParams params =
+                new com.co.kc.imchat.service.message.facade.params.PrivateChatPrepareParams(1L, 2L);
+
+        appService.preparePrivateChat(params);
+        appService.preparePrivateChat(params);
+
+        assertThat(privateChatRepository.chats).hasSize(2);
+        assertThat(privateChatRepository.chats)
+                .extracting(chat -> chat.getUserId().value() + ":" + chat.getPeerUserId().value())
+                .containsExactlyInAnyOrder("1:2", "2:1");
+        assertThat(privateChatRepository.chats)
+                .allMatch(chat -> chat.getStatus() == ImChatStatus.HIDDEN);
+        assertThat(privateChatRepository.savedChats)
+                .extracting(chat -> chat.getUserId().value())
+                .containsExactly(2L);
     }
 
     @Test
@@ -305,7 +365,7 @@ class PrivateChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 null,
                 new MemoryDomainEventPublisher(),
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
 
         ImPrivateMessageRevokeCmd command = new ImPrivateMessageRevokeCmd(1L, 101L, 900L);
 
@@ -338,7 +398,7 @@ class PrivateChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 null,
                 new MemoryDomainEventPublisher(),
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
 
         List<ImPrivateMessageDTO> messages = appService.queryHistoryMessage(
                 new ImPrivateMessageHistoryQuery(101L, 1L, null, 20));
@@ -370,7 +430,7 @@ class PrivateChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 null,
                 eventPublisher,
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
 
         appService.readMessage(new ImPrivateMessageReadCmd(102L, 2L, 900L));
 
@@ -403,7 +463,7 @@ class PrivateChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 null,
                 eventPublisher,
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
 
         appService.receiveMessage(new ImPrivateMessageReceiveCmd(2L, 102L, 900L));
 
@@ -423,6 +483,11 @@ class PrivateChatAppServiceTest {
         MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
         MemoryDomainEventPublisher eventPublisher = new MemoryDomainEventPublisher();
         RecordingNotifierInvoker notifierInvoker = new RecordingNotifierInvoker();
+        LockClient lockClient = org.mockito.Mockito.mock(LockClient.class);
+        org.mockito.Mockito.when(lockClient.tryLock(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.eq(LockConstants.DEFAULT_WAIT))).thenReturn(true);
         PrivateMessageAppService appService = new PrivateMessageAppService(
                 privateChatRepository,
                 inboxRepository,
@@ -433,9 +498,12 @@ class PrivateChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 notifierInvoker,
                 eventPublisher,
-                testTransactionOperations());
+                testTransactionOperations(), new DistributedLockTemplate(lockClient));
 
         appService.sendMessage(privateMessageSendCmd(101L, 1L));
+        org.mockito.Mockito.verify(lockClient).tryLock(
+                "im:private:message:send:1:2", LockConstants.AUTO_RENEW, LockConstants.DEFAULT_WAIT);
+        org.mockito.Mockito.verify(lockClient).unlock("im:private:message:send:1:2");
         appService.onMessageSent((ImPrivateMessageSentEvent) eventPublisher.events.getFirst());
 
         UserId receiverId = new UserId(2L);
@@ -447,6 +515,37 @@ class PrivateChatAppServiceTest {
         assertThat(notifierInvoker.privateSentCommands)
                 .extracting(ImPrivateSentNotification::receiverId)
                 .containsExactly(2L);
+    }
+
+    @Test
+    void sendPrivateMessagePublishesEventAfterReleasingUserPairLock() {
+        MemoryPrivateChatRepository privateChatRepository = new MemoryPrivateChatRepository();
+        privateChatRepository.chats.add(privateChat(101L, 1L, 2L));
+        privateChatRepository.chats.add(privateChat(102L, 2L, 1L));
+        MemoryPrivateInboxRepository inboxRepository = new MemoryPrivateInboxRepository();
+        LockClient lockClient = org.mockito.Mockito.mock(LockClient.class);
+        org.mockito.Mockito.when(lockClient.tryLock(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.eq(LockConstants.DEFAULT_WAIT))).thenReturn(true);
+        DomainEventPublisher eventPublisher = org.mockito.Mockito.mock(DomainEventPublisher.class);
+        PrivateMessageAppService appService = new PrivateMessageAppService(
+                privateChatRepository,
+                inboxRepository,
+                presenceService(),
+                new ImChatService(privateChatRepository, null, null),
+                new ImMessageService(null, inboxRepository, new FixedSnowflakeId(1L)),
+                new TestSocialAdapter(new NormalFriendRepository(), null, null, null),
+                new FixedSnowflakeId(900L),
+                null,
+                eventPublisher,
+                testTransactionOperations(), new DistributedLockTemplate(lockClient));
+
+        appService.sendMessage(privateMessageSendCmd(101L, 1L));
+
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(lockClient, eventPublisher);
+        inOrder.verify(lockClient).unlock("im:private:message:send:1:2");
+        inOrder.verify(eventPublisher).publish(org.mockito.ArgumentMatchers.any(DomainEvent.class));
     }
 
     @Test
@@ -466,7 +565,7 @@ class PrivateChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 new RecordingNotifierInvoker(),
                 eventPublisher,
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
 
         appService.sendMessage(privateMessageSendCmd(101L, 1L));
 
@@ -496,7 +595,7 @@ class PrivateChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 new RecordingNotifierInvoker(),
                 new MemoryDomainEventPublisher(),
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
 
         assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
                 .isInstanceOf(RepeatException.class)
@@ -525,7 +624,7 @@ class PrivateChatAppServiceTest {
                 null,
                 notifierInvoker,
                 null,
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
         ImPrivateMessageSentEvent event = new ImPrivateMessageSentEvent();
         event.setReceiverId(2L);
         event.setReceiverChatId(102L);
@@ -558,7 +657,7 @@ class PrivateChatAppServiceTest {
                 null,
                 null,
                 null,
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
 
         ImPrivateMessageDTO detail = appService.queryMessageDetail(
                 new ImPrivateMessageDetailQuery(102L, 2L, "token-1"));
@@ -582,7 +681,7 @@ class PrivateChatAppServiceTest {
                 null,
                 notifierInvoker,
                 null,
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
         com.co.kc.imchat.service.message.domain.message.event.ImPrivateMessageRevokedEvent event =
                 new com.co.kc.imchat.service.message.domain.message.event.ImPrivateMessageRevokedEvent();
         event.setReceiverId(2L);
@@ -612,7 +711,7 @@ class PrivateChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 new RecordingNotifierInvoker(),
                 new MemoryDomainEventPublisher(),
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
 
         assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
                 .isInstanceOf(NotFoundException.class)
@@ -636,7 +735,7 @@ class PrivateChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 new RecordingNotifierInvoker(),
                 new MemoryDomainEventPublisher(),
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
 
         assertThatThrownBy(() -> appService.sendMessage(privateMessageSendCmd(101L, 1L)))
                 .isInstanceOf(NotFoundException.class)

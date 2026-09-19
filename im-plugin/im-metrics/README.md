@@ -35,6 +35,7 @@ best-effort 的旁路动作；默认值为 `false`，记录失败后继续抛出
 ## 关键技术点
 
 - 自动配置只在应用提供 `MeterRegistry` 时生效，不自行创建监控注册中心。
+- 自动配置在 Spring Boot 的 Prometheus/Simple registry 创建后判断 `MeterRegistry`；验证声明式指标时必须实际调用 Spring 代理并检查 Prometheus 中的计数器与 duration，端点返回 200 只证明抓取入口可用。
 - 指标切面不记录方法参数，避免把用户 ID、Token、连接 ID 等高基数或敏感数据写入指标。
 - `MetricsCollector` 的写指标方法使用 `@IgnoreException` 隔离 Micrometer 失败，因此监控系统异常不会改变被观测方法的业务结果。
 - 与 `@AfterTransactionCommit` 一起使用时，事务提交切面优先执行，确保耗时统计覆盖提交后的实际动作。

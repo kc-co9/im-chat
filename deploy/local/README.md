@@ -23,7 +23,7 @@
 
 默认 `local_up.sh` 只启动 infra。full 模式先执行端口预检和 `mvn -q -DskipTests clean package`，再通过通用 `app.Dockerfile` 构建 `im-chat/<artifactId>:local`。Dockerfile 专用 ignore 只把十个 `*-exec.jar` 发送给 builder，JAR 路径不绑定项目版本。容器在内部监听 `0.0.0.0`，Nacos/Dubbo 自动注册容器 IP，依赖通过 Compose 服务名访问；所有宿主映射仍只绑定 loopback。两种模式都最多等待 600 秒直至服务健康，可通过 `LOCAL_WAIT_TIMEOUT_SECONDS` 调整；启动失败返回非零。切换到 infra 会移除 full-only 应用和 `prometheus-full`，并等待应用端口及 Nacos/Dubbo 实例释放，等待上限默认 30 秒，可通过 `LOCAL_SWITCH_TIMEOUT_SECONDS` 调整；切换到 full 会移除 `prometheus-infra`。启动完成后脚本验证 profile 的精确运行服务集合。默认 down 保留命名卷；`--volumes` 会删除全部本地持久化数据。
 
-full 的统一 JVM 参数包含 `-XX:-UseContainerSupport`。SkyWalking Java Agent 9.7.0 的 JVM 指标线程与 JDK 21 启动类加载在容器指标初始化路径上可能形成死锁；关闭 JVM 容器感知可避开该路径。应用堆和 metaspace 仍由显式 JVM 参数约束，容器总内存仍由 `mem_limit` 约束。该设置仅属于本地 Compose，不应直接复制为生产参数。
+full 的统一 JVM 参数包含 `-XX:-UseContainerSupport`。SkyWalking Java Agent 9.7.0 的 JVM 指标线程与 JDK 21 启动类加载在容器指标初始化路径上可能形成死锁；关闭 JVM 容器感知可避开该路径。JDK 21 的 `ThreadTracker` 首次初始化仍可能与 Agent 的 gRPC 后台线程形成 `JarFile`/`AppClassLoader` 锁顺序反转，因此应用镜像先运行仓库内的微型 premain Agent 预加载该 JDK 类，再启动 SkyWalking Agent。预加载 Agent 不修改字节码、不采集数据。由于 JVM 不再按容器预算推导 native memory，Compose 同时固定 256 MiB heap、512 KiB 线程栈、192 MiB metaspace、128 MiB direct memory 和 128 MiB code cache，应用容器总内存由 1 GiB `mem_limit` 约束。内核日志已确认 768 MiB 会在普通启动和 20 用户准备阶段触发应用 cgroup OOM；1 GiB 依赖 Docker Desktop 至少 12 GiB 的总配额。该设置仅属于本地 Compose，不应直接复制为生产参数。
 
 Audit、Admin、Monitor 在 full 中把 IAM HTTP read timeout 覆盖为 `10s`，用于容忍本机十个应用并发冷启动时的资源竞争；SDK 的生产默认值仍为 `2s`。
 
@@ -39,7 +39,26 @@ Audit、Admin、Monitor 在 full 中把 IAM HTTP read timeout 覆盖为 `10s`，
 | BanyanDB | `http://localhost:17913` | 无 |
 | SkyWalking Horizon UI | `http://localhost:18050` | `admin` / `e2e-passw0rd` |
 
-Grafana 自动加载 Prometheus datasource 和 `IM Chat overview` dashboard。SkyWalking OAP 11 将数据写入 BanyanDB 0.11；Compose 服务名为 `skywalking-banyandb`，实际容器名带 `im-chat-local-` 项目前缀，stream、measure、trace、property 和 schema-server 根目录均位于 `banyan-data` 命名卷。Horizon UI 通过 OAP 的 Query/Admin API 读取和管理观测数据，默认账号仅用于本地开发。SkyWalking Agent 由应用镜像挂载，`SW_AGENT_NAME` 使用 Maven artifactId；Agent 二进制不提交到仓库。
+Grafana 自动加载 Prometheus datasource、`IM Chat overview` 和 `IM Chat Load Test` dashboard。SkyWalking OAP 11 将数据写入 BanyanDB 0.11；Compose 服务名为 `skywalking-banyandb`，实际容器名带 `im-chat-local-` 项目前缀，stream、measure、trace、property 和 schema-server 根目录均位于 `banyan-data` 命名卷。Horizon UI 通过 OAP 的 Query/Admin API 读取和管理观测数据，默认账号仅用于本地开发。SkyWalking Agent 由应用镜像挂载，`SW_AGENT_NAME` 使用 Maven artifactId；Agent 二进制不提交到仓库。
+
+## 本地压测配置
+
+`compose.load-test.yml` 只能与 base Compose 合并使用。它仅为十个应用设置 `IM_DATASOURCE_SHARDING_SQL_SHOW=false` 和 root INFO，保留 SkyWalking Agent、management metrics 和日常 base 配置。`prometheus-full` 开启本地 Remote Write receiver，k6 固定写入 `http://127.0.0.1:9090/api/v1/write`。
+
+```bash
+./scripts/load_test.sh doctor
+./scripts/load_test.sh prepare --users 20 --group-size 10
+./scripts/load_test.sh connections --batch <batch-id> --levels 20,50
+./scripts/load_test.sh messages --batch <batch-id> --connections 20 --levels 50,100
+./scripts/load_test.sh cleanup --resume <batch-id>
+./scripts/load_test.sh restore
+```
+
+统一 runner 会先确保 base full 的 19 个服务健康，再切换 load profile。load profile 暂停不属于被测链路的 IAM、Audit、Admin、Monitor，只保留九个基础设施/观测服务和 HTTP Gateway、WS Gateway、Broker、Account、Social、Message 六个核心应用，避免单机 12 GiB 配额下的管理应用资源竞争污染容量结论。base 中十个应用和 load 中除 Message 外的核心应用使用 1 GiB 容器上限；Message 在 load profile 使用 2 GiB，因为 Agent、ShardingSphere、Dubbo、Nacos、Redisson 和 64 个 Receipt consumer 的空载常驻已约 0.8 GiB，1 GiB 在真实消息轮中会反复 cgroup OOM，无法形成有效容量观测。runner 会 force-recreate 核心应用，并用不存在账号的只读登录探针确认 Gateway 已从 Nacos 收敛到新 Account 实例，轮次结束还要求核心容器健康且未发生自动重启。base restore 会恢复 IAM 和三个 management 应用；management 首次权限目录同步导致 readiness 失败时，runner 只重启该服务一次，restart 后允许短暂 `unhealthy` 并在 120 秒内有界复查。默认结束执行 cleanup 和 base restore；`KEEP_LOAD_TEST_DATA=1` 仅用于保留诊断现场。cleanup 的批次登出可从部分成功恢复：受控 Token 已返回认证失败时按已失效继续，其他错误仍停止清理。cleaner 失败时状态保持 `FROZEN`，Account、Social、Message 保持停止，必须重跑 `cleanup --resume`，不能先手工 restore。状态 journal、凭据、k6 summary 和资源样本位于 `.harness/load-test`，其中凭据文件权限为 `0600` 且 cleanup/restore 后删除。
+
+`./scripts/verify.sh load-test` 只验证工具契约；显式 `./scripts/verify.sh load-test-smoke` 才在已启动的 full 上创建 20 个临时用户并执行真实连接/消息。smoke 的消息阶段默认使用 1 msg/s、1005 秒测量和 10 秒排空，仍要求至少 1000 次实际发送；连接阶段为 20 秒。smoke 结束后要求状态为 `BASE_READY`、敏感临时文件已删除、三业务库普通数据 checksum 不变，并生成可由 report/handoff 展示的专用 evidence。
+
+本机实测容量结论及 HTTP Gateway、WebSocket Gateway、Broker、Account、Social、Message、MySQL、Redis、Nacos、Prometheus、SkyWalking OAP 的配置规划起点见[本机容量压测报告](../../docs/load-test-reports/2026-09-16-local-capacity-baseline.md)。报告中的规格不是生产容量承诺，目标拓扑仍需重新压测。
 
 BanyanDB standalone 显式使用 `127.0.0.1` 作为节点注册地址。Docker Desktop 的容器 hostname 虽然可以解析并建立 TCP 连接，但 BanyanDB 0.11 的 property schema 健康 RPC 可能持续超时，导致主 gRPC 端口 `17912` 无法启动；loopback 地址使单节点内部注册稳定，不改变 OAP 通过 Compose 服务名 `skywalking-banyandb:17912` 访问的方式。
 

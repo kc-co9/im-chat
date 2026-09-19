@@ -1,12 +1,14 @@
 package com.co.kc.imchat.service.social.application;
 
 import com.co.kc.imchat.common.domain.user.model.UserId;
+import com.co.kc.imchat.plugin.datasource.transaction.AfterTransactionCommit;
 import com.co.kc.imchat.plugin.datasource.transaction.AfterTransactionCommitTemplate;
 import com.co.kc.imchat.service.social.adapter.account.AccountAdapter;
 import com.co.kc.imchat.service.social.adapter.message.MessageSocialAdapter;
 import com.co.kc.imchat.service.social.domain.account.model.UserProfile;
 import com.co.kc.imchat.service.social.domain.friend.model.Friend;
 import com.co.kc.imchat.service.social.domain.friend.model.FriendAlias;
+import com.co.kc.imchat.service.social.domain.friend.model.FriendEdge;
 import com.co.kc.imchat.service.social.domain.friend.model.FriendId;
 import com.co.kc.imchat.service.social.domain.friend.model.FriendStatus;
 import com.co.kc.imchat.service.social.domain.friend.repository.FriendRepository;
@@ -14,6 +16,7 @@ import com.co.kc.imchat.service.social.domain.friend.service.FriendService;
 import com.co.kc.imchat.service.social.facade.dto.FriendDisplayDTO;
 import com.co.kc.imchat.service.social.facade.params.FriendDisplaysGetParams;
 import com.co.kc.imchat.service.social.model.cqrs.dto.friend.FriendItemDTO;
+import com.co.kc.imchat.service.social.model.cqrs.command.friend.FriendAddCmd;
 import com.co.kc.imchat.service.social.model.cqrs.query.friend.FriendListQuery;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +26,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -70,6 +74,39 @@ class FriendAppServiceTest {
                 .extracting(friend -> friend.userId() + ":" + friend.displayName())
                 .containsExactly("2001:备注名", "2002:second-name");
         verify(accountAdapter).findUserProfiles(friendUserIds);
+    }
+
+    @Test
+    void duplicateAddRepairsBothPrivateChatViewsWithOneIdempotentMessageCall() {
+        AccountAdapter accountAdapter = mock(AccountAdapter.class);
+        FriendRepository friendRepository = mock(FriendRepository.class);
+        MessageSocialAdapter messageAdapter = mock(MessageSocialAdapter.class);
+        AfterTransactionCommitTemplate afterCommit = mock(AfterTransactionCommitTemplate.class);
+        Friend left = friend(1001L, 2001L, null);
+        Friend right = friend(2001L, 1001L, null);
+        when(friendRepository.find(new FriendEdge(
+                new UserId(1001L), new UserId(2001L)))).thenReturn(java.util.Optional.of(left));
+        when(friendRepository.find(new FriendEdge(
+                new UserId(2001L), new UserId(1001L)))).thenReturn(java.util.Optional.of(right));
+        FriendAppService service = new FriendAppService(
+                accountAdapter,
+                friendRepository,
+                new FriendService(friendRepository),
+                messageAdapter,
+                afterCommit);
+
+        service.addFriend(new FriendAddCmd(1001L, 2001L));
+
+        verify(friendRepository, never()).save(org.mockito.ArgumentMatchers.any(Friend.class));
+        verify(messageAdapter).onFriendAdded(1001L, 2001L);
+        verify(messageAdapter, never()).onFriendAdded(2001L, 1001L);
+        verify(afterCommit, never()).execute(org.mockito.ArgumentMatchers.any(Runnable.class));
+    }
+
+    @Test
+    void friendAddedMessageSyncIsDeferredAtAdapterBoundary() throws NoSuchMethodException {
+        assertThat(MessageSocialAdapter.class.getMethod("onFriendAdded", Long.class, Long.class)
+                .getAnnotation(AfterTransactionCommit.class)).isNotNull();
     }
 
     private FriendAppService service(AccountAdapter accountAdapter, FriendRepository friendRepository) {

@@ -33,4 +33,5 @@ class MessageRpcServiceTest {
                 ImMessageType.TEXT,
                 "hello"));
     }
+
 }

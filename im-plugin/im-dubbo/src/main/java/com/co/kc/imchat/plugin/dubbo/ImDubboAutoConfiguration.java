@@ -70,6 +70,7 @@ public class ImDubboAutoConfiguration {
     public ConsumerConfig dubboConsumerConfig(ImDubboProperties properties) {
         ConsumerConfig config = new ConsumerConfig();
         config.setTimeout(properties.getConsumer().getTimeout());
+        config.setRetries(properties.getConsumer().getRetries());
         config.setCheck(properties.getConsumer().isCheck());
         return config;
     }

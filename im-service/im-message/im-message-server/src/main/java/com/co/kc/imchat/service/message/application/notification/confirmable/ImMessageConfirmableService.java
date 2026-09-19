@@ -1,5 +1,6 @@
 package com.co.kc.imchat.service.message.application.notification.confirmable;
 
+import com.co.kc.imchat.service.message.application.notification.ImMessageNotifier;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierFactory;
 import com.co.kc.imchat.service.message.application.notification.task.ReceiptTask;
 import com.co.kc.imchat.common.utils.JsonUtils;
@@ -18,17 +19,21 @@ public class ImMessageConfirmableService {
         imMessageConfirmableStore.stopConfirming();
     }
 
-    public <T> void schedule(ImMessageConfirmable<T> confirmable, T notification) {
-        if (confirmable.delayMillis() <= 0) {
-            return;
+    @SuppressWarnings("unchecked")
+    public <T> boolean scheduleIfConfirmable(ImMessageNotifier<T> notifier, T notification) {
+        if (!(notifier instanceof ImMessageConfirmable<?> confirmable)
+                || confirmable.delayMillis() <= 0) {
+            return false;
         }
+        ImMessageConfirmable<T> messageConfirmable = (ImMessageConfirmable<T>) confirmable;
         ReceiptTask task = ReceiptTask.builder()
-                .receiptType(confirmable.receiptType())
-                .receiptId(confirmable.receiptId(notification))
+                .receiptType(messageConfirmable.receiptType())
+                .receiptId(messageConfirmable.receiptId(notification))
                 .notification(notification)
-                .delayMillis(confirmable.delayMillis())
+                .delayMillis(messageConfirmable.delayMillis())
                 .build();
         imMessageConfirmableStore.offer(task);
+        return true;
     }
 
     private void executeTask(ReceiptTask task) {

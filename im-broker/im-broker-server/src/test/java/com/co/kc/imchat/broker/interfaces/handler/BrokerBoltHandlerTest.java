@@ -1,6 +1,7 @@
 package com.co.kc.imchat.broker.interfaces.handler;
 
 import com.co.kc.imchat.broker.interfaces.handler.frame.FrameProcessHandler;
+import com.co.kc.imchat.broker.support.client.GatewayFrameWriter;
 import com.co.kc.imchat.broker.interfaces.handler.gateway.GatewayHeartbeatHandler;
 import com.co.kc.imchat.broker.interfaces.handler.gateway.GatewayRegisterHandler;
 import com.co.kc.imchat.broker.interfaces.handler.gateway.GatewayUnregisterHandler;
@@ -10,7 +11,6 @@ import com.co.kc.imchat.broker.sdk.enums.BrokerBoltService;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayHeartbeatParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayUnregisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
 import com.co.kc.imchat.broker.domain.registry.connection.memory.InMemoryConnectionRegistry;
@@ -136,7 +136,7 @@ class BrokerBoltHandlerTest {
             super(new InMemoryConnectionRegistry(),
                     new InMemoryGatewayRegistry(),
                     unusedRemoteService(MessageService.class),
-                    new GatewayClient(unusedBoltInvoker(), 1),
+                    new GatewayFrameWriter(new GatewayClient(unusedBoltInvoker(), 1)),
                     mock(BrokerConnectionService.class),
                     mock(BrokerPeerClient.class));
         }

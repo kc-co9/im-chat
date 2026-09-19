@@ -40,8 +40,10 @@ sequenceDiagram
 ```
 
 - 私聊为发送者和接收者分别保存收件箱副本；群聊为每个目标成员保存用户自己的会话与消息副本。
-- 唯一索引以 chat/user/token/message 组合阻止同一用户视角的重复消息，分布式锁只保护应用临界区，数据库约束负责最终防重。
-- 通知发生在 MySQL 提交后，Broker/Gateway 失败不回滚消息事实。
+- 唯一索引以 chat/user/token/message 组合阻止同一用户视角的重复消息，数据库约束负责最终防重。消息发送的分布式锁按会话事实划分：私聊使用排序后的双方 userId，群聊使用 groupId；锁使用自动续期并最多等待 100 ms，竞争超时以业务错误形成有界背压，不能让开放式流量无限占用 RPC 线程。解析锁范围的发送者 Chat 查询发生在锁外；私聊锁内重新读取双方 Chat，群聊锁内读取 fanout 所需的成员 Chat，两者均在锁内检查 messageToken 幂等并提交成员副本，事务提交且释放锁后再发布发送事件。messageToken 只负责幂等，客户端重试应复用原 Token，不能把它放入互斥 key 后让同一会话的正常并发绕过保护。
+- 群消息 fanout 的新 Inbox 使用 MyBatis batch insert；已有 Inbox 状态和成员 Chat 通过固定字段集合的 MyBatis-Plus Lambda Update 以 `ExecutorType.BATCH` 更新，每条 SQL 都包含 `user_id` 分片键与旧 `rowVersion`。成员 Chat 的该入口只允许更新最新消息、已读消息、未读数、状态和活跃时间。ShardingSphere 路由并合并逻辑批次结果，MyBatis Service 在提交前检查 `BatchResult` 中每条更新的影响行数，只有全部为 `1` 才视为成功，否则抛出乐观锁或数据访问异常并回滚。批量保存后的领域对象不再继续持久化，因此不回填数据库技术状态。
+- 通知发生在 MySQL 提交后。Confirmable 通知先持久化 ReceiptTask，再由虚拟线程执行首次在线投递；虚拟线程启动失败或 Broker/Gateway RuntimeException 由 invoker 隔离并交给重试任务，不占用发送事务/会话锁，不回滚消息事实，也不把已提交发送返回成失败。未启用重试的通知保持同步执行并传播异常。
+- private/group 发送 AppService 分别使用固定指标 `im.message.private.send`、`im.message.group.send` 记录锁、校验、事务和提交后动作的聚合 duration；不记录任何用户、会话、群、消息或 token 标签。
 - ReceiptTask 与 MySQL 不原子提交，因此当前机制不是 Outbox；进程在提交后、Receipt 保存或重排队列窗口崩溃时可能丢失通知机会。
 
 当前群消息采用 fanout-on-write，在发送事务中生成成员 Inbox/Chat 副本，以写放大换取用户读取、未读和状态维护的局部性。fanout-on-read 或异步/混合 fanout 会改变事务、可见性和恢复语义；只有容量数据证明同步成员副本成为瓶颈时才重新设计，详细权衡见模块 README。
@@ -67,6 +69,7 @@ flowchart TD
 
 - Gateway 建立可信用户上下文，Message 不信任外部伪造身份。
 - Social Facade 提供好友、群和成员投影；Message 不访问 Social 表。
+- Social 好友提交后的 `preparePrivateChat` 是一次 RPC、一个 Message 事务的双侧会话准备；按 canonical user pair 有界加锁，任一侧已存在时只补缺失侧，避免跨服务串行两次调用形成单侧事实。
 - Broker 只负责在线路由；Message 拥有 ReceiptTask、ACK 业务动作和重投策略。
 - `ImChatView` 属于 Message，不放入 Account Session、Gateway 或 Broker。
 

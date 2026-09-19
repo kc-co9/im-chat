@@ -17,7 +17,7 @@ x-app-environment: &app-environment
   SW_AGENT_COLLECTOR_BACKEND_SERVICES: skywalking-oap:11800
   SW_AGENT_LOGGING_LEVEL: INFO
   # 避免 SkyWalking 9.7.0 与 JDK 21 并发初始化容器指标时发生类加载死锁。
-  JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=192m -XX:-UseContainerSupport
+  JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m -Xss512k -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=128m -XX:ReservedCodeCacheSize=128m -XX:-UseContainerSupport
 
 x-app-depends-on: &app-depends-on
   mysql:
@@ -45,7 +45,7 @@ x-app: &app
   profiles:
     - full
   restart: unless-stopped
-  mem_limit: 768m
+  mem_limit: 1g
   depends_on: *app-depends-on
   environment: *app-environment
   healthcheck:
@@ -287,6 +287,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
+      - --web.enable-remote-write-receiver
       - --web.listen-address=0.0.0.0:9090
     ports:
       - "127.0.0.1:9090:9090"

@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "report": "local-capacity-baseline",
+  "date": "2026-09-16",
+  "lastValidatedAt": "2026-09-18",
+  "environment": {
+    "platform": "Apple M1 Pro",
+    "logicalCpu": 10,
+    "dockerMemoryBytes": 12529487872,
+    "baseServices": 19,
+    "loadServices": 15,
+    "loadMessageMemoryBytes": 2147483648,
+    "loadOapMemoryBytes": 1610612736,
+    "loadMysqlMemoryBytes": 805306368
+  },
+  "machineConfiguration": {
+    "scope": "per_replica",
+    "validatedWorkload": "20_users_1_message_per_second_1005_seconds",
+    "validatedMeaning": "completed_current_local_workload_not_a_startup_or_production_minimum; message_latency_varied_between_runs",
+    "cpuRecommendation": "ceil_to_0.5_core(max(1_core, measured_p95_cores_x_1.50))",
+    "memoryRecommendation": "ceil_to_256_mib(max(validated_limit, measured_peak_x_1.30))",
+    "diskRecommendation": "unverified_engineering_start; measured_footprint_unavailable",
+    "haAssumptionValidated": false,
+    "resourceEvidence": [
+      ".harness/load-test/hpxkco/message-1-1-resources.jsonl",
+      ".harness/load-test/2d6cln/message-1-1-resources.jsonl"
+    ],
+    "sampleCount": 402,
+    "roles": {
+      "httpGateway": {"cpuP95Cores": 0.070, "cpuPeakCores": 0.539, "cpuLimitCores": null, "memoryPeakMiB": 652, "memoryLimitMiB": 1024, "recommendedCpuCores": 1, "recommendedMemoryMiB": 1024, "recommendedDiskGiB": 10, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 2},
+      "webSocketGateway": {"cpuP95Cores": 0.114, "cpuPeakCores": 0.845, "cpuLimitCores": null, "memoryPeakMiB": 593, "memoryLimitMiB": 1024, "recommendedCpuCores": 1, "recommendedMemoryMiB": 1024, "recommendedDiskGiB": 10, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 2},
+      "broker": {"cpuP95Cores": 0.147, "cpuPeakCores": 0.619, "cpuLimitCores": null, "memoryPeakMiB": 687, "memoryLimitMiB": 1024, "recommendedCpuCores": 1, "recommendedMemoryMiB": 1024, "recommendedDiskGiB": 10, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 2},
+      "account": {"cpuP95Cores": 0.094, "cpuPeakCores": 1.384, "cpuLimitCores": null, "memoryPeakMiB": 919, "memoryLimitMiB": 1024, "recommendedCpuCores": 1, "recommendedMemoryMiB": 1280, "recommendedDiskGiB": 10, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 2},
+      "social": {"cpuP95Cores": 0.185, "cpuPeakCores": 1.521, "cpuLimitCores": null, "memoryPeakMiB": 873, "memoryLimitMiB": 1024, "recommendedCpuCores": 1, "recommendedMemoryMiB": 1280, "recommendedDiskGiB": 10, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 2},
+      "message": {"cpuP95Cores": 0.435, "cpuPeakCores": 3.365, "cpuLimitCores": null, "memoryPeakMiB": 1142, "memoryLimitMiB": 2048, "recommendedCpuCores": 1, "recommendedMemoryMiB": 2048, "recommendedDiskGiB": 10, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 2},
+      "mysql": {"cpuP95Cores": 0.081, "cpuPeakCores": 0.501, "cpuLimitCores": null, "memoryPeakMiB": 514, "memoryLimitMiB": 768, "recommendedCpuCores": 1, "recommendedMemoryMiB": 768, "recommendedDiskGiB": 50, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 3},
+      "redis": {"cpuP95Cores": 0.025, "cpuPeakCores": 0.080, "cpuLimitCores": null, "memoryPeakMiB": 10, "memoryLimitMiB": 256, "recommendedCpuCores": 1, "recommendedMemoryMiB": 256, "recommendedDiskGiB": 10, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 3},
+      "nacos": {"cpuP95Cores": 0.044, "cpuPeakCores": 0.270, "cpuLimitCores": null, "memoryPeakMiB": 481, "memoryLimitMiB": 768, "recommendedCpuCores": 1, "recommendedMemoryMiB": 768, "recommendedDiskGiB": 10, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 3},
+      "prometheus": {"cpuP95Cores": 0.006, "cpuPeakCores": 0.077, "cpuLimitCores": null, "memoryPeakMiB": 105, "memoryLimitMiB": 256, "recommendedCpuCores": 1, "recommendedMemoryMiB": 256, "recommendedDiskGiB": 20, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 2},
+      "skyWalkingOap": {"cpuP95Cores": 0.462, "cpuPeakCores": 2.313, "cpuLimitCores": null, "memoryPeakMiB": 1080, "memoryLimitMiB": 1536, "recommendedCpuCores": 1, "recommendedMemoryMiB": 1536, "recommendedDiskGiB": 10, "diskSource": "unverified_engineering_start", "capacityEvidenceReplicas": 1, "haAssumptionReplicas": 2}
+    },
+    "productionBoundary": "all_values_are_planning_starts_and_require_capacity_validation_in_the_target_topology"
+  },
+  "connection": {
+    "status": "stable_lower_bound",
+    "lowerBoundUsers": 200,
+    "testedLevels": [50, 100, 200, 100, 200],
+    "allTestedLevelsStable": true,
+    "higherLevelsSkippedReason": "disk_available_space_and_observability_volume_budget"
+  },
+  "message": {
+    "status": "inconsistent_boundary",
+    "stableThroughput": null,
+    "smokeRuns": [
+      {"batchId": "hpxkco", "decision": "service_failed", "targetRate": 1, "measureSeconds": 1005, "sends": 1005, "sendSuccesses": 1005, "expectedDeliveries": 3405, "deliveryAckSuccesses": 3405, "scheduleP95Ms": 5, "sendResponseLatencyP95Ms": 949.8, "sendResponseLatencyP99Ms": 1067.92, "receiveLatencyP95Ms": 966.8, "receiveLatencyP99Ms": 1117.96, "generatorEvidence": "stable", "reason": "receive_latency_p95_exceeds_500ms"},
+      {"batchId": "2d6cln", "decision": "stable", "targetRate": 1, "measureSeconds": 1005, "sends": 1005, "sendSuccesses": 1005, "expectedDeliveries": 3405, "deliveryAckSuccesses": 3405, "scheduleP95Ms": 5, "sendResponseLatencyP95Ms": 260.6, "sendResponseLatencyP99Ms": 721.48, "receiveLatencyP95Ms": 342.8, "receiveLatencyP99Ms": 775.92, "generatorEvidence": "stable", "reason": null}
+    ],
+    "firstFailureBoundary": {
+      "targetRate": 10,
+      "sendSuccesses": 981,
+      "sends": 1000,
+      "deliveryAckSuccesses": 3229,
+      "expectedDeliveries": 3400,
+      "receiveLatencyP95Ms": 1514,
+      "receiveLatencyP99Ms": 2444,
+      "generatorEvidence": "stable"
+    }
+  },
+  "cleanup": {
+    "smokeStatus": "passed",
+    "ordinaryDataUnchanged": true,
+    "baseServicesRestored": 19,
+    "state": "BASE_READY"
+  },
+  "scope": {
+    "runtimeEvidencePaths": [
+      ".harness/verifications/load-test-smoke.json",
+      ".harness/verifications/load-test-capacity.json"
+    ],
+    "tokensIncluded": false,
+    "productionCapacityClaim": false
+  }
+}

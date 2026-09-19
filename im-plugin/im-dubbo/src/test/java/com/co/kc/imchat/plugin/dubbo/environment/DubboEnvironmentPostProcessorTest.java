@@ -23,16 +23,19 @@ class DubboEnvironmentPostProcessorTest {
         assertThat(environment.getProperty("im.dubbo.registry.group")).isEqualTo("DUBBO_GROUP");
         assertThat(environment.getProperty("im.dubbo.protocol.name")).isEqualTo("dubbo");
         assertThat(environment.getProperty("im.dubbo.consumer.timeout", Integer.class)).isEqualTo(3000);
+        assertThat(environment.getProperty("im.dubbo.consumer.retries", Integer.class)).isZero();
     }
 
     @Test
     void keepsExternalConfigurationAtHigherPriority() {
         StandardEnvironment environment = new StandardEnvironment();
         environment.getPropertySources().addFirst(new MapPropertySource("external",
-                Map.of("im.dubbo.consumer.timeout", 5000)));
+                Map.of("im.dubbo.consumer.timeout", 5000,
+                        "im.dubbo.consumer.retries", 1)));
 
         new DubboEnvironmentPostProcessor().postProcessEnvironment(environment, new SpringApplication());
 
         assertThat(environment.getProperty("im.dubbo.consumer.timeout", Integer.class)).isEqualTo(5000);
+        assertThat(environment.getProperty("im.dubbo.consumer.retries", Integer.class)).isEqualTo(1);
     }
 }

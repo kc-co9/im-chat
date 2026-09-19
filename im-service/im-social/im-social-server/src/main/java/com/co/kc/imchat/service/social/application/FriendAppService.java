@@ -57,8 +57,8 @@ public class FriendAppService {
         for (Friend friend : newFriends) {
             friendRepository.save(friend);
         }
-        afterTransactionCommitTemplate.execute(() -> newFriends.forEach(friend ->
-                messageSocialAdapter.onFriendAdded(friend.getUserId().value(), friend.getFriendUserId().value())));
+
+        messageSocialAdapter.onFriendAdded(userId.value(), friendUserId.value());
     }
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)

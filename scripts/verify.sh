@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 用途：提供 readiness、clean、drift、architecture、behavior、e2e、quick、affected、full、report、handoff 统一验证入口。
+# 用途：提供 readiness、clean、drift、architecture、behavior、e2e、load-test、quick、affected、full、report、handoff 统一验证入口。
 # 输入：第一个参数为模式；affected 模式可接收 baseline revision。
 # 输出/副作用：执行对应检查，并始终写入绑定当前 HEAD/worktree 的 .harness/verifications/<mode>.json。
 # 依赖：Maven、Ruby、rg、find、Harness 子脚本，以及 UI 构建所需 Node/npm。
@@ -10,6 +10,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:-quick}"
 source "$ROOT_DIR/scripts/lib/harness-evidence.sh"
+source "$ROOT_DIR/scripts/lib/load-test-evidence.sh"
 cd "$ROOT_DIR"
 
 # 记录单次模式的状态、命令、耗时、起止 revision/fingerprint 和运行期间稳定性。
@@ -28,6 +29,7 @@ record_verification() {
   local test_count=0
   local workload=""
   local test_summary_json=""
+  local detail_path="$ROOT_DIR/.harness/verifications/$mode-detail.json"
   local output_dir="$ROOT_DIR/.harness/verifications"
   mkdir -p "$output_dir"
   if [[ "$mode" == "e2e" ]]; then
@@ -55,7 +57,7 @@ record_verification() {
   ruby -rjson -e '
     output, mode, command, status, duration, started_epoch, finished_at,
       started_head, finished_head, started_fingerprint, finished_fingerprint,
-      stable, log_path, test_count, workload, test_summary_json = ARGV
+      stable, log_path, test_count, workload, test_summary_json, detail_path = ARGV
     evidence = {
       "mode" => mode,
       "command" => command,
@@ -75,11 +77,18 @@ record_verification() {
       evidence["workload"] = workload
     end
     evidence["testSummary"] = JSON.parse(test_summary_json) unless test_summary_json.empty?
+    if File.file?(detail_path)
+      detail = JSON.parse(File.read(detail_path))
+      detail.delete("mode")
+      detail.delete("status")
+      evidence.merge!(detail)
+      File.delete(detail_path)
+    end
     File.write(output, JSON.generate(evidence) + "\n")
   ' "$output_dir/$mode.json" "$mode" "$command" "$status" "$duration" \
     "$started_epoch" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$started_head" \
     "$finished_head" "$started_fingerprint" "$finished_fingerprint" "$worktree_stable" \
-    "$log_path" "$test_count" "$workload" "$test_summary_json"
+    "$log_path" "$test_count" "$workload" "$test_summary_json" "$detail_path"
 }
 
 # 比较点分隔数字版本；两个参数分别为实际版本和最低版本，满足 actual >= minimum 时成功。
@@ -230,7 +239,7 @@ run_clean() {
   active_plan_files="$(find "$ROOT_DIR/docs/exec-plans/active" -type f -name '*.md' ! -name README.md -print 2>/dev/null)"
   if [[ -n "$active_plan_files" ]]; then
     while IFS= read -r plan; do
-      active_count=$((active_count + $(rg -o '\|[[:space:]]*`?active`?[[:space:]]*\|' "$plan" | wc -l | tr -d ' ')))
+      active_count=$((active_count + $({ rg -o '\|[[:space:]]*`?active`?[[:space:]]*\|' "$plan" || [[ $? -eq 1 ]]; } | wc -l | tr -d ' ')))
       if ! rg -q '^## (跨会话)?恢复状态$' "$plan"; then
         clean_failure \
           "活跃计划缺少恢复状态: ${plan#$ROOT_DIR/}" \
@@ -420,6 +429,158 @@ run_affected() {
   esac
 }
 
+# 运行压测模块的确定性 Node/Java 契约与 Compose/runner fixture，不启动真实服务负载。
+run_load_test() {
+  printf '\n==> Running deterministic load-test contracts\n'
+  npm --prefix im-test/im-load-test ci
+  npm --prefix im-test/im-load-test test
+  mvn -q -pl im-test/im-load-test,im-service/im-message/im-message-server -am test
+  bash "$ROOT_DIR/scripts/test-load-test-harness.sh"
+}
+
+# 运行显式真实 20 用户 smoke；T8 完成前由该入口补齐 revision/data-bound evidence。
+run_load_test_smoke() {
+  local detail="$ROOT_DIR/.harness/verifications/load-test-smoke-detail.json"
+  local runtime_log="$ROOT_DIR/.harness/runtime/load-test-smoke.log"
+  local runner_output="$ROOT_DIR/.harness/runtime/load-test-smoke.stdout"
+  local started_head started_fingerprint started_scope config_digest ordinary_before
+  local finished_head finished_fingerprint finished_scope ordinary_after
+  local primary_status=0 batch_id="" cleanup_status=failed worktree_stable=false
+  local ordinary_unchanged=false scope_stable=false decisions_valid=false directory=""
+  local connection_stable_seconds="${LOAD_TEST_SMOKE_CONNECTION_STABLE_SECONDS:-1}"
+  local connection_measure_seconds="${LOAD_TEST_SMOKE_CONNECTION_MEASURE_SECONDS:-20}"
+  local message_measure_seconds="${LOAD_TEST_SMOKE_MESSAGE_MEASURE_SECONDS:-1005}"
+  local message_rate="${LOAD_TEST_SMOKE_MESSAGE_RATE:-1}"
+  local disconnect_seconds="${LOAD_TEST_SMOKE_DISCONNECT_SECONDS:-2}"
+  local route_cleanup_seconds="${LOAD_TEST_SMOKE_ROUTE_CLEANUP_SECONDS:-10}"
+  local message_warmup_seconds="${LOAD_TEST_SMOKE_MESSAGE_WARMUP_SECONDS:-0}"
+  local message_drain_seconds="${LOAD_TEST_SMOKE_MESSAGE_DRAIN_SECONDS:-10}"
+  local backlog_sample_seconds="${LOAD_TEST_SMOKE_BACKLOG_SAMPLE_SECONDS:-5}"
+  local smoke_round_timeout_seconds="${LOAD_TEST_SMOKE_ROUND_TIMEOUT_SECONDS:-1500}"
+  local resolved_config
+  mkdir -p "$(dirname "$detail")" "$(dirname "$runtime_log")"
+  rm -f "$detail" "$runner_output"
+  printf '\n==> Running real 20-user load-test smoke\n'
+  run_load_test || return $?
+  "$ROOT_DIR/scripts/load_test.sh" doctor || return $?
+  started_head="$(harness_head_revision "$ROOT_DIR")"
+  started_fingerprint="$(harness_worktree_fingerprint "$ROOT_DIR")"
+  started_scope="$(load_test_scope_fingerprint "$ROOT_DIR")" || return $?
+  resolved_config="$(load_test_smoke_resolved_config)" || return $?
+  config_digest="$(load_test_config_digest "$ROOT_DIR" "$resolved_config")" || return $?
+  ordinary_before="$(load_test_ordinary_data_checksum "$ROOT_DIR")" || return $?
+
+  set +e
+  STABLE_SECONDS="$connection_stable_seconds" \
+    LOAD_TEST_ROUND_TIMEOUT_SECONDS="$smoke_round_timeout_seconds" \
+    CONNECTION_MEASURE_SECONDS="$connection_measure_seconds" \
+    DISCONNECT_SECONDS="$disconnect_seconds" \
+    ROUTE_CLEANUP_SECONDS="$route_cleanup_seconds" \
+    WARMUP_SECONDS="$message_warmup_seconds" \
+    MESSAGE_MEASURE_SECONDS="$message_measure_seconds" \
+    SMOKE_MESSAGE_RATE="$message_rate" \
+    DRAIN_SECONDS="$message_drain_seconds" \
+    BACKLOG_SAMPLE_SECONDS="$backlog_sample_seconds" \
+    LOAD_TEST_ROUTE_CLEANUP_TIMEOUT_SECONDS="$route_cleanup_seconds" \
+    "$ROOT_DIR/scripts/load_test.sh" smoke --users 20 --group-size 10 \
+      > >(tee "$runner_output") 2> >(tee "$runtime_log" >&2)
+  primary_status=$?
+  set -e
+
+  if [[ -f "$runner_output" ]]; then
+    batch_id="$(ruby -rjson -e '
+      batch = File.readlines(ARGV.fetch(0)).map do |line|
+        begin
+          value = JSON.parse(line)
+          value["batchId"] if value.is_a?(Hash)
+        rescue JSON::ParserError
+          nil
+        end
+      end.compact.last
+      print batch.to_s
+    ' "$runner_output")"
+  fi
+  if [[ -z "$batch_id" && -f "$ROOT_DIR/.harness/load-test/runtime-state.jsonl" ]]; then
+    batch_id="$(ruby -rjson -e '
+      batches = File.readlines(ARGV.fetch(0)).map do |line|
+        begin
+          JSON.parse(line)["batchId"]
+        rescue JSON::ParserError
+          nil
+        end
+      end.compact
+      print batches.last.to_s
+    ' "$ROOT_DIR/.harness/load-test/runtime-state.jsonl")"
+  fi
+  [[ "$batch_id" =~ ^[a-z0-9]{6}$ ]] && directory="$ROOT_DIR/.harness/load-test/$batch_id"
+  finished_head="$(harness_head_revision "$ROOT_DIR")"
+  finished_fingerprint="$(harness_worktree_fingerprint "$ROOT_DIR")"
+  finished_scope="$(load_test_scope_fingerprint "$ROOT_DIR")" || primary_status=1
+  ordinary_after="$(load_test_ordinary_data_checksum "$ROOT_DIR")" || primary_status=1
+  [[ "$started_head" == "$finished_head" && "$started_fingerprint" == "$finished_fingerprint" ]] \
+    && worktree_stable=true
+  [[ "$started_scope" == "$finished_scope" ]] && scope_stable=true
+  [[ "$ordinary_before" == "$ordinary_after" ]] && ordinary_unchanged=true
+  if [[ -n "$directory" && -f "$ROOT_DIR/.harness/load-test/runtime-state.jsonl" ]] \
+      && [[ "$(tail -1 "$ROOT_DIR/.harness/load-test/runtime-state.jsonl" | ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("state")')" == BASE_READY ]] \
+      && { [[ -z "$directory" ]] || ! find "$directory" -maxdepth 1 -type f \
+        \( -name 'credentials*.json' -o -name 'database-targets.json' \) -print -quit | grep -q .; }; then
+    cleanup_status=passed
+  fi
+  if [[ -n "$directory" ]] && ruby -rjson -e '
+    rounds = Dir.glob(File.join(ARGV.fetch(0), "*-round.json")).sort.map { |path| JSON.parse(File.read(path)) }
+    kinds = rounds.map { |round| round["kind"] }
+    abort unless kinds == %w[connection message]
+    abort unless rounds.fetch(0).dig("decision", "status") == "stable"
+    abort unless %w[stable service_failed].include?(rounds.fetch(1).dig("decision", "status"))
+  ' "$directory"; then
+    decisions_valid=true
+  fi
+  if ((primary_status == 0 || primary_status == 10)) && [[ "$cleanup_status" == passed \
+      && "$worktree_stable" == true && "$scope_stable" == true \
+      && "$ordinary_unchanged" == true && "$decisions_valid" == true ]]; then
+    primary_status=0
+  else
+    primary_status=1
+  fi
+
+  ruby -rjson -rtime -e '
+    output, batch, config, head_start, head_end, full_start, full_end, scope_start,
+      scope_end, worktree_stable, scope_stable, cleanup, before, after, unchanged,
+      directory, runtime_log, resolved_config_json = ARGV
+    decisions = directory.empty? ? [] : Dir.glob(File.join(directory, "*-round.json"))
+      .sort.map { |path| JSON.parse(File.read(path)) }
+    detail = {
+      "version" => 1,
+      "evidenceKind" => "smoke",
+      "batchId" => batch.empty? ? nil : batch,
+      "configDigest" => config,
+      "resolvedConfig" => JSON.parse(resolved_config_json),
+      "startedHeadRevision" => head_start,
+      "finishedHeadRevision" => head_end,
+      "startedFullWorktreeFingerprint" => full_start,
+      "finishedFullWorktreeFingerprint" => full_end,
+      "loadTestScopeFingerprint" => scope_end,
+      "startedLoadTestScopeFingerprint" => scope_start,
+      "worktreeStable" => worktree_stable == "true",
+      "loadTestScopeStable" => scope_stable == "true",
+      "cleanupStatus" => cleanup,
+      "ordinaryDataChecksumBefore" => before,
+      "ordinaryDataChecksumAfter" => after,
+      "ordinaryDataUnchanged" => unchanged == "true",
+      "perRoundDecisions" => decisions,
+      "runtimeLogPath" => runtime_log.delete_prefix(File.dirname(File.dirname(output)) + "/"),
+      "finishedAt" => Time.now.utc.iso8601
+    }
+    File.write(output, JSON.generate(detail) + "\n")
+    File.write(File.join(directory, "smoke-summary.json"), JSON.pretty_generate(detail) + "\n") unless directory.empty?
+  ' "$detail" "$batch_id" "$config_digest" "$started_head" "$finished_head" \
+    "$started_fingerprint" "$finished_fingerprint" "$started_scope" "$finished_scope" \
+    "$worktree_stable" "$scope_stable" "$cleanup_status" "$ordinary_before" "$ordinary_after" \
+    "$ordinary_unchanged" "$directory" "$runtime_log" "$resolved_config"
+  return "$primary_status"
+}
+
 # 集中分发模式，使外围逻辑能为成功、失败和未知模式统一记录证据。
 dispatch() {
   case "$MODE" in
@@ -455,6 +616,12 @@ dispatch() {
   startup)
     run_startup
     ;;
+  load-test)
+    run_load_test
+    ;;
+  load-test-smoke)
+    run_load_test_smoke
+    ;;
   init)
     run_init
     ;;
@@ -471,7 +638,7 @@ dispatch() {
     "$ROOT_DIR/scripts/harness-handoff.sh"
     ;;
   *)
-    printf 'Usage: %s {readiness|clean|cleanup|quality|drift|architecture|behavior|e2e|startup|init|quick|affected|full|report|handoff}\n' "$0" >&2
+    printf 'Usage: %s {readiness|clean|cleanup|quality|drift|architecture|behavior|e2e|startup|load-test|load-test-smoke|init|quick|affected|full|report|handoff}\n' "$0" >&2
     return 2
     ;;
   esac

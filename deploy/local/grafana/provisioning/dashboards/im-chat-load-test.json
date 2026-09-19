@@ -1,0 +1,86 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [{ "expr": "sum(k6_im_connection_opened_total{batch=~\"$batch\",round=~\"$round\",phase=~\"$phase\"})", "refId": "A" }],
+      "title": "Opened connections",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "id": 2,
+      "targets": [{ "expr": "sum(rate(k6_im_message_sends_total{batch=~\"$batch\",round=~\"$round\",phase=~\"$phase\",message_type=~\"$message_type\"}[1m]))", "refId": "A" }],
+      "title": "Message send rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
+      "targets": [{ "expr": "sum(k6_im_message_delivery_ack_successes_total{batch=~\"$batch\",round=~\"$round\",phase=~\"$phase\"}) / clamp_min(sum(k6_im_message_expected_deliveries_total{batch=~\"$batch\",round=~\"$round\",phase=~\"$phase\"}), 1)", "refId": "A" }],
+      "title": "Delivery and ACK success",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 4,
+      "targets": [
+        { "expr": "max(k6_im_message_receive_latency_ms_p95{batch=~\"$batch\",round=~\"$round\",phase=~\"$phase\",message_type=~\"$message_type\"})", "legendFormat": "P95", "refId": "A" },
+        { "expr": "max(k6_im_message_receive_latency_ms_p99{batch=~\"$batch\",round=~\"$round\",phase=~\"$phase\",message_type=~\"$message_type\"})", "legendFormat": "P99", "refId": "B" }
+      ],
+      "title": "Receive latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 5,
+      "targets": [
+        { "expr": "sum(k6_im_message_duplicates_total{batch=~\"$batch\",round=~\"$round\"})", "legendFormat": "duplicate", "refId": "A" },
+        { "expr": "sum(k6_im_message_unknown_receivers_total{batch=~\"$batch\",round=~\"$round\"})", "legendFormat": "unknown", "refId": "B" },
+        { "expr": "sum(k6_im_message_drain_residual_total{batch=~\"$batch\",round=~\"$round\"})", "legendFormat": "residual", "refId": "C" }
+      ],
+      "title": "Correctness counters",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "id": 6,
+      "targets": [{ "expr": "max(process_cpu_usage{job=~\"im-.*\"})", "refId": "A" }],
+      "title": "Service process CPU",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": ["im-chat", "load-test"],
+  "templating": {
+    "list": [
+      { "name": "batch", "label": "Batch", "type": "query", "datasource": { "type": "prometheus", "uid": "prometheus" }, "query": { "query": "label_values(k6_im_message_sends_total, batch)", "refId": "batch" }, "includeAll": true, "allValue": ".*" },
+      { "name": "round", "label": "Round", "type": "query", "datasource": { "type": "prometheus", "uid": "prometheus" }, "query": { "query": "label_values(k6_im_message_sends_total{batch=~\"$batch\"}, round)", "refId": "round" }, "includeAll": true, "allValue": ".*" },
+      { "name": "phase", "label": "Phase", "type": "custom", "query": "ramp,warmup,measure,drain,disconnect", "includeAll": true, "allValue": ".*" },
+      { "name": "message_type", "label": "Message type", "type": "custom", "query": "private,group,all", "includeAll": true, "allValue": ".*" }
+    ]
+  },
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "title": "IM Chat Load Test",
+  "uid": "im-chat-load-test",
+  "version": 1
+}

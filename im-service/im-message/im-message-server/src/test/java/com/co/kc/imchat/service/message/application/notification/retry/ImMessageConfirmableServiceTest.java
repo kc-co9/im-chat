@@ -25,18 +25,43 @@ class ImMessageConfirmableServiceTest {
     }
 
     @Test
-    void schedulePushesInitialReceiptTask() {
+    void scheduleIfConfirmablePushesInitialReceiptTask() {
         RecordingNotifier notifier = new RecordingNotifier();
         RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
         ImMessageConfirmableService service = newService(notifier, confirmableStore);
 
-        service.schedule(notifier, new TestNotification("hello"));
+        boolean scheduled = service.scheduleIfConfirmable(notifier, new TestNotification("hello"));
 
+        assertThat(scheduled).isTrue();
         assertThat(confirmableStore.offeredTask).isNotNull();
         assertThat(confirmableStore.offeredTask.getReceiptType()).isEqualTo(ReceiptType.PRIVATE_MESSAGE_SEND);
         assertThat(confirmableStore.offeredTask.getReceiptId()).isEqualTo("ack:hello");
         assertThat(confirmableStore.offeredTask.getNotification()).isEqualTo(new TestNotification("hello"));
         assertThat(confirmableStore.offeredTask.getDelayMillis()).isEqualTo(2000L);
+    }
+
+    @Test
+    void scheduleIfConfirmableSkipsNonConfirmableNotifier() {
+        PlainNotifier notifier = new PlainNotifier();
+        RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
+        ImMessageConfirmableService service = newService(notifier, confirmableStore);
+
+        boolean scheduled = service.scheduleIfConfirmable(notifier, new TestNotification("hello"));
+
+        assertThat(scheduled).isFalse();
+        assertThat(confirmableStore.offeredTask).isNull();
+    }
+
+    @Test
+    void scheduleIfConfirmableSkipsNotifierWithRetryDisabled() {
+        NoRetryNotifier notifier = new NoRetryNotifier();
+        RecordingConfirmableStore confirmableStore = new RecordingConfirmableStore();
+        ImMessageConfirmableService service = newService(notifier, confirmableStore);
+
+        boolean scheduled = service.scheduleIfConfirmable(notifier, new TestNotification("hello"));
+
+        assertThat(scheduled).isFalse();
+        assertThat(confirmableStore.offeredTask).isNull();
     }
 
     @Test
@@ -60,12 +85,13 @@ class ImMessageConfirmableServiceTest {
     }
 
     @Test
-    void scheduleThrowsWhenStorePushFails() {
+    void scheduleIfConfirmableThrowsWhenStorePushFails() {
         RecordingNotifier notifier = new RecordingNotifier();
         FailingConfirmableStore confirmableStore = new FailingConfirmableStore();
         ImMessageConfirmableService service = newService(notifier, confirmableStore);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.schedule(notifier, new TestNotification("hello")))
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> service.scheduleIfConfirmable(notifier, new TestNotification("hello")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("push failed");
     }
@@ -81,7 +107,7 @@ class ImMessageConfirmableServiceTest {
     }
 
     private ImMessageConfirmableService newService(
-            RecordingNotifier notifier,
+            ImMessageNotifier<TestNotification> notifier,
             RecordingConfirmableStore confirmableStore) {
         return new ImMessageConfirmableService(
                 new ImMessageNotifierFactory(Collections.singletonList(notifier)),
@@ -104,6 +130,19 @@ class ImMessageConfirmableServiceTest {
         @Override
         public String receiptId(TestNotification notification) {
             return "ack:" + notification.getValue();
+        }
+    }
+
+    private static class NoRetryNotifier extends RecordingNotifier {
+        @Override
+        public long delayMillis() {
+            return 0L;
+        }
+    }
+
+    private static class PlainNotifier implements ImMessageNotifier<TestNotification> {
+        @Override
+        public void notify(TestNotification notification) {
         }
     }
 

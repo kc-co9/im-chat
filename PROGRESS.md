@@ -4,9 +4,9 @@
 
 ## 当前状态（Current State）
 
-- 活跃计划：none。
-- 当前任务：无；[可观测性与分片运行接入](docs/exec-plans/completed/2026-09-11-observability-sharding-runtime.md) 已完成并归档。
-- 状态：`complete`
+- 活跃计划：`none`
+- 当前任务：无；IM 核心链路容量压测已完成并归档。
+- 状态：`none`
 
 ## 最近验证
 
@@ -14,8 +14,8 @@
 
 ## 阻塞项
 
-- 无。所需固定镜像已经齐备；Docker Desktop host networking 未启用的问题改由 bridge 网络解决，不修改用户全局 Docker 设置。
+- 无。
 
 ## 下一步（Next Steps）
 
-无待执行计划；当前 full 19/19 服务保持运行，后续需求应创建或激活对应执行计划。
+当前无待执行计划。容量结论以容量报告和 completed execution plan 为准，生产拓扑仍需重新压测；只有需要认证当前工作树 fingerprint 时，才刷新 `full`、E2E、真实 smoke 和正式 capacity evidence。

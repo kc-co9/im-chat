@@ -11,4 +11,5 @@ im:
       port: -1
     consumer:
       timeout: 3000
+      retries: 0
       check: false

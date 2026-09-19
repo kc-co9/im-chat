@@ -16,5 +16,6 @@
     <modules>
         <module>im-architecture-test</module>
         <module>im-e2e-test</module>
+        <module>im-load-test</module>
     </modules>
 </project>

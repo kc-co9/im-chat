@@ -35,7 +35,7 @@ public class FriendService {
         Optional<Friend> friend = friendRepository.find(new FriendEdge(userId, friendUserId));
         Optional<Friend> peerFriend = friendRepository.find(new FriendEdge(friendUserId, userId));
         if (friend.isPresent() && peerFriend.isPresent()) {
-            throw new BusinessException("好友已存在");
+            return List.of();
         }
 
         List<Friend> friends = new ArrayList<>();

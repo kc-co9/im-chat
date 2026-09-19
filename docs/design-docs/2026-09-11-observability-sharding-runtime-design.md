@@ -45,6 +45,8 @@ Message 模块只有高写入消息表真实分片：
 
 所有 Spring Boot Server 接入 Actuator 与 Prometheus registry，并使用独立 management port。Nacos 只注册业务端口，metadata 中记录 management port，便于治理和抓取。
 
+`im-metrics` 的 `@Observed` 自动配置须在 Spring Boot 创建 Prometheus/Simple `MeterRegistry` 后判断 registry 是否存在；仅验证 `/actuator/prometheus` 返回 200 和 JVM 指标不足以证明业务计时生效。插件集成测试必须从 Spring 代理调用观测方法，再检查计数器及 duration 均实际导出。
+
 端口按服务族分号段，management port = business port + 1000：
 
 | 服务 | 业务端口 | Management 端口 |
@@ -141,7 +143,7 @@ Admin、Audit、Monitor 使用各自独立的 IAM Session Cookie 和 CSRF Cookie
 | D19B | BanyanDB 单节点地址 | Compose 服务命名为 `skywalking-banyandb`，standalone 显式使用 loopback 节点地址 | 避免 Docker Desktop arm64 下容器 hostname 的 property schema 自连接 RPC 超时，OAP 仍通过服务名访问 |
 | D19C | 本地 Cookie 隔离 | Admin、Audit、Monitor 使用各自的 Session/CSRF Cookie 名，前端读取对应 CSRF Cookie | Cookie 不按端口隔离，不能因多个 `localhost` 管理应用共享名称而互相覆盖 |
 | D19D | 本地端口互斥 | 启动前预检目标 profile 的全部 infra 与应用端口，并排除当前 Compose 项目已拥有的映射 | 与 IDE、其他进程或其他 Docker 项目冲突时快速失败，不在耗时构建后留下部分拓扑 |
-| D19E | 本地 Agent 启动死锁规避 | full 应用统一增加 `-XX:-UseContainerSupport`，同时保留显式堆、metaspace 和容器内存上限 | SkyWalking Agent 9.7.0 的 JVM 指标线程与 JDK 21 启动类加载可能在容器指标初始化路径形成死锁；该开关只用于本地 Compose，不外推到生产 |
+| D19E | 本地 Agent 启动死锁规避 | full 应用统一增加 `-XX:-UseContainerSupport`，并在 SkyWalking 前运行只预加载 `jdk.internal.misc.ThreadTracker` 的微型 premain Agent；同时显式限制 heap、线程栈、metaspace、direct memory、code cache 和容器总内存 | SkyWalking Agent 9.7.0 的 JVM 指标线程与 JDK 21 启动类加载可能在容器指标初始化路径形成死锁；即使关闭容器感知，首次加载 `ThreadTracker` 仍可能与 gRPC 后台线程形成 `JarFile`/`AppClassLoader` 锁顺序反转。预加载发生在 SkyWalking 注册 transformer 前，不修改字节码或采集数据；该组参数和预加载器只用于本地 Compose，不外推到生产 |
 | D19F | 本地 IAM 冷启动超时 | full 的 Audit、Admin、Monitor 将 IAM HTTP read timeout 覆盖为 `10s`，SDK 默认仍为 `2s` | 十个应用并发冷启动时，IAM 已健康但 catalog 同步可能超过 2 秒并永久保持 readiness `DOWN`；本地覆盖吸收资源竞争，不改变生产故障窗口 |
 | D20 | full 应用镜像 | full 模式先 Maven clean package，再用通用 `app.Dockerfile` 和专用 ignore 构建 `im-chat/<artifactId>:local` | 构建方式统一、不为每个 Server 复制 Dockerfile，并避免旧版本 JAR 与无关仓库文件进入构建上下文 |
 | D21 | 本地数据生命周期 | Compose 使用命名 volume；down 默认保留，只有 `--volumes` 显式清理 | 日常重启不丢数据，清理动作保持可见和受控 |
@@ -178,4 +180,4 @@ Management endpoint 必须按内网或本地环境隔离。`metrics` 和 `promet
 
 ## 执行计划
 
-实施步骤和证据记录在 [可观测性与分片运行接入实施计划](../exec-plans/active/2026-09-11-observability-sharding-runtime.md)。
+实施步骤和证据记录在 [可观测性与分片运行接入实施计划](../exec-plans/completed/2026-09-11-observability-sharding-runtime.md)。

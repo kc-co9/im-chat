@@ -92,37 +92,52 @@ public class MysqlImGroupChatRepository implements ImGroupChatRepository {
 
     @Override
     public void save(ImGroupChat groupChat) {
-        DbImGroupChat row = ImChatDbTransformer.INSTANCE.dbImGroupChatFrom(groupChat);
+        DbImGroupChat dbImGroupChat = ImChatDbTransformer.INSTANCE.dbImGroupChatFrom(groupChat);
         boolean persisted;
-        if (row.getId() == null) {
-            persisted = dbImGroupChatService.saveOrUpdate(row);
+        if (dbImGroupChat.getId() == null) {
+            persisted = dbImGroupChatService.saveOrUpdate(dbImGroupChat);
         } else {
-            persisted = dbImGroupChatService.update(row,
+            persisted = dbImGroupChatService.update(dbImGroupChat,
                     dbImGroupChatService.getUpdateWrapper()
-                            .eq(DbImGroupChat::getId, row.getId())
-                            .eq(DbImGroupChat::getUserId, row.getUserId())
+                            .eq(DbImGroupChat::getId, dbImGroupChat.getId())
+                            .eq(DbImGroupChat::getUserId, dbImGroupChat.getUserId())
                             .eq(DbImGroupChat::getVersion, groupChat.getRowVersion()));
         }
-        if (!persisted) {
-            if (groupChat.getPkId() != null) {
-                throw new OptimisticLockingFailureException(
-                        "Group chat was modified concurrently: " + groupChat.getId().value());
-            }
-            throw new DataAccessResourceFailureException(
-                    "Group chat was not inserted: " + groupChat.getId().value());
-        }
         if (persisted) {
-            if (row.getId() != null) {
-                groupChat.setPkId(row.getId());
+            if (dbImGroupChat.getId() != null) {
+                groupChat.setPkId(dbImGroupChat.getId());
             }
-            groupChat.setRowVersion(row.getVersion());
+            groupChat.setRowVersion(dbImGroupChat.getVersion());
+        } else {
+            if (groupChat.getPkId() != null) {
+                throw new OptimisticLockingFailureException("Group chat was modified concurrently: " + groupChat.getId().value());
+            } else {
+                throw new DataAccessResourceFailureException("Group chat was not inserted: " + groupChat.getId().value());
+            }
         }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
     public void save(List<ImGroupChat> groupChats) {
-        groupChats.forEach(this::save);
+        if (CollectionUtils.isEmpty(groupChats)) {
+            return;
+        }
+        List<DbImGroupChat> dbImGroupChats =
+                ImChatDbTransformer.INSTANCE.dbImGroupChatListFrom(groupChats);
+        List<DbImGroupChat> inserts = dbImGroupChats.stream()
+                .filter(row -> row.getId() == null)
+                .toList();
+        List<DbImGroupChat> updates = dbImGroupChats.stream()
+                .filter(row -> row.getId() != null)
+                .toList();
+        if (!inserts.isEmpty() && !dbImGroupChatService.saveBatch(inserts)) {
+            throw new DataAccessResourceFailureException("Group chats were not inserted");
+        }
+        if (!updates.isEmpty() && !dbImGroupChatService.updateConversationStates(updates)) {
+            throw new OptimisticLockingFailureException(
+                    "Group chat was modified concurrently: " + updates.getFirst().getChatId());
+        }
     }
 
     @Override

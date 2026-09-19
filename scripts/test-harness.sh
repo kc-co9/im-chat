@@ -53,6 +53,7 @@ bash "$ROOT_DIR/scripts/test-java-style-harness.sh"
 bash "$ROOT_DIR/scripts/test-management-ui-harness.sh"
 bash "$ROOT_DIR/scripts/check-management-ui.sh"
 bash "$ROOT_DIR/scripts/test-local-compose-harness.sh"
+bash "$ROOT_DIR/scripts/test-load-test-harness.sh"
 
 space_fixture="$(mktemp -d)/repository with spaces"
 ln -s "$ROOT_DIR" "$space_fixture"
@@ -559,6 +560,8 @@ assert_impact "im-service/im-account/im-account-admin-facade,im-service/im-accou
   "im-service/im-account/im-account-admin-facade/src/main/java/example.java"
 assert_impact "im-management/im-iam/im-iam-server,im-management/im-admin,im-management/im-monitor,im-management/im-audit/im-audit-server,im-test/im-architecture-test" \
   "im-management/pom.xml"
+assert_impact "im-test/im-load-test,im-test/im-architecture-test" \
+  "im-test/im-load-test/src/test/java/example.java"
 assert_impact all "im-common/src/main/java/example.java"
 
 # full 必须自行包含环境、清洁状态、Harness fixture 和 Maven verify，不能依赖调用者记住前置命令。
@@ -567,6 +570,7 @@ mkdir -p "$full_root/scripts/lib" "$full_root/bin" \
   "$full_root/docs/exec-plans/active" "$full_root/.harness"
 cp "$ROOT_DIR/scripts/verify.sh" "$full_root/scripts/verify.sh"
 cp "$ROOT_DIR/scripts/lib/harness-evidence.sh" "$full_root/scripts/lib/harness-evidence.sh"
+cp "$ROOT_DIR/scripts/lib/load-test-evidence.sh" "$full_root/scripts/lib/load-test-evidence.sh"
 cat > "$full_root/scripts/check-drift.sh" <<'EOF'
 #!/usr/bin/env bash
 printf 'drift\n' >> "$FULL_FIXTURE_TRACE"
@@ -713,6 +717,7 @@ readiness_root="$(mktemp -d)"
 mkdir -p "$readiness_root/scripts/lib" "$readiness_root/bin"
 cp "$ROOT_DIR/scripts/verify.sh" "$readiness_root/scripts/verify.sh"
 cp "$ROOT_DIR/scripts/lib/harness-evidence.sh" "$readiness_root/scripts/lib/harness-evidence.sh"
+cp "$ROOT_DIR/scripts/lib/load-test-evidence.sh" "$readiness_root/scripts/lib/load-test-evidence.sh"
 
 # 参数为工具名和版本输出；生成只服务 readiness fixture 的可执行命令。
 write_fake_tool() {
@@ -779,6 +784,7 @@ clean_root="$(mktemp -d)"
 mkdir -p "$clean_root/scripts/lib" "$clean_root/docs/exec-plans/active" "$clean_root/src"
 cp "$ROOT_DIR/scripts/verify.sh" "$clean_root/scripts/verify.sh"
 cp "$ROOT_DIR/scripts/lib/harness-evidence.sh" "$clean_root/scripts/lib/harness-evidence.sh"
+cp "$ROOT_DIR/scripts/lib/load-test-evidence.sh" "$clean_root/scripts/lib/load-test-evidence.sh"
 cat > "$clean_root/scripts/check-drift.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
@@ -800,6 +806,19 @@ if ! rg -Fq 'Clean-state checks passed.' <<<"$clean_output"; then
   printf 'Clean success output is missing.\n' >&2
   exit 1
 fi
+
+cat > "$clean_root/docs/exec-plans/active/blocked.md" <<'EOF'
+# Test Plan
+| Task | Status |
+|---|---|
+| one | `blocked` |
+## 恢复状态
+EOF
+if ! clean_output="$(cd "$clean_root" && scripts/verify.sh clean 2>&1)"; then
+  printf 'Clean fixture with a blocked plan and no active task should pass.\n%s\n' "$clean_output" >&2
+  exit 1
+fi
+rm "$clean_root/docs/exec-plans/active/blocked.md"
 
 # 参数为预期 WHAT 片段；断言 clean 失败且输出可操作诊断。
 expect_clean_failure() {
@@ -876,6 +895,7 @@ mkdir -p "$e2e_root/scripts/lib" "$e2e_root/bin" \
   "$e2e_root/im-test/im-e2e-test/target/surefire-reports"
 cp "$ROOT_DIR/scripts/verify.sh" "$e2e_root/scripts/verify.sh"
 cp "$ROOT_DIR/scripts/lib/harness-evidence.sh" "$e2e_root/scripts/lib/harness-evidence.sh"
+cp "$ROOT_DIR/scripts/lib/load-test-evidence.sh" "$e2e_root/scripts/lib/load-test-evidence.sh"
 cat > "$e2e_root/bin/mvn" <<'EOF'
 #!/usr/bin/env bash
 if [[ " $* " == *" -Dgroups=e2e "* ]]; then
@@ -920,6 +940,7 @@ mkdir -p "$fixture_root/scripts/lib" \
   "$fixture_root/module/target/surefire-reports"
 cp "$ROOT_DIR/scripts/harness-report.sh" "$fixture_root/scripts/harness-report.sh"
 cp "$ROOT_DIR/scripts/lib/harness-evidence.sh" "$fixture_root/scripts/lib/harness-evidence.sh"
+cp "$ROOT_DIR/scripts/lib/load-test-evidence.sh" "$fixture_root/scripts/lib/load-test-evidence.sh"
 touch "$fixture_root/AGENTS.md" \
   "$fixture_root/ARCHITECTURE.md" \
   "$fixture_root/README.md" \
@@ -964,6 +985,12 @@ done
 cat > "$fixture_root/.harness/verifications/e2e.json" <<'EOF'
 {"mode":"e2e","command":"./scripts/verify.sh e2e","status":"passed","durationSeconds":8,"startedAtEpoch":100,"finishedAt":"1970-01-01T00:02:00Z","headRevision":"fixture-head","worktreeFingerprint":"fixture-fingerprint","worktreeStable":true,"logPath":".harness/runtime/e2e.log","testCount":1,"workload":"realtime-messaging-golden-path"}
 EOF
+cat > "$fixture_root/.harness/verifications/load-test-smoke.json" <<'EOF'
+{"mode":"load-test-smoke","command":"./scripts/verify.sh load-test-smoke","status":"passed","durationSeconds":30,"startedAtEpoch":100,"finishedAt":"1970-01-01T00:02:00Z","headRevision":"fixture-head","worktreeFingerprint":"fixture-fingerprint","worktreeStable":true,"evidenceKind":"smoke","batchId":"smk001","configDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","loadTestScopeFingerprint":"fixture-load-scope","loadTestScopeStable":true,"cleanupStatus":"passed","ordinaryDataUnchanged":true,"perRoundDecisions":[{"kind":"connection","decision":{"status":"stable","reasons":[]}},{"kind":"message","decision":{"status":"service_failed","reasons":["latency"]}}]}
+EOF
+cat > "$fixture_root/.harness/verifications/load-test-capacity.json" <<'EOF'
+{"mode":"load-test-capacity","command":"fixture","status":"passed","headRevision":"fixture-head","worktreeFingerprint":"fixture-fingerprint","worktreeStable":true,"batchId":"cap001","configDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","loadTestScopeFingerprint":"fixture-load-scope","loadTestScopeStable":true,"cleanupStatus":"passed","ordinaryDataUnchanged":true,"resolvedConfig":{},"perRoundDecisions":[{"kind":"connection","decision":{"status":"stable","reasons":[]}},{"kind":"message","decision":{"status":"skipped","reasons":["no_stable_message_tier"]}}]}
+EOF
 printf 'e2e fixture log\n' > "$fixture_root/.harness/runtime/e2e.log"
 cat > "$fixture_root/module/target/surefire-reports/TEST-current.xml" <<'EOF'
 <testsuite tests="4" failures="0" errors="0" skipped="1"/>
@@ -976,7 +1003,9 @@ touch -t 202001010001 "$fixture_root/module/target/surefire-reports/TEST-stale.x
 
 HARNESS_ROOT_DIR="$fixture_root" \
   HARNESS_CURRENT_HEAD="fixture-head" \
-  HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
+  HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/report.json" >/dev/null
 report="$fixture_root/.harness/report.json"
@@ -991,6 +1020,33 @@ if ! ruby -rjson -e '
   exit(report.key?("sensorCoverage") && report["sensorCoverage"] == report["score"] ? 0 : 1)
 ' "$report"; then
   printf 'Harness report must expose sensorCoverage without changing the compatibility score.\n' >&2
+  exit 1
+fi
+if ! ruby -rjson -e '
+  load_test = JSON.parse(File.read(ARGV.fetch(0))).dig("runtimeEvidence", "loadTest")
+  smoke = load_test&.fetch("smoke")
+  capacity = load_test&.fetch("capacity")
+  exit(smoke&.dig("status") == "verified" && smoke["batchId"] == "smk001" &&
+    smoke["cleanupStatus"] == "passed" && smoke["ordinaryDataUnchanged"] == true &&
+    smoke.fetch("perRoundDecisions").size == 2 && capacity&.dig("status") == "verified" ? 0 : 1)
+' "$report"; then
+  printf 'Harness report must validate smoke and formal capacity evidence separately.\n' >&2
+  exit 1
+fi
+
+HARNESS_ROOT_DIR="$fixture_root" \
+  HARNESS_CURRENT_HEAD="fixture-head" \
+  HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+  HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
+  HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
+  "$fixture_root/scripts/harness-report.sh" \
+  "$fixture_root/.harness/config-stale-report.json" >/dev/null
+if ! ruby -rjson -e '
+  smoke = JSON.parse(File.read(ARGV.fetch(0))).dig("runtimeEvidence", "loadTest", "smoke")
+  exit(smoke["status"] == "stale" && smoke["freshness"] == "stale" &&
+    smoke["configFresh"] == false ? 0 : 1)
+' "$fixture_root/.harness/config-stale-report.json"; then
+  printf 'Changed load-test config digest must make smoke evidence stale.\n' >&2
   exit 1
 fi
 rg -Fq '"subsystems": {' "$report"
@@ -1018,7 +1074,9 @@ fi
 rm "$fixture_root/.harness/runtime/e2e.log"
 HARNESS_ROOT_DIR="$fixture_root" \
   HARNESS_CURRENT_HEAD="fixture-head" \
-  HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
+  HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/missing-log-report.json" >/dev/null
 if ! ruby -rjson -e '
@@ -1036,7 +1094,9 @@ cat > "$fixture_root/.harness/verifications/behavior.json" <<'EOF'
 EOF
 HARNESS_ROOT_DIR="$fixture_root" \
   HARNESS_CURRENT_HEAD="fixture-head" \
-  HARNESS_CURRENT_WORKTREE_FINGERPRINT="changed-fingerprint" \
+HARNESS_CURRENT_WORKTREE_FINGERPRINT="changed-fingerprint" \
+HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="changed-load-scope" \
+  HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/stale-report.json" >/dev/null
 if ! ruby -rjson -e '
@@ -1060,7 +1120,9 @@ cat > "$fixture_root/.harness/verifications/full.json" <<EOF
 EOF
 HARNESS_ROOT_DIR="$fixture_root" \
   HARNESS_CURRENT_HEAD="fixture-head" \
-  HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
+  HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/unavailable-report.json" >/dev/null
 if ! ruby -rjson -e '
@@ -1074,7 +1136,9 @@ fi
 rm "$fixture_root/.harness/verifications/full.json"
 HARNESS_ROOT_DIR="$fixture_root" \
   HARNESS_CURRENT_HEAD="fixture-head" \
-  HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
+  HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/incomplete-report.json" >/dev/null
 if ! ruby -rjson -e '

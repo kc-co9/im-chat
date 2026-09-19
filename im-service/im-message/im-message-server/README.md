@@ -223,6 +223,7 @@ Redis 中没有单独的 `PENDING` 或 `CONFIRMED` 状态。任务内容存在�
 
 - Broker 推送使用 `im.message.broker.frame.write{outcome=success|failure}` 计数器。
 - `im.message.broker.frame.write.duration` 记录 Broker 调用耗时。
+- `im.message.private.send` 与 `im.message.group.send` 分别记录发送 AppService 的结果和 duration，覆盖锁、业务校验、事务与提交后动作。
 - 指标不使用用户、消息、聊天、连接或 Token 作为标签。
 - 接收方离线记录 debug 日志；Broker 未处理或存在失败连接时记录 warn 日志。
 - 消费回执重投任务异常时记录 error，并把任务重新放回延迟队列。

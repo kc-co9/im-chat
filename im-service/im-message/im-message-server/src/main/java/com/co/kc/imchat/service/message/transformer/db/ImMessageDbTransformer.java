@@ -19,6 +19,8 @@ import com.co.kc.imchat.service.message.infrastructure.mybatis.enums.DbPrivateIm
 import com.co.kc.imchat.service.message.infrastructure.mybatis.enums.DbImMessageType;
 import org.mapstruct.factory.Mappers;
 
+import java.util.List;
+
 @Mapper
 public interface ImMessageDbTransformer {
     ImMessageDbTransformer INSTANCE = Mappers.getMapper(ImMessageDbTransformer.class);
@@ -44,6 +46,8 @@ public interface ImMessageDbTransformer {
             @Mapping(target = "isDeleted", ignore = true)
     })
     DbImGroupInboxMessage dbImGroupInboxMessageFrom(ImGroupInboxMessage message);
+
+    List<DbImGroupInboxMessage> dbImGroupInboxMessageListFrom(List<ImGroupInboxMessage> messages);
 
     @ValueMappings(value = {
             @ValueMapping(target = "NONE", source = MappingConstants.NULL),

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "batchId": "20260914-fixture",
+  "prefix": "loadtest-20260914-fixture",
+  "schemas": {
+    "account": "im_chat_account",
+    "social": "im_chat_social",
+    "message": "im_chat_message"
+  },
+  "users": [
+    {"userId": "101", "email": "loadtest-20260914-fixture-user-0001@example.test", "cohortId": "cohort-0001"},
+    {"userId": "102", "email": "loadtest-20260914-fixture-user-0002@example.test", "cohortId": "cohort-0001"}
+  ],
+  "cohorts": [
+    {"cohortId": "cohort-0001", "userIds": ["101", "102"], "groupId": "201"}
+  ],
+  "groups": [
+    {"groupId": "201", "name": "loadtest-20260914-fixture-group-0001", "ownerUserId": "101", "memberUserIds": ["101", "102"]}
+  ],
+  "relations": [
+    {"userId": "101", "friendUserId": "102"},
+    {"userId": "102", "friendUserId": "101"}
+  ],
+  "privateChats": [
+    {"chatId": "301", "userId": "101", "peerUserId": "102"},
+    {"chatId": "302", "userId": "102", "peerUserId": "101"}
+  ],
+  "groupChats": [
+    {"chatId": "311", "groupId": "201", "userId": "101"},
+    {"chatId": "312", "groupId": "201", "userId": "102"}
+  ],
+  "messages": [
+    {"messageId": "401", "type": "private", "senderUserId": "101", "correlationToken": "loadtest-20260914-fixture:private:0001"},
+    {"messageId": "402", "type": "group", "senderUserId": "101", "groupId": "201", "correlationToken": "system:group_created:201"}
+  ],
+  "receiptIds": [
+    "PRIVATE_MESSAGE_SEND:102:302:401",
+    "GROUP_MESSAGE_SEND:102:312:402"
+  ]
+}

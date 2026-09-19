@@ -4,6 +4,7 @@ Completed plans are retained as implementation history. Move a plan here only af
 
 Completed plans:
 
+- [IM 核心链路容量压测](2026-09-14-im-load-test.md)
 - [可观测性与分片运行接入](2026-09-11-observability-sharding-runtime.md)
 - [Harness 交接、启动与质量评审](2026-09-10-harness-handoff-startup-and-quality.md)
 - [Harness 证据与运行闭环](2026-09-10-harness-evidence-and-runtime-loop.md)

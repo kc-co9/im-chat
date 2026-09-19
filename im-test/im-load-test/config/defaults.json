@@ -1,0 +1,70 @@
+{
+  "k6Version": "2.2.0",
+  "targets": {
+    "http": "http://127.0.0.1:18010",
+    "websocket": "ws://127.0.0.1:18011/ws",
+    "prometheus": "http://127.0.0.1:9090",
+    "cleanup": {
+      "mysql": "mysql://127.0.0.1:3306",
+      "redis": "redis://127.0.0.1:6379"
+    }
+  },
+  "allowRemotePressure": false,
+  "redirects": "error",
+  "levels": {
+    "connection": [20, 50, 100, 200, 400, 800, 1600, 3200],
+    "message": [50, 100, 200, 400, 800, 1600, 3200]
+  },
+  "groupSize": 10,
+  "messageBytes": 256,
+  "connection": {
+    "ratePerSecond": 20,
+    "stableSeconds": 60,
+    "measureSeconds": 300,
+    "disconnectSeconds": 60
+  },
+  "message": {
+    "warmupSeconds": 60,
+    "measureSeconds": 300,
+    "drainSeconds": 60
+  },
+  "messageMix": {
+    "private": 70,
+    "group": 30
+  },
+  "maxRounds": {
+    "connection": 7,
+    "message": 7
+  },
+  "thresholds": {
+    "lateSlotMs": 200,
+    "actualTargetRateMin": 0.98,
+    "actualTargetRateMax": 1.02,
+    "skipRateMax": 0.01,
+    "scheduleP95MsMax": 100,
+    "connectionSuccessRateMin": 0.995,
+    "onlineRateMin": 0.995,
+    "unexpectedDisconnectRateMax": 0.005,
+    "sendSuccessRateMin": 0.999,
+    "deliveryAckSuccessRateMin": 0.999,
+    "receiveLatencyP95Ms": 500,
+    "receiveLatencyP99Ms": 2000,
+    "unknownReceiverMax": 0,
+    "duplicateRateMax": 0.001,
+    "minimumSends": 1000,
+    "drainResidualRateMax": 0.001,
+    "hostAvailableMemoryBytesMin": 1073741824,
+    "hostMemoryConsecutiveSamples": 3,
+    "generatorCpuPercentMin": 90,
+    "generatorCpuConsecutiveSamples": 3,
+    "generatorSampleSeconds": 5
+  },
+  "timeouts": {
+    "roundSeconds": 900,
+    "stageSeconds": 7200,
+    "allSeconds": 18000
+  },
+  "maxMessageRate": 3200,
+  "systemTags": ["scenario", "name", "status", "method"],
+  "customTags": ["batch", "round", "phase", "message_type"]
+}

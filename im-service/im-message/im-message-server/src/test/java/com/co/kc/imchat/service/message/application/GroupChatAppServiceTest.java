@@ -41,6 +41,10 @@ import com.co.kc.imchat.common.exception.BusinessException;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.exception.RepeatException;
 import com.co.kc.imchat.plugin.identity.snowflake.SnowflakeId;
+import com.co.kc.imchat.plugin.lock.core.DistributedLockTemplate;
+import com.co.kc.imchat.plugin.metrics.annotation.Observed;
+import com.co.kc.imchat.plugin.lock.spi.LockClient;
+import com.co.kc.imchat.plugin.lock.support.LockConstants;
 import com.co.kc.imchat.service.message.application.notification.ImMessageNotifierInvoker;
 import com.co.kc.imchat.service.message.domain.social.model.FriendDisplay;
 import com.co.kc.imchat.service.message.domain.social.model.GroupMessageRecipient;
@@ -68,6 +72,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GroupChatAppServiceTest {
+
+    private static DistributedLockTemplate testLockTemplate() {
+        LockClient client = org.mockito.Mockito.mock(LockClient.class);
+        org.mockito.Mockito.when(client.tryLock(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.eq(LockConstants.DEFAULT_WAIT))).thenReturn(true);
+        return new DistributedLockTemplate(client);
+    }
 
     private static TransactionOperations testTransactionOperations() {
         return new TransactionOperations() {
@@ -104,6 +117,13 @@ class GroupChatAppServiceTest {
         Method method = GroupMessageAppService.class.getMethod("sendMessage", GroupMessageSendCmd.class);
 
         assertThat(method.getAnnotation(Transactional.class)).isNull();
+    }
+
+    @Test
+    void groupMessageSendDeclaresStableMetricName() throws NoSuchMethodException {
+        Method method = GroupMessageAppService.class.getMethod("sendMessage", GroupMessageSendCmd.class);
+
+        assertThat(method.getAnnotation(Observed.class).name()).isEqualTo("im.message.group.send");
     }
 
     @Test
@@ -241,11 +261,22 @@ class GroupChatAppServiceTest {
         groupMemberRepository.members.add(groupMember(1001L, 2L));
 
         MemoryGroupInboxRepository inboxRepository = new MemoryGroupInboxRepository();
+        LockClient lockClient = org.mockito.Mockito.mock(LockClient.class);
+        org.mockito.Mockito.when(lockClient.tryLock(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.eq(LockConstants.DEFAULT_WAIT))).thenReturn(true);
         GroupMessageAppService appService = groupMessageAppService(
-                groupChatRepository, groupMemberRepository, inboxRepository, normalGroupRepository(1001L));
+                groupChatRepository, groupMemberRepository, inboxRepository,
+                normalGroupRepository(1001L), new NoopDomainEventPublisher(),
+                presenceService(), new DistributedLockTemplate(lockClient));
         GroupMessageSendCmd command = groupMessageSendCmd(101L, 1L);
 
         appService.sendMessage(command);
+
+        org.mockito.Mockito.verify(lockClient).tryLock(
+                "im:group:message:send:1001", LockConstants.AUTO_RENEW, LockConstants.DEFAULT_WAIT);
+        org.mockito.Mockito.verify(lockClient).unlock("im:group:message:send:1001");
 
         assertThat(inboxRepository.savedMessages).hasSize(2);
         ImGroupInboxMessage senderMessage = inboxRepository.findSavedByUserId(1L);
@@ -270,6 +301,33 @@ class GroupChatAppServiceTest {
         assertThat(receiverChat.getReadMessageId()).isNull();
         assertThat(receiverChat.getStatus()).isEqualTo(ImChatStatus.NORMAL);
         assertThat(receiverChat.getActiveTime()).isEqualTo(receiverMessage.getSendTime());
+    }
+
+    @Test
+    void sendGroupMessagePublishesEventAfterReleasingGroupLock() {
+        MemoryGroupChatRepository groupChatRepository = new MemoryGroupChatRepository();
+        groupChatRepository.groupChats.add(groupChat(101L, 1001L, 1L));
+        groupChatRepository.groupChats.add(groupChat(102L, 1001L, 2L));
+        MemoryGroupMemberRepository groupMemberRepository = new MemoryGroupMemberRepository();
+        groupMemberRepository.members.add(groupMember(1001L, 1L));
+        groupMemberRepository.members.add(groupMember(1001L, 2L));
+        MemoryGroupInboxRepository inboxRepository = new MemoryGroupInboxRepository();
+        LockClient lockClient = org.mockito.Mockito.mock(LockClient.class);
+        org.mockito.Mockito.when(lockClient.tryLock(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.eq(LockConstants.DEFAULT_WAIT))).thenReturn(true);
+        DomainEventPublisher eventPublisher = org.mockito.Mockito.mock(DomainEventPublisher.class);
+        GroupMessageAppService appService = groupMessageAppService(
+                groupChatRepository, groupMemberRepository, inboxRepository,
+                normalGroupRepository(1001L), eventPublisher,
+                presenceService(), new DistributedLockTemplate(lockClient));
+
+        appService.sendMessage(groupMessageSendCmd(101L, 1L));
+
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(lockClient, eventPublisher);
+        inOrder.verify(lockClient).unlock("im:group:message:send:1001");
+        inOrder.verify(eventPublisher).publish(org.mockito.ArgumentMatchers.any(DomainEvent.class));
     }
 
     @Test
@@ -354,7 +412,7 @@ class GroupChatAppServiceTest {
                 null,
                 notifierInvoker,
                 null,
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
         ImGroupMessageSentEvent event = new ImGroupMessageSentEvent();
         event.setGroupId(1001L);
         event.setSenderId(1L);
@@ -392,7 +450,7 @@ class GroupChatAppServiceTest {
                 null,
                 notifierInvoker,
                 null,
-                testTransactionOperations());
+                testTransactionOperations(), testLockTemplate());
         ImGroupMessageRevokedEvent event = new ImGroupMessageRevokedEvent();
         event.setGroupId(1001L);
         event.setSenderId(1L);
@@ -908,6 +966,17 @@ class GroupChatAppServiceTest {
                                                           MemoryGroupRepository groupRepository,
                                                           DomainEventPublisher eventPublisher,
                                                           ImChatViewRepository presenceService) {
+        return groupMessageAppService(groupChatRepository, groupMemberRepository, inboxRepository,
+                groupRepository, eventPublisher, presenceService, testLockTemplate());
+    }
+
+    private GroupMessageAppService groupMessageAppService(MemoryGroupChatRepository groupChatRepository,
+                                                          MemoryGroupMemberRepository groupMemberRepository,
+                                                          MemoryGroupInboxRepository inboxRepository,
+                                                          MemoryGroupRepository groupRepository,
+                                                          DomainEventPublisher eventPublisher,
+                                                          ImChatViewRepository presenceService,
+                                                          DistributedLockTemplate lockTemplate) {
         return new GroupMessageAppService(
                 groupChatRepository,
                 inboxRepository,
@@ -918,7 +987,7 @@ class GroupChatAppServiceTest {
                 new FixedSnowflakeId(900L),
                 null,
                 eventPublisher,
-                testTransactionOperations());
+                testTransactionOperations(), lockTemplate);
     }
 
     private ImChatViewRepository viewingPresenceService(Long userId, Long chatId) {

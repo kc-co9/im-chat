@@ -1,5 +1,7 @@
 package com.co.kc.imchat.plugin.metrics;
 
+import com.co.kc.imchat.plugin.metrics.annotation.Observed;
+import com.co.kc.imchat.plugin.metrics.aspect.ObservedAspect;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointProperties;
@@ -11,6 +13,8 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.ApplicationContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -44,6 +48,12 @@ class ImMetricsManagementEndpointTest {
     @LocalServerPort
     private int businessPort;
 
+    @Autowired
+    private ObservedOperation observedOperation;
+
+    @Autowired
+    private ApplicationContext applicationContext;
+
     @Test
     void prometheusEndpointBypassesTheBusinessSecurityChain() throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
@@ -73,9 +83,25 @@ class ImMetricsManagementEndpointTest {
         assertThat(response.statusCode()).isEqualTo(403);
     }
 
+    @Test
+    void observedMethodExportsCountersAndDurationThroughPrometheus() throws Exception {
+        assertThat(applicationContext.getBeanNamesForType(ObservedAspect.class)).contains("observedAspect");
+        observedOperation.run();
+
+        HttpResponse<String> response = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create("http://127.0.0.1:" + managementPort + "/actuator/prometheus"))
+                        .GET().build(), HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body())
+                .contains("test_observed_export_total{outcome=\"success\"} 1.0")
+                .contains("test_observed_export_duration_seconds_count 1");
+    }
+
     @SpringBootConfiguration
     @EnableAutoConfiguration
-    @Import({DenyAllSecurityConfiguration.class, TestController.class})
+    @Import({DenyAllSecurityConfiguration.class, TestController.class, ObservedOperation.class})
     static class TestApplication {
     }
 
@@ -108,6 +134,12 @@ class ImMetricsManagementEndpointTest {
         @GetMapping("/business")
         String business() {
             return "protected";
+        }
+    }
+
+    static class ObservedOperation {
+        @Observed(name = "test.observed.export")
+        public void run() {
         }
     }
 }

@@ -4,12 +4,17 @@ import com.co.kc.imchat.plugin.metrics.aspect.ObservedAspect;
 import com.co.kc.imchat.plugin.metrics.aspect.IgnoreExceptionAspect;
 import com.co.kc.imchat.plugin.metrics.support.MetricsCollector;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.boot.actuate.autoconfigure.metrics.export.prometheus.PrometheusMetricsExportAutoConfiguration;
+import org.springframework.boot.actuate.autoconfigure.metrics.export.simple.SimpleMetricsExportAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 
-@AutoConfiguration
+@AutoConfiguration(after = {
+        PrometheusMetricsExportAutoConfiguration.class,
+        SimpleMetricsExportAutoConfiguration.class
+})
 @ConditionalOnBean(MeterRegistry.class)
 public class ImMetricsAutoConfiguration {
     @Bean

@@ -80,6 +80,8 @@ flowchart LR
 
 下行允许多 Gateway、多连接和部分失败。Broker 汇总 Gateway 返回的逐连接结果，但不持有 ReceiptTask、不决定业务重投，也不把 Gateway 接受写入解释为客户端 ACK。关闭控制中的 Session version 只由 Gateway 与本机连接比较，Broker 不判断 Token 是否有效。
 
+Broker 到目标 Gateway 的每次下行 RPC 使用 `im.broker.gateway.frame.write` 记录结果和 duration。指标不包含 userId、messageId、connectionId 或 gatewayId 等身份标签；它只用于区分 Broker 路由之后的 Gateway RPC 耗时，不能解释为客户端收到消息或完成 ACK。
+
 ## 诊断边界
 
 管理 HTTP 与业务 Bolt 使用独立端口。诊断接口只读、限制查询范围，Gossip/迁移历史使用固定容量内存；诊断写入失败不会改变注册、迁移或同步结果。Monitor 通过 Nacos metadata 发现管理地址，不根据 Bolt 端口猜测。

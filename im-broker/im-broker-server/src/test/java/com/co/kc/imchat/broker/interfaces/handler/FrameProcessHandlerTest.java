@@ -10,15 +10,15 @@ import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
 import com.co.kc.imchat.broker.sdk.model.dto.BrokerFrameWriteDTO;
 import com.co.kc.imchat.broker.sdk.model.dto.GatewayEndpointDTO;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
 import com.co.kc.imchat.broker.support.client.BrokerPeerClient;
+import com.co.kc.imchat.broker.support.client.GatewayFrameWriter;
 import com.co.kc.imchat.broker.support.event.publisher.NoopBrokerEventPublisher;
 import com.co.kc.imchat.broker.domain.registry.connection.ConnectionRegistry;
 import com.co.kc.imchat.broker.domain.registry.gateway.GatewayRegistry;
 import com.co.kc.imchat.common.constant.HttpErrorCode;
 import com.co.kc.imchat.common.exception.BusinessException;
+import com.co.kc.imchat.common.exception.RpcException;
 import com.co.kc.imchat.common.model.io.FrameRequest;
 import com.co.kc.imchat.common.model.io.FrameResponse;
 import com.co.kc.imchat.common.model.enums.FrameType;
@@ -143,6 +143,46 @@ class FrameProcessHandlerTest {
 
         assertEquals(false, response.processed());
         assertEquals("BROKER_UNAVAILABLE", response.code());
+    }
+
+    @Test
+    void preservesStableRpcFailureCodeFromMessageService() throws Exception {
+        TestRegistries registries = testRegistries();
+        RecordingMessageService messageService = new RecordingMessageService();
+        messageService.privateMessageSendFailure = new RpcException(
+                HttpErrorCode.BUSY_ERROR.getCode(), HttpErrorCode.BUSY_ERROR.getMsg());
+        FrameProcessHandler handler = frameProcessHandler(
+                registries.connectionRegistry(), registries.gatewayRegistry(), messageService,
+                gatewayFrameClient((connection, request) -> new GatewayFrameWriteResult(List.of(), List.of())));
+
+        BrokerFrameWriteResult response = process(handler, BrokerFrameWriteParams.inbound(1L, "conn-1", frame(
+                "message.private.send",
+                Map.of("userId", 1L, "chatId", 101L, "messageToken", "token-1",
+                        "messageType", "TEXT", "messageContent", "hello"))));
+
+        assertEquals(false, response.processed());
+        assertEquals(String.valueOf(HttpErrorCode.BUSY_ERROR.getCode()), response.code());
+        assertEquals(HttpErrorCode.BUSY_ERROR.getMsg(), response.message());
+    }
+
+    @Test
+    void unwrapsStableRpcFailureFromDubboRuntimeWrapper() throws Exception {
+        TestRegistries registries = testRegistries();
+        RecordingMessageService messageService = new RecordingMessageService();
+        messageService.privateMessageSendFailure = new RuntimeException(new RpcException(
+                HttpErrorCode.REPEATED_ERROR.getCode(), HttpErrorCode.REPEATED_ERROR.getMsg()));
+        FrameProcessHandler handler = frameProcessHandler(
+                registries.connectionRegistry(), registries.gatewayRegistry(), messageService,
+                gatewayFrameClient((connection, request) -> new GatewayFrameWriteResult(List.of(), List.of())));
+
+        BrokerFrameWriteResult response = process(handler, BrokerFrameWriteParams.inbound(1L, "conn-1", frame(
+                "message.private.send",
+                Map.of("userId", 1L, "chatId", 101L, "messageToken", "token-1",
+                        "messageType", "TEXT", "messageContent", "hello"))));
+
+        assertEquals(false, response.processed());
+        assertEquals(String.valueOf(HttpErrorCode.REPEATED_ERROR.getCode()), response.code());
+        assertEquals(HttpErrorCode.REPEATED_ERROR.getMsg(), response.message());
     }
 
     @Test
@@ -277,7 +317,8 @@ class FrameProcessHandlerTest {
         BrokerConnectionService brokerConnectionService = new BrokerConnectionService(
                 connectionRegistry, new InMemoryBrokerRegistry(),
                 brokerProperties("127.0.0.1", BROKER_PORT), brokerPeerClient, new NoopBrokerEventPublisher());
-        return new FrameProcessHandler(connectionRegistry, gatewayRegistry, messageService, gatewayClient,
+        return new FrameProcessHandler(connectionRegistry, gatewayRegistry, messageService,
+                new GatewayFrameWriter(gatewayClient),
                 brokerConnectionService, brokerPeerClient);
     }
 
@@ -287,7 +328,8 @@ class FrameProcessHandlerTest {
                                                     GatewayClient gatewayClient,
                                                     BrokerConnectionService brokerConnectionService,
                                                     BrokerPeerClient brokerPeerClient) {
-        return new FrameProcessHandler(connectionRegistry, gatewayRegistry, messageService, gatewayClient,
+        return new FrameProcessHandler(connectionRegistry, gatewayRegistry, messageService,
+                new GatewayFrameWriter(gatewayClient),
                 brokerConnectionService, brokerPeerClient);
     }
 

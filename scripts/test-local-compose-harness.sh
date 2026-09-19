@@ -14,6 +14,8 @@ required_files=(
   "$COMPOSE_FILE"
   "$ROOT_DIR/deploy/local/app.Dockerfile"
   "$ROOT_DIR/deploy/local/app.Dockerfile.dockerignore"
+  "$ROOT_DIR/deploy/local/jdk-class-preloader-agent/MANIFEST.MF"
+  "$ROOT_DIR/deploy/local/jdk-class-preloader-agent/JdkClassPreloaderAgent.java"
   "$ROOT_DIR/deploy/local/README.md"
   "$ROOT_DIR/deploy/local/mysql/init/00-initialize.sql"
   "$ROOT_DIR/deploy/local/mysql/init/ddl/01-account.sql"
@@ -180,9 +182,11 @@ ruby -rjson -e '
     abort "#{name}: SW_AGENT_NAME must equal service name" unless service.fetch("environment").fetch("SW_AGENT_NAME") == name
     abort "#{name}: missing local JVM memory budget" unless
       service.fetch("environment").fetch("JAVA_TOOL_OPTIONS") ==
-        "-Xms64m -Xmx256m -XX:MaxMetaspaceSize=192m -XX:-UseContainerSupport"
+        "-Xms64m -Xmx256m -Xss512k -XX:MaxMetaspaceSize=192m " \
+        "-XX:MaxDirectMemorySize=128m -XX:ReservedCodeCacheSize=128m " \
+        "-XX:-UseContainerSupport"
     abort "#{name}: missing container memory limit" unless
-      service.fetch("mem_limit").to_i == 768 * 1024 * 1024
+      service.fetch("mem_limit").to_i == 1024 * 1024 * 1024
     abort "#{name}: local Redis SSL must be disabled" unless
       service.fetch("environment").fetch("SPRING_DATA_REDIS_SSL_ENABLED") == "false"
     abort "#{name}: local Redisson must use the Redis service" unless
@@ -359,6 +363,29 @@ if ! rg -q 'apache/skywalking-java-agent:9\.7\.0-java21' "$ROOT_DIR/deploy/local
   printf 'Application Dockerfile must embed SkyWalking Java Agent 9.7.0.\n' >&2
   exit 1
 fi
+if ! rg -q 'Class\.forName\("jdk\.internal\.misc\.ThreadTracker", true, null\)' \
+    "$ROOT_DIR/deploy/local/jdk-class-preloader-agent/JdkClassPreloaderAgent.java"; then
+  printf 'JDK class preloader must initialize ThreadTracker before SkyWalking starts.\n' >&2
+  exit 1
+fi
+if ! rg -q 'Premain-Class: JdkClassPreloaderAgent' \
+    "$ROOT_DIR/deploy/local/jdk-class-preloader-agent/MANIFEST.MF"; then
+  printf 'JDK class preloader manifest must declare its premain entry point.\n' >&2
+  exit 1
+fi
+if ! rg -q 'ENTRYPOINT \["java", "-javaagent:/app/jdk-class-preloader-agent\.jar", "-javaagent:/skywalking/agent/skywalking-agent\.jar", "-jar", "/app/app\.jar"\]' \
+    "$ROOT_DIR/deploy/local/app.Dockerfile"; then
+  printf 'Application Dockerfile must run the JDK class preloader before SkyWalking.\n' >&2
+  exit 1
+fi
+for preload_path in \
+  '!deploy/local/jdk-class-preloader-agent/MANIFEST\.MF' \
+  '!deploy/local/jdk-class-preloader-agent/JdkClassPreloaderAgent\.java'; do
+  if ! rg -q "^${preload_path}$" "$ROOT_DIR/deploy/local/app.Dockerfile.dockerignore"; then
+    printf 'Docker ignore file must allow the JDK class preloader source: %s\n' "$preload_path" >&2
+    exit 1
+  fi
+done
 if ! rg -q '^FROM eclipse-temurin:21\.0\.12_8-jre-jammy$' "$ROOT_DIR/deploy/local/app.Dockerfile"; then
   printf 'Application Dockerfile must pin the Java runtime image to an exact release.\n' >&2
   exit 1

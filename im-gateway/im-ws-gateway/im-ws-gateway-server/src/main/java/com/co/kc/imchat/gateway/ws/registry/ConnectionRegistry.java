@@ -3,6 +3,7 @@ package com.co.kc.imchat.gateway.ws.registry;
 import com.co.kc.imchat.common.model.io.FrameResponse;
 import com.co.kc.imchat.gateway.ws.sdk.model.dto.GatewayFrameWriteDTO;
 import com.co.kc.imchat.gateway.ws.protocol.JsonFrameCodec;
+import com.co.kc.imchat.plugin.metrics.annotation.Observed;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.Channel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -128,6 +129,7 @@ public class ConnectionRegistry {
      *
      * @return 当前网关对本次连接写入的处理结果
      */
+    @Observed(name = "im.gateway.frame.write")
     public List<GatewayFrameWriteDTO> writeFrame(Long userId, FrameResponse frame) {
         Set<String> connectionIds = userConnections.get(userId);
         if (connectionIds == null || connectionIds.isEmpty()) {

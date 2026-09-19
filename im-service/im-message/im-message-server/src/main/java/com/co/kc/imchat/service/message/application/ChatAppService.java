@@ -44,6 +44,7 @@ import com.co.kc.imchat.service.message.model.cqrs.query.ImChatListQuery;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.service.message.application.lock.ImMessageLockScene;
 import com.co.kc.imchat.plugin.lock.annotation.DistributeLock;
+import com.co.kc.imchat.plugin.lock.support.LockConstants;
 import com.co.kc.imchat.service.message.transformer.ImChatAppTransformer;
 import com.co.kc.imchat.service.message.domain.social.model.FriendDisplay;
 import com.co.kc.imchat.service.message.domain.social.model.GroupSummary;
@@ -189,10 +190,16 @@ public class ChatAppService {
     }
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
+    @DistributeLock(
+            scene = ImMessageLockScene.PRIVATE_CHAT_PREPARE,
+            key = "#LockKeys.userPair(#params.userId(), #params.friendUserId())",
+            waitTime = LockConstants.DEFAULT_WAIT)
     public void preparePrivateChat(PrivateChatPrepareParams params) {
         UserId userId = new UserId(params.userId());
         UserId friendUserId = new UserId(params.friendUserId());
         imChatService.prepareHiddenPrivateChat(userId, friendUserId)
+                .ifPresent(imPrivateChatRepository::save);
+        imChatService.prepareHiddenPrivateChat(friendUserId, userId)
                 .ifPresent(imPrivateChatRepository::save);
     }
 

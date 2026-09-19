@@ -228,7 +228,7 @@ Harness 是持续演进的工程能力，不追求一次性把所有约定都变
 
 - **自动交接（`verify.sh handoff`）**：把当前验证、失败入口、Git 改动和下一步恢复动作从聊天上下文沉淀为可复查工件；报告是派生视图，不替代 `PROGRESS.md` 或 execution plan。
 - **标准启动（`verify.sh startup` / `init`）**：新 Server 如果没有进入启动门禁，很容易只在生产环境才暴露配置装配问题；startup smoke 在受控依赖下逐个验证应用入口，并拒绝零测试假通过。它不冒充 MySQL、Redis、Nacos、Kafka 全栈启动。
-- **受控清理（`verify.sh cleanup`）**：长期运行的 Harness 会留下临时文件和 PID 记录；默认扫描、`--apply` 仅清理 `.harness/tmp` 与有 provenance 的陈旧 PID，避免“自动清理”误删开发者文件或业务数据。
+- **受控清理（`verify.sh cleanup`）**：长期运行的 Harness 会留下临时文件和 PID 记录；默认扫描、`--apply` 仅清理 `.harness/tmp` 与有 provenance 的陈旧 PID。压测凭据、锁或中断状态只给出 `load_test.sh` 恢复命令，不由通用 cleanup 删除。
 - **AI Reviewer 质量评审（`verify.sh quality`）**：测试能证明行为和门禁，但不能可靠判断领域归属、范围纪律和可维护性；脚本准备证据，独立上下文 Reviewer 填写三项语义分数，response 缺失或与当前 scope 不匹配时明确返回 `review_required`。
 - **模块 A/B/C/D 快照**：单一总分无法解释哪个边界变弱；快照按 `im-gateway`、`im-broker`、Account、Message、IAM 等质量单元展示机器分数、Reviewer 分数、硬性上限、证据和缺口，便于下一轮只复评受影响单元。
 
@@ -275,6 +275,8 @@ WebSocket 入口为 `/ws`，使用统一 JSON 帧而不是 STOMP destination。�
 ```
 
 infra 包含 MySQL、Redis、Nacos、Kafka、Prometheus、Grafana、BanyanDB 和 SkyWalking OAP/Horizon UI。保持 infra 运行时，也可以在 IDE 中只启动当前要调试的服务。Prometheus 位于 `http://localhost:9090`，Grafana 位于 `http://localhost:3000`，SkyWalking UI 位于 `http://localhost:18050`，Nacos Console 位于 `http://localhost:18048`。full 使用 bridge 网络和显式 loopback 端口映射，固定镜像、内存要求、SQL 初始化和数据卷说明见[本地运行编排](deploy/local/README.md)。
+
+本机核心链路压测统一从 `./scripts/load_test.sh` 进入；准备、连接、消息、清理和 base 恢复的安全顺序、Remote Write 与 Grafana 看板见[本地压测配置](deploy/local/README.md#本地压测配置)。`./scripts/verify.sh load-test` 只运行确定性工具契约，显式 `load-test-smoke` 才创建 20 用户真实负载；mock k6 fixture 不代表真实服务容量。
 
 DDL 与数据所有权一起放在各 Server 模块根目录：
 
