@@ -23,7 +23,9 @@ public class SessionConnectionAdapter {
         if (sessionVersion == null) {
             return;
         }
-        brokerClient.closeConnections(new ConnectionCloseParams(userId.value(), sessionVersion.value()));
+        String operationId = "session-close:" + userId.value() + ":" + sessionVersion.value();
+        brokerClient.closeConnections(operationId,
+                new ConnectionCloseParams(userId.value(), sessionVersion.value()));
     }
 
 }

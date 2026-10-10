@@ -1,13 +1,13 @@
 # IM IAM
 
-`im-iam` 是管理平台统一身份与权限中心。它只服务 `im-admin`、`im-monitor` 等管理应用，
+`im-iam` 是管理平台统一身份与权限中心。它只服务 `im-admin`、`im-ops` 等管理应用，
 不复用普通 IM 用户的 Account 认证体系。
 
 ## 模块职责
 
 - `im-iam-server`：独立部署，拥有管理员身份、接入应用、权限目录、应用级角色、OAuth2/OIDC
   授权、会话撤销、浏览器应用和机器客户端；
-- `im-iam-sdk`：供 `im-admin`、`im-monitor` 接入统一登录、BFF Session、Token Introspection
+- `im-iam-sdk`：供 `im-admin`、`im-ops` 接入统一登录、BFF Session、Token Introspection
   与权限目录同步，不依赖服务端实现。
 
 权限目录由 SDK 在应用启动后通过受 IAM Client Credentials 保护的 HTTP 接口同步。同步使用独立
@@ -53,7 +53,7 @@ Introspection 和撤销流程中的具体关系，不在此表重复协议步骤
 重复登录。IAM 将这些公共能力集中起来：
 
 - 管理员只在 IAM 输入账号和密码；
-- `im-admin`、`im-monitor` 通过标准 OAuth2/OIDC 流程接入；
+- `im-admin`、`im-ops` 通过标准 OAuth2/OIDC 流程接入；
 - IAM 统一管理管理员、应用、角色和权限；
 - 各管理应用仍通过 SDK 提供的 `@RequiresPermission` 执行业务鉴权；
 - 服务之间可以使用独立的机器客户端申请 Token，不冒充管理员。
@@ -65,7 +65,7 @@ Introspection 和撤销流程中的具体关系，不在此表重复协议步骤
 | OAuth2 角色 | 本项目中的对象 | 职责 |
 |---|---|---|
 | Authorization Server | `im-iam-server` | 认证管理员或机器客户端，并签发、刷新、校验和撤销 Token |
-| Client | `im-admin`、`im-monitor` 或审计生产者 | 向 IAM 申请 Token |
+| Client | `im-admin`、`im-ops` 或审计生产者 | 向 IAM 申请 Token |
 | Resource Server | 接收受保护请求的管理服务 | 校验 Token 和权限后执行接口 |
 | Resource Owner | 管理员 | 在浏览器登录流程中授权应用代表自己访问 |
 
@@ -73,7 +73,7 @@ OAuth2 的“Client”不是 Java SDK 中的普通远程调用类，而是一套
 
 ## 管理应用权限声明
 
-IAM 内部管理权限与管理应用权限是两套不同语义：IAM 内部权限只保护 IAM 自身管理接口，使用 IAM Server 内部静态定义；`im-admin`、`im-monitor` 等应用权限由应用声明并通过权限目录同步。即使基础设施层复用存储，也不能混用领域对象、应用服务或同步入口。
+IAM 内部管理权限与管理应用权限是两套不同语义：IAM 内部权限只保护 IAM 自身管理接口，使用 IAM Server 内部静态定义；`im-admin`、`im-ops` 等应用权限由应用声明并通过权限目录同步。即使基础设施层复用存储，也不能混用领域对象、应用服务或同步入口。
 
 数据库层按授权边界物理隔离：
 
@@ -131,13 +131,13 @@ AppKey: imAdmin
 
 ## 管理员浏览器登录
 
-浏览器登录使用 Authorization Code + PKCE。`im-admin` 和 `im-monitor` 是 BFF：Token 只保存在
+浏览器登录使用 Authorization Code + PKCE。`im-admin` 和 `im-ops` 是 BFF：Token 只保存在
 应用服务端，浏览器只持有 HttpOnly Session Cookie。
 
 ```mermaid
 sequenceDiagram
     participant Browser as 管理员浏览器
-    participant App as im-admin / im-monitor
+    participant App as im-admin / im-ops
     participant IAM as im-iam-server
 
     Browser->>App: 访问受保护页面

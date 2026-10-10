@@ -57,12 +57,14 @@
         <jaxb.version>2.3.1</jaxb.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <commons-collections4.version>4.4</commons-collections4.version>
+        <commons-io.version>2.20.0</commons-io.version>
         <guava.version>32.0.0-jre</guava.version>
         <okhttp.version>4.9.3</okhttp.version>
         <bcrypt.version>0.10.2</bcrypt.version>
         <jjwt.version>0.9.1</jjwt.version>
         <sofa-bolt.version>1.6.6</sofa-bolt.version>
         <sofa-common-tools.version>2.1.1</sofa-common-tools.version>
+        <sofa-jraft.version>1.4.1</sofa-jraft.version>
         <hessian.version>4.0.66</hessian.version>
         <dubbo.version>3.2.10</dubbo.version>
         <spring-cloud.version>2025.0.0</spring-cloud.version>
@@ -169,6 +171,11 @@
             </dependency>
             <dependency>
                 <groupId>com.co.kc.im</groupId>
+                <artifactId>im-raft</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.co.kc.im</groupId>
                 <artifactId>im-nacos</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -181,6 +188,16 @@
                 <groupId>com.alipay.sofa.common</groupId>
                 <artifactId>sofa-common-tools</artifactId>
                 <version>${sofa-common-tools.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alipay.sofa</groupId>
+                <artifactId>jraft-core</artifactId>
+                <version>${sofa-jraft.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>${commons-io.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.caucho</groupId>

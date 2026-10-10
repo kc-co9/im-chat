@@ -30,7 +30,7 @@ class RuntimeDependencyPolicyTest {
         Path rootPom = REPO_ROOT.resolve("pom.xml");
         Path managementPom = REPO_ROOT.resolve("im-management/pom.xml");
         Path adminPom = REPO_ROOT.resolve("im-management/im-admin/pom.xml");
-        Path monitorPom = REPO_ROOT.resolve("im-management/im-monitor/pom.xml");
+        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/pom.xml");
         Path iamPom = REPO_ROOT.resolve("im-management/im-iam/pom.xml");
         Path iamServerPom = REPO_ROOT.resolve(
                 "im-management/im-iam/im-iam-server/pom.xml");
@@ -43,11 +43,11 @@ class RuntimeDependencyPolicyTest {
         assertThat(moduleNames(rootPom)).contains("im-management");
         assertThat(managementPom).exists();
         assertThat(adminPom).exists();
-        assertThat(monitorPom).exists();
+        assertThat(opsPom).exists();
         assertThat(iamPom).exists();
         assertThat(auditPom).exists();
         assertThat(moduleNames(managementPom))
-                .containsExactlyInAnyOrder("im-iam", "im-admin", "im-monitor", "im-audit");
+                .containsExactlyInAnyOrder("im-iam", "im-admin", "im-ops", "im-audit");
         assertThat(moduleNames(iamPom))
                 .containsExactlyInAnyOrder("im-iam-server", "im-iam-sdk");
         assertThat(moduleNames(auditPom))
@@ -72,11 +72,11 @@ class RuntimeDependencyPolicyTest {
                 .isFalse();
         assertThat(hasDependency(auditSdkPom, "com.co.kc.im", "im-audit-server"))
                 .isFalse();
-        assertThat(hasDependency(monitorPom, "com.co.kc.im", "im-broker-server"))
+        assertThat(hasDependency(opsPom, "com.co.kc.im", "im-broker-server"))
                 .isFalse();
         assertThat(hasDependency(adminPom, "com.co.kc.im", "im-iam-sdk")).isTrue();
-        assertThat(hasDependency(monitorPom, "com.co.kc.im", "im-iam-sdk")).isTrue();
-        assertThat(List.of(adminPom, auditServerPom, iamServerPom, monitorPom))
+        assertThat(hasDependency(opsPom, "com.co.kc.im", "im-iam-sdk")).isTrue();
+        assertThat(List.of(adminPom, auditServerPom, iamServerPom, opsPom))
                 .allMatch(pom -> hasDependency(pom, "com.co.kc.im", "im-nacos"));
     }
 
@@ -212,7 +212,7 @@ class RuntimeDependencyPolicyTest {
     void managementApplicationsDoNotOwnAdministratorAuthenticationState() throws Exception {
         List<Path> applicationSources = List.of(
                 REPO_ROOT.resolve("im-management/im-admin/src/main/java"),
-                REPO_ROOT.resolve("im-management/im-monitor/src/main/java"));
+                REPO_ROOT.resolve("im-management/im-ops/src/main/java"));
         List<String> forbiddenOwnershipPaths = List.of(
                 "/domain/administrator/",
                 "/infrastructure/session/",
@@ -241,7 +241,7 @@ class RuntimeDependencyPolicyTest {
         Path accountServerPom = REPO_ROOT.resolve(
                 "im-service/im-account/im-account-server/pom.xml");
         Path adminPom = REPO_ROOT.resolve("im-management/im-admin/pom.xml");
-        Path monitorPom = REPO_ROOT.resolve("im-management/im-monitor/pom.xml");
+        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/pom.xml");
 
         assertThat(moduleNames(accountPom)).contains("im-account-admin-facade");
         assertThat(facadePom).exists();
@@ -253,7 +253,7 @@ class RuntimeDependencyPolicyTest {
                 .isFalse();
         assertThat(hasDependency(adminPom, "com.co.kc.im", "im-datasource"))
                 .isFalse();
-        assertThat(hasDependency(monitorPom, "com.co.kc.im", "im-account-admin-facade"))
+        assertThat(hasDependency(opsPom, "com.co.kc.im", "im-account-admin-facade"))
                 .isFalse();
         assertThat(packaging(adminPom)).isNotEqualTo("pom");
     }
@@ -292,12 +292,12 @@ class RuntimeDependencyPolicyTest {
     void webInfrastructureDependenciesFollowOwnership() throws Exception {
         Path webPom = REPO_ROOT.resolve("im-plugin/im-web/pom.xml");
         Path adminPom = REPO_ROOT.resolve("im-management/im-admin/pom.xml");
-        Path monitorPom = REPO_ROOT.resolve("im-management/im-monitor/pom.xml");
+        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/pom.xml");
         Path iamSdkPom = REPO_ROOT.resolve("im-management/im-iam/im-iam-sdk/pom.xml");
 
         assertThat(hasDependency(webPom, "com.co.kc.im", "im-session")).isFalse();
         assertThat(hasDependency(adminPom, "com.co.kc.im", "im-web")).isTrue();
-        assertThat(hasDependency(monitorPom, "com.co.kc.im", "im-web")).isTrue();
+        assertThat(hasDependency(opsPom, "com.co.kc.im", "im-web")).isTrue();
         assertThat(hasDependency(iamSdkPom, "com.co.kc.im", "im-web")).isTrue();
     }
 
@@ -308,7 +308,7 @@ class RuntimeDependencyPolicyTest {
                 REPO_ROOT.resolve("im-management/im-admin/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-management/im-audit/im-audit-server/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-management/im-iam/im-iam-server/src/main/resources/application.yml"),
-                REPO_ROOT.resolve("im-management/im-monitor/src/main/resources/application.yml"),
+                REPO_ROOT.resolve("im-management/im-ops/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-service/im-account/im-account-server/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-service/im-message/im-message-server/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-service/im-social/im-social-server/src/main/resources/application.yml"));
@@ -332,7 +332,7 @@ class RuntimeDependencyPolicyTest {
                 "im-management/im-audit/im-audit-server/src/main/resources/application.yml",
                 18041);
         assertManagementPort(
-                "im-management/im-monitor/src/main/resources/application.yml",
+                "im-management/im-ops/src/main/resources/application.yml",
                 18043);
         assertManagementPort(
                 "im-management/im-admin/src/main/resources/application.yml",

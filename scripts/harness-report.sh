@@ -10,6 +10,10 @@ set -euo pipefail
 # 允许 Harness 自测在隔离目录验证报告契约，而不读取真实工作树状态。
 ROOT_DIR="${HARNESS_ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 OUTPUT="${1:-$ROOT_DIR/.harness/report.json}"
+if ! command -v rg >/dev/null 2>&1; then
+  printf '[report] WHAT: 缺少命令: rg\nWHY: drift 与 Harness 报告依赖 ripgrep，不能在缺失时判断计划状态。\nFIX: 安装 ripgrep 后重新运行 ./scripts/verify.sh report。\n' >&2
+  exit 2
+fi
 source "$ROOT_DIR/scripts/lib/harness-evidence.sh"
 source "$ROOT_DIR/scripts/lib/load-test-evidence.sh"
 mkdir -p "$(dirname "$OUTPUT")"
@@ -17,6 +21,7 @@ mkdir -p "$(dirname "$OUTPUT")"
 current_head="${HARNESS_CURRENT_HEAD:-$(harness_head_revision "$ROOT_DIR")}"
 current_fingerprint="${HARNESS_CURRENT_WORKTREE_FINGERPRINT:-$(harness_worktree_fingerprint "$ROOT_DIR")}"
 current_load_test_scope="${HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT:-$(load_test_scope_fingerprint "$ROOT_DIR" 2>/dev/null || printf unavailable)}"
+current_routing_capacity_config_digest="${HARNESS_CURRENT_ROUTING_CAPACITY_CONFIG_DIGEST:-$(routing_capacity_config_digest "$ROOT_DIR" 2>/dev/null || printf unavailable)}"
 
 # 根据验证记录与当前仓库状态返回 fresh、stale 或 unavailable。
 verification_freshness() {
@@ -54,9 +59,10 @@ sensor_files=(
   docs/product-specs/im-realtime-approved-scenarios.md
   scripts/affected-modules.sh
   .github/workflows/verify.yml
-  im-broker/im-broker-server/src/main/java/com/co/kc/imchat/broker/support/monitoring/BrokerMetrics.java
+  im-broker/im-broker-server/src/main/java/com/co/kc/imchat/broker/infrastructure/monitoring/BrokerMetrics.java
   docs/references/CODE_REVIEW_GUIDE.md
   docs/references/HARNESS_GUIDE.md
+  docs/references/HARNESS_RULE_MATRIX.md
   docs/feedback/HARNESS_FEEDBACK.md
 )
 available=0
@@ -92,7 +98,8 @@ subsystem_status() {
 }
 
 instruction_status="$(subsystem_status clean \
-  AGENTS.md ARCHITECTURE.md docs/references/HARNESS_GUIDE.md)"
+  AGENTS.md ARCHITECTURE.md docs/references/HARNESS_GUIDE.md \
+  docs/references/HARNESS_RULE_MATRIX.md)"
 tools_status="$(subsystem_status quick \
   scripts/verify.sh scripts/check-drift.sh im-test/im-architecture-test/pom.xml)"
 environment_status="$(subsystem_status readiness pom.xml README.md .java-version .nvmrc)"
@@ -219,6 +226,35 @@ else
   e2e_runtime_json='{"status":"missing","freshness":"missing","logPath":null,"logAvailable":false,"testCount":0,"workload":null}'
 fi
 
+routing_ha_verification="$ROOT_DIR/.harness/verifications/routing-ha.json"
+if [[ -f "$routing_ha_verification" ]]; then
+  routing_ha_freshness="$(verification_freshness "$routing_ha_verification")"
+  routing_ha_runtime_json="$(ruby -rjson -e '
+    record = JSON.parse(File.read(ARGV.fetch(0)))
+    freshness = ARGV.fetch(1)
+    status = if freshness == "fresh" && record["status"] == "passed" &&
+        record["scenarioCount"].to_i == 25 && record["cleanupStatus"] == "passed"
+      "verified"
+    elsif freshness == "stale"
+      "stale"
+    elsif freshness == "fresh"
+      "degraded"
+    else
+      "present"
+    end
+    print JSON.generate({
+      "status" => status,
+      "freshness" => freshness,
+      "scenarioCount" => record["scenarioCount"].to_i,
+      "cleanupStatus" => record["cleanupStatus"],
+      "topology" => record["topology"],
+      "scenarioEvidencePath" => record["scenarioEvidencePath"]
+    })
+  ' "$routing_ha_verification" "$routing_ha_freshness")"
+else
+  routing_ha_runtime_json='{"status":"missing","freshness":"missing","scenarioCount":0,"cleanupStatus":null,"topology":null,"scenarioEvidencePath":null}'
+fi
+
 # 压测证据按专用 scope 判断 freshness，使计划状态更新不使已完成的真实运行失效。
 load_test_runtime_evidence() {
   local kind="$1"
@@ -312,6 +348,76 @@ for load_test_runtime_status in $load_test_runtime_statuses; do
   esac
 done
 
+routing_capacity_verification="$ROOT_DIR/.harness/verifications/routing-capacity.json"
+if [[ -f "$routing_capacity_verification" ]]; then
+  routing_capacity_runtime_json="$(ruby -rjson -e '
+    evidence = JSON.parse(File.read(ARGV.fetch(0)))
+    current_scope, current_config = ARGV.fetch(1), ARGV.fetch(2)
+    scope_fresh = current_scope != "unavailable" &&
+      evidence["loadTestScopeFingerprint"] == current_scope && evidence["loadTestScopeStable"] == true
+    config_fresh = current_config != "unavailable" && evidence["configDigest"] == current_config
+    freshness = scope_fresh && config_fresh ? "fresh" :
+      (current_scope == "unavailable" || current_config == "unavailable" ? "unavailable" : "stale")
+    verified = freshness == "fresh" && evidence["status"] == "passed" &&
+      evidence["worktreeStable"] == true && evidence["cleanupStatus"] == "passed" &&
+      evidence["ordinaryDataUnchanged"] == true && evidence["phaseCount"] == 5 &&
+      evidence["repetitionCount"] == 3 && evidence["workloadCount"] == 30
+    status = verified ? "verified" :
+      (freshness == "stale" ? "stale" : (freshness == "unavailable" ? "present" : "degraded"))
+    print JSON.generate({
+      "status" => status, "freshness" => freshness, "topologyId" => evidence["topologyId"],
+      "configDigest" => evidence["configDigest"], "configFresh" => config_fresh,
+      "loadTestScopeFingerprint" => evidence["loadTestScopeFingerprint"],
+      "loadTestScopeFresh" => scope_fresh, "workloadCount" => evidence["workloadCount"],
+      "phaseCount" => evidence["phaseCount"], "repetitionCount" => evidence["repetitionCount"],
+      "qualificationStatus" => evidence["qualificationStatus"],
+      "statusCounts" => evidence["statusCounts"],
+      "cleanupStatus" => evidence["cleanupStatus"],
+      "ordinaryDataUnchanged" => evidence["ordinaryDataUnchanged"],
+      "resultsPath" => evidence["resultsPath"]
+    })
+  ' "$routing_capacity_verification" "$current_load_test_scope" \
+    "$current_routing_capacity_config_digest")"
+else
+  routing_capacity_runtime_json='{"status":"missing","freshness":"missing","topologyId":null,"workloadCount":0,"phaseCount":0,"repetitionCount":0,"qualificationStatus":null,"statusCounts":null,"cleanupStatus":null,"ordinaryDataUnchanged":null,"resultsPath":null}'
+fi
+routing_capacity_candidates_json="$(ruby -rjson -e '
+  directory, current_scope, current_config = ARGV
+  candidates = Dir.glob(File.join(directory, "*", "evidence.json")).sort.map do |path|
+    evidence = JSON.parse(File.read(path))
+    scope_fresh = current_scope != "unavailable" &&
+      evidence["loadTestScopeFingerprint"] == current_scope && evidence["loadTestScopeStable"] == true
+    config_fresh = current_config != "unavailable" && evidence["configDigest"] == current_config
+    freshness = scope_fresh && config_fresh ? "fresh" :
+      (current_scope == "unavailable" || current_config == "unavailable" ? "unavailable" : "stale")
+    valid = evidence["worktreeStable"] == true && evidence["cleanupStatus"] == "passed" &&
+      evidence["ordinaryDataUnchanged"] == true && evidence["phaseCount"] == 5 &&
+      evidence["repetitionCount"] == 3 && evidence["workloadCount"] == 30
+    {
+      "topologyId" => evidence["topologyId"],
+      "status" => freshness == "fresh" && valid ? "verified" :
+        (freshness == "stale" ? "stale" : (freshness == "unavailable" ? "present" : "degraded")),
+      "freshness" => freshness,
+      "qualificationStatus" => evidence["qualificationStatus"],
+      "statusCounts" => evidence["statusCounts"],
+      "resultsPath" => evidence["resultsPath"]
+    }
+  end
+  print JSON.generate(candidates)
+' "$ROOT_DIR/.harness/routing-capacity/evidence" "$current_load_test_scope" \
+  "$current_routing_capacity_config_digest")"
+routing_capacity_runtime_json="$(ruby -rjson -e '
+  current = JSON.parse(ARGV.fetch(0))
+  current["candidates"] = JSON.parse(ARGV.fetch(1))
+  print JSON.generate(current)
+' "$routing_capacity_runtime_json" "$routing_capacity_candidates_json")"
+routing_capacity_runtime_status="$(ruby -rjson -e 'print JSON.parse(ARGV.fetch(0))["status"]' "$routing_capacity_runtime_json")"
+case "$routing_capacity_runtime_status" in
+  degraded) overall_status=failed ;;
+  stale) [[ "$overall_status" == failed ]] || overall_status=stale ;;
+  missing|present) [[ "$overall_status" == failed || "$overall_status" == stale ]] || overall_status=incomplete ;;
+esac
+
 cat > "$OUTPUT" <<EOF
 {
   "generatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -323,7 +429,7 @@ cat > "$OUTPUT" <<EOF
   "availableSensors": $available,
   "totalSensors": ${#sensor_files[@]},
   "subsystems": {
-    "instruction": {"status": "$instruction_status", "evidence": ["AGENTS.md", "ARCHITECTURE.md", "docs/references/HARNESS_GUIDE.md"]},
+    "instruction": {"status": "$instruction_status", "evidence": ["AGENTS.md", "ARCHITECTURE.md", "docs/references/HARNESS_GUIDE.md", "docs/references/HARNESS_RULE_MATRIX.md"]},
     "tools": {"status": "$tools_status", "evidence": ["scripts/verify.sh", "scripts/check-drift.sh", "im-test/im-architecture-test/pom.xml"]},
     "environment": {"status": "$environment_status", "evidence": ["pom.xml", ".java-version", ".nvmrc", "README.md", "verify.sh readiness"]},
     "state": {"status": "$state_status", "evidence": ["PROGRESS.md", "docs/PLANS.md", "docs/exec-plans/active", "docs/exec-plans/completed"]},
@@ -343,7 +449,9 @@ cat > "$OUTPUT" <<EOF
   },
   "runtimeEvidence": {
     "e2e": $e2e_runtime_json,
-    "loadTest": {"smoke": $load_test_smoke_runtime_json, "capacity": $load_test_capacity_runtime_json}
+    "routingHa": $routing_ha_runtime_json,
+    "loadTest": {"smoke": $load_test_smoke_runtime_json, "capacity": $load_test_capacity_runtime_json},
+    "routingCapacity": $routing_capacity_runtime_json
   },
   "drift": {"status": "$status", "durationSeconds": $duration},
   "tests": {"status": "$test_status", "total": $tests, "failures": $failures, "errors": $errors, "skipped": $skipped},

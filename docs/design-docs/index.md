@@ -1,11 +1,18 @@
 # Design Documents
 
-设计文档记录背景、备选方案、决策和后果，解释系统为什么采用当前形态；执行状态属于 `docs/exec-plans`。新设计从[设计模板](TEMPLATE.md)开始。通过 `grill`、brainstorming 或其他访谈确认的选择必须写入“决策记录”，记录完整语义和影响，不能只保留 A/B/C 字母或依赖聊天历史。
+设计文档记录背景、备选方案、决策和后果，解释系统为什么采用当前形态；执行状态属于 `docs/exec-plans`。新设计遵循[技术设计文档规范](../references/DESIGN_DOC_GUIDE.md)并从[设计模板](TEMPLATE.md)开始。通过 `grill`、brainstorming 或其他访谈确认的选择必须写入“决策记录”，记录完整语义和影响，不能只保留 A/B/C 字母或依赖聊天历史。
 
-设计应先完成批准和独立 Review，再创建 execution plan 或实施代码。active plan 必须链接一个实际存在的设计或产品规格；机械检查保证链接和结构存在，内容是否完整仍由 Review 判断。
+命中[技术设计文档规范](../references/DESIGN_DOC_GUIDE.md)触发条件的工作，应先完成设计批准和独立 Review，再创建 execution plan 或实施代码；无需单独设计的工作可由已批准 Product spec 或 `docs/PLANS.md` 允许的其他事实源进入计划。active plan 必须链接一个实际存在的设计或产品规格；机械检查保证链接和结构存在，内容是否完整仍由 Review 判断。
 
 ## Current Designs
 
+- [路由容量 Driver](2026-10-10-routing-capacity-driver-design.md)：已批准；2026-10-10 用户确认容量定规格与 Broker 代码 Review 分轨。环境专用 hook、真实生产候选部署和完整容量证据由[独立容量计划](../exec-plans/active/2026-10-10-broker-routing-capacity.md)跟踪；短时演练不产生容量资格。
+
+- [Broker 路由恢复领域行为](2026-10-07-broker-route-recovery-domain-design.md)：用户已确认职责划分，T13 实施中；独立 Review 未执行。
+
+- [Raft 通用运行能力抽取](2026-09-29-raft-plugin-design.md)：用户确认边界，插件及 Broker 接入已实施；独立 Review 和 Broker 全链路测试待完成。
+
+- [Broker 权威集群状态与高可用路由切换](2026-09-19-broker-routing-consensus-design.md)：原设计通过四轮独立 Review；D17/D18 RouteLookup 和 Broker Bolt 责任链增量由 [Broker Review 收口计划](../exec-plans/completed/2026-09-20-broker-routing-consensus.md)完成代码/集成验收；生产候选容量由[独立活跃计划](../exec-plans/active/2026-10-10-broker-routing-capacity.md)跟踪。
 - [IM 核心链路容量压测](2026-09-14-im-load-test-design.md)：设计已批准并通过三轮独立 Review 和用户委托主审；实施与真实压测已完成并按 completed execution plan 归档，记录宿主 k6、本机连接/消息容量探索、批次数据清理与测量安全边界。
 - [可观测性与分片运行接入](2026-09-11-observability-sharding-runtime-design.md)：记录本轮 `$grill-me` 确认的数据库 `version` 字段、MyBatis-Plus 插件、ShardingSphere 配置、Prometheus、SkyWalking、端口治理和本地启动编排决策。
 - [Harness 交接、启动与质量评审](2026-09-10-harness-handoff-startup-and-quality-design.md)：自动派生 session handoff、验证全部应用的受控启动路径、限界清理，并用独立 AI Reviewer 与机器证据生成模块 A/B/C/D 快照。

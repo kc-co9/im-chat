@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.sdk.model.params;
 
+import com.co.kc.imchat.broker.sdk.access.GatewayRouteRequest;
+
 import java.io.Serializable;
 
 /**
@@ -9,5 +11,6 @@ import java.io.Serializable;
  * @param host      网关对 Broker 暴露的内部通信地址
  * @param port      网关对 Broker 暴露的内部通信端口
  */
-public record GatewayRegisterParams(String gatewayId, String host, int port) implements Serializable {
+public record GatewayRegisterParams(String gatewayId, String host, int port)
+        implements Serializable, GatewayRouteRequest {
 }

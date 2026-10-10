@@ -15,10 +15,10 @@ RESOURCE_SAMPLER_BIN="${LOAD_TEST_RESOURCE_SAMPLER_BIN:-$ROOT_DIR/scripts/load_t
 RUNTIME_ROOT="${LOAD_TEST_RUNTIME_ROOT:-$ROOT_DIR/.harness/load-test}"
 BASE_COMPOSE=("$DOCKER_BIN" compose -f "$ROOT_DIR/deploy/local/compose.yml" --profile full)
 LOAD_COMPOSE=("$DOCKER_BIN" compose -f "$ROOT_DIR/deploy/local/compose.yml" -f "$ROOT_DIR/deploy/local/compose.load-test.yml" --profile full)
-APP_SERVICES=(im-http-gateway im-ws-gateway-server im-broker-server im-account-server im-social-server im-message-server im-iam-server im-audit-server im-admin im-monitor)
+APP_SERVICES=(im-http-gateway im-ws-gateway-server im-broker-server im-account-server im-social-server im-message-server im-iam-server im-audit-server im-admin im-ops)
 LOAD_APP_SERVICES=(im-http-gateway im-ws-gateway-server im-broker-server im-account-server im-social-server im-message-server)
 BASE_CORE_APP_SERVICES=("${LOAD_APP_SERVICES[@]}" im-iam-server)
-MANAGEMENT_APP_SERVICES=(im-audit-server im-admin im-monitor)
+MANAGEMENT_APP_SERVICES=(im-audit-server im-admin im-ops)
 QUIESCED_APP_SERVICES=(im-iam-server "${MANAGEMENT_APP_SERVICES[@]}")
 OWNER_SERVICES=(im-account-server im-social-server im-message-server)
 STATE_FILE="$RUNTIME_ROOT/runtime-state.jsonl"
@@ -30,6 +30,8 @@ STAGE_TIMEOUT_SECONDS="${LOAD_TEST_STAGE_TIMEOUT_SECONDS:-7200}"
 ROUND_TIMEOUT_SECONDS="${LOAD_TEST_ROUND_TIMEOUT_SECONDS:-900}"
 DOCTOR_TIMEOUT_SECONDS="${LOAD_TEST_DOCTOR_TIMEOUT_SECONDS:-30}"
 TOTAL_TIMEOUT_SECONDS="${LOAD_TEST_TOTAL_TIMEOUT_SECONDS:-18000}"
+MANAGEMENT_HEALTH_TIMEOUT_SECONDS="${LOAD_TEST_MANAGEMENT_HEALTH_TIMEOUT_SECONDS:-90}"
+MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS="${LOAD_TEST_MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS:-120}"
 KEEP_LOAD_TEST_DATA="${KEEP_LOAD_TEST_DATA:-0}"
 COMMAND="${1:-}"
 shift || true
@@ -39,7 +41,9 @@ case "$COMMAND" in
   *) printf 'usage: %s doctor|prepare|connections|messages|smoke|cleanup|all|restore [options]\n' "$0" >&2; exit 2 ;;
 esac
 [[ "$STAGE_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ && "$ROUND_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ \
-  && "$DOCTOR_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ && "$TOTAL_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || {
+  && "$DOCTOR_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ && "$TOTAL_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ \
+  && "$MANAGEMENT_HEALTH_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ \
+  && "$MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || {
   printf 'load-test timeout values must be positive integers\n' >&2
   exit 2
 }
@@ -301,7 +305,7 @@ verify_load_environment() {
   local json running
   json="$(run_with_timeout "$DOCTOR_TIMEOUT_SECONDS" "${LOAD_COMPOSE[@]}" config --format json)"
   ruby -rjson -e '
-    apps=%w[im-http-gateway im-ws-gateway-server im-broker-server im-account-server im-social-server im-message-server im-iam-server im-audit-server im-admin im-monitor]
+    apps=%w[im-http-gateway im-ws-gateway-server im-broker-server im-account-server im-social-server im-message-server im-iam-server im-audit-server im-admin im-ops]
     services=JSON.parse(STDIN.read).fetch("services")
     apps.each do |name|
       env=services.fetch(name).fetch("environment")
@@ -379,9 +383,11 @@ recreate_application_profile() {
   for service in "${MANAGEMENT_APP_SERVICES[@]}"; do
     run_with_timeout "$STAGE_TIMEOUT_SECONDS" "${compose_command[@]}" up -d \
       --force-recreate "$service" || return $?
-    if ! wait_for_service_health "$profile" "$service" 90 true; then
+    if ! wait_for_service_health "$profile" "$service" \
+        "$MANAGEMENT_HEALTH_TIMEOUT_SECONDS" true; then
       run_with_timeout "$DOCTOR_TIMEOUT_SECONDS" "${compose_command[@]}" restart "$service" || return $?
-      wait_for_service_health "$profile" "$service" 120 false || return $?
+      wait_for_service_health "$profile" "$service" \
+        "$MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS" false || return $?
     fi
   done
 }
@@ -423,15 +429,16 @@ wait_for_service_health() {
     return 2
   fi
   local deadline=$((SECONDS + timeout))
-  local container health failing_streak
+  local container health failing_streak inspection
   while ((SECONDS < deadline)); do
     container="$(run_with_timeout "$DOCTOR_TIMEOUT_SECONDS" \
       "${compose_command[@]}" ps -q "$service")" || return $?
     if [[ -n "$container" ]]; then
-      IFS=: read -r health failing_streak <<<"$(run_with_timeout "$DOCTOR_TIMEOUT_SECONDS" \
+      inspection="$(run_with_timeout "$DOCTOR_TIMEOUT_SECONDS" \
         "$DOCKER_BIN" inspect --format \
         '{{if .State.Health}}{{.State.Health.Status}}:{{.State.Health.FailingStreak}}{{else}}missing:1{{end}}' \
         "$container")" || return $?
+      IFS=: read -r health failing_streak <<<"$inspection"
       [[ "$health" == healthy ]] && return 0
       if [[ "$fail_fast" == true \
           && ( "$health" == unhealthy || "${failing_streak:-0}" =~ ^[1-9][0-9]*$ ) ]]; then

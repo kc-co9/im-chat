@@ -17,5 +17,6 @@
         <module>im-architecture-test</module>
         <module>im-e2e-test</module>
         <module>im-load-test</module>
+        <module>im-routing-ha</module>
     </modules>
 </project>

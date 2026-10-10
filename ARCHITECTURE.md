@@ -24,8 +24,8 @@ flowchart LR
 
     Ops[运维浏览器] --> IAM[im-iam-server]
     IAM --> IamDb[(IAM MySQL)]
-    Ops --> Monitor[im-monitor]
-    Monitor --> BrokerHttp[Broker 管理 HTTP]
+    Ops --> Ops[im-ops]
+    Ops --> BrokerHttp[Broker 管理 HTTP]
     Ops --> Admin[im-admin]
     Admin --> AccountAdmin[Account Admin Facade]
     AccountAdmin --> Account
@@ -33,16 +33,16 @@ flowchart LR
     Audit --> AuditDb[(Audit MySQL)]
     Admin -->|Kafka / 认证异步 HTTP| Audit
     IAM -->|Kafka / 认证异步 HTTP| Audit
-    Monitor -->|Kafka / 认证异步 HTTP| Audit
+    Ops -->|Kafka / 认证异步 HTTP| Audit
 ```
 
 - `im-http-gateway` 是外部 HTTP 入口和路由边界。
 - `im-ws-gateway` 拥有 WebSocket 连接、握手认证、协议适配和本机投递。
 - `im-broker` 拥有用户到 Gateway 的路由、Gateway 协调、精确帧投递和 Broker Gossip 同步。
 - `im-service` 拥有 Account、Social、Message 业务规则和持久化事实。
-- `im-management` 中的 IAM、Admin、Monitor、Audit 是独立部署的管理应用，不与普通用户认证或业务表合并。
+- `im-management` 中的 IAM、Admin、Ops、Audit 是独立部署的管理应用，不与普通用户认证或业务表合并。
 
-Broker SDK 先通过 Nacos 发现一个 Broker 作为 bootstrap；首次调用成功后，周期性执行 `LIST_BROKERS` 获取集群快照并原子替换本地地址列表。Nacos 负责启动发现，Broker Registry 与 Gossip 负责运行时路由快照。
+Broker SDK 先通过 Nacos 发现一个 Broker 作为 bootstrap；首次调用成功后，周期性执行 `GET_CLUSTER_STATE` 获取已提交 Broker 集群状态并原子替换本地地址列表。Nacos 负责启动发现，Broker 的 Raft committed state 与 Gossip Registry 负责运行时路由事实。
 
 ## 业务上下文与部署边界
 
@@ -63,11 +63,11 @@ Broker SDK 先通过 Nacos 发现一个 Broker 作为 bootstrap；首次调用�
 | `im-iam-server` | 管理员身份、SSO、应用、机器 Client、应用级 RBAC 和 OAuth2/OIDC 授权 |
 | `im-iam-sdk` | 管理应用复用的 OAuth2/OIDC BFF、Token Session、Introspection 和权限目录同步；不依赖 IAM Server 实现 |
 | `im-admin` | 普通用户管理用例与 UI；通过 Account Admin Facade 修改 Account 事实，不直连 Account 数据库 |
-| `im-monitor` | Broker 发现、只读诊断聚合和监控 UI；不拥有路由状态或业务事实 |
+| `im-ops` | Broker 发现、诊断聚合、受控集群 operation 与运行控制台；不拥有路由状态或业务事实 |
 | `im-audit-sdk` | 不可变 Audit Event、上下文采集、声明式审计和传输适配 |
 | `im-audit-server` | Audit 接收、幂等追加、查询、UI 和受限导出；是管理 Audit 唯一持久化所有者 |
 
-Admin、IAM、Monitor 通过按来源隔离的 Kafka 或认证异步 HTTP 向 Audit 提交事实。生产者依赖 Audit SDK，不依赖 Audit Server；管理应用通过 IAM SDK 接入身份能力，不复制 IAM 的管理员、角色或授权模型。
+Admin、IAM、Ops 通过按来源隔离的 Kafka 或认证异步 HTTP 向 Audit 提交事实。生产者依赖 Audit SDK，不依赖 Audit Server；管理应用通过 IAM SDK 接入身份能力，不复制 IAM 的管理员、角色或授权模型。
 
 ## 模块依赖方向
 
@@ -111,7 +111,7 @@ im-test             -> test-scope access to runtime modules; no production code
 - Message 在事务提交后发起在线通知，推送失败不回滚已提交消息。
 - Broker Registry/Gossip 是运行态最终一致模型，不替代业务持久化或强一致事务日志。
 - Nacos 提供配置和服务发现，不拥有用户路由或业务状态。
-- Monitor 只聚合有界、只读的 Broker 诊断；节点失败不会改变 Broker 状态。
+- Ops 聚合有界诊断，并把管理员意图转成带 IAM 权限、幂等键和预期 epoch 的 Broker operation；只有 Broker Leader 能通过 Raft 改变权威状态，节点查询失败不会自行改变 Broker 状态。
 - Audit 通过 Kafka 或认证异步 HTTP 接收，依赖来源校验、重试和 `auditId` 幂等，而不是调用方本地审计表。
 
 ## 变更规则

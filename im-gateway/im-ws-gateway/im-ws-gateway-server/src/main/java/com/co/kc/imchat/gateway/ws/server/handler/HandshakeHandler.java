@@ -103,18 +103,22 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
             WsPrincipal principal
     ) {
         String connectionId = UUID.randomUUID().toString();
+        long routeRevision = connectionRegistry.register(
+                principal.userId(), principal.sessionVersion(), connectionId, context.channel());
         try {
-            brokerClient.registerConnection(new ConnectionRegisterParams(principal.userId(), gatewayId));
+            brokerClient.registerConnection(new ConnectionRegisterParams(
+                    principal.userId(), gatewayId, routeRevision));
         } catch (RuntimeException ex) {
+            rollbackConnectionRegistration(principal, connectionId);
             reject(context, request, HttpResponseStatus.SERVICE_UNAVAILABLE);
             return;
         }
-        bindConnection(context, principal, connectionId);
+        bindConnectionIdentity(context, principal, connectionId);
         request.setUri(path);
         context.fireChannelRead(request);
     }
 
-    private void bindConnection(
+    private void bindConnectionIdentity(
             ChannelHandlerContext context,
             WsPrincipal principal,
             String connectionId
@@ -122,8 +126,20 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
         context.channel().attr(ContextAttributes.PRINCIPAL).set(principal);
         context.channel().attr(ContextAttributes.SESSION_VERSION).set(principal.sessionVersion());
         context.channel().attr(ContextAttributes.CONNECTION_ID).set(connectionId);
-        connectionRegistry.register(
-                principal.userId(), principal.sessionVersion(), connectionId, context.channel());
+    }
+
+    private void rollbackConnectionRegistration(WsPrincipal principal, String connectionId) {
+        ConnectionRegistry.RouteMutation rollback = connectionRegistry.unregister(connectionId);
+        if (!rollback.routeAbsent()) {
+            return;
+        }
+        try {
+            brokerClient.unregisterConnection(new ConnectionUnregisterParams(
+                    principal.userId(), gatewayId, rollback.routeRevision()));
+        } catch (RuntimeException exception) {
+            log.warn("failed to roll back broker connection route, gatewayId:{}, connectionId:{}, error:{}",
+                    gatewayId, connectionId, exception.toString());
+        }
     }
 
     @Override
@@ -137,12 +153,14 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void unregisterConnection(WsPrincipal principal, String connectionId) {
-        if (!connectionRegistry.unregister(connectionId)) {
+        ConnectionRegistry.RouteMutation mutation = connectionRegistry.unregister(connectionId);
+        if (!mutation.routeAbsent()) {
             return;
         }
         try {
             brokerClient.unregisterConnection(
-                    new ConnectionUnregisterParams(principal.userId(), gatewayId));
+                    new ConnectionUnregisterParams(
+                            principal.userId(), gatewayId, mutation.routeRevision()));
         } catch (RuntimeException exception) {
             log.warn("failed to unregister ws connection from broker, gatewayId:{}, connectionId:{}, error:{}",
                     gatewayId, connectionId, exception.toString());

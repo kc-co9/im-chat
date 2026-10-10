@@ -31,7 +31,7 @@ im-ws-gateway-server/
 - 本机维护用户、会话版本、连接 ID 与 Netty Channel 的连接注册表。
 - 客户端上行帧转交 Broker 路由到业务服务。
 - Broker 下行推送时，按连接 ID 写入本机 Netty Channel。
-- 定时向 Broker 注册当前网关和刷新活跃连接快照。
+- 定时向 Broker 注册当前网关，并按 RouteBroker 刷新带 revision 的活跃连接完整分片。
 
 ## 上行流程
 
@@ -125,19 +125,33 @@ Gateway 返回逐连接接受或失败结果，但该结果只描述本机写入
 
 账号会话替换或退出后，Account service 会经 Broker 发出连接关闭控制。Gateway 根据 `userId + sessionVersion` 只关闭匹配旧会话版本的本机连接，避免乱序控制关闭已重新登录的新连接。
 
+Broker 下行携带稳定 `deliveryId` 和单次尝试的 `deliveryAttemptId`。Gateway 以
+`deliveryId + connectionId` 去重：RPC timeout 或丢响应后使用相同 deliveryId 重试不会重复写同一 Channel；
+尝试 ID 只用于诊断。关闭控制以 `operationId + userId + sessionVersion` 做有界幂等：请求先占用进行中位置，只有本机关闭全部完成后才登记完成；中途失败释放占位，允许原操作重试。进行中的重复请求返回错误，不提前确认关闭。
+
 ## 配置说明
 
 核心配置前缀为 `im.gateway.ws`，集中绑定到 `GatewayProperties`：
 
 - `port`：Netty WS 监听端口。
-- 当前网关实例 ID 由 Bolt 对外地址自动生成，格式为 `gateway-{bolt.host}-{boltPort}`。
+- `gatewayId` 不提供静态配置；每次进程启动根据 Bolt 对外地址和随机 UUID 生成新的实例身份，避免旧进程
+  revision 水位污染重启后的连接。
 - `path`：WebSocket 握手路径，默认 `/ws`。
 - `max-frame-payload-length`：单个 WS 帧最大载荷。
 - `idle.reader-idle-seconds`：读空闲关闭时间。
-- `broker.bolt.load-balance`：Broker 地址选择策略，默认 `HASH`；可选 `HASH`、`ROUND_ROBIN`、`RANDOM`。
+- `broker.bolt.load-balance`：只用于 bootstrap 和无用户路由键的控制调用；用户路由请求始终按 committed
+  `BrokerClusterState` 选择 RouteBroker。
 - `broker.bolt.timeout-millis`：调用 Broker 超时时间。
+- `delivery.deduplication-capacity`、`delivery.deduplication-retention`：Frame 去重容量和最低保留窗口，默认
+  `1000000`、`10m`；窗口内容量耗尽会拒绝新 key。
+- `delivery.close-deduplication-capacity`、`delivery.close-deduplication-retention`：关闭控制去重容量和
+  保留窗口，默认 `100000`、`10m`。
 
 Gateway 通过 Nacos 发现初始 Broker 地址，之后由 Broker SDK 定时读取 Broker 集群快照；不配置固定 Broker 地址或 seed address。`im.bolt.client.enabled=true` 用于创建出站 `BoltInvoker`，`im.bolt.server.enabled=true` 用于接收 Broker 下行调用。`im.gateway.ws.bind-host` 只控制 Netty WebSocket 的本机监听地址，`im.gateway.ws.host` 是注册给 Broker 的可访问地址，两者不能互相替代。
+
+生产环境必须为 `im.bolt.client.tls` 和 `im.bolt.server.tls` 配置包含本机私钥证书链与信任 CA 的 keystore。
+Gateway 调用 Broker 时，Broker 从 TLS session 的 URI SAN（其次为证书 Subject）解析 workload identity，
+不会信任请求体自行声明身份。本地明文环境依赖 Broker 的显式可信网络回退，生产必须关闭该回退。
 
 本地默认端口为：浏览器 WebSocket `18011`、Gateway 下行 Bolt `18012`、Actuator HTTP `19011`。Gateway Bolt 端口不得与同机 Broker Bolt `18020` 或 Broker 管理 HTTP `19020` 重复，否则 Broker 会把下行帧发送到错误的监听器。
 
@@ -157,8 +171,13 @@ Gateway 通过 Nacos 发现初始 Broker 地址，之后由 Broker SDK 定时读
 - 本机 `ConnectionRegistry` 保存 `userId + sessionVersion + connectionId + Channel`，对外查询仅返回不含 Channel 的只读连接状态。
 - Broker 仍只保存 `userId -> gatewayId`，不接收本地连接 ID 或 Session 所有权。
 - Broker 下发会话关闭控制时，本机只关闭匹配旧 `sessionVersion` 的连接，乱序控制不会关闭替换后的新会话。
-- Gateway 周期性上报活跃用户快照，Broker 通过快照清理异常断连遗留映射。
-- Broker 客户端支持 HASH、ROUND_ROBIN、RANDOM；Hash 策略用于相同路由键的稳定选择。
+- 本机连接变化推进同一个 `routeRevision`；连接 register/unregister 和周期快照均携带对应水位。
+- Gateway 每 30 秒读取一次原子连接水位，按 RouteBroker 生成完整分片；大分片按 chunk 发送，当前空但
+  上一轮非空的目标发送空分片。Broker 收齐整批并验证 checksum 后才应用。
+- 所有目标分片应用后发送一次整轮 ACK，包含 epoch、routeRevision、全量用户数与 checksum；任一分片
+  `ROUTE_MOVED` 时不确认旧 epoch，而是刷新 state、完整重发后再确认。
+- 分片发送使用有界并发和确定性 jitter；Broker 背压时最多退避重试三次，`ROUTE_MOVED` 时刷新 committed
+  state 并完整重发一次，不把失败分片广播给其他 Broker。
 - 下行写入逐连接返回状态，调用方可以区分已接受和失败连接。
 - `im.gateway.frame.write` 记录 Gateway 本机 Channel 写入处理的次数、失败和 duration；不携带用户、连接、消息等高基数标签，且不把 Netty 接受写入解释为客户端 ACK。
 

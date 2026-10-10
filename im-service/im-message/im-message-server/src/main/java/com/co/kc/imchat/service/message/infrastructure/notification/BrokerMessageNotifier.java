@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
 public class BrokerMessageNotifier {
     private final MessagePushService messagePushService;
 
-    public BrokerFrameWriteResult notify(Long receiverId, FrameResponse frame) {
-        return messagePushService.push(receiverId, frame);
+    public BrokerFrameWriteResult notify(String deliveryId, Long receiverId, FrameResponse frame) {
+        return messagePushService.push(deliveryId, receiverId, frame);
     }
 }

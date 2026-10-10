@@ -6,7 +6,7 @@
 
 - `BoltInvoker`：调用抽象。
 - `BoltClientInvoker`、`BoltRpcClient`：同步 RPC 客户端实现。
-- `BoltRequestHandler`：业务 Handler SPI。
+- `BoltRequestHandler`：业务 Handler SPI，只提供 `handle(BoltRequestContext, String)`；传输上下文可缺失，身份准入由业务入口负责。
 - `BoltRequestProcessor`：按 service/operation 分发请求。
 - `ImBoltProperties`：客户端开关，以及服务端监听地址和端口配置。
 

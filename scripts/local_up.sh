@@ -19,7 +19,7 @@ switch_timeout="${LOCAL_SWITCH_TIMEOUT_SECONDS:-30}"
 
 app_services=(
   im-http-gateway im-ws-gateway-server im-broker-server im-account-server
-  im-social-server im-message-server im-iam-server im-audit-server im-admin im-monitor
+  im-social-server im-message-server im-iam-server im-audit-server im-admin im-ops
 )
 infra_ports=(3306 6379 8848 9090 9092 9848 9849 1234 3000 11800 12800 17128 17913 18048 18050)
 application_ports=(18010 18011 18012 18020 18030 18031 18032 18040 18041 18042 18043
@@ -35,7 +35,7 @@ nacos_application_services=(
   'IM_CHAT_GROUP|im-iam'
   'IM_CHAT_GROUP|im-audit'
   'IM_CHAT_GROUP|im-admin'
-  'IM_CHAT_GROUP|im-monitor'
+  'IM_CHAT_GROUP|im-ops'
   'DUBBO_GROUP|im-account'
   'DUBBO_GROUP|im-social'
   'DUBBO_GROUP|im-message'

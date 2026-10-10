@@ -1,0 +1,178 @@
+name: im-chat-routing-ha
+
+x-routing-ha-app: &routing-ha-app
+  restart: "no"
+  mem_limit: 768m
+  environment: &routing-ha-environment
+    IM_NACOS_SERVER_ADDR: routing-ha-nacos:8848
+    IM_NACOS_NAMESPACE: ""
+    SERVER_ADDRESS: 0.0.0.0
+    IM_BOLT_SERVER_HOST: 0.0.0.0
+    IM_GATEWAY_BIND_HOST: 0.0.0.0
+    SPRING_DATA_REDIS_HOST: routing-ha-redis
+    SPRING_DATA_REDIS_SSL_ENABLED: "false"
+    IM_REDIS_REDISSON_ADDRESS: redis://routing-ha-redis:6379
+    SPRING_CLOUD_NACOS_CONFIG_ENABLED: "false"
+    SW_AGENT_ENABLE: "false"
+  networks:
+    - routing-ha
+
+x-routing-ha-broker: &routing-ha-broker
+  <<: *routing-ha-app
+  image: im-chat/im-broker-server:routing-ha
+  build:
+    context: ../..
+    dockerfile: deploy/local/app.Dockerfile
+    args:
+      JAR_FILE: im-broker/im-broker-server/target/*-exec.jar
+  depends_on:
+    routing-ha-nacos:
+      condition: service_healthy
+    routing-ha-redis:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:19020/actuator/health >/dev/null 2>&1"]
+    interval: 2s
+    timeout: 2s
+    retries: 60
+    start_period: 15s
+
+x-routing-ha-gateway: &routing-ha-gateway
+  <<: *routing-ha-app
+  image: im-chat/im-ws-gateway-server:routing-ha
+  build:
+    context: ../..
+    dockerfile: deploy/local/app.Dockerfile
+    args:
+      JAR_FILE: im-gateway/im-ws-gateway/im-ws-gateway-server/target/*-exec.jar
+  depends_on:
+    routing-ha-nacos:
+      condition: service_healthy
+    routing-ha-redis:
+      condition: service_healthy
+    broker-ha-1:
+      condition: service_healthy
+    broker-ha-2:
+      condition: service_healthy
+    broker-ha-3:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:19011/actuator/health >/dev/null 2>&1"]
+    interval: 2s
+    timeout: 2s
+    retries: 60
+    start_period: 10s
+
+services:
+  routing-ha-redis:
+    image: redis:7.2.0
+    restart: "no"
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - routing-ha
+
+  routing-ha-nacos:
+    image: nacos/nacos-server:v3.0.2
+    restart: "no"
+    mem_limit: 768m
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      NACOS_AUTH_TOKEN: aW0tY2hhdC1yb3V0aW5nLWhhLW5hY29zLTIwMjYtMDktMjE=
+      NACOS_AUTH_IDENTITY_KEY: im-chat-routing-ha
+      NACOS_AUTH_IDENTITY_VALUE: im-chat-routing-ha
+      PREFER_HOST_MODE: hostname
+      JVM_XMS: 256m
+      JVM_XMX: 512m
+      JVM_XMN: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8848 && </dev/tcp/127.0.0.1/9848'"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 10s
+    networks:
+      - routing-ha
+
+  broker-ha-1:
+    <<: *routing-ha-broker
+    hostname: broker-ha-1
+    ports:
+      - "127.0.0.1:19121:19020"
+    environment:
+      <<: *routing-ha-environment
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx384m -Xss512k -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=128m
+      IM_BROKER_HOST: broker-ha-1
+      IM_BROKER_MANAGEMENT_HOST: broker-ha-1
+      IM_BROKER_MANAGEMENT_BIND_HOST: 0.0.0.0
+      SPRING_APPLICATION_JSON: &broker-ha-1-config >-
+        {"im":{"broker":{"raft":{"cluster-id":"routing-ha-cluster","node-id":"broker-ha-1","endpoint":"broker-ha-1:18120","data-directory":"/var/lib/im-chat/raft","minimum-voter-count":3,"initial-voters":["broker-ha-1:18120","broker-ha-2:18120","broker-ha-3:18120"],"bootstrap-brokers":[{"broker-id":"broker-ha-1","route-endpoint":"broker-ha-1:18020","membership-endpoint":"broker-ha-1:18120","membership-role":"VOTER","routing-state":"ACTIVE"},{"broker-id":"broker-ha-2","route-endpoint":"broker-ha-2:18020","membership-endpoint":"broker-ha-2:18120","membership-role":"VOTER","routing-state":"ACTIVE"},{"broker-id":"broker-ha-3","route-endpoint":"broker-ha-3:18020","membership-endpoint":"broker-ha-3:18120","membership-role":"VOTER","routing-state":"ACTIVE"}]}}}}
+    volumes:
+      - broker-ha-1-data:/var/lib/im-chat/raft
+
+  broker-ha-2:
+    <<: *routing-ha-broker
+    hostname: broker-ha-2
+    ports:
+      - "127.0.0.1:19122:19020"
+    environment:
+      <<: *routing-ha-environment
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx384m -Xss512k -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=128m
+      IM_BROKER_HOST: broker-ha-2
+      IM_BROKER_MANAGEMENT_HOST: broker-ha-2
+      IM_BROKER_MANAGEMENT_BIND_HOST: 0.0.0.0
+      SPRING_APPLICATION_JSON: >-
+        {"im":{"broker":{"raft":{"cluster-id":"routing-ha-cluster","node-id":"broker-ha-2","endpoint":"broker-ha-2:18120","data-directory":"/var/lib/im-chat/raft","minimum-voter-count":3,"initial-voters":["broker-ha-1:18120","broker-ha-2:18120","broker-ha-3:18120"],"bootstrap-brokers":[{"broker-id":"broker-ha-1","route-endpoint":"broker-ha-1:18020","membership-endpoint":"broker-ha-1:18120","membership-role":"VOTER","routing-state":"ACTIVE"},{"broker-id":"broker-ha-2","route-endpoint":"broker-ha-2:18020","membership-endpoint":"broker-ha-2:18120","membership-role":"VOTER","routing-state":"ACTIVE"},{"broker-id":"broker-ha-3","route-endpoint":"broker-ha-3:18020","membership-endpoint":"broker-ha-3:18120","membership-role":"VOTER","routing-state":"ACTIVE"}]}}}}
+    volumes:
+      - broker-ha-2-data:/var/lib/im-chat/raft
+
+  broker-ha-3:
+    <<: *routing-ha-broker
+    hostname: broker-ha-3
+    ports:
+      - "127.0.0.1:19123:19020"
+    environment:
+      <<: *routing-ha-environment
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx384m -Xss512k -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=128m
+      IM_BROKER_HOST: broker-ha-3
+      IM_BROKER_MANAGEMENT_HOST: broker-ha-3
+      IM_BROKER_MANAGEMENT_BIND_HOST: 0.0.0.0
+      SPRING_APPLICATION_JSON: >-
+        {"im":{"broker":{"raft":{"cluster-id":"routing-ha-cluster","node-id":"broker-ha-3","endpoint":"broker-ha-3:18120","data-directory":"/var/lib/im-chat/raft","minimum-voter-count":3,"initial-voters":["broker-ha-1:18120","broker-ha-2:18120","broker-ha-3:18120"],"bootstrap-brokers":[{"broker-id":"broker-ha-1","route-endpoint":"broker-ha-1:18020","membership-endpoint":"broker-ha-1:18120","membership-role":"VOTER","routing-state":"ACTIVE"},{"broker-id":"broker-ha-2","route-endpoint":"broker-ha-2:18020","membership-endpoint":"broker-ha-2:18120","membership-role":"VOTER","routing-state":"ACTIVE"},{"broker-id":"broker-ha-3","route-endpoint":"broker-ha-3:18020","membership-endpoint":"broker-ha-3:18120","membership-role":"VOTER","routing-state":"ACTIVE"}]}}}}
+    volumes:
+      - broker-ha-3-data:/var/lib/im-chat/raft
+
+  gateway-ha-1:
+    <<: *routing-ha-gateway
+    hostname: gateway-ha-1
+    ports:
+      - "127.0.0.1:18111:18011"
+      - "127.0.0.1:19111:19011"
+    environment:
+      <<: *routing-ha-environment
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m -Xss512k -XX:MaxMetaspaceSize=160m -XX:MaxDirectMemorySize=128m
+      IM_GATEWAY_HOST: gateway-ha-1
+
+  gateway-ha-2:
+    <<: *routing-ha-gateway
+    hostname: gateway-ha-2
+    ports:
+      - "127.0.0.1:18211:18011"
+      - "127.0.0.1:19211:19011"
+    environment:
+      <<: *routing-ha-environment
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m -Xss512k -XX:MaxMetaspaceSize=160m -XX:MaxDirectMemorySize=128m
+      IM_GATEWAY_HOST: gateway-ha-2
+
+networks:
+  routing-ha:
+
+volumes:
+  broker-ha-1-data:
+  broker-ha-2-data:
+  broker-ha-3-data:

@@ -54,7 +54,7 @@ EOF
 const locations = {
   iam: import.meta.env.VITE_IAM_CONSOLE_URL || 'http://localhost:18040',
   audit: import.meta.env.VITE_AUDIT_CONSOLE_URL || 'http://localhost:18041',
-  monitor: import.meta.env.VITE_MONITOR_CONSOLE_URL || 'http://localhost:18043',
+  ops: import.meta.env.VITE_OPS_CONSOLE_URL || 'http://localhost:18043',
   admin: import.meta.env.VITE_ADMIN_CONSOLE_URL || 'http://localhost:18042',
 }
 EOF
@@ -67,7 +67,7 @@ create_all() {
   create_ui "$FIXTURE_ROOT/im-management/im-admin/ui" 18042
   create_ui "$FIXTURE_ROOT/im-management/im-audit/im-audit-server/ui" 18041
   create_ui "$FIXTURE_ROOT/im-management/im-iam/im-iam-server/ui" 18040
-  create_ui "$FIXTURE_ROOT/im-management/im-monitor/ui" 18043
+  create_ui "$FIXTURE_ROOT/im-management/im-ops/ui" 18043
 }
 
 # 参数为预期诊断片段；执行 checker 并断言失败输出包含该片段。
@@ -89,9 +89,9 @@ rm -f "$FIXTURE_ROOT/im-management/im-iam/im-iam-server/ui/package.json.bak"
 rm -rf "$FIXTURE_ROOT"
 FIXTURE_ROOT="$(mktemp -d)"
 create_all
-sed -i.bak '/"lint"/d' "$FIXTURE_ROOT/im-management/im-monitor/ui/package.json"
+sed -i.bak '/"lint"/d' "$FIXTURE_ROOT/im-management/im-ops/ui/package.json"
 expect_failure 'missing quality script'
-rm -f "$FIXTURE_ROOT/im-management/im-monitor/ui/package.json.bak"
+rm -f "$FIXTURE_ROOT/im-management/im-ops/ui/package.json.bak"
 
 rm -rf "$FIXTURE_ROOT"
 FIXTURE_ROOT="$(mktemp -d)"
@@ -118,7 +118,7 @@ expect_failure 'cross-application UI source import'
 rm -rf "$FIXTURE_ROOT"
 FIXTURE_ROOT="$(mktemp -d)"
 create_all
-sed -i.bak 's/18043/18040/' "$FIXTURE_ROOT/im-management/im-monitor/ui/vite.config.ts"
+sed -i.bak 's/18043/18040/' "$FIXTURE_ROOT/im-management/im-ops/ui/vite.config.ts"
 expect_failure 'stale Vite proxy port'
 
 rm -rf "$FIXTURE_ROOT"

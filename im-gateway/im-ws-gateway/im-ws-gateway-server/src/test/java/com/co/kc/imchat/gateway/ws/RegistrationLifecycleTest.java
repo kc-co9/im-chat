@@ -3,20 +3,16 @@ package com.co.kc.imchat.gateway.ws;
 import com.co.kc.imchat.broker.sdk.BrokerClient;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionSyncParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayHeartbeatParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
 import com.co.kc.imchat.gateway.ws.lifecycle.RegistrationLifecycle;
-import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
+import com.co.kc.imchat.gateway.ws.routing.GatewayRouteSnapshotSync;
 import com.co.kc.imchat.gateway.ws.support.BrokerClientTestSupport;
 import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.broker.sdk.enums.BrokerLoadBalance;
-import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,20 +22,19 @@ class RegistrationLifecycleTest {
     @Test
     void startupRegistersGatewayAndSyncsConnectionRoutes() throws Exception {
         CapturingBrokerClient brokerClient = new CapturingBrokerClient();
-        RegistrationLifecycle lifecycle = lifecycle(brokerClient, new ConnectionRegistry());
+        RegistrationLifecycle lifecycle = lifecycle(brokerClient);
 
         lifecycle.onReady();
 
         assertThat(brokerClient.registerGatewayCommand)
                 .isEqualTo(new GatewayRegisterParams("gw-1", "127.0.0.1", 12201));
-        assertThat(brokerClient.syncConnectionsCommand)
-                .isEqualTo(new ConnectionSyncParams("gw-1", List.of()));
+        assertThat(brokerClient.snapshotSyncs).isEqualTo(1);
     }
 
     @Test
     void scheduledRefreshRegistersGatewayBeforeSyncingConnectionRoutes() {
         CapturingBrokerClient brokerClient = new CapturingBrokerClient();
-        RegistrationLifecycle lifecycle = lifecycle(brokerClient, new ConnectionRegistry());
+        RegistrationLifecycle lifecycle = lifecycle(brokerClient);
 
         lifecycle.onReady();
         brokerClient.events = "";
@@ -53,7 +48,7 @@ class RegistrationLifecycleTest {
     @Test
     void scheduledRefreshRegistersGatewayWhenStartupRegistrationFailed() {
         FailOnceBrokerClient brokerClient = new FailOnceBrokerClient();
-        RegistrationLifecycle lifecycle = lifecycle(brokerClient, new ConnectionRegistry());
+        RegistrationLifecycle lifecycle = lifecycle(brokerClient);
 
         lifecycle.onReady();
         lifecycle.refresh();
@@ -62,43 +57,29 @@ class RegistrationLifecycleTest {
     }
 
     @Test
-    void syncsActiveUserIdsToBroker() {
-        CapturingBrokerClient brokerClient = new CapturingBrokerClient();
-        ConnectionRegistry connectionRegistry = new ConnectionRegistry();
-        EmbeddedChannel activeChannel = new EmbeddedChannel();
-        EmbeddedChannel inactiveChannel = new EmbeddedChannel();
-        inactiveChannel.close();
-        connectionRegistry.register(1L, "session-1", "conn-1", activeChannel);
-        connectionRegistry.register(2L, "session-2", "conn-2", inactiveChannel);
-        RegistrationLifecycle lifecycle = lifecycle(brokerClient, connectionRegistry);
-
-        lifecycle.refresh();
-
-        assertThat(brokerClient.syncConnectionsCommand)
-                .isEqualTo(new ConnectionSyncParams("gw-1", List.of(1L)));
-    }
-
-    @Test
     void startupSkipsFailureWhenBrokerIsTemporarilyUnavailable() {
         FailingBrokerClient brokerClient = new FailingBrokerClient();
-        RegistrationLifecycle lifecycle = lifecycle(brokerClient, new ConnectionRegistry());
+        RegistrationLifecycle lifecycle = lifecycle(brokerClient);
 
         assertThatCode(lifecycle::onReady).doesNotThrowAnyException();
 
         assertThat(brokerClient.registered).isEqualTo(1);
-        assertThat(brokerClient.refreshed).isZero();
+        assertThat(brokerClient.snapshotSyncs).isZero();
     }
 
-    private RegistrationLifecycle lifecycle(
-            BrokerClient brokerClient, ConnectionRegistry connectionRegistry) {
+    private RegistrationLifecycle lifecycle(CapturingBrokerClient brokerClient) {
+        GatewayRouteSnapshotSync snapshotSync = () -> {
+            brokerClient.snapshotSyncs++;
+            brokerClient.appendEvent("sync");
+        };
         return new RegistrationLifecycle(
-                "gw-1", "127.0.0.1", 12201, brokerClient, connectionRegistry);
+                "gw-1", "127.0.0.1", 12201, brokerClient, snapshotSync);
     }
 
     private static class CapturingBrokerClient extends BrokerClient {
         protected GatewayRegisterParams registerGatewayCommand;
         protected GatewayHeartbeatParams heartbeatGatewayCommand;
-        protected ConnectionSyncParams syncConnectionsCommand;
+        protected int snapshotSyncs;
         protected String events = "";
 
         private CapturingBrokerClient() {
@@ -110,12 +91,6 @@ class RegistrationLifecycleTest {
         public void registerGateway(GatewayRegisterParams params) {
             this.registerGatewayCommand = params;
             appendEvent("register");
-        }
-
-        @Override
-        public void syncConnections(ConnectionSyncParams params) {
-            this.syncConnectionsCommand = params;
-            appendEvent("sync");
         }
 
         @Override
@@ -147,17 +122,13 @@ class RegistrationLifecycleTest {
 
     private static class FailingBrokerClient extends CapturingBrokerClient {
         private int registered;
-        private int refreshed;
-
         @Override
         public void registerGateway(GatewayRegisterParams params) {
             registered++;
             throw new IllegalStateException("broker unavailable");
         }
 
-        @Override
-        public void syncConnections(ConnectionSyncParams params) {
-            refreshed++;
+        private FailingBrokerClient() {
         }
     }
 

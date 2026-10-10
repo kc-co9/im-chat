@@ -34,13 +34,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -68,13 +71,23 @@ import static org.mockito.Mockito.when;
         })
 class RealtimeMessagingE2ETest {
     private static final int BROKER_BOLT_PORT = availablePort();
-    private static final String GATEWAY_ID = "e2e-gateway";
+    private static final Path BROKER_RAFT_DATA_DIRECTORY = Path.of(
+            System.getProperty("java.io.tmpdir"), "im-chat-e2e-raft-" + UUID.randomUUID());
+    private static final String FIRST_GATEWAY_ID = "e2e-gateway-1";
+    private static final String SECOND_GATEWAY_ID = "e2e-gateway-2";
     private static final long AUTHENTICATED_USER_ID = 42L;
 
     @DynamicPropertySource
     static void brokerProperties(DynamicPropertyRegistry registry) {
         registry.add("im.bolt.server.port", () -> BROKER_BOLT_PORT);
         registry.add("im.broker.instance.port", () -> BROKER_BOLT_PORT);
+        registry.add("im.broker.raft.data-directory", BROKER_RAFT_DATA_DIRECTORY::toString);
+        registry.add("im.broker.raft.bootstrap-brokers[0].broker-id", () -> "broker-local-1");
+        registry.add("im.broker.raft.bootstrap-brokers[0].route-endpoint",
+                () -> "127.0.0.1:" + BROKER_BOLT_PORT);
+        registry.add("im.broker.raft.bootstrap-brokers[0].membership-role", () -> "VOTER");
+        registry.add("im.broker.raft.bootstrap-brokers[0].membership-endpoint", () -> "127.0.0.1:18120");
+        registry.add("im.broker.raft.bootstrap-brokers[0].routing-state", () -> "ACTIVE");
     }
 
     @LocalServerPort
@@ -111,9 +124,9 @@ class RealtimeMessagingE2ETest {
                 .when(messageService).ackNotification(any());
 
         BrokerClient brokerClient = brokerClient();
-        startGatewayAndConnect(brokerClient);
+        startGatewayAndConnect(brokerClient, FIRST_GATEWAY_ID);
 
-        assertThat(queryRoutes()).contains(GATEWAY_ID);
+        assertThat(queryRoutes()).contains(FIRST_GATEWAY_ID);
         sendAndAwaitResponse("send-1", """
                 {"version":"1","cmd":"message.private.send","seq":"send-1","traceId":"trace-send",\
                 "body":{"userId":999,"chatId":1001,"messageToken":"token-1",\
@@ -130,28 +143,41 @@ class RealtimeMessagingE2ETest {
 
         webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "e2e disconnect").get(5, TimeUnit.SECONDS);
         await().atMost(Duration.ofSeconds(5))
-                .untilAsserted(() -> assertThat(queryRoutes()).doesNotContain(GATEWAY_ID));
+                .untilAsserted(() -> assertThat(queryRoutes()).doesNotContain(FIRST_GATEWAY_ID));
 
         gatewayServer.stop();
         gatewayServer = null;
-        startGatewayAndConnect(brokerClient);
+        startGatewayAndConnect(brokerClient, SECOND_GATEWAY_ID);
 
         await().atMost(Duration.ofSeconds(5))
-                .untilAsserted(() -> assertThat(queryRoutes()).contains(GATEWAY_ID));
+                .untilAsserted(() -> assertThat(queryRoutes()).contains(SECOND_GATEWAY_ID)
+                        .doesNotContain(FIRST_GATEWAY_ID));
     }
 
-    private void startGatewayAndConnect(BrokerClient brokerClient) throws Exception {
+    private void startGatewayAndConnect(BrokerClient brokerClient, String gatewayId) throws Exception {
         int webSocketPort = availablePort();
-        brokerClient.registerGateway(new GatewayRegisterParams(GATEWAY_ID, "127.0.0.1", availablePort()));
+        brokerClient.registerGateway(new GatewayRegisterParams(gatewayId, "127.0.0.1", availablePort()));
         gatewayServer = new NettyWebSocketServer(
-                "127.0.0.1", webSocketPort, GATEWAY_ID, "/ws", brokerClient, new ConnectionRegistry(),
+                "127.0.0.1", webSocketPort, gatewayId, "/ws", brokerClient, new ConnectionRegistry(),
                 authenticationManager(), 30, 65_536);
         gatewayServer.start();
-        listener = new CollectingWebSocketListener();
-        webSocket = HttpClient.newHttpClient().newWebSocketBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
-                .buildAsync(URI.create("ws://127.0.0.1:" + webSocketPort + "/ws?token=valid-token"), listener)
-                .get(5, TimeUnit.SECONDS);
+        AtomicReference<WebSocket> connected = new AtomicReference<>();
+        AtomicReference<CollectingWebSocketListener> connectedListener = new AtomicReference<>();
+        await().atMost(Duration.ofSeconds(10))
+                .pollInterval(Duration.ofMillis(100))
+                .ignoreExceptions()
+                .untilAsserted(() -> {
+                    CollectingWebSocketListener candidate = new CollectingWebSocketListener();
+                    WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder()
+                            .connectTimeout(Duration.ofSeconds(2))
+                            .buildAsync(URI.create("ws://127.0.0.1:" + webSocketPort
+                                    + "/ws?token=valid-token"), candidate)
+                            .get(3, TimeUnit.SECONDS);
+                    connectedListener.set(candidate);
+                    connected.set(socket);
+                });
+        listener = connectedListener.get();
+        webSocket = connected.get();
     }
 
     private BrokerClient brokerClient() {

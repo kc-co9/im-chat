@@ -12,7 +12,8 @@ public class MessagePushService {
     private final BrokerClient brokerClient;
 
     @Observed(name = "im.message.broker.frame.write")
-    public BrokerFrameWriteResult push(Long userId, FrameResponse frame) {
-        return brokerClient.writeFrame(BrokerFrameWriteParams.outbound(userId, frame));
+    public BrokerFrameWriteResult push(String deliveryId, Long userId, FrameResponse frame) {
+        return brokerClient.writeFrame(deliveryId,
+                BrokerFrameWriteParams.outbound(userId, frame));
     }
 }

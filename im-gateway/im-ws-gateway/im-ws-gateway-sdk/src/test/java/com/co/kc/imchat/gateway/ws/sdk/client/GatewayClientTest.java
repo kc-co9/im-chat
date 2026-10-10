@@ -28,8 +28,9 @@ class GatewayClientTest {
         invoker.response = new GatewayFrameWriteResult(List.of("conn-1"), List.of());
         GatewayClient adapter = new GatewayClient(invoker, 3000);
         GatewayEndpointDTO gateway = new GatewayEndpointDTO("gw-1", "10.0.0.8", 12201,
-                Instant.now(), Instant.now());
-        GatewayFrameWriteParams request = new GatewayFrameWriteParams(1L,
+                "spiffe://im-chat/gateway/test", Instant.now(), Instant.now());
+        GatewayFrameWriteParams request = new GatewayFrameWriteParams(
+                1L, "delivery-1", "attempt-1",
                 new FrameResponse("1", FrameType.PUSH, "message.private.sent", "1", "trace",
                         null, null, Map.of()));
 
@@ -61,8 +62,10 @@ class GatewayClientTest {
         RecordingBoltInvoker invoker = new RecordingBoltInvoker();
         GatewayClient client = new GatewayClient(invoker, 3000);
         GatewayEndpointDTO gateway = new GatewayEndpointDTO(
-                "gw-1", "10.0.0.8", 12201, Instant.now(), Instant.now());
-        ConnectionCloseParams params = new ConnectionCloseParams(1L, "session-old");
+                "gw-1", "10.0.0.8", 12201, "spiffe://im-chat/gateway/test",
+                Instant.now(), Instant.now());
+        ConnectionCloseParams params = new ConnectionCloseParams(
+                "operation-1", 1L, "session-old");
 
         client.closeConnections(gateway, params);
 

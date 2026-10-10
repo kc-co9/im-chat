@@ -9,8 +9,12 @@ import java.time.Instant;
  * @param gatewayId    网关实例 ID
  * @param host         网关内部通信地址
  * @param port         网关内部通信端口
+ * @param workloadIdentity 注册时绑定的 mTLS workload identity
  * @param registeredAt 网关首次注册时间
  * @param lastSeenAt   Broker 最后一次确认网关仍然活跃的时间
  */
-public record GatewayEndpointDTO(String gatewayId, String host, int port, Instant registeredAt, Instant lastSeenAt) implements Serializable {
+public record GatewayEndpointDTO(String gatewayId, String host, int port,
+                                 String workloadIdentity,
+                                 Instant registeredAt,
+                                 Instant lastSeenAt) implements Serializable {
 }

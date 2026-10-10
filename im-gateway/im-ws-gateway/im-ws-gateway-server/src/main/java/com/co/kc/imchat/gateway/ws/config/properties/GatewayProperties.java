@@ -5,6 +5,8 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Duration;
+
 /**
  * WS 网关配置项。
  * <p>
@@ -56,9 +58,8 @@ public class GatewayProperties {
      */
     private Broker broker = new Broker();
 
-    public String gatewayId(int boltPort) {
-        return "gateway-" + bolt.getHost() + "-" + boltPort;
-    }
+    /** 下行投递去重配置。 */
+    private Delivery delivery = new Delivery();
 
     @Data
     public static class Idle {
@@ -82,6 +83,8 @@ public class GatewayProperties {
          * Broker Bolt 调用配置。
          */
         private BrokerBolt bolt = new BrokerBolt();
+        private String workloadIdentityPrefix = "spiffe://im-chat/broker/";
+        private boolean allowTrustedNetworkIdentity = true;
     }
 
     @Data
@@ -95,6 +98,14 @@ public class GatewayProperties {
          * 调用 Broker Bolt 服务的超时时间，单位毫秒。
          */
         private int timeoutMillis = 3000;
+    }
+
+    @Data
+    public static class Delivery {
+        private int deduplicationCapacity = 1_000_000;
+        private Duration deduplicationRetention = Duration.ofMinutes(10);
+        private int closeDeduplicationCapacity = 100_000;
+        private Duration closeDeduplicationRetention = Duration.ofMinutes(10);
     }
 
 }

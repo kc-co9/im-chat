@@ -4,6 +4,8 @@ Completed plans are retained as implementation history. Move a plan here only af
 
 Completed plans:
 
+- [Harness 规则导航与 CI 工具修复](2026-10-10-harness-reference-navigation.md)：规则矩阵迁移与本机验证完成；GitHub runner 安装待下一次 Actions run 确认。
+- [Broker 权威路由与 DDD Review 收口](2026-09-20-broker-routing-consensus.md)：代码/集成范围已验收；生产候选容量由独立活跃计划承接。
 - [IM 核心链路容量压测](2026-09-14-im-load-test.md)
 - [可观测性与分片运行接入](2026-09-11-observability-sharding-runtime.md)
 - [Harness 交接、启动与质量评审](2026-09-10-harness-handoff-startup-and-quality.md)

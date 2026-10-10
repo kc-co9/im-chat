@@ -223,7 +223,7 @@ ruby -rjson -e '
   config = JSON.parse(STDIN.read)
   services = config.fetch("services")
   apps = %w[im-http-gateway im-ws-gateway-server im-broker-server im-account-server
-            im-social-server im-message-server im-iam-server im-audit-server im-admin im-monitor]
+            im-social-server im-message-server im-iam-server im-audit-server im-admin im-ops]
   apps.each do |name|
     environment = services.fetch(name).fetch("environment")
     abort "#{name}: SQL logging must be disabled" unless
@@ -363,17 +363,17 @@ if [[ "${1:-}" == compose ]]; then
     if [[ "$args" == *'compose.load-test.yml'* ]]; then printf 'load' >"$FAKE_DOCKER_STATE"; else printf 'base' >"$FAKE_DOCKER_STATE"; fi
   fi
   if [[ "$args" == *" config --format json "* ]]; then
-    node -e 'const apps=["im-http-gateway","im-ws-gateway-server","im-broker-server","im-account-server","im-social-server","im-message-server","im-iam-server","im-audit-server","im-admin","im-monitor"]; const services=Object.fromEntries(apps.map(name=>[name,{environment:{IM_DATASOURCE_SHARDING_SQL_SHOW:"false",LOGGING_LEVEL_ROOT:"INFO",SW_AGENT_COLLECTOR_BACKEND_SERVICES:"skywalking-oap:11800",MANAGEMENT_SERVER_PORT:"1"}}])); process.stdout.write(JSON.stringify({services}));'
+    node -e 'const apps=["im-http-gateway","im-ws-gateway-server","im-broker-server","im-account-server","im-social-server","im-message-server","im-iam-server","im-audit-server","im-admin","im-ops"]; const services=Object.fromEntries(apps.map(name=>[name,{environment:{IM_DATASOURCE_SHARDING_SQL_SHOW:"false",LOGGING_LEVEL_ROOT:"INFO",SW_AGENT_COLLECTOR_BACKEND_SERVICES:"skywalking-oap:11800",MANAGEMENT_SERVER_PORT:"1"}}])); process.stdout.write(JSON.stringify({services}));'
   elif [[ "$args" == *" ps --services --status running "* ]]; then
     printf '%s\n' mysql redis nacos kafka prometheus-full grafana skywalking-banyandb skywalking-oap skywalking-ui \
       im-http-gateway im-ws-gateway-server im-broker-server im-account-server im-social-server im-message-server
     if [[ "$args" != *'compose.load-test.yml'* ]]; then
-      printf '%s\n' im-iam-server im-audit-server im-admin im-monitor
+      printf '%s\n' im-iam-server im-audit-server im-admin im-ops
     fi
   elif [[ "$args" == *" ps -q "* ]]; then
     service="${!#}"
     if [[ "$args" == *'compose.load-test.yml'* \
-        && " im-iam-server im-audit-server im-admin im-monitor " == *" $service "* ]]; then
+        && " im-iam-server im-audit-server im-admin im-ops " == *" $service "* ]]; then
       exit 0
     fi
     printf 'fixture-container\n'
@@ -765,6 +765,8 @@ rm -f "$temp_dir/docker-restart-marker"
 FAKE_DOCKER_DYNAMIC_HEALTH=1 FAKE_DOCKER_HEALTH_STATE="$temp_dir/docker-health-state" \
   FAKE_DOCKER_RESTART_TRANSIENT_UNHEALTHY=1 \
   FAKE_DOCKER_RESTART_MARKER="$temp_dir/docker-restart-marker" \
+  LOAD_TEST_MANAGEMENT_HEALTH_TIMEOUT_SECONDS=2 \
+  LOAD_TEST_MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS=5 \
   LOAD_TEST_DISCOVERY_SETTLE_SECONDS=0 LOAD_TEST_RUNTIME_ROOT="$temp_dir/runtime" \
   DOCKER_BIN="$temp_dir/bin/docker" LOCAL_UP_BIN="$temp_dir/bin/local_up" \
   HTTP_BIN="$temp_dir/bin/curl" K6_BIN="$temp_dir/bin/k6" "$RUNNER" restore >/dev/null
@@ -790,7 +792,7 @@ FAKE_DOCKER_DYNAMIC=1 FAKE_DOCKER_STATE="$temp_dir/docker-state" \
 all_status=$?
 set -e
 [[ "$all_status" == 23 ]] || { printf 'all must preserve prepare failure 23, got %s\n' "$all_status" >&2; exit 1; }
-rg -q 'compose.load-test.yml.* stop im-iam-server im-audit-server im-admin im-monitor' \
+rg -q 'compose.load-test.yml.* stop im-iam-server im-audit-server im-admin im-ops' \
   "$temp_dir/docker-command.log" || {
   printf 'load profile must stop non-core management services\n' >&2
   exit 1

@@ -1,14 +1,14 @@
 package com.co.kc.imchat.broker.interfaces.handler.gateway;
 
+import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
+import com.co.kc.imchat.broker.application.local.LocalGatewayCleanupAppService;
+
+import com.co.kc.imchat.broker.model.cqrs.event.ConnectionSyncedEvent;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
-import com.co.kc.imchat.broker.domain.registry.connection.ConnectionRegistry;
-import com.co.kc.imchat.broker.domain.registry.gateway.GatewayRegistry;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
-import com.co.kc.imchat.broker.sdk.model.dto.UserGatewayDTO;
+import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayUnregisterParams;
-import com.co.kc.imchat.broker.support.event.model.ConnectionSyncedEvent;
-import com.co.kc.imchat.broker.support.event.model.GatewayRemovedEvent;
-import com.co.kc.imchat.broker.support.event.publisher.BrokerEventPublisher;
+import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -18,16 +18,13 @@ import java.util.List;
  */
 @Component
 public class GatewayUnregisterHandler extends AbstractBrokerRpcHandler<GatewayUnregisterParams, Void> {
-    private final GatewayRegistry gatewayRegistry;
-    private final ConnectionRegistry connectionRegistry;
-    private final BrokerEventPublisher brokerEventPublisher;
+    private final LocalGatewayCleanupAppService gatewayCleanup;
+    private final DomainEventPublisher brokerEventPublisher;
 
-    public GatewayUnregisterHandler(GatewayRegistry gatewayRegistry,
-                                    ConnectionRegistry connectionRegistry,
-                                    BrokerEventPublisher brokerEventPublisher) {
+    public GatewayUnregisterHandler(LocalGatewayCleanupAppService gatewayCleanup,
+                                    DomainEventPublisher brokerEventPublisher) {
         super(BrokerBoltOperation.UNREGISTER_GATEWAY);
-        this.gatewayRegistry = gatewayRegistry;
-        this.connectionRegistry = connectionRegistry;
+        this.gatewayCleanup = gatewayCleanup;
         this.brokerEventPublisher = brokerEventPublisher;
     }
 
@@ -36,10 +33,9 @@ public class GatewayUnregisterHandler extends AbstractBrokerRpcHandler<GatewayUn
         if (params == null || params.gatewayId() == null || params.gatewayId().isBlank()) {
             return null;
         }
-        gatewayRegistry.unregister(params.gatewayId());
-        List<UserGatewayDTO> removedCollections = connectionRegistry.sync(params.gatewayId(), List.of()).removed();
-        brokerEventPublisher.publish(new ConnectionSyncedEvent(params.gatewayId(), List.of(), removedCollections));
-        brokerEventPublisher.publish(new GatewayRemovedEvent(params.gatewayId()));
+        List<ConnectionRegistration> removedCollections = gatewayCleanup.unregister(new GatewayId(params.gatewayId()));
+        brokerEventPublisher.publish(
+                new ConnectionSyncedEvent(params.gatewayId(), List.of(), removedCollections));
         return null;
     }
 }

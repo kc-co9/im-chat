@@ -4,6 +4,8 @@
 
 - 业务数据库是持久化 Account、Social、Conversation 和 Message 状态的事实源。
 - Broker 路由与发现状态通过 Gossip 最终一致；临时分歧不得改变持久消息事实。
+- Broker 的 `BrokerClusterState`、routing epoch、Raft membership 和关键管理 operation 由 SOFAJRaft
+  多数派提交；Gossip 只提供运行观察，不能直接改变权威路由状态。
 - WebSocket Gateway 拥有本机 Session。Gateway 故障后客户端可能需要重连并重建 Broker 路由。
 - 需要客户端确认的通知使用持久化待确认任务和延迟重试；Handler 必须保持幂等。
 - Account Session 状态是认证和撤销权威。Session 替换和登出只在 Account 事务提交后发布 best-effort WebSocket 关闭控制。
@@ -16,11 +18,33 @@
 ## 运行要求
 
 - 启动失败必须指出缺失依赖或非法配置，不能静默降级关键路径。
+- Broker 必须复用稳定 `clusterId/nodeId` 和独立 Raft 数据目录；配置身份与目录 marker 不一致时拒绝启动。
+- Raft 少数派不能提交集群状态或成员变更。多数派丢失时 Broker 进程和上行业务可继续运行，但新的权威
+  路由写、membership 变更及依赖新 epoch 的下行准入必须失败或保持 fenced，不能降级为 Gossip 决策。
+- Raft operation 以 `operationId + requestDigest` 幂等，并有界保留；容量不足时不能淘汰未完成 operation。
+- 改变 ACTIVE Broker 集合前必须完成全旧 epoch barrier。新 epoch 只能在全部冻结 holder 已持久化 fence
+  并 ACK，或当前 Leader 等待完整 quarantine 后提交；Gossip 失联和 Leader 当选不能缩短该窗口。
+- holder 使用申请开始时的本机单调时间计算 Lease deadline。迟到响应、未知/重复 nonce、回退 term/sequence、
+  已持久 fence 的 epoch 和 JVM 暂停后已经过期的 Lease 必须拒绝。
+- 新 epoch operation 在全部 ACTIVE holder 接受 Lease 前保持 `AUTHORIZING_NEW_EPOCH`；重试恢复阶段但不
+  重复执行旧 epoch barrier。已准入且远端结果未知的调用仍按 at-least-once 与稳定幂等标识收口。
+- 优雅 drain 在 Raft 中冻结切换时 Gateway 集合和旧事件 deadline。Gateway 只有在目标 epoch 全部分片
+  应用后才提交整轮 revision/count/checksum ACK；ACK 未齐不得 cleanup。旧 Broker cleanup 只按 committed
+  水位删除并写 tombstone，重复调用幂等且不能创建路由或投递 Frame。
+- 优雅 drain 的证据超时为 `FAILED`；管理员明确接受缺失 ACK、残留路由和实时投递风险后才可原子提交
+  `FORCED`。突然故障直接提交目标 `INACTIVE`，存活 Gateway 重建缺口超时必须为 `DEGRADED`。
+- 本地路由未命中时，RouteLookup 只查询路由描述：对当前拓扑中所有其他 ACTIVE/DRAINING Broker 并发查询一轮，各 peer IO 使用 Broker 配置的固定超时。
+  当前 RouteBroker 重验 Gateway 租约后才定向下行，禁止广播业务 Frame或让 DRAINING Broker 代为投递。
+- Gateway 以 `deliveryId + connectionId` 去重 Frame，以 `operationId + userId + sessionVersion` 去重关闭控制。
+  最低保留窗口内不得因容量压力提前淘汰；容量耗尽必须背压。该机制提供可恢复 at-least-once，不声称
+  exactly-once，Gateway 接受 Channel 写入也不等于客户端 ACK。
+- Raft 数据备份使用一致性卷快照并验证 snapshot/log 恢复。禁止在线复制部分数据文件、自动 `resetPeers`
+  或在多数派丢失后用单副本静默重建同一集群身份。
 - 定时注册、心跳、迁移和 Gossip 任务必须幂等，并隔离单个 Peer 故障。
 - Timeout、重试上限、Tombstone/Removed Entry 保留时间和 Gossip fanout 归入类型化配置属性。
 - Dubbo Consumer 默认 `retries=0`，禁止框架在超时后自动重放业务 RPC。需要重试时由调用方基于明确的幂等键、响应语义和有界策略实现；调整全局 retries 前必须证明所有受影响调用可安全重放。
 - 业务监控必须暴露连接、投递、重试和同步健康状态，但监控数据不得进入投递正确性路径。
-- `im-monitor` 使用有界 Executor 和单节点 Timeout 并发查询 Broker management endpoint。部分失败返回 `UNREACHABLE`，健康节点数据仍可用；全部失败时不得伪造健康汇总。
+- `im-ops` 使用有界 Executor 和单节点 Timeout 并发查询 Broker management endpoint。部分失败返回 `UNREACHABLE`，健康节点数据仍可用；全部失败时不得伪造健康汇总。
 - Session 关闭控制发布暴露有限基数的 `success`/`failure` Counter 与 Duration Timer，不包含用户、Session、Connection 或 Token Label。
 - Account 状态变化只在数据库事务提交后安排 Session 踢出。Post-commit Callback 获取 Session 写锁、更新 Redis Session 状态，然后立即发布 best-effort 连接关闭控制；不能为了再注册一个 Post-commit Callback 单独开启数据库事务。
 - 待确认通知由 Redis Receipt Task 是否存在表示。客户端 ACK 删除 Task、延迟标识和重试计数；不存在单独持久化的 `CONFIRMED` 状态。
@@ -29,7 +53,7 @@
 - Management Producer 提交已完成 Audit 事实，不改变原业务结果或异常。事务成功只在 Commit 后提交；Rollback 不发成功事实，失败时保留并重新抛出原异常。
 - Kafka 至少投递一次，Audit 按 `auditId` 幂等写入。Source Consumer 持久化失败最多重试三次，再进入独立 DLQ。HTTP 只重试 Timeout 和 `5xx`，`4xx` 为最终结果。Kafka 与 HTTP 独立选择，不静默互相回退。
 - Audit 导出要求不超过 31 天的有界时间范围，以每页 100 行流式写入 Workbook。
-- IAM 健康时，Admin 和 Monitor 对每个受保护请求实时执行 IAM Introspection。只有连接失败、Timeout 和 IAM `5xx` 可以使用最后一次 `active=true` 结果，最多保留五分钟且不得超过 Access Token 过期时间；显式拒绝永不回退。
+- IAM 健康时，Admin 和 Ops 对每个受保护请求实时执行 IAM Introspection。只有连接失败、Timeout 和 IAM `5xx` 可以使用最后一次 `active=true` 结果，最多保留五分钟且不得超过 Access Token 过期时间；显式拒绝永不回退。
 - IAM SSO 使用 8 小时 Idle Limit 和 24 小时 Absolute Limit。应用登出只移除对应 BFF Session；平台或全设备撤销使相关 IAM Authorization 失效。
 
 ## 已知可靠性债务
@@ -46,7 +70,12 @@
 - `./scripts/verify.sh e2e` 启动真实 Broker HTTP/Bolt 和 Netty WebSocket runtime，验证认证路由、上行 Message 与 ACK、断开清理及 Gateway 重启恢复。Account 认证和 Message 持久化是受控边界，因此该结果不证明 MySQL、Redis、Nacos 或远端 Dubbo 可用。
 - `./scripts/verify.sh full` 是仓库完成门禁。
 - E2E 输出保存在 `.harness/runtime/e2e.log`；verification JSON 将结果绑定到当前 HEAD 和 worktree fingerprint。
-- Broker JMX Metrics 暴露 `im.broker.instances`、`im.broker.connections` 和 `im.broker.gossip.entries`。
+- Broker JMX Metrics 暴露 `im.broker.instances`、`im.broker.connections`、`im.broker.gossip.entries`、
+  `im.broker.routing.epoch`、`im.broker.routing.authorized` 和
+  `im.broker.routing.fenced.through.epoch`。
+- ACTIVE Broker 的 `im.broker.routing.authorized` 持续为 `0` 应告警；同一集群各节点
+  `im.broker.routing.epoch` 长时间不一致应告警。`fenced.through.epoch >= routing.epoch` 表示当前 epoch
+  明确 fenced，不得通过重启清除，应结合 Raft quorum 与未完成 operation 诊断。
 - WebSocket Gateway JMX Metrics 暴露 `im.gateway.connections` 和 `im.gateway.users`。
 
 故障处理、状态权威、重试策略或运行保证变化时必须同步更新本文。

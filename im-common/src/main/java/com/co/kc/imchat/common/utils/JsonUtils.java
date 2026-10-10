@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
 import com.co.kc.imchat.common.exception.SerializationException;
 
 import java.io.IOException;
@@ -29,6 +30,7 @@ public class JsonUtils {
 
     static {
         OBJECT_MAPPER = new ObjectMapper();
+        OBJECT_MAPPER.registerModule(new ParameterNamesModule());
         OBJECT_MAPPER.registerModule(getJavaTimeModule());
         // 忽略未知字段，避免反序列化失败
         OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);

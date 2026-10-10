@@ -42,6 +42,13 @@ im:
       bolt:
         host: ${im.gateway.ws.host}
       broker:
+        workload-identity-prefix: spiffe://im-chat/broker/
+        allow-trusted-network-identity: ${IM_GATEWAY_ALLOW_TRUSTED_NETWORK_BROKER_IDENTITY:true}
         bolt:
           load-balance: HASH
           timeout-millis: 3000
+      delivery:
+        deduplication-capacity: 1000000
+        deduplication-retention: 10m
+        close-deduplication-capacity: 100000
+        close-deduplication-retention: 10m

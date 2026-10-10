@@ -74,8 +74,8 @@ class IamIntrospectionServiceTest {
         IamIntrospectionCache cache = mock(IamIntrospectionCache.class);
         when(client.introspect(TOKEN)).thenReturn(new IamIntrospectionResult(
                 true, 1L, "root", "imAdmin", "im-admin-client",
-                Set.of("imMonitor"),
-                Set.of("monitor.overview.read"), NOW.plusSeconds(900)));
+                Set.of("imOps"),
+                Set.of("ops.overview.read"), NOW.plusSeconds(900)));
 
         assertThat(service(client, cache).introspect(TOKEN, NOW).active()).isFalse();
         verify(cache).remove(TOKEN, "imAdmin");

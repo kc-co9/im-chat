@@ -1,7 +1,8 @@
 package com.co.kc.imchat.broker.interfaces.handler.broker;
 
+import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
-import com.co.kc.imchat.broker.domain.registry.broker.BrokerRegistry;
+import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerQueryParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerListResult;
@@ -23,6 +24,8 @@ public class BrokerListHandler extends AbstractBrokerRpcHandler<BrokerQueryParam
 
     @Override
     protected BrokerListResult process(BrokerQueryParams params) {
-        return new BrokerListResult(brokerRegistry.list());
+        return new BrokerListResult(brokerRegistry.list().stream()
+                .map(RegistryTransformer.INSTANCE::brokerEndpointFrom)
+                .toList());
     }
 }

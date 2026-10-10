@@ -65,6 +65,14 @@ flowchart TD
 
 Broker 暂时不可用时，Gateway 保留仍然活跃的本机 Channel，并由生命周期任务重试网关注册和心跳；但连接路由注册、上行转发与新的跨节点下行可能失败。详细失败和一致性边界见 [Gateway Architecture](../ARCHITECTURE.md)。
 
+每个 Gateway 进程使用新的随机 `gatewayId`，并为本机连接路由维护单调 `routeRevision`。连接增量与周期
+完整快照共享该水位；完整快照按 committed Broker 集群状态分片并定向发给各 RouteBroker，不向全部
+Broker 广播。全部目标分片应用后，Gateway 向 Raft Leader 提交整轮 revision/count/checksum ACK，供 drain
+和故障路由重建收口；它不表示客户端消息 ACK。旧进程租约过期后，其路由和 revision 状态由 Broker 延迟回收。
+
+Broker 下行使用稳定 `deliveryId`，Gateway 按 `deliveryId + connectionId` 有界去重；连接关闭控制按
+`operationId + userId + sessionVersion` 去重。容量耗尽时明确拒绝新 key，不淘汰最低保留窗口内的证据。
+
 ## 边界说明
 
 - WS 网关只负责连接、协议帧和路由转发，不处理消息业务逻辑。
@@ -75,6 +83,7 @@ Broker 暂时不可用时，Gateway 保留仍然活跃的本机 Channel，并由
 
 - SDK 与 Server 分离，使 Broker 只依赖调用契约，不依赖 Netty 运行实现。
 - 具体连接只存于所属网关；集群层只同步用户与网关位置。
+- Gateway 路由写入通过 Bolt mTLS workload identity 绑定进程身份；明文可信网络模式只供本地环境使用。
 - 上行和下行都经过 Broker，统一在线路由与业务服务调用边界。
 - Gateway 的逐连接写入结果表示本机是否接受写入，不等同于客户端已经处理通知。
 

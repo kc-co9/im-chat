@@ -50,7 +50,7 @@ application_poms=(
   "$ROOT_DIR/im-management/im-iam/im-iam-server/pom.xml"
   "$ROOT_DIR/im-management/im-audit/im-audit-server/pom.xml"
   "$ROOT_DIR/im-management/im-admin/pom.xml"
-  "$ROOT_DIR/im-management/im-monitor/pom.xml"
+  "$ROOT_DIR/im-management/im-ops/pom.xml"
 )
 for pom in "${application_poms[@]}"; do
   if ! rg -q '<artifactId>spring-boot-maven-plugin</artifactId>' "$pom"; then
@@ -103,9 +103,9 @@ ruby -e '
 ' "$initializer"
 
 iam_seed="$ROOT_DIR/im-management/im-iam/im-iam-server/sql/dml.sql"
-for seed_value in imIam imAdmin imAudit imMonitor \
-  im-admin-client im-audit-client im-monitor-client \
-  im-admin-catalog im-audit-catalog im-monitor-catalog \
+for seed_value in imIam imAdmin imAudit imOps \
+  im-admin-client im-audit-client im-ops-client \
+  im-admin-catalog im-audit-catalog im-ops-catalog \
   localhost:18041 localhost:18042 localhost:18043; do
   if ! rg -q "$seed_value" "$iam_seed"; then
     printf 'IAM local seed is missing required value: %s\n' "$seed_value" >&2
@@ -128,13 +128,13 @@ ruby -rjson -e '
     "skywalking-ui" => "ghcr.io/apache/skywalking-horizon-ui:1.0.0"
   }
   apps = %w[im-http-gateway im-ws-gateway-server im-broker-server im-account-server
-            im-social-server im-message-server im-iam-server im-audit-server im-admin im-monitor]
+            im-social-server im-message-server im-iam-server im-audit-server im-admin im-ops]
   management_ports = {
     "im-http-gateway" => "19010", "im-ws-gateway-server" => "19011",
     "im-broker-server" => "19020", "im-account-server" => "19030",
     "im-social-server" => "19031", "im-message-server" => "19032",
     "im-iam-server" => "19040", "im-audit-server" => "19041",
-    "im-admin" => "19042", "im-monitor" => "19043"
+    "im-admin" => "19042", "im-ops" => "19043"
   }
   application_ports = {
     "im-http-gateway" => [18010, 19010],
@@ -146,7 +146,7 @@ ruby -rjson -e '
     "im-iam-server" => [18040, 19040],
     "im-audit-server" => [18041, 19041],
     "im-admin" => [18042, 19042],
-    "im-monitor" => [18043, 19043]
+    "im-ops" => [18043, 19043]
   }
   shared_infra_images.each do |name, image|
     abort "#{name}: missing infra service" unless services.key?(name)
@@ -243,7 +243,7 @@ ruby -rjson -e '
     abort "#{name}: JDBC URL must use MySQL service and #{schema}" unless
       jdbc_url.start_with?("jdbc:mysql://mysql:3306/#{schema}?")
   end
-  %w[im-audit-server im-admin im-monitor].each do |name|
+  %w[im-audit-server im-admin im-ops].each do |name|
     service = services.fetch(name)
     abort "#{name}: wrong internal IAM URI" unless
       service.dig("environment", "IM_IAM_SERVICE_URI") == "http://im-iam-server:18040"
@@ -345,7 +345,7 @@ done
 for target in \
   im-http-gateway:19010 im-ws-gateway-server:19011 im-broker-server:19020 \
   im-account-server:19030 im-social-server:19031 im-message-server:19032 \
-  im-iam-server:19040 im-audit-server:19041 im-admin:19042 im-monitor:19043; do
+  im-iam-server:19040 im-audit-server:19041 im-admin:19042 im-ops:19043; do
   if ! rg -q "targets: \[$target\]" "$ROOT_DIR/deploy/local/prometheus/prometheus-full.yml"; then
     printf 'Full Prometheus config is missing container management target %s\n' "$target" >&2
     exit 1
@@ -404,7 +404,7 @@ for jar_pattern in \
   'im-management/im-iam/im-iam-server/target/\*-exec\.jar' \
   'im-management/im-audit/im-audit-server/target/\*-exec\.jar' \
   'im-management/im-admin/target/\*-exec\.jar' \
-  'im-management/im-monitor/target/\*-exec\.jar'; do
+  'im-management/im-ops/target/\*-exec\.jar'; do
   if ! rg -q "^!${jar_pattern}$" "$ROOT_DIR/deploy/local/app.Dockerfile.dockerignore"; then
     printf 'Docker ignore file must allow only required exec jar path: %s\n' "$jar_pattern" >&2
     exit 1
@@ -465,7 +465,7 @@ im-broker-server
 im-http-gateway
 im-iam-server
 im-message-server
-im-monitor
+im-ops
 im-social-server
 im-ws-gateway-server"
 
@@ -473,7 +473,7 @@ LOCAL_COMMAND_LOG="$command_log" DOCKER_BIN="$fixture_root/docker" MAVEN_BIN="$f
   PORT_PROBE_BIN="$fixture_root/fake-port-probe" HTTP_BIN="$fixture_root/curl" \
   LOCAL_RUNNING_SERVICES="$infra_services" \
   "$ROOT_DIR/scripts/local_up.sh"
-rg -q -- 'rm -s -f prometheus-full im-http-gateway im-ws-gateway-server im-broker-server im-account-server im-social-server im-message-server im-iam-server im-audit-server im-admin im-monitor' "$command_log"
+rg -q -- 'rm -s -f prometheus-full im-http-gateway im-ws-gateway-server im-broker-server im-account-server im-social-server im-message-server im-iam-server im-audit-server im-admin im-ops' "$command_log"
 rg -q -- '--profile infra up -d --remove-orphans' "$command_log"
 rg -q -- '--wait --wait-timeout 600' "$command_log"
 rg -q -- 'probe -z 127.0.0.1 18010' "$command_log"

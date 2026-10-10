@@ -2,10 +2,15 @@ package com.co.kc.imchat.gateway.ws.sdk.model.params;
 
 import java.io.Serializable;
 
-public record ConnectionCloseParams(Long userId, String sessionVersion) implements Serializable {
+public record ConnectionCloseParams(String operationId,
+                                    Long userId,
+                                    String sessionVersion) implements Serializable {
     public ConnectionCloseParams {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("userId must be positive");
+        }
+        if (operationId == null || operationId.isBlank()) {
+            throw new IllegalArgumentException("operationId must not be blank");
         }
         if (sessionVersion == null || sessionVersion.isBlank()) {
             throw new IllegalArgumentException("sessionVersion must not be blank");

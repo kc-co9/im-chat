@@ -1,55 +1,47 @@
 package com.co.kc.imchat.broker.interfaces.handler.connection;
 
+import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
+import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
+import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
+import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
+import java.time.Instant;
+
+import com.co.kc.imchat.broker.model.cqrs.event.ConnectionRegisteredEvent;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
-import com.co.kc.imchat.broker.domain.registry.connection.ConnectionRegistry;
-import com.co.kc.imchat.broker.domain.service.BrokerConnectionService;
-import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
+import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
-import com.co.kc.imchat.broker.support.client.BrokerPeerClient;
-import com.co.kc.imchat.broker.support.event.model.ConnectionRegisteredEvent;
-import com.co.kc.imchat.broker.support.event.publisher.BrokerEventPublisher;
+import com.co.kc.imchat.broker.sdk.model.result.RouteBrokerResult;
+import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import org.springframework.stereotype.Component;
-
-import java.util.Optional;
 
 /**
  * 用户连接注册 RPC 处理器。
  */
 @Component
-public class ConnectionRegisterHandler extends AbstractBrokerRpcHandler<ConnectionRegisterParams, Void> {
+public class ConnectionRegisterHandler extends
+        AbstractBrokerRpcHandler<ConnectionRegisterParams, RouteBrokerResult> {
     private final ConnectionRegistry connectionRegistry;
-    private final BrokerEventPublisher brokerEventPublisher;
-    private final BrokerConnectionService brokerConnectionService;
-    private final BrokerPeerClient brokerPeerClient;
+    private final DomainEventPublisher brokerEventPublisher;
 
     public ConnectionRegisterHandler(ConnectionRegistry connectionRegistry,
-                                     BrokerEventPublisher brokerEventPublisher,
-                                     BrokerConnectionService brokerConnectionService,
-                                     BrokerPeerClient brokerPeerClient) {
+                                     DomainEventPublisher brokerEventPublisher) {
         super(BrokerBoltOperation.REGISTER_CONNECTION);
         this.connectionRegistry = connectionRegistry;
         this.brokerEventPublisher = brokerEventPublisher;
-        this.brokerConnectionService = brokerConnectionService;
-        this.brokerPeerClient = brokerPeerClient;
     }
 
     @Override
-    protected Void process(ConnectionRegisterParams params) {
-        if (forwardToOwner(params)) {
-            return null;
+    protected Object process(ConnectionRegisterParams params) {
+        ConnectionRegistration registration = ConnectionRegistration.active(
+                new ConnectionRouteId(new UserId(params.userId()), new GatewayId(params.gatewayId())),
+                new RouteRevision(params.routeRevision()), Instant.ofEpochMilli(params.routeContext().deadlineEpochMillis()));
+        boolean accepted = connectionRegistry.register(registration);
+        if (accepted) {
+            brokerEventPublisher.publish(
+                    new ConnectionRegisteredEvent(params.userId(), params.gatewayId()));
         }
-        connectionRegistry.register(params.userId(), params.gatewayId());
-        brokerEventPublisher.publish(new ConnectionRegisteredEvent(params.userId(), params.gatewayId()));
         return null;
-    }
-
-    private boolean forwardToOwner(ConnectionRegisterParams params) {
-        Optional<BrokerEndpointDTO> owner = brokerConnectionService.decideBroker(params.userId());
-        if (owner.isEmpty() || brokerConnectionService.isCurrentBroker(owner.get())) {
-            return false;
-        }
-        brokerPeerClient.registerConnection(owner.get(), params);
-        return true;
     }
 }

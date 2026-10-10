@@ -25,7 +25,7 @@ public class BrokerRefresher {
     @Scheduled(fixedDelay = REFRESH_DELAY_MILLIS)
     public void refresh() {
         try {
-            brokerClient.refreshBrokerAddresses();
+            brokerClient.refreshClusterState();
         } catch (RuntimeException exception) {
             log.warn("failed to refresh Broker addresses", exception);
         }

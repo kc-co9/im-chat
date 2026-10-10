@@ -7,6 +7,9 @@ import com.co.kc.imchat.gateway.ws.sdk.enums.GatewayBoltOperation;
 import com.co.kc.imchat.gateway.ws.sdk.enums.GatewayBoltService;
 import com.co.kc.imchat.gateway.ws.sdk.model.params.GatewayFrameWriteParams;
 import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
+import com.co.kc.imchat.gateway.ws.delivery.FrameDeliveryDeduplicator;
+import com.co.kc.imchat.gateway.ws.security.GatewayBrokerAuthorizer;
+import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 import com.co.kc.imchat.plugin.bolt.spi.BoltRequestHandler;
 
 import java.util.List;
@@ -19,9 +22,15 @@ import java.util.List;
 public class FrameWriteHandler implements BoltRequestHandler {
 
     private final ConnectionRegistry connectionRegistry;
+    private final FrameDeliveryDeduplicator deduplicator;
+    private final GatewayBrokerAuthorizer authorizer;
 
-    public FrameWriteHandler(ConnectionRegistry connectionRegistry) {
+    public FrameWriteHandler(ConnectionRegistry connectionRegistry,
+                             FrameDeliveryDeduplicator deduplicator,
+                             GatewayBrokerAuthorizer authorizer) {
         this.connectionRegistry = connectionRegistry;
+        this.deduplicator = deduplicator;
+        this.authorizer = authorizer;
     }
 
     @Override
@@ -35,9 +44,36 @@ public class FrameWriteHandler implements BoltRequestHandler {
     }
 
     @Override
-    public Object handle(String payload) {
+    public Object handle(BoltRequestContext context, String payload) {
+        authorizer.authorize(context);
         GatewayFrameWriteParams params = JsonUtils.fromJson(payload, GatewayFrameWriteParams.class);
-        List<GatewayFrameWriteDTO> writeList = connectionRegistry.writeFrame(params.userId(), params.frame());
+        if (params.userId() == null || params.deliveryId() == null
+                || params.deliveryId().isBlank() || params.deliveryAttemptId() == null
+                || params.deliveryAttemptId().isBlank() || params.frame() == null) {
+            throw new IllegalArgumentException("invalid Gateway frame write request");
+        }
+        List<GatewayFrameWriteDTO> writeList = connectionRegistry
+                .activeConnectionIds(params.userId()).stream()
+                .map(connectionId -> writeConnection(params, connectionId))
+                .toList();
         return new GatewayFrameWriteResult(writeList);
+    }
+
+    private GatewayFrameWriteDTO writeConnection(
+            GatewayFrameWriteParams params, String connectionId) {
+        FrameDeliveryDeduplicator.Decision decision = deduplicator.acquire(
+                params.deliveryId(), connectionId);
+        if (decision == FrameDeliveryDeduplicator.Decision.DUPLICATE) {
+            return GatewayFrameWriteDTO.accepted(connectionId);
+        }
+        if (decision == FrameDeliveryDeduplicator.Decision.CAPACITY_EXHAUSTED) {
+            return GatewayFrameWriteDTO.failed(connectionId);
+        }
+        GatewayFrameWriteDTO result = connectionRegistry.writeFrame(
+                params.userId(), connectionId, params.frame());
+        if (result.status() == com.co.kc.imchat.gateway.ws.sdk.enums.FrameWriteStatus.FAILED) {
+            deduplicator.release(params.deliveryId(), connectionId);
+        }
+        return result;
     }
 }

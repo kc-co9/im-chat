@@ -49,7 +49,7 @@
         </dependency>
         <dependency>
             <groupId>com.co.kc.im</groupId>
-            <artifactId>im-monitor</artifactId>
+            <artifactId>im-ops</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

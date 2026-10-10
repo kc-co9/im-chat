@@ -1,10 +1,11 @@
 package com.co.kc.imchat.broker.interfaces.listener.connection;
 
+import com.co.kc.imchat.broker.application.gossip.RegistryGossipAppService;
+
 import com.co.kc.imchat.broker.interfaces.listener.AbstractRegistryEventListener;
-import com.co.kc.imchat.broker.support.event.model.ConnectionRegisteredEvent;
-import com.co.kc.imchat.broker.support.event.model.ConnectionRemovedEvent;
-import com.co.kc.imchat.broker.support.event.model.ConnectionSyncedEvent;
-import com.co.kc.imchat.broker.domain.store.BrokerStateStore;
+import com.co.kc.imchat.broker.model.cqrs.event.ConnectionRegisteredEvent;
+import com.co.kc.imchat.broker.model.cqrs.event.ConnectionRemovedEvent;
+import com.co.kc.imchat.broker.model.cqrs.event.ConnectionSyncedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -15,27 +16,24 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ConnectionRegistryEventListener extends AbstractRegistryEventListener {
-    private final BrokerStateStore brokerStateStore;
+    private final RegistryGossipAppService gossipService;
 
-    public ConnectionRegistryEventListener(BrokerStateStore brokerStateStore) {
-        this.brokerStateStore = brokerStateStore;
+    public ConnectionRegistryEventListener(RegistryGossipAppService gossipService) {
+        this.gossipService = gossipService;
     }
 
     @EventListener
     public void onConnectionRegistered(ConnectionRegisteredEvent event) {
-        handle(() -> brokerStateStore.putConnectionState(event.userId(), event.gatewayId()),
-                "connection registered");
+        handle(() -> gossipService.observeConnectionRegistration(event), "connection registered");
     }
 
     @EventListener
     public void onConnectionRemoved(ConnectionRemovedEvent event) {
-        handle(() -> brokerStateStore.removeConnectionState(event.userId(), event.gatewayId()),
-                "connection removed");
+        handle(() -> gossipService.observeConnectionRemoval(event), "connection removed");
     }
 
     @EventListener
     public void onConnectionSynced(ConnectionSyncedEvent event) {
-        handle(() -> brokerStateStore.updateConnectionSnapshot(
-                event.gatewayId(), event.userIds(), event.removedLocations()), "connection snapshot updated");
+        handle(() -> gossipService.observeConnectionSnapshot(event), "connection snapshot updated");
     }
 }

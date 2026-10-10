@@ -4,7 +4,7 @@ INSERT INTO `db_iam_app` (`app_id`, `app_key`, `name`, `status`)
 VALUES (10001, 'imIam', 'IM Chat IAM', 1),
        (10002, 'imAdmin', 'IM Chat Admin', 1),
        (10003, 'imAudit', 'IM Chat Audit', 1),
-       (10004, 'imMonitor', 'IM Chat Monitor', 1)
+       (10004, 'imOps', 'IM Chat Ops', 1)
 ON DUPLICATE KEY UPDATE
     `name` = VALUES(`name`),
     `status` = VALUES(`status`),
@@ -22,7 +22,7 @@ VALUES
  '$2y$12$m3cMzzeC7kO/mCLjZ1O9SOkWTWxpRcv/SwREGTviJsWxCNgXgJD2u',
  'AUTHORIZATION_CODE REFRESH_TOKEN', 'openid profile',
  JSON_ARRAY('http://localhost:18041/iam/callback'), JSON_ARRAY('http://localhost:18041/'), 1),
-('im-monitor-client', 10004, 10004, 'IM Monitor web',
+('im-ops-client', 10004, 10004, 'IM Ops web',
  '$2y$12$w3MtSxIKLlrVofYgezXwruymY.5vd8JovhYrdDX7.xzXONbvP84Cq',
  'AUTHORIZATION_CODE REFRESH_TOKEN', 'openid profile',
  JSON_ARRAY('http://localhost:18043/iam/callback'), JSON_ARRAY('http://localhost:18043/'), 1),
@@ -32,7 +32,7 @@ VALUES
 ('im-audit-catalog', 10003, 10001, 'IM Audit permission catalog',
  '$2y$12$HYUcspEQtNWSRVkAJDSn9ugOq/wyoVU05XMLmNpJ9o1FoSCeo4vK2',
  'CLIENT_CREDENTIALS', 'iam.catalog.write', JSON_ARRAY(), JSON_ARRAY(), 1),
-('im-monitor-catalog', 10004, 10001, 'IM Monitor permission catalog',
+('im-ops-catalog', 10004, 10001, 'IM Ops permission catalog',
  '$2y$12$Holi4ZcD2jVi1Zd7zAkOn.pSZWU014SgP3j8OXYyvSIhwfzfjscVy',
  'CLIENT_CREDENTIALS', 'iam.catalog.write', JSON_ARRAY(), JSON_ARRAY(), 1)
 ON DUPLICATE KEY UPDATE

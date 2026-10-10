@@ -12,7 +12,7 @@ UI_ROOTS=(
   "im-management/im-admin/ui"
   "im-management/im-audit/im-audit-server/ui"
   "im-management/im-iam/im-iam-server/ui"
-  "im-management/im-monitor/ui"
+  "im-management/im-ops/ui"
 )
 EXPECTED_PORTS=(18042 18041 18040 18043)
 TOKENS=(
@@ -65,7 +65,7 @@ NODE
   for console_location in \
       "VITE_IAM_CONSOLE_URL|http://localhost:18040" \
       "VITE_AUDIT_CONSOLE_URL|http://localhost:18041" \
-      "VITE_MONITOR_CONSOLE_URL|http://localhost:18043" \
+      "VITE_OPS_CONSOLE_URL|http://localhost:18043" \
       "VITE_ADMIN_CONSOLE_URL|http://localhost:18042"; do
     environment_name="${console_location%%|*}"
     local_default="${console_location#*|}"
@@ -91,7 +91,7 @@ NODE
     printf '%s uses a browser-native confirmation API\n' "$relative_ui_root" >&2
     exit 1
   fi
-  if rg -n "(from|@import).*im-(admin|audit|iam|monitor)" \
+  if rg -n "(from|@import).*im-(admin|audit|iam|ops)" \
       "$ui_root/src"; then
     printf '%s imports UI source owned by another management application\n' "$relative_ui_root" >&2
     exit 1

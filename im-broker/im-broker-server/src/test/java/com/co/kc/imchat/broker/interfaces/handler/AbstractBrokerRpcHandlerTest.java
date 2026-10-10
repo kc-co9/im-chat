@@ -1,6 +1,7 @@
 package com.co.kc.imchat.broker.interfaces.handler;
 
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
+import com.co.kc.imchat.broker.support.BrokerRequestChainTestSupport;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import org.junit.jupiter.api.Test;
 
@@ -13,7 +14,7 @@ class AbstractBrokerRpcHandlerTest {
         TestRpcHandler handler = new TestRpcHandler();
         TestParams params = new TestParams("gw-1", 1001L);
 
-        String result = handler.handle(JsonUtils.toJson(params));
+        String result = (String) BrokerRequestChainTestSupport.passThroughChain(handler).handle(null, JsonUtils.toJson(params));
 
         assertThat(result).isEqualTo("gw-1:1001");
         assertThat(handler.params).isEqualTo(params);

@@ -87,6 +87,10 @@
             <artifactId>im-nacos</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.co.kc.im</groupId>
+            <artifactId>im-raft</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>

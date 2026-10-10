@@ -489,10 +489,10 @@ services:
       IM_IAM_SERVICE_URI: http://im-iam-server:18040
       IM_IAM_HTTP_READ_TIMEOUT: 10s
 
-  im-monitor:
+  im-ops:
     <<: *app
     depends_on: *management-app-depends-on
-    image: im-chat/im-monitor:local
+    image: im-chat/im-ops:local
     ports:
       - "127.0.0.1:18043:18043"
       - "127.0.0.1:19043:19043"
@@ -500,10 +500,10 @@ services:
       context: ../..
       dockerfile: deploy/local/app.Dockerfile
       args:
-        JAR_FILE: im-management/im-monitor/target/*-exec.jar
+        JAR_FILE: im-management/im-ops/target/*-exec.jar
     environment:
       <<: *app-environment
-      SW_AGENT_NAME: im-monitor
+      SW_AGENT_NAME: im-ops
       MANAGEMENT_SERVER_PORT: 19043
       IM_IAM_SERVICE_URI: http://im-iam-server:18040
       IM_IAM_HTTP_READ_TIMEOUT: 10s

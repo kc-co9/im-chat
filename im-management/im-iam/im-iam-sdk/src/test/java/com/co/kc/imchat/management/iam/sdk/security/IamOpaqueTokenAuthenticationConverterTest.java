@@ -35,7 +35,7 @@ class IamOpaqueTokenAuthenticationConverterTest {
         IamOpaqueTokenAuthenticationConverter converter =
                 new IamOpaqueTokenAuthenticationConverter("imAudit");
 
-        assertThatThrownBy(() -> converter.convert("token", principal("imMonitor")))
+        assertThatThrownBy(() -> converter.convert("token", principal("imOps")))
                 .isInstanceOf(BadOpaqueTokenException.class);
     }
 

@@ -5,13 +5,13 @@
 | 模块 | 职责 | 当前状态 |
 |---|---|---|
 | `im-iam` | 统一管理端身份、OAuth2/OIDC、应用级 RBAC；聚合 `im-iam-server` 与 `im-iam-sdk` | 已实现基础闭环 |
-| `im-monitor` | 发现 Broker 管理端点，聚合只读业务诊断状态并提供监控页面 | 本次实现 |
+| `im-ops` | 聚合 Broker 诊断并发起受控集群 operation，提供运行控制台 | 已接入 IAM 与集中审计 |
 | `im-admin` | IAM 接入、普通用户管理和管理 UI | 已接入 IAM 与集中审计 |
 | `im-audit` | 集中审计契约、接收、追加存储、查询、独立 UI 和 Excel 导出 | 已实现基础闭环 |
 
-`im-iam-server` 是独立部署的统一认证与授权中心，`im-iam-sdk` 是 Admin、Monitor
-接入该中心的公共契约和 Spring Security 集成。Admin 与 Monitor 仍分别构建和部署，
-不共享业务 Controller、应用服务或 UI；Monitor 保持只读，Admin 的普通用户写操作通过
+`im-iam-server` 是独立部署的统一认证与授权中心，`im-iam-sdk` 是 Admin、Ops
+接入该中心的公共契约和 Spring Security 集成。Admin 与 Ops 仍分别构建和部署，
+不共享业务 Controller、应用服务或 UI；Ops 不直接修改 Broker 状态，它只把操作意图提交给 Broker Leader，Admin 的普通用户写操作通过
 Account Admin Facade 执行，不直连 Account 数据库。
 
 `im-audit-sdk` 供管理应用发布 BUSINESS/SECURITY 审计事实，`im-audit-server` 是唯一审计

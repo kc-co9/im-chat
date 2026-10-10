@@ -24,7 +24,7 @@ class BrokerMessageNotifierTest {
         FrameResponse frame = new FrameResponse("1", FrameType.PUSH, "message.private.sent", null,
                 "trace", null, null, Map.of("messageId", 1L, "eventId", "event-1", "receiptId", "receipt-1"));
 
-        BrokerFrameWriteResult response = notifier.notify(2L, frame);
+        BrokerFrameWriteResult response = notifier.notify("receipt-1", 2L, frame);
 
         assertEquals(2L, response.userId());
         assertEquals(List.of("conn-1"), response.acceptedConnectionIds());
@@ -36,6 +36,7 @@ class BrokerMessageNotifierTest {
         public <T, R> R invoke(String address, String service, String operation, T request,
                                Class<R> responseType, int timeoutMillis) {
             BrokerFrameWriteParams params = (BrokerFrameWriteParams) request;
+            assertEquals("receipt-1", params.routeContext().operationId());
             return (R) BrokerFrameWriteResult.writeResult(params.userId(), acceptedConnectionIds, List.of());
         }
     }

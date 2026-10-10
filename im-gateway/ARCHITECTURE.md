@@ -47,7 +47,7 @@ sequenceDiagram
     Client->>Gateway: TCP connect + HTTP Upgrade
     Gateway->>Account: 握手前认证
     Account-->>Gateway: userId + Session version
-    Gateway->>Broker: 注册 userId -> gatewayId
+    Gateway->>Broker: 注册 userId -> gatewayId + routeRevision
     Gateway-->>Client: WebSocket Upgrade 完成
     Client->>Gateway: 文本帧
     Gateway->>Broker: 上行 Frame
@@ -57,8 +57,16 @@ sequenceDiagram
 
 - 每条连接的 `userId`、`sessionVersion`、`connectionId` 和 Channel 只保存在所属 Gateway。
 - Broker 只获得 `userId -> gatewayId`，不获得 Channel 或 connectionId。
+- 每次 Gateway 进程启动生成新的随机 `gatewayId`；连接注册、注销和完整快照共用进程内单调
+  `routeRevision`，旧进程身份不会继承新进程水位。
+- 周期任务从本机 Registry 读取原子水位，按 committed `BrokerClusterState` 将用户分片并直达各自
+  RouteBroker。上一轮非空、本轮为空的分片发送空快照，避免异常断连残留。
+- 全部目标分片成功应用后，Gateway 向 Raft Leader 提交整轮 ACK；ACK 绑定 epoch、全局 routeRevision、
+  活跃用户数和 checksum，用于 drain/故障路由重建收口，不等于客户端消息 ACK。
 - 心跳、读空闲、帧大小和协议升级由显式 Netty pipeline 管理；阻塞认证使用专用有界线程池，完成后回到 Channel EventLoop。
 - 下行写入结果逐连接返回，只表示 Gateway 接受写入，不等于客户端业务 ACK。
+- 下行以 `deliveryId + connectionId` 在有界最低窗口内去重，`deliveryAttemptId` 仅用于观测；容量耗尽时
+  明确拒绝而不是提前淘汰。关闭控制以 `operationId + userId + sessionVersion` 去重。
 - 本机 `ConnectionRegistry.writeFrame` 使用 `im.gateway.frame.write` 记录 Channel 写入处理结果和 duration，不记录用户、连接或消息身份标签。该 duration 截止于 Gateway 接受 Netty write，不包含客户端事件循环处理或业务 ACK。
 - Account 退出或替换 Session 时，Gateway 只关闭匹配旧 `sessionVersion` 的连接，避免乱序关闭新会话。
 
@@ -68,7 +76,7 @@ sequenceDiagram
 |---|---|---|
 | HTTP 请求身份 | 单次请求上下文 | 请求结束清理 |
 | WebSocket Channel 与 connectionId | 目标 WS Gateway | Channel 关闭时本地删除并通知 Broker |
-| user -> gateway 路由 | Broker | 注册、注销、快照同步与 TTL 收敛 |
+| user -> gateway 路由 | RouteBroker | 单调增量、原子分片快照、tombstone 与 Gateway 租约收敛 |
 | Access Token 与 Session version | Account | Gateway 每次握手/HTTP 请求在线校验 |
 | ReceiptTask 与 ACK | Message | Gateway 只转发，不持久化或重试 |
 

@@ -4,4 +4,4 @@
 
 ## Active plans
 
-当前没有 active execution plan。
+- [Broker 生产候选路由容量](2026-10-10-broker-routing-capacity.md)：C1 因真实候选环境缺失而 `blocked`；短时演练和正式测量尚未完成。

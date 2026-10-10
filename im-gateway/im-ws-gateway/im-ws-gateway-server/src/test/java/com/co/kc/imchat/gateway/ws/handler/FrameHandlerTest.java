@@ -2,7 +2,6 @@ package com.co.kc.imchat.gateway.ws.handler;
 
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionSyncParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
@@ -105,10 +104,6 @@ class FrameHandlerTest {
 
         @Override
         public void registerGateway(GatewayRegisterParams command) {
-        }
-
-        @Override
-        public void syncConnections(ConnectionSyncParams command) {
         }
 
         @Override

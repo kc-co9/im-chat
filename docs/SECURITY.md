@@ -7,15 +7,27 @@
 - HTTP 请求和 WebSocket 握手通过 `im-account` 在线认证 Access Token；超时、线程池饱和、结果格式错误或 Provider 失败时，Gateway 必须 fail closed。
 - Gateway 删除外部传入的用户与 Session Header，只根据 Account 认证结果重新构建。
 - Broker、Gateway 和 Service RPC 都是内部接口，不得作为公共客户端 API 暴露。
+- Gateway 的注册、心跳、注销、连接增量、完整路由快照和整轮 ACK 必须绑定 Bolt 传输身份。Broker 只从当前 mTLS
+  session 的 URI SAN（其次为证书 Subject）解析 workload identity，并要求它与已注册 `gatewayId`、端点和
+  有效租约一致；请求体中的 `gatewayId` 不是身份事实。
+- `trusted-network://` 身份回退只用于本地明文环境。生产必须关闭
+  `im.broker.routing.allow-trusted-network-gateway-identity`，同时启用 Bolt 双向 TLS 和客户端证书校验。
+- Broker peer 的 RouteLookup 与 drain cleanup 只接受已提交成员的 mTLS workload identity，声明的
+  requesterBrokerId 必须与证书身份一致。cleanup 还必须逐项匹配 Raft operation 中的 old/new epoch、目标
+  Broker 和 Gateway ACK 水位。生产必须关闭 `allow-trusted-network-broker-identity`；本地回退不构成生产授权。
+- Gateway 下行 Bolt 只接受 committed Broker 身份。Frame 与关闭 Handler 不信任浏览器或请求体伪造的
+  Broker 身份；稳定 delivery/operation 标识负责防止 timeout、丢响应和跨 epoch 重试重复执行。
 - IAM 保护的 RPC 只通过 `im-dubbo` 保留 Attachment 携带 Access Token。Provider 必须在业务 Adapter 前完成认证与 Scope 检查；认证身份来自 Spring Security，不来自 RPC Params。Filter 每次调用后恢复 Attachment 和安全上下文，不记录 Token 值。
-- Broker management HTTP 只服务运维。默认监听 loopback，只能向 `im-monitor` 所在运维网络开放；浏览器必须通过 `im-monitor` 访问 Broker 诊断。
-- `im-iam-server` 是管理凭证和 RBAC 的唯一权威。Admin 与 Monitor 只接受 IAM 支持的 BFF Session，不接受普通 Account Token。
+- Broker management HTTP 只服务运维。默认监听 loopback，只能向 `im-ops` 所在运维网络开放；浏览器必须通过 `im-ops` 访问。写请求额外校验 Ops 服务凭证、`im-broker-management` audience 和操作 scope，管理员身份与 Audit 由 Ops 边界负责。
+- `im-iam-server` 是管理凭证和 RBAC 的唯一权威。Admin 与 Ops 只接受 IAM 支持的 BFF Session，不接受普通 Account Token。
 - `im-audit-server` 是管理 Audit 持久化的唯一权威。浏览器 API 使用 IAM BFF Session；内部 HTTP 接收仅接受具有 `audit:ingest` 的专用 Client Credentials Token。
 - Service Facade 与 SDK 定义传输契约，敏感领域模型或持久化模型不得通过这些边界泄漏。
 
 ## 配置与密钥
 
 - 不得提交生产凭证、Token、私钥和环境专属 Namespace ID。
+- Bolt TLS keystore 由部署环境挂载，不得提交到仓库。当前 SOFA Bolt 配置使用同一 keystore 提供本机私钥
+  证书链与对端信任材料，因此生产文件必须同时包含正确的私钥条目和信任 CA，并限制文件读取权限。
 - `im-account` 是唯一 Token 签发方和 Session 认证权威。启用 JWT 时，任何 Profile 下缺少密钥或密钥少于 64 个 UTF-8 字节都必须启动失败。
 - 仓库配置可包含非生产本地密钥以保证确定性启动；所有部署环境必须通过 Nacos 覆盖，且不得将其复用为生产密钥。
 - 认证与授权日志不得包含密码、Access/Refresh Token、Refresh fingerprint/digest、完整认证 Body、用户 ID 或 Session version。
@@ -31,7 +43,7 @@
 ## 管理端授权
 
 - 每个管理端点都由应用自有的 Spring Security Authority 和 `@PreAuthorize` 保护；隐藏 UI 控件只改善体验，不构成授权。管理员权限在 Access Token 签发或刷新时固化，高风险账号变化会撤销当前授权。
-- 只有 IAM 管理管理员凭证、浏览器应用、机器 Client 和角色。Admin 拥有普通用户操作，Monitor 拥有只读诊断，Audit 拥有全部管理审计事实。
+- 只有 IAM 管理管理员凭证、浏览器应用、机器 Client 和角色。Admin 拥有普通用户操作；Ops 拥有诊断及分离的 Broker 分流、Raft、强制操作权限；Audit 拥有全部管理审计事实。
 - 内置角色不可修改或删除。角色和管理员变化会撤销受影响的管理员 Session，最后一个活跃超级管理员不可禁用。
 - 管理审计注解和显式认证/协议 Publisher 不序列化参数、Body、返回值、凭证、Cookie、Session/CSRF 标识、Token、SQL 或异常堆栈。Audit 投递失败与原业务结果隔离。
 - Audit 传输 Payload 不声明 `sourceApp`。HTTP 接收根据已认证机器 Client 推导，Kafka 接收由来源专属 Binding 注入；Producer 控制的 Payload 不能覆盖这一可信事实。
@@ -45,7 +57,7 @@
 ## 变更要求
 
 - 新增入口必须明确认证和授权决策。
-- Broker 诊断保持只读，只接受单用户路由查询，不得暴露全量路由、消息 Payload、凭证、完整堆栈或写操作。
+- Broker 诊断保持只读，只接受单用户路由查询，不得暴露全量路由、消息 Payload、凭证或完整堆栈。集群写入只允许通过受认证 operation API，并由 Broker 复核 epoch、状态迁移、quorum 和幂等性。
 - Broker management、Actuator 和 OpenAPI 路径不要求普通用户 Session Header，默认绑定 loopback。远程开放必须通过部署网络策略限制，因为 User Context Header 不是管理认证。
 - 新增跨进程序列化类型必须提供输入校验和兼容性测试。
 - 新依赖和 Plugin 自动配置只能作用于确实需要它们的模块。

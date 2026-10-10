@@ -52,6 +52,8 @@ im:
       host: 127.0.0.1
       port: 19020
       history-capacity: 100
+      write-audience: im-broker-management
+      write-token: ${IM_BROKER_MANAGEMENT_WRITE_TOKEN:local-ops-management-token}
     instance:
       host: ${IM_BROKER_HOST:127.0.0.1}
       port: ${im.bolt.server.port}
@@ -60,10 +62,57 @@ im:
       gossip-fanout: 2
       gossip-timeout-millis: 3000
       gossip-removed-ttl-millis: 300000
+    raft:
+      cluster-id: ${IM_BROKER_CLUSTER_ID:local-broker-cluster}
+      group-id: broker-cluster-state
+      node-id: ${IM_BROKER_NODE_ID:broker-local-1}
+      endpoint: ${IM_BROKER_RAFT_ENDPOINT:127.0.0.1:18120}
+      data-directory: ${IM_BROKER_RAFT_DATA_DIRECTORY:./data/broker-raft}
+      initial-voters:
+        - ${IM_BROKER_RAFT_ENDPOINT:127.0.0.1:18120}
+      initial-learners: []
+      election-timeout-millis: 1000
+      snapshot-interval-seconds: 300
+      command-timeout-millis: 5000
+      minimum-voter-count: 1
+      operation-history-capacity: 1000
+      bootstrap-brokers:
+        - broker-id: ${IM_BROKER_NODE_ID:broker-local-1}
+          route-endpoint: ${IM_BROKER_ROUTE_ENDPOINT:127.0.0.1:18020}
+          membership-endpoint: ${IM_BROKER_RAFT_ENDPOINT:127.0.0.1:18120}
+          membership-role: VOTER
+          routing-state: ACTIVE
+    routing:
+      algorithm: RENDEZVOUS_HASH
+      max-lease-duration: 4s
+      lease-pending-capacity: 16
+      renewal-interval: 1s
+      max-clock-drift-allowance: 100ms
+      lease-safety-margin: 200ms
+      max-scheduling-pause: 2s
+      network-safety-margin: 500ms
+      max-pending-snapshot-batches: 1024
+      max-pending-snapshot-bytes: 67108864
+      snapshot-batch-timeout: 10s
+      route-tombstone-grace-period: 2m
+      gateway-workload-identity-prefix: spiffe://im-chat/gateway/
+      allow-trusted-network-gateway-identity: ${IM_BROKER_ALLOW_TRUSTED_NETWORK_GATEWAY_IDENTITY:true}
+      route-lookup-timeout: 300ms
+      route-lookup-negative-cache: 50ms
+      route-lookup-negative-cache-capacity: 1024
+      drain-cleanup-result-capacity: 10000
+      max-route-event-ttl: 10s
+      drain-operation-timeout: 2m
+      drain-reconcile-interval: 1s
+      drain-cleanup-rpc-timeout: 3s
+      broker-workload-identity-prefix: spiffe://im-chat/broker/
+      allow-trusted-network-broker-identity: ${IM_BROKER_ALLOW_TRUSTED_NETWORK_BROKER_IDENTITY:true}
+      message-workload-identity-prefix: spiffe://im-chat/message/
+      account-workload-identity-prefix: spiffe://im-chat/account/
+      ops-workload-identity-prefix: spiffe://im-chat/im-ops/
+      allow-trusted-network-service-identity: ${IM_BROKER_ALLOW_TRUSTED_NETWORK_SERVICE_IDENTITY:true}
     registry:
-      broker-ttl: 60s
       gateway-ttl: 60s
-      connection-ttl: 60s
     gateway-push:
       bolt:
         timeout-millis: 3000

@@ -13,6 +13,7 @@ public class ImBoltProperties {
     @Data
     public static class Client {
         private boolean enabled;
+        private Tls tls = new Tls();
     }
 
     @Data
@@ -22,5 +23,15 @@ public class ImBoltProperties {
         private String host = "0.0.0.0";
 
         private int port = 12200;
+        private Tls tls = new Tls();
+    }
+
+    @Data
+    public static class Tls {
+        private boolean enabled;
+        private boolean needClientAuth = true;
+        private String keyStore;
+        private String keyStorePassword;
+        private String keyStoreType = "PKCS12";
     }
 }

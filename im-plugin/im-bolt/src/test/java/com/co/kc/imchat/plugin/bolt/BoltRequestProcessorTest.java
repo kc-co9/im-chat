@@ -3,6 +3,7 @@ package com.co.kc.imchat.plugin.bolt;
 import com.co.kc.imchat.plugin.bolt.core.BoltRequestProcessor;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequest;
 import com.co.kc.imchat.plugin.bolt.model.BoltResponse;
+import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 import com.co.kc.imchat.plugin.bolt.spi.BoltRequestHandler;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +27,8 @@ class BoltRequestProcessorTest {
             }
 
             @Override
-            public Object handle(String payload) {
+            public Object handle(BoltRequestContext context, String payload) {
+                assertThat(context).isNotNull();
                 return new PingResponse("pong:" + payload);
             }
         };

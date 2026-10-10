@@ -15,7 +15,7 @@ ruby -rjson -rdigest -ropen3 -e '
   units = {
     "im-common" => ["im-common"], "im-plugin" => ["im-plugin"], "im-gateway" => ["im-gateway"], "im-broker" => ["im-broker"],
     "im-account" => ["im-service/im-account"], "im-social" => ["im-service/im-social"], "im-message" => ["im-service/im-message"],
-    "im-iam" => ["im-management/im-iam"], "im-admin" => ["im-management/im-admin"], "im-monitor" => ["im-management/im-monitor"],
+    "im-iam" => ["im-management/im-iam"], "im-admin" => ["im-management/im-admin"], "im-ops" => ["im-management/im-ops"],
     "im-audit" => ["im-management/im-audit"], "im-test" => ["im-test"]
   }
   shared_review_paths = %w[AGENTS.md ARCHITECTURE.md README.md pom.xml scripts deploy docs]

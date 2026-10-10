@@ -69,12 +69,12 @@ while IFS= read -r file; do
       add_module "im-test/im-e2e-test"
       ;;
     im-management/im-admin/*) add_module "im-management/im-admin" ;;
-    im-management/im-monitor/*) add_module "im-management/im-monitor" ;;
+    im-management/im-ops/*) add_module "im-management/im-ops" ;;
     im-management/im-iam/im-iam-sdk/*)
       add_module "im-management/im-iam/im-iam-sdk"
       add_module "im-management/im-iam/im-iam-server"
       add_module "im-management/im-admin"
-      add_module "im-management/im-monitor"
+      add_module "im-management/im-ops"
       add_module "im-management/im-audit/im-audit-server"
       ;;
     im-management/im-iam/im-iam-server/*) add_module "im-management/im-iam/im-iam-server" ;;
@@ -90,7 +90,7 @@ while IFS= read -r file; do
     im-management/*)
       add_module "im-management/im-iam/im-iam-server"
       add_module "im-management/im-admin"
-      add_module "im-management/im-monitor"
+      add_module "im-management/im-ops"
       add_module "im-management/im-audit/im-audit-server"
       ;;
     im-service/im-account/im-account-admin-facade/*)
@@ -106,6 +106,7 @@ while IFS= read -r file; do
     im-service/*/*-server/*) add_module "$(cut -d/ -f1-3 <<< "$file")" ;;
     im-test/im-architecture-test/*) add_module "im-test/im-architecture-test" ;;
     im-test/im-e2e-test/*) add_module "im-test/im-e2e-test" ;;
+    im-test/im-routing-ha/*) add_module "im-test/im-routing-ha" ;;
     im-test/im-load-test/*) add_module "im-test/im-load-test" ;;
   esac
 done <<< "$changed_files"

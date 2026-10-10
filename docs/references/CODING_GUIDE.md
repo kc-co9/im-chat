@@ -10,12 +10,17 @@
 - 包按稳定职责和依赖方向组织。使用 `model`、`codec`、`spi`、`client`、`repository` 等已有语义，不把能力接口、技术实现和数据模型堆在同一包，也不按类数量机械拆包。单个 Adapter 可直接放在 `adapter` 根包；只有形成多个同类能力或明确独立依赖边界时才增加二级包，不为预期扩展创建只有一个类的空洞层级。
 - 方法优先提前返回。复杂条件提取为能够表达业务判断的方法，避免嵌套分支和难以阅读的 Stream 链。
 - Stream 用于纯转换、过滤和聚合；删除、异常隔离、多步副作用和状态修改使用普通循环。
+- 请求责任链由配置声明节点顺序，业务 Handler 放在最后一个节点；Handler 不反向持有链，
+  不用额外的 Terminal 回调把业务排除在链节点之外。需要 Lease 等执行保护时，前置节点环绕
+  后续真实业务调用。传输 Processor 注册完整链入口，不能另行注册绕过准入的原始 Handler。
 - 集合返回不可变结果；无结果使用空集合或 `Optional.empty()`，不返回 `null`。只有明确允许空值的回调或框架契约才返回 `null`。
 - 公共契约、配置项、复杂业务规则、生命周期和非显然失败行为提供简洁 Javadoc。自解释的私有方法、getter 和简单 Controller 不写重复注释。普通说明使用 `/* ... */`；Javadoc 使用多行 `/**`、` *`、` */` 结构，类注释统一采用多行 Javadoc；字段和 record 组件的简短说明优先使用 `/* ... */`，只有需要生成 API 文档时才使用 Javadoc。
 - record 属性较多时每个组件单独换行，并为每个组件提供简短块注释，避免长参数列表降低可读性。
 - 日志使用项目统一 Logger，不输出密码、Access/Refresh Token、指纹、完整消息内容或用户隐私。
 
-## DDD 分层
+## 模块结构与 DDD 分层
+
+先按[模块结构规范](MODULE_STRUCTURE_GUIDE.md)判断模块应采用 DDD、技术分层或“DDD 核心 + 技术子系统”。本节定义 DDD 代码的具体约束，不要求纯技术模块伪造聚合、Repository 或完整分层目录。
 
 业务服务使用以下职责边界：
 
@@ -30,14 +35,50 @@ interfaces -> application -> domain
 - Spring Security `AuthenticationProvider`、`OAuth2AuthorizationService`、Filter 等入站框架 SPI 遵循相同边界：同一入口需要认证、授权状态迁移、权限解析或其他领域协作时，由应用服务完整编排并返回应用层结果；SPI 实现只转换框架输入输出和协议异常，不直接访问领域 Repository 或 MyBatis 类型，也不把用例拆成应用服务调用和领域服务调用。`findById`、`findByToken` 等查询 SPI 不修改领域状态；需要撤销、消费或记录失败时，由认证 Provider 调用明确的 Command 用例。纯技术接口适配（例如 `PasswordEncoder` 委托领域密码能力）不因此强制增加薄应用服务。
 - Spring Authorization Server 使用未知 Token 类型查询授权时，只把请求提交的原始 Token 恢复到摘要匹配的凭据；其他授权码、Access Token、Refresh Token 和 ID Token 保持摘要占位，避免同一原始值对应多个凭据并改变默认 Provider 的活跃性判断。
 - OAuth Claims 以 `Map<String, Object>` 保存为 JSON 时，数据库 Transformer 保留 JSON 边界值；进入 Spring Authorization Server 的适配 Transformer 再恢复框架要求的标准类型。`iat`、`exp` 和 `nbf` 在构建 Spring Token 前使用 `Instant`，不能把 JSON 反序列化产生的字符串直接交给 Token 活跃性判断。
-- `application` 只放应用服务和用例编排；事务、锁和跨领域协作由应用服务使用，但锁场景常量、审计切面、应用层异常等可复用组件放在模块顶层 `support`，不在 `application` 下建立非应用服务子包。
+- `application` 只放用例编排及其直接依赖的应用职责。应用用例可以直接按稳定业务能力分组；只有实际包含不同类型职责且分类有助导航时才增加 `service`、`port`、`policy` 层级，不为单一 AppService 类型或空目录保留中间层。公开用例入口使用 `*AppService`；只服务单一入口且没有独立调用方、生命周期或替换实现的步骤优先写成 AppService 私有方法，不为控制文件长度建立 Engine、Coordinator、Executor 或测试专用 interface。只有协作能力形成真实独立边界时才提取顶层类型，只有同类稳定入口数量足够时才增加下一层业务子包。policy 保存应用级授权、准入和校验；port 只保存 application 访问外部技术能力所依赖的 seam，并由 infrastructure adapter 实现。内部协作 interface 不能因为是 Java interface 就放进 port。事务、锁和跨领域协作由应用服务使用。锁场景常量、审计切面、应用层异常等必须按实际层级和能力归位，不以模块顶层 `support` 作为默认兜底目录。模块内部跨层共享、无状态的协议无关异常、安全上下文或受信传输身份解析器、协议无关纯函数工具可以分别进入 `support.exception`、`support.security`、`support.util`；仅用于基础设施的请求责任链留在基础设施层；已有框架 SPI 足以表达入口时，不新增同形空接口放入 support。身份解析器可以读取传输上下文，但不能依赖 application 实现或执行授权策略，授权决策仍属于 application 或 domain。
 - `domain` 保存业务状态和规则，不依赖 Spring、HTTP、Bolt、Dubbo、Nacos、Redis、Mapper 或持久化实体。
+- 公共领域类型的类级 Javadoc 必须明确其 DDD 角色，例如聚合根、实体、值对象、领域服务、Repository、
+  领域变更或领域结果，并说明关键身份、生命周期、一致性边界或不变量。注释使用领域语言，不以 Raft、
+  HTTP、数据库表或框架回调等实现细节代替领域语义。该规则当前为 Review-only；只有项目引入统一且不会
+  误标普通领域对象的 stereotype 元数据后，才按元数据增加机械检查。
+- `Change`、`Decision`、`Result` 描述类型承担的语义，不构成 DDD 层。一个内聚且规模可控的
+  `domain/<capability>` 可以共置聚合、实体、值对象、领域服务和 Repository；只有出现可独立理解和演进的
+  领域概念，或类型规模已明显影响导航时才继续分包，不能为单个后缀建立技术分类目录。
 - `infrastructure` 实现仓储、技术型领域能力、缓存、消息和外部集成。
+- 定时触发应用用例的任务是入站接口，放在 `interfaces/task`，与 HTTP、RPC 等入口共同调用应用服务。
+  调度线程池、Bean 装配和技术组件自身的启动、关闭、心跳或 Gossip 同步仍由 infrastructure 负责。
+  判断依据是入口职责，不因使用 `@Scheduled` 就将所有技术任务迁入接口层。
+- 接收模块业务事件的 Spring Listener 是入站接口，放在 `interfaces/listener`，只接收事件、隔离入口异常
+  并委托应用用例。注册表事件到 Gossip observation 的更新由应用服务协调，状态存储留在 infrastructure。
+  ApplicationReadyEvent、ContextClosedEvent 等技术组件启停监听按组件所有权归 infrastructure，
+  不按 `@EventListener` 注解将所有监听器一律迁移。
 - `adapter` 将外部服务能力转换为当前业务可理解的语义；它不是 inbound Controller/Handler 的替代名称。
+- Registry 存取契约在其领域能力包内维护，存储实现留在 infrastructure。返回值使用 Server 自有注册观察
+  和同步结果，不把 SDK DTO 作为领域契约；跨进程端点与响应在 Transformer 边界转换。
+  只读诊断用例可以直接编排 Registry 和技术 Tracker，不为唯一查询实现增加同形 port。
+- 同一业务能力的技术入口可以统一承载本机共识与远端查询，不因使用不同协议或只有一段查询代码
+  就强制拆出接口、Client 和第二个 Adapter。是否拆分依据独立职责、生命周期或真实替代实现；
+  业务准入仍由领域判断，协议转换和响应身份核对由 Adapter 负责。
 - `transformer` 负责接口、应用、领域、持久化和 SDK 模型之间的边界转换。
-- 运行态监控和诊断属于技术能力，不建模为业务领域聚合。DDD 业务服务仍按标准分层组织；Broker 等技术运行模块可以在 `support/<capability>` 下按 `model`、`service`、`state`、`tracker` 等稳定职责垂直组织完整技术子系统，不为其制造虚假的业务 Domain。远端诊断访问使用 Adapter 语义，不伪装成持久化 Repository；只有出现真实替代实现或需要稳定依赖倒置接口时才额外抽象 Gateway，不为唯一 Adapter 创建同形接口。
+- 结果类的静态工厂表达业务结果，如 `conflict`、`failure`，明确的失败原因与空字段由工厂集中处理。
+  工厂只对应一种固定失败原因时，message 内置；同一工厂覆盖不同失败原因时，由调用方传入具体
+  message，不为消除参数而合并原因、丢失诊断信息或新增一组仅按文案区分的工厂。
+  工厂接收业务标识、epoch 等领域值对象，在生成边界结果时再读取基础值。共识结果、协议载荷等
+  对象之间的字段映射归 Transformer，使用 `addLearnerResultFrom` 等目标明确的转换名称；结果类
+  不定义 `from`、`fromConsensusResult`、`xxxFrom`，也不以 `outcome` 或 `success` 重命名纯映射来绕过职责。
+  应用服务直接调用 Transformer，不为字段转换增加成功/失败分支。映射必须保留原状态、Leader 端点、
+  原因及已关联操作的接受/目标 epoch，不能把共识接受状态重新解释为业务终态。
+- 运行态监控和诊断属于技术能力，不建模为业务领域聚合。查询编排与输出放 application，HTTP 响应放 interfaces，指标与采样资源装配放 infrastructure；向应用提供技术状态或历史查询的具体能力放 adapter，可以直接维护其有界历史，不为同一能力拆出 port 和转发实现。不得在 `support/<capability>` 下重新建立 `model/service/io/tracker` 小型分层。远端诊断访问使用 Adapter 语义，不伪装成持久化 Repository；只有出现真实替代实现或需要稳定依赖倒置接口时才额外抽象 Gateway，不为唯一 Adapter 创建同形接口。
 
-可独立部署的 DDD 业务模块统一使用稳定的顶层骨架：`interfaces`、`application`、`domain`、`adapter`、`infrastructure`、`model` 和 `transformer`。业务能力可以在 `domain`、`interfaces` 内继续分组，但配置属性和 Bean 声明放在 `infrastructure/config`，生命周期组件放在 `infrastructure/lifecycle`，Repository 技术实现放在 `infrastructure/domain/repository`；不因模块入口或 UI 形态不同而另造平行分层名称。
+- Broker 保留 `support.context` 作为请求上下文与入口访问控制的集中目录，包括上下文、线程绑定、权限注解、scope 和拦截器；这是明确的横切职责，不是业务分层的兜底包。拦截器可以读取 typed 管理配置，不调用 application、domain、adapter、interfaces 或 Registry 实现；MVC Bean 注册仍放 infrastructure/config，领域层不得依赖 support。
+
+- 同一组应用用例对可预期业务分支采用一致的结果契约：状态/版本冲突和资格不满足返回明确业务结果，不混用参数异常与结果对象。输入格式校验仍属于边界，非预期程序错误不得伪装为业务拒绝；基础设施失败仅在明确约定的边界映射为可用性结果，否则保留异常传播。
+- 领域行为已登记本地操作后，后续流程依据返回的领域决定识别幂等重复，不重新查询已变化的聚合 exists 来判定是否为新请求；新的准入检查与历史重试恢复分开，不能因本地登记而跳过必要的远端证据。
+- 共识角色查询应明确主体，如 getLocalBroker().isLeader 表示本机 Raft 节点当前角色；本地角色标志不是多数派领导权证据，不能据此跳过 ReadIndex 或其他必要共识确认。本机能力入口复用现有运行实例，不复制领域实体或缓存另一份状态；集群影响的命令不因从本机发起就放入本机入口。
+- 方法名和参数名描述真实职责，通用 Broker 查询不命名为 learner 专属行为；成员资格判断由领域或对应应用用例完成，不夹带到通用技术查询。
+- Raft 最新 applied index 与已取得并应用的 quorum ReadIndex 不等价，方法、协议和响应字段必须表达实际返回值，不能用较宽泛的索引名称暗示更新程度。
+
+可独立部署的 DDD 业务模块统一使用稳定的顶层骨架：`interfaces`、`application`、`domain`、`adapter`、`infrastructure`、`model` 和 `transformer`。业务能力可以在 `domain`、`interfaces` 内继续分组，但配置属性和 Bean 声明放在 `infrastructure/config`，技术组件生命周期放在 `infrastructure/lifecycle`，定时用例入口放在 `interfaces/task`，Repository 技术实现放在 `infrastructure/domain/repository`；不因模块入口或 UI 形态不同而另造平行分层名称。
 
 模块只有一个领域能力时，领域层直接使用 `domain/model`、`domain/repository` 和按需存在的 `domain/service`，不增加与模块语义重复的能力包。出现多个相对独立的领域能力后，再使用 `domain/<capability>/model`、`repository`、`service` 分组；不为尚未出现的扩展预建包层级。
 
@@ -49,17 +90,17 @@ interfaces -> application -> domain
 
 数据库技术主键、领域业务 ID 和可识别业务编码必须按语义分离：`Identification.pkId` 只标识当前表行，不进入领域 Builder、外部契约或跨表关系；聚合之间通过稳定业务 ID 关联；供配置、页面和协议 Claim 使用的短编码不能冒充数值业务 ID。拥有独立身份、生命周期或一对多基数的接入配置应建模为独立聚合并通过业务 ID 归属业务应用，不因 Grant Type、传输协议等技术分支复制平行聚合。能够独立存在和重试创建的两个聚合使用独立 Command、应用用例和事务边界，不为了页面操作便利强制在一个注册方法中同时保存；只有业务不变量要求原子共生时才由一个用例编排。
 
-领域服务必须承载跨实体规则、多个领域对象协作或不自然属于单个聚合的业务决策。纯 codec、digest、Redis、HTTP 或委托调用不是领域服务；JWT、HMAC、BCrypt 等实现放在 `infrastructure/domain/service`，领域接口只表达签发、认证、密码校验等业务语义。不引入仓库未采用的 `application/port`、`application/model` 平行体系。
+领域服务必须承载跨实体规则、多个领域对象协作或不自然属于单个聚合的业务决策。纯 codec、digest、Redis、HTTP 或委托调用不是领域服务；JWT、HMAC、BCrypt 等实现放在 `infrastructure/domain/service`，领域接口只表达签发、认证、密码校验等业务语义。不引入 `application/model` 平行体系；`application/port` 仅在应用层确有外部技术依赖 seam 时使用，不作为所有 interface 的收纳目录。
 
 跨多个领域对象的全量同步、差集计算和状态迁移属于领域服务；应用服务只负责将 CQRS 输入转换为领域定义、调用领域服务并保存结果。领域服务不直接接收 Command、Query 或接口 DTO，也不把同步决策散落在应用服务中。
 
-自动过期且只用于限流、防暴力破解或短期故障隔离的计数、窗口和限制属于技术保护状态，放在 `support` 或 `infrastructure`，不映射为聚合业务状态，也不进入业务表。只有能够由业务人员管理、参与业务状态机并需要长期追溯的封禁、停用等事实才进入领域模型。技术保护组件必须定义原子更新、过期、成功清理和依赖不可用时的安全策略，并通过聚焦行为测试证明。
+自动过期且只用于限流、防暴力破解或短期故障隔离的计数、窗口和限制属于技术保护状态，放在 `infrastructure` 对应 capability，不映射为聚合业务状态，也不进入业务表。只有能够由业务人员管理、参与业务状态机并需要长期追溯的封禁、停用等事实才进入领域模型。技术保护组件必须定义原子更新、过期、成功清理和依赖不可用时的安全策略，并通过聚焦行为测试证明。
 
 单个聚合能够独立完成的字段变更由聚合行为表达，避免用一个通用资料更新方法混合多个独立业务意图。依赖 Repository 判断跨聚合唯一性等规则时使用领域服务；应用服务只负责加载聚合、调用领域行为并保存，不内联领域判断。聚合状态变更通常返回 `void`，不以布尔返回值驱动应用服务跳过持久化；只有调用方确实需要旧版本、授权结果等领域事实时才返回明确的领域结果对象。
 
 Repository 承担聚合生命周期删除时，聚合只校验删除所需的业务前置条件，不制造随后不会由 Repository 保存的内存状态。软删除字段由持久化机制维护时，应用服务先调用 `ensure*` 领域校验，再调用 Repository 的删除语义；只有删除事实作为聚合状态被正常保存时，才由聚合执行状态变更后统一 `save`。
 
-聚合从持久化状态重建时使用 Builder 或明确的重建数据对象承载多字段状态。Transformer 可以直接填充 Builder；只有重建包含业务决策或多对象协作时才进入领域服务。Builder 承担领域不变量校验时必须手写：Builder 内部持有通过私有无参构造器创建的领域对象，各方法直接填充该对象字段，不再重复声明一套 Builder 属性；`build()` 在返回对象前统一执行校验。不使用 Lombok `@Builder` 绕过该入口，也不为此保留长参数构造器。不要为简单 `new` 或 `build()` 增加无价值的委托方法。
+领域对象或聚合从持久化状态、共识载荷或协议快照重建时，使用 Builder 或明确的重建数据对象承载多字段状态。Transformer 可以直接填充 Builder；只有重建包含业务决策或多对象协作时才进入领域服务。Builder 承担领域不变量校验时必须手写：Builder 内部持有通过私有无参构造器创建的领域对象，各方法直接填充该对象字段，不再重复声明一套 Builder 属性；`build()` 在返回对象前统一执行校验。不使用 Lombok `@Builder` 绕过该入口，也不为此保留仅供 Builder 转发参数的长参数构造器。不要为简单 `new` 或 `build()` 增加无价值的委托方法。
 
 数据库技术主键仅用于持久化映射，不进入领域构造器或 Builder。需要恢复该标识时由 Domain Transformer 在领域对象构建完成后，通过持久化基类能力回填；领域构造器和 Builder 只接收业务身份与业务状态。持久化 rowVersion 不是业务状态，但必须在 Entity/Domain 转换时双向携带，并只在成功写入后回写当前聚合；数据库列仍命名为 `version`。公共 MyBatis Service 不统一解释写入 `false`，完整聚合 `save` 等存在后续事件、缓存、会话或关联副作用的 Repository 必须在冲突时中断用例，允许无匹配的 bulk/remove 则按自身契约处理。
 
@@ -82,10 +123,12 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 
 ## 应用服务与 CQRS
 
+- 顶层 `model` 先按类型职责组织，再按业务分组。Command、Query、DTO 等使用 `model/cqrs/<type>`，接口输入输出使用 `model/io`，枚举、身份、结果和值分别使用语义明确的类型目录；同一类型下只有一个业务组或类数量较少时不增加业务子目录，出现多个稳定业务组后才使用 `command/group`、`dto/friend`、`io/message` 等结构。
 - 应用服务以 `*AppService` 表达一个边界内的用例编排；按聚合、用例主体和事务边界组织职责，同一聚合的认证、管理和关系维护等紧密命令可以合并在一个应用服务中。不要仅按方法类别拆出只有单一调用方的薄应用服务，也不要为了减少类数量合并不同聚合或不同事务边界的用例。
 - 应用层 CQRS 查询意图使用 `*Query`；Repository 或持久化查询的过滤条件使用 `*QueryCondition`。新增过滤对象不使用语义模糊的 `*Criteria`、裸 `*Condition` 或持久化层 `*Query`。
 - 公开用例方法接收单个 Command、Query、Params 或其他明确输入对象，不直接接收 `String`、基本类型等标量业务参数，也不保留无调用方的标量重载。
-- Command、Query 是应用层输入边界，字段使用 `String`、包装数值、`Boolean`、时间、边界枚举或 `im-common` 中稳定的通用边界值对象，不直接持有领域聚合、业务值对象或 Repository 查询条件。分页 Query 可以直接持有 `Paging`，由接口 Transformer 从外部分页参数构造；应用服务在用例入口将其他基础值构造成领域对象和内部查询条件。必填数值使用包装类型并显式拒绝 `null`，避免 primitive 默认值掩盖缺失输入。
+- 面向公开用例的 Command、Query 是应用层输入边界，字段使用 `String`、包装数值、`Boolean`、时间、边界枚举或 `im-common` 中稳定的通用边界值对象，不直接持有领域聚合、业务值对象或 Repository 查询条件。共识日志等内部状态变更 Command 也按 type-first 规则放在 `model/cqrs/command`，但必须用封闭基类和明确命名与公开用例命令区分。分页 Query 可以直接持有 `Paging`，由接口 Transformer 从外部分页参数构造；应用服务在用例入口将其他基础值构造成领域对象和内部查询条件。必填数值使用包装类型并显式拒绝 `null`，避免 primitive 默认值掩盖缺失输入。
+- 需要超时、过期、预算或时间边界判断的组件使用 `java.time.Clock` 注入墙上时间，以支持确定性测试；不要用语义模糊的 `LongSupplier clock`。只记录普通创建时间且不存在时间分支时可以直接使用 `Instant.now()`。租约和耗时判断使用 `MonotonicTimestamp` 等值对象封装单调时间语义，领域服务不暴露 `LongSupplier` 时间依赖，也不能用可能回拨的墙上时间替代。
 - 可选文本查询条件在 Command/Query 构造边界先将 `null`、空串和纯空白统一归一化为 `null`，再执行字段关联校验；不得把空串继续转换为要求非空的领域值对象。
 - 框架回调提交已经完成协议处理的最终状态快照时，使用一个保存 Command 和应用用例，不根据状态变化来源再次执行协议动作。只有框架回调要求应用执行不同业务流程时，才由适配层选择具体 Command；不要在通用 `handle` 命令中加入可空判别字段和多组互斥参数。
 - 查询和有业务结果的命令返回 DTO、Result 或其他结果对象；没有结果的命令返回 `void`。
@@ -99,6 +142,7 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - `@DistributeLock` 的 SpEL 锁键直接返回业务标识或值对象，由锁切面统一转换为字符串；不要在表达式中显式调用 `toString()`。
 - 固定要求在事务成功提交后执行的 Adapter 外部副作用，可以在 Adapter 方法上声明 `@AfterTransactionCommit`；需要延迟锁、状态修改和外部调用等完整步骤时，由应用服务通过提交后模板编排整段操作。已经进入 `afterCommit` 回调后，如果后续状态变更不依赖数据库事务，应直接执行；不得为了再次触发提交后回调而人为开启无业务必要的 `REQUIRES_NEW` 事务。确需新事务时必须说明其持久化一致性目的。
 - 不增加仅供单元测试使用的生产构造器、兼容方法、wrapper 或 no-op/fake 实现。测试通过正式 Bean、`@TestConfiguration` 或直接依赖替身控制环境。
+- 包迁移或重构确认文件已无生产、测试、配置或文档调用方后，在同一步删除旧类、兼容壳、占位实现和过期测试，不把确定无用的文件留到任务末尾集中清理。只有存在已记录的迁移调用方、兼容期限和退出条件时才允许暂留。
 
 ## Adapter 与跨服务边界
 
@@ -143,7 +187,7 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - 局部计算、循环计数、集合大小以及语义明确且不表示“未提供”的内部判断可以使用基本类型；`is`、`has`、`can`、`matches` 等谓词方法通常返回 `boolean`。包装类型用于表达边界上的缺失风险，不代表业务允许 `null`。
 - 需要 Spring 可变绑定、ORM、协议无参构造或 setter 的类型使用普通 JavaBean，并用 Lombok 生成简单 getter、setter 和纯字段构造器。
 - `@RequiredArgsConstructor` 用于没有额外构造逻辑的组件；存在校验、派生字段、防御性复制或多个正式入口时保留显式构造器。
-- 领域对象的必填属性不超过 4 个且构造顺序清晰时，优先使用直接构造器并在构造器内校验；达到 5 个及以上，或参数组合容易错位、需要分组表达时，使用手写 Builder，在 `build()` 中统一校验。该阈值用于保持一致性，不覆盖具有特殊业务语义的工厂方法或重建入口。
+- 领域对象的必填属性不超过 4 个且构造顺序清晰时，优先使用直接构造器并在构造器内校验；达到 5 个及以上，或参数组合容易错位、需要分组表达时，使用手写 Builder，并采用 Builder 持有目标领域对象、方法直接赋值、`build()` 统一校验的模式。该阈值用于保持一致性，不覆盖具有特殊业务语义的工厂方法或重建入口。
 - `@Data` 只用于确实需要完整可变 Bean 语义的配置、请求、实体或兼容模型。领域值对象使用 record 或显式行为，避免无意生成 setter 和包含敏感字段的 `toString`。
 - 不使用 `@SneakyThrows` 隐藏边界异常。受检异常在合适边界转换为项目异常、记录或继续声明。
 
@@ -160,6 +204,12 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - HTTP 请求响应由 Spring/Jackson 绑定；Bolt、Gossip、缓存载荷和数据库 JSON 字符串等显式 JSON 转换统一使用 `JsonUtils`，生产代码不自行创建 `ObjectMapper`。确需使用 MyBatis-Plus `JacksonTypeHandler` 时，必须由 `im-datasource` 绑定应用统一 `ObjectMapper`，不能使用缺少 Java Time 等模块的内部默认实例。
 - 数据库 JSON 列默认由 Entity 使用 `String` 承接原始 JSON，并由持久化到领域的 Transformer 使用 `JsonUtils` 转换为领域值对象；写回时输出确定性 JSON。只有 Entity 明确把 `Map`、集合等结构作为持久化原生属性使用时才配置 TypeHandler，并通过聚焦测试固定该例外，不能让 TypeHandler 直接产生领域值对象。
 - `JsonUtils.getMapper()` 是进程共享实例，只用于第三方组件接入，调用方不得重新配置。
+
+## 校验与防御边界
+
+- 不做过度防御：协议输入、持久化重建和领域不变量应在明确的拥有方校验；内部调用已由类型、构造入口或既定契约保证的条件，不逐层重复检查，也不为没有事实依据的异常状态增加兜底分支或通用包装。
+- 不用默认值、吞异常、时间补偿或修改输入来掩盖违反契约的数据。先统一事实模型和边界精度，再执行必要校验；例如 Broker operation 的创建与完成统一毫秒精度，允许同毫秒完成，不用创建时间加一毫秒强行修正完成时间，真实早于创建时间仍拒绝。
+- 不把“避免过度防御”解释为取消认证、授权、领域不变量、并发控制、对象引用隔离、跨节点失败处理或必要资源上界；不同入口确实能绕过上游检查时仍需在一致性边界校验。新增防御分支须说明保护的具体契约、可到达路径或回归依据。
 
 ## 持久化与缓存
 
@@ -189,9 +239,13 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - Gauge 表示当前状态，Counter 表示累计事件，Timer 表示耗时。重复的计数和耗时样板优先通过 `im-metrics` 的注解能力隔离。
 - 指标、日志增强和 Gossip 通知等旁路能力失败时记录异常并隔离，不改变核心业务结果；安全、持久化和业务校验异常不得被静默吞掉。
 - 领域事件携带不可变领域值，不传播 HTTP request、RPC params、持久化对象或 Spring 事件类型。
+- 模块事件若只需要统一的发生时间契约，直接实现 `im-common` 的 `DomainEvent`；不要再建立仅重复
+  `occurredOn()` 的模块级标记接口。只有新增了真实且被调用方使用的共同语义时，才允许扩展专用事件接口。
 - 领域内同步事件可以参与当前事务；集成事件在事务提交后发布，失败进入明确的重试、补偿或可靠消息策略。
 - 来源应用、认证主体、租户等信任事实由接口适配层从已认证上下文或固定传输通道注入，不在不可信请求体或消息载荷中重复声明。应用层 Command/Event 可将可信事实与载荷属性扁平化，但必须保持单一、无歧义的来源字段。
 - UTF-8 文本的确定性 SHA-256 等无业务语义哈希原语复用 `im-common` 的 `HashUtils`，业务适配器只保留摘要编码、协议值对象与校验语义。管理员密码、OAuth Client Secret 和 OAuth Token 是不同凭据边界；即使底层算法相同，也不得借用另一领域的密码服务或值对象完成框架认证。
+- 不透明 UUID 字符串优先复用 `GeneratorUtils.nextUUID()`，不重复手写 UUID.randomUUID().toString()。
+  工具返回不带横杠的 32 位字符串；依赖标准 UUID 格式或 UUID 对象的协议场景须单独确认，不能机械替换。
 
 ## Web 与 API
 
@@ -201,6 +255,7 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - IAM BFF 应用显式区分公共前端请求和受保护请求：页面入口、`index.html`、favicon、`assets`、错误页、登录及回调不恢复 Session 或执行 Introspection；`/iam/**` 的其他端点和 `/api/**` 必须认证；未声明路径默认拒绝。Actuator 等运维端点使用独立安全策略，不并入前端白名单。
 - 已知前端静态资源不存在时不作为未知系统异常记录 ERROR；统一异常处理按项目 `HttpResult` 协议返回 NOT_FOUND 业务语义，前端需要的固定资源应由 UI 构建产物提供。不得仅按 Spring 异常类型把所有未映射 API 都识别为静态资源。
 - 常见静态资源后缀和 `/assets/**` 等前端静态资源不生成完整 HTTP 访问日志；`/` 等无后缀路径必须依据 MVC 实际解析的静态资源 Handler 判断，不能在公共插件中把根路径固定视为页面。Controller、认证入口和业务 API 继续保留访问日志。
+- Servlet Filter 包装响应缓存时必须识别异步请求生命周期。同步请求可在过滤链返回时记录并提交缓存；`CompletionStage`、`DeferredResult` 等异步请求必须等 `AsyncListener.onComplete` 后再记录和复制正文，不能在初始分派的 `finally` 中提前提交空响应。测试必须在过滤链返回后写入正文并完成 AsyncContext，覆盖真实时序。
 - 通用请求上下文只传播客户端地址、User-Agent 等非安全元数据，由 Servlet Filter 在安全过滤链之前建立并在请求结束时清理。管理员身份与权限以 Spring Security 为准；审计模块在自己的边界内把通用元数据转换为领域值对象。
 - CORS 使用类型化配置和显式允许列表，默认不开放跨域。业务应用不得通过重复声明通用 Web Bean 或第二套全局错误响应绕过插件行为。
 - HTTP 权限校验使用 Spring Security 的认证对象与 `@PreAuthorize` 等标准能力；允许安全 SDK 提供仅组合标准注解、没有自定义授权逻辑的薄注解，不自建授权 AOP 或 MVC 权限拦截器。UI 权限只控制展示，服务端方法权限才是授权边界。
@@ -234,7 +289,7 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 
 ## 自动检查与 Review
 
-自动规则只覆盖低误报模式，具体矩阵见 [Harness Guide](HARNESS_GUIDE.md)。当前脚本检查显式类型、字段注入、生产测试替身、控制台输出、手动 `ObjectMapper`、成组简单 getter/setter、AppService 标量入参和明显职责混包；ArchUnit 检查稳定依赖方向。
+自动规则只覆盖低误报模式，具体登记见 [Harness 规则矩阵](HARNESS_RULE_MATRIX.md)，运行与失败归因见 [Harness Guide](HARNESS_GUIDE.md)。当前脚本检查显式类型、字段注入、生产测试替身、控制台输出、手动 `ObjectMapper`、成组简单 getter/setter、AppService 标量入参和明显职责混包；ArchUnit 检查稳定依赖方向。
 
 领域服务尺度、值对象建模、Adapter 输入输出、边界包装类型语义、构造器业务逻辑、条件 Bean 是否形成完整能力、方法可读性和注释价值由 Review 判断。不要为了自动化增加“每包最多 N 个类”、禁止所有 getter、禁止所有构造器或方法长度等高误报规则。
 

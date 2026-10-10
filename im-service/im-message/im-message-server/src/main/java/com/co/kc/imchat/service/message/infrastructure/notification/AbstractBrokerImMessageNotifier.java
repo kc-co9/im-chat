@@ -21,7 +21,8 @@ public abstract class AbstractBrokerImMessageNotifier<T> implements ImMessageNot
     @Override
     public void notify(T notification) {
         Long receiverId = receiverId(notification);
-        BrokerFrameWriteResult result = brokerMessageNotifier.notify(receiverId, new FrameResponse(
+        BrokerFrameWriteResult result = brokerMessageNotifier.notify(receiptId(notification), receiverId,
+                new FrameResponse(
                 "1",
                 FrameType.PUSH,
                 command(),
@@ -30,7 +31,7 @@ public abstract class AbstractBrokerImMessageNotifier<T> implements ImMessageNot
                 null,
                 null,
                 pushBody(notification)
-        ));
+                ));
         if (!result.processed() || !result.failedConnectionIds().isEmpty()) {
             log.warn("message notification was not delivered, receiverId:{}, cmd:{}, receiptId:{}, processed:{}, code:{}, message:{}, failedConnections:{}",
                     receiverId, command(), receiptId(notification), result.processed(), result.code(), result.message(),

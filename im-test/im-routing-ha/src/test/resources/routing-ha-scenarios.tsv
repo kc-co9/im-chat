@@ -1,0 +1,26 @@
+# id	name	evidence-kind	evidence-selector	assertion
+RH-01	三 Broker 两 Gateway 启动与状态一致	topology	cluster-state-consistent	三个 Broker 返回相同 epoch、revision、算法与三节点 ACTIVE 集合
+RH-02	Gateway 优雅切换	e2e-test	RealtimeMessagingE2ETest#routesAuthenticatedFramesAndRestoresRouteAfterGatewayRestart	旧 Gateway 路由消失且新 Gateway 路由建立
+RH-03	Gateway 异常退出后另一实例存活	topology	gateway-stop-start	停止 Gateway-A 后 Gateway-B 健康且 Gateway-A 可重新加入
+RH-04	Broker drain 与 INACTIVE 收口	broker-test	BrokerDrainAppServiceTest	冻结 Gateway ACK 与水位满足后完成 drain
+RH-05	Broker 故障自动摘流	broker-test	BrokerFailureRecoveryAppServiceTest	稳定故障证据完成恢复且超时明确 DEGRADED
+RH-06	Raft Leader 故障与恢复	broker-test	BrokerClusterAdapterTest#newLeaderResumesCommittedOperationWithoutPhaseRegression	新 Leader 从已提交阶段恢复 operation
+RH-07	少数派 fence	broker-test	BrokerClusterAdapterTest#threeVotersReplicateButMinorityCannotCommit	失去多数派不能提交权威变更
+RH-08	旧 epoch 定向重试	broker-test	RouteBrokerExecutionInterceptorTest#rejectsPastAndFutureEpochBeforeEnteringGuardOrHandler	旧 epoch 返回确定拒绝且不执行副作用
+RH-09	落后 Broker 返回 stale	broker-test	RouteBrokerExecutionInterceptorTest#rejectsPastAndFutureEpochBeforeEnteringGuardOrHandler	未来 epoch 在本机状态落后时拒绝
+RH-10	同 epoch 错误 Broker 拒绝	broker-test	RouteBrokerExecutionInterceptorTest#rejectsWrongOwnerBeforeEnteringGuardOrHandler	错误 RouteBroker 返回 mismatch 且不执行副作用
+RH-11	单轮并发 Lookup 合并路由	broker-test	FrameDispatchAppServiceLookupTest#singleWaveRunsInParallelAndMergesGateways	历史候选与其他候选同轮并发查询并合并路由
+RH-12	多 Gateway 去重且不广播 Frame	broker-test	FrameDispatchAppServiceTest#lookupRoutesAreRevalidatedAndSameGatewayIsWrittenOnce	重复路由合并后每个 Gateway 只写一次
+RH-13	恢复 Broker 不自动承载流量	broker-test	BrokerClusterAppServiceChangeTest#restoredFailedBrokerDoesNotBecomeActiveWithoutExplicitActivation	故障恢复不绕过显式激活
+RH-14	learner 晋升降级与持久重启	broker-test	BrokerClusterAdapterTest#learnerCatchesUpAndCanBePromotedDemotedAndRemoved	成员变更按 learner 流程且可移除
+RH-15	持久消息通知失败后 Receipt 重试	broker-test	RedisImMessageConfirmableStoreTest#initRequeuesTaskWhenConsumerFails	实时通知消费失败后 Receipt task 重新入队等待重试
+RH-16	drain ACK 水位摘要与结果语义	broker-test	BrokerDrainAppServiceTest	ACK、水位、摘要和 deadline 共同决定完成或失败
+RH-17	fence 换届与跨 epoch 下行去重	gateway-test	FrameDeliveryDeduplicatorTest#deduplicatesPerDeliveryAndConnection	相同 deliveryId 与 connectionId 只写一次
+RH-18	快照分块背压	gateway-test	GatewayRouteSnapshotCoordinatorTest	分片、jitter、并发限制与背压重试保持有界
+RH-19	伪造内部身份拒绝	broker-test	IdentityAccessInterceptorsTest	错误身份、audience 或 scope 不可调用内部控制面
+RH-20	DRAINING 参与当前拓扑路由查询	broker-test	FrameDispatchAppServiceLookupTest#queriesAllCurrentCandidatesInOneWave	当前 DRAINING Broker 与其他候选并发查询并合并路由
+RH-21	非法成员与并发 operation 拒绝	broker-test	BrokerClusterAppServiceChangeTest#pendingMembershipRejectsAnotherChangeBeforeExternalSideEffects	并发成员变更在后端被拒绝
+RH-22	同 revision 首次部署无旧协议	broker-test	BrokerClusterTest#noEffectTopologyChangeKeepsRevisionAndEpoch	空变更不制造 revision 或兼容分支
+RH-23	quarantine 等待 holder ACK	broker-test	BrokerClusterAppServiceFenceTest	只有完整有效 ACK 才可提前结束 quarantine
+RH-24	epoch lease 组合确定拒绝	broker-test	LocalRoutingLeaseServiceTest	过期、未来和回退 Lease 均零副作用
+RH-25	最后时刻 Gateway RPC 去重	gateway-test	FrameDeliveryDeduplicatorTest#failedWriteCanReleaseReservationAndExpiredKeyCanBeReused	延迟、超时和重试复用稳定 deliveryId

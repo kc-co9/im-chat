@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | `imAdmin` | `im.audit.im-admin.v1` | `im.audit.im-admin.v1.dlq` |
 | `imIam` | `im.audit.im-iam.v1` | `im.audit.im-iam.v1.dlq` |
-| `imMonitor` | `im.audit.im-monitor.v1` | `im.audit.im-monitor.v1.dlq` |
+| `imOps` | `im.audit.im-ops.v1` | `im.audit.im-ops.v1.dlq` |
 | `imAudit` | `im.audit.im-audit.v1` | `im.audit.im-audit.v1.dlq` |
 
 HTTP 与 Kafka 不互相回退。数据库、IAM Introspection、Kafka Binder 和生产凭据由 Nacos/
@@ -57,7 +57,7 @@ Session 加密密钥和回调地址。服务默认端口为 `18041`，Actuator �
 
 四个管理端使用一致的 Element Plus 高密度运维控制台：页面只展示本应用拥有的功能。
 “其他控制台”链接由各 UI 的 `src/config/consoleLinks.ts` 管理，本地默认地址可分别通过
-`VITE_IAM_CONSOLE_URL`、`VITE_AUDIT_CONSOLE_URL`、`VITE_MONITOR_CONSOLE_URL` 和
+`VITE_IAM_CONSOLE_URL`、`VITE_AUDIT_CONSOLE_URL`、`VITE_OPS_CONSOLE_URL` 和
 `VITE_ADMIN_CONSOLE_URL` 在构建时覆盖。创建、编辑和详情使用右侧抽屉，危险操作必须显式确认，
 刷新失败时保留最近一次成功数据。
 

@@ -114,7 +114,7 @@ UI 变更执行 `npm run lint`、`npm run format:check`、`npm run test:unit`、
 
 四个管理端使用一致的 Element Plus 高密度运维控制台：页面只展示本应用拥有的功能。
 “其他控制台”链接由各 UI 的 `src/config/consoleLinks.ts` 管理，本地默认地址可分别通过
-`VITE_IAM_CONSOLE_URL`、`VITE_AUDIT_CONSOLE_URL`、`VITE_MONITOR_CONSOLE_URL` 和
+`VITE_IAM_CONSOLE_URL`、`VITE_AUDIT_CONSOLE_URL`、`VITE_OPS_CONSOLE_URL` 和
 `VITE_ADMIN_CONSOLE_URL` 在构建时覆盖。创建、编辑和详情使用右侧抽屉，危险操作必须显式确认，
 刷新失败时保留最近一次成功数据。
 IAM 本地服务默认运行在 `http://localhost:18040`，Actuator 使用 `19040`。
@@ -123,7 +123,7 @@ IAM 本地服务默认运行在 `http://localhost:18040`，Actuator 使用 `1904
 避免混淆两类安全边界或产生 Bean 名冲突。
 
 SDK 的 `IamBffController` 统一提供接入应用所需的 `/iam/login`、`/iam/callback`、`/iam/me` 和退出端点，
-由 SDK AutoConfiguration 在 Admin、Monitor、Audit 等客户端应用中注册。IAM Server 是授权服务器，不使用
+由 SDK AutoConfiguration 在 Admin、Ops、Audit 等客户端应用中注册。IAM Server 是授权服务器，不使用
 这些 BFF 端点，也不直接或传递依赖 `im-iam-sdk`。`im-audit-sdk` 将 IAM 安全上下文集成声明为 optional：
 接入应用显式依赖 IAM SDK 时采集管理员主体，IAM Server 未引入时使用通用 Spring Security 审计主体，
 因此不需要在启动类维护 SDK 扫描排除规则。
@@ -341,7 +341,7 @@ OAuth 客户端，也可以拥有多个客户端；浏览器客户端必须声�
 
 项目尚未上线，不保留旧管理账号和 RBAC 数据的兼容迁移。首次部署执行模块根目录
 [`sql/ddl.sql`](sql/ddl.sql) 创建 `im_chat_iam` 结构。交付 DDL 只使用 `CREATE ... IF NOT EXISTS`，不会先删除已有表。
-本地 Compose 随后执行 [`sql/dml.sql`](sql/dml.sql)，预置 IAM、Admin、Audit、Monitor 四个本地应用及其 web/catalog OAuth 客户端；该 DML 只使用本地开发密钥，不用于生产。最后由 `IamBootstrap` 创建首个管理员和 IAM 超级管理员角色。
+本地 Compose 随后执行 [`sql/dml.sql`](sql/dml.sql)，预置 IAM、Admin、Audit、Ops 四个本地应用及其 web/catalog OAuth 客户端；该 DML 只使用本地开发密钥，不用于生产。最后由 `IamBootstrap` 创建首个管理员和 IAM 超级管理员角色。
 初始化成功后立即移除初始化密码并关闭 `im.iam.bootstrap.enabled`。
 
 分片入口为 `im.datasource.sharding`，规则文件默认为 classpath 下的 `im-sharding.yml`。生产必须通过 Nacos 覆盖 `jdbc-url`、`username`、`password`，或将 `config-location` 指向部署系统提供的外部规则文件；仓库内 `root/root` 仅用于本地。

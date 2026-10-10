@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 用途：提供 readiness、clean、drift、architecture、behavior、e2e、load-test、quick、affected、full、report、handoff 统一验证入口。
+# 用途：提供 readiness、clean、drift、architecture、behavior、e2e、routing-ha、routing-capacity、load-test、quick、affected、full、report、handoff 统一验证入口。
 # 输入：第一个参数为模式；affected 模式可接收 baseline revision。
 # 输出/副作用：执行对应检查，并始终写入绑定当前 HEAD/worktree 的 .harness/verifications/<mode>.json。
 # 依赖：Maven、Ruby、rg、find、Harness 子脚本，以及 UI 构建所需 Node/npm。
@@ -289,7 +289,8 @@ run_drift() {
 run_architecture() {
   printf '\n==> Running architecture tests\n'
   mvn -q -pl im-test/im-architecture-test -am -Dmaven.test.skip=true install
-  mvn -q -pl im-test/im-architecture-test test
+  # 依赖安装完成后重新编译测试，避免执行依赖尚未就绪时留下的错误字节码。
+  mvn -q -pl im-test/im-architecture-test clean test
 }
 
 # 运行 Harness 自测，证明 checker 的正反 fixture 与报告契约。
@@ -303,8 +304,21 @@ run_full() {
   run_readiness
   run_clean
   run_script_tests
+  run_routing_ha
   printf '\n==> Running full Maven verification suite\n'
   mvn -q verify
+}
+
+# 运行 3 Broker + 2 Gateway 的真实路由故障场景；runner 负责场景计数、超时与资源清理。
+run_routing_ha() {
+  printf '\n==> Running routing HA fault scenarios\n'
+  "$ROOT_DIR/scripts/routing_ha.sh" verify
+}
+
+# 运行显式生产候选路由容量流程；runner 负责矩阵、采样、清理和执行期间指纹完整性。
+run_routing_capacity() {
+  printf '\n==> Running routing capacity qualification\n'
+  "$ROOT_DIR/scripts/routing_capacity.sh" verify
 }
 
 # 运行标记为 realtime-behavior 的 Broker/Gateway 场景，并拒绝零测试假通过。
@@ -613,6 +627,12 @@ dispatch() {
   e2e)
     run_e2e
     ;;
+  routing-ha)
+    run_routing_ha
+    ;;
+  routing-capacity)
+    run_routing_capacity
+    ;;
   startup)
     run_startup
     ;;
@@ -638,7 +658,7 @@ dispatch() {
     "$ROOT_DIR/scripts/harness-handoff.sh"
     ;;
   *)
-    printf 'Usage: %s {readiness|clean|cleanup|quality|drift|architecture|behavior|e2e|startup|load-test|load-test-smoke|init|quick|affected|full|report|handoff}\n' "$0" >&2
+    printf 'Usage: %s {readiness|clean|cleanup|quality|drift|architecture|behavior|e2e|routing-ha|routing-capacity|startup|load-test|load-test-smoke|init|quick|affected|full|report|handoff}\n' "$0" >&2
     return 2
     ;;
   esac

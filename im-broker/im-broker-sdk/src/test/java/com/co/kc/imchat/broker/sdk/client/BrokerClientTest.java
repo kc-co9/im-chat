@@ -9,7 +9,6 @@ import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayHeartbeatParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayUnregisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionSyncParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionCloseParams;
@@ -36,71 +35,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BrokerClientTest {
 
     @Test
-    void createsClientFromDiscoveredBrokerService() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        invoker.response = BrokerFrameWriteResult.ok();
-        DiscoveryClient discoveryClient = new StaticDiscoveryClient(List.of(
-                new StaticServiceInstance("broker-1", "10.0.0.1", 12200),
-                new StaticServiceInstance("broker-2", "10.0.0.2", 12200)));
-
-        BrokerClient client = new BrokerClient(
-                invoker, discoveryClient, ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000);
-        client.writeFrame(BrokerFrameWriteParams.inbound(1L, "conn-1",
-                new FrameRequest("1", "message.private.send", "1", "trace", Map.of())));
-
-        assertThat(invoker.address).isIn("10.0.0.1:12200", "10.0.0.2:12200");
-    }
-
-    @Test
-    void invokesBrokerOperationsThroughBolt() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        invoker.response = BrokerFrameWriteResult.ok();
-        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
-        BrokerFrameWriteParams command = BrokerFrameWriteParams.inbound(1L, "conn-1",
-                new FrameRequest("1", "message.private.send", "1", "trace", Map.of()));
-
-        BrokerFrameWriteResult response = client.writeFrame(command);
-
-        assertThat(response.processed()).isTrue();
-        assertThat(invoker.address).isEqualTo("127.0.0.1:12200");
-        assertThat(invoker.service).isEqualTo(BrokerBoltService.FRAME.service());
-        assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.WRITE_FRAME.operation());
-        assertThat(invoker.request).isSameAs(command);
-        assertThat(invoker.responseType).isEqualTo(BrokerFrameWriteResult.class);
-    }
-
-    @Test
-    void loadBalancesBrokerAddressesByRoundRobin() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        invoker.response = BrokerFrameWriteResult.ok();
-        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.ROUND_ROBIN);
-        BrokerFrameWriteParams command = BrokerFrameWriteParams.inbound(1L, "conn-1",
-                new FrameRequest("1", "message.private.send", "1", "trace", Map.of()));
-
-        client.writeFrame(command);
-        client.writeFrame(command);
-        client.writeFrame(command);
-
-        assertThat(invoker.addresses)
-                .containsExactly("127.0.0.1:12200", "127.0.0.1:12202", "127.0.0.1:12200");
-    }
-
-    @Test
-    void ignoresBlankBrokerAddresses() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        invoker.response = BrokerFrameWriteResult.ok();
-        BrokerClient client = client(invoker, " 127.0.0.1:12200, ,127.0.0.1:12202 ", BrokerLoadBalance.ROUND_ROBIN);
-        BrokerFrameWriteParams command = BrokerFrameWriteParams.inbound(1L, "conn-1",
-                new FrameRequest("1", "message.private.send", "1", "trace", Map.of()));
-
-        client.writeFrame(command);
-        client.writeFrame(command);
-
-        assertThat(invoker.addresses)
-                .containsExactly("127.0.0.1:12200", "127.0.0.1:12202");
-    }
-
-    @Test
     void hashesGatewayOperationsByGatewayId() {
         CapturingBoltInvocation invoker = new CapturingBoltInvocation();
         BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
@@ -111,45 +45,6 @@ class BrokerClientTest {
 
         assertThat(invoker.addresses).hasSize(3);
         assertThat(invoker.addresses).containsOnly(invoker.addresses.get(0));
-    }
-
-    @Test
-    void hashesFrameWriteByUserId() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        invoker.response = BrokerFrameWriteResult.ok();
-        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
-        FrameRequest request = new FrameRequest("1", "message.private.send", "1", "trace", Map.of());
-
-        client.writeFrame(BrokerFrameWriteParams.inbound(100L, "conn-1", request));
-        client.writeFrame(BrokerFrameWriteParams.inbound(100L, "conn-2", request));
-
-        assertThat(invoker.addresses).hasSize(2);
-        assertThat(invoker.addresses).containsOnly(invoker.addresses.get(0));
-    }
-
-    @Test
-    void hashesConnectionRegisterAndUnregisterByUserId() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
-
-        client.registerConnection(new ConnectionRegisterParams(100L, "gw-1"));
-        client.unregisterConnection(new ConnectionUnregisterParams(100L, "gw-2"));
-
-        assertThat(invoker.addresses).hasSize(2);
-        assertThat(invoker.addresses).containsOnly(invoker.addresses.get(0));
-    }
-
-    @Test
-    void routesConnectionCloseControlByUserId() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = client(invoker, "127.0.0.1:12200", BrokerLoadBalance.HASH);
-        ConnectionCloseParams params = new ConnectionCloseParams(100L, "session-old");
-
-        client.closeConnections(params);
-
-        assertThat(invoker.service).isEqualTo(BrokerBoltService.CONNECTION.service());
-        assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.CLOSE_CONNECTIONS.operation());
-        assertThat(invoker.request).isSameAs(params);
     }
 
     @Test
@@ -240,55 +135,6 @@ class BrokerClientTest {
         assertThat(invoker.service).isEqualTo(BrokerBoltService.GATEWAY.service());
         assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.HEARTBEAT_GATEWAY.operation());
         assertThat(invoker.request).isSameAs(command);
-    }
-
-    @Test
-    void syncsConnectionRoutesThroughBolt() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
-        ConnectionSyncParams command = new ConnectionSyncParams("gw-1", List.of(100L));
-
-        client.syncConnections(command);
-
-        assertThat(invoker.addresses).containsExactly("127.0.0.1:12200", "127.0.0.1:12202");
-        assertThat(invoker.service).isEqualTo(BrokerBoltService.CONNECTION.service());
-        assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.SYNC_CONNECTIONS.operation());
-        assertThat(invoker.request).isSameAs(command);
-    }
-
-    @Test
-    void continuesSyncingConnectionRoutesWhenOneBrokerFails() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation() {
-            @Override
-            public <T, R> R invoke(String address, String service, String operation, T request,
-                                   Class<R> responseType, int timeoutMillis) {
-                super.invoke(address, service, operation, request, responseType, timeoutMillis);
-                if ("127.0.0.1:12200".equals(address)) {
-                    throw new IllegalStateException("broker unavailable");
-                }
-                return null;
-            }
-        };
-        BrokerClient client = client(invoker, "127.0.0.1:12200,127.0.0.1:12202", BrokerLoadBalance.HASH);
-
-        client.syncConnections(new ConnectionSyncParams("gw-1", List.of(100L)));
-
-        assertThat(invoker.addresses).containsExactly("127.0.0.1:12200", "127.0.0.1:12202");
-    }
-
-    @Test
-    void refreshesBrokerAddressesByBrokerIdOrder() {
-        CapturingBoltInvocation invoker = new CapturingBoltInvocation();
-        invoker.response = new BrokerListResult(List.of(
-                new BrokerEndpointDTO("broker-2", "127.0.0.1", 12202, Instant.now(), Instant.now()),
-                new BrokerEndpointDTO("broker-1", "127.0.0.1", 12200, Instant.now(), Instant.now())));
-        BrokerClient client = client(invoker, "127.0.0.1:12204", BrokerLoadBalance.HASH);
-        ConnectionSyncParams command = new ConnectionSyncParams("gw-1", List.of(100L));
-
-        client.refreshBrokerAddresses();
-        client.syncConnections(command);
-
-        assertThat(invoker.addresses).containsExactly("127.0.0.1:12204", "127.0.0.1:12200", "127.0.0.1:12202");
     }
 
     private static BrokerClient client(CapturingBoltInvocation invoker,

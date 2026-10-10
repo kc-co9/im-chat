@@ -110,6 +110,29 @@ load_test_config_digest() {
   ' "$root_dir" "$compose_digest" "$k6_version" "$resolved_config"
 }
 
+# routing capacity 使用独立配置摘要，避免历史单机 load-test capacity 证据被误认作共识路由容量。
+routing_capacity_config_digest() {
+  local root_dir="$1"
+  local config_path="${2:-$root_dir/im-test/im-load-test/config/routing-capacity.json}"
+  if [[ -n "${ROUTING_CAPACITY_CONFIG_DIGEST_VALUE:-}" ]]; then
+    printf '%s\n' "$ROUTING_CAPACITY_CONFIG_DIGEST_VALUE"
+    return 0
+  fi
+  [[ -f "$config_path" ]] || return 1
+  ruby -rdigest -e '
+    root, config = ARGV
+    digest = Digest::SHA256.new
+    [config, File.join(root, "scripts/routing_capacity.sh"),
+      File.join(root, "scripts/run-routing-capacity-scenarios.sh"),
+      File.join(root, "deploy/local/compose.routing-ha.yml")].each do |path|
+      next unless File.file?(path)
+      digest.update("\0#{path.delete_prefix(root + "/")}\0")
+      digest.update(File.binread(path))
+    end
+    puts digest.hexdigest
+  ' "$root_dir" "$config_path"
+}
+
 # 导出三业务 Schema 的有序纯数据，不包含 DDL、AUTO_INCREMENT 或 dump 时间戳。
 load_test_ordinary_data_checksum() {
   local root_dir="$1"
