@@ -58,7 +58,7 @@ public final class BrokerRequestChainTestSupport {
         List<BrokerRequestInterceptor> interceptors = new ArrayList<>();
         interceptors.add(passThrough());
         interceptors.add(new RouteBrokerExecutionInterceptor(BROKER_ID,
-                new FixedRepository(state), leaseService, () -> "127.0.0.1:12200"));
+                new FixedRepository(state).asAdapter(), leaseService, () -> "127.0.0.1:12200"));
         interceptors.add(new BrokerHandlerInterceptor(handler));
         return new BrokerRequestInterceptorChain(interceptors);
     }
@@ -123,7 +123,7 @@ public final class BrokerRequestChainTestSupport {
         };
     }
 
-    private record FixedRepository(BrokerClusterState committedState)
+    private record FixedRepository(BrokerClusterState getCommittedState)
             implements BrokerClusterConsensusStub {
         @Override
         public Optional<BrokerClusterOperation> findOperation(ClusterOperationId operationId) {
@@ -131,7 +131,7 @@ public final class BrokerRequestChainTestSupport {
         }
 
         @Override
-        public CompletionStage<BrokerClusterConsensusResult> submitChange(BrokerClusterConsensusCommand command) {
+        public CompletionStage<BrokerClusterConsensusResult> submitCommand(BrokerClusterConsensusCommand command) {
             throw new UnsupportedOperationException();
         }
     }

@@ -6,8 +6,12 @@
 
 内部模型按边界隔离：Broker HTTP 载荷只存在于 `infrastructure/client/model`，Adapter 将其转换为
 `model/cqrs/dto` 下的应用投影，Controller 再通过 HTTP Transformer 生成 `model/io` Response。
-浏览器接口中的绝对时间统一为 epoch milliseconds，页面按浏览器 IANA 时区格式化；不复用
-Broker 协议对象，也不由服务端固定展示时区。
+Broker HTTP 与 Ops 浏览器接口的绝对时间统一为 `Long xxxAtMs`（Unix epoch milliseconds），
+JSON wire 为十进制字符串，可空时间保持 null；耗时和运行时长使用同样的 string wire
+`durationMs/uptimeMs`。Broker payload 在客户端 Transformer 边界转为 Ops 内部 `Instant`/`Duration`，
+HTTP Transformer 再转换为 Long Response，不复用 Broker 协议对象。前端按 string 接收，
+显示前验证十进制格式及 JavaScript 安全整数范围，再按浏览器 IANA 时区格式化绝对时刻；
+耗时以毫秒呈现，uptime 从毫秒换算展示，不由服务端固定展示时区。
 
 ## 运行链路
 

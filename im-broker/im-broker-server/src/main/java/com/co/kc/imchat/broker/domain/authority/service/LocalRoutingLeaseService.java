@@ -99,7 +99,7 @@ public final class LocalRoutingLeaseService {
             }
             lease = grantedLease;
             leaseDeadline = deadline.get();
-            // 更高纪元的有效租约可以解除同一或更低纪元 fence 的进行中标记。
+            // 安装高于 fencing 标记纪元的有效租约后清除该标记；持久 fence 水位保持不变。
             if (fencingEpoch
                     .map(epoch -> grantedLease.routingEpoch().value() > epoch.value())
                     .orElse(false)) {
@@ -198,9 +198,9 @@ public final class LocalRoutingLeaseService {
     }
 
     /**
-     * 判断当前 Broker 是否正在执行或等待一次本地 fence。
+     * 判断本机是否保留 fencing 标记；该标记在 fence 完成后仍保留，安装更高纪元 Lease 后清除。
      *
-     * @return 存在待完成 fence 时返回 {@code true}
+     * @return fencing 标记存在时返回 {@code true}
      */
     public boolean isFencing() {
         lock.lock();

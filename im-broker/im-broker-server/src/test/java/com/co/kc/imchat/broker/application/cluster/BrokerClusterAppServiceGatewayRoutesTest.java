@@ -1,53 +1,52 @@
 package com.co.kc.imchat.broker.application.cluster;
 
-import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
-
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-import com.co.kc.imchat.broker.support.BrokerClusterCommandFixture;
-
-import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
-import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
+import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.domain.cluster.model.DrainProgress;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
-import com.co.kc.imchat.broker.adapter.cluster.raft.RaftBrokerClusterStateMachine;
+import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
+import com.co.kc.imchat.broker.interfaces.handler.connection.GatewayRouteSnapshotAckHandler;
+import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.ConfirmGatewayRoutesCommand;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
-import com.co.kc.imchat.broker.model.cqrs.command.ConfirmGatewayRoutesCommand;
-import com.co.kc.imchat.broker.sdk.model.result.GatewayRouteSnapshotAckResult;
-import com.co.kc.imchat.broker.interfaces.handler.connection.GatewayRouteSnapshotAckHandler;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRouteSnapshotAckParams;
+import com.co.kc.imchat.broker.sdk.model.result.GatewayRouteSnapshotAckResult;
+import com.co.kc.imchat.broker.support.BrokerClusterCommandFixture;
+import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
 import com.co.kc.imchat.broker.support.BrokerRequestChainTestSupport;
-import com.co.kc.imchat.common.utils.JsonUtils;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.AfterEach;
-import org.mockito.MockedStatic;
 import com.co.kc.imchat.broker.support.TestClock;
-
-import java.time.Instant;
+import com.co.kc.imchat.broker.support.raft.statemachine.RaftBrokerClusterStateMachine;
+import com.co.kc.imchat.common.utils.JsonUtils;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ScheduledExecutorService;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doCallRealMethod;
-import static org.mockito.ArgumentMatchers.any;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.checkpoint;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.routeRevision;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.snapshotDigest;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.summary;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class BrokerClusterAppServiceGatewayRoutesTest {
     private MockedStatic<Instant> wallClock;
@@ -86,15 +85,15 @@ class BrokerClusterAppServiceGatewayRoutesTest {
         TestRepository repository = drainingRepository();
         BrokerClusterAppService service = service(repository);
         service.confirmGatewayRoutes(new ConfirmGatewayRoutesCommand(
-                "gateway-a", 5L, 12L, 3L, snapshotDigest("checksum-a").value(), 2_000L));
-        repository.submitChange(BrokerClusterCommandFixture.summarizeDrain(
+                "gateway-a", 5L, 12L, 3L, snapshotDigest("checksum-a").value(), Instant.ofEpochMilli(2_000L)));
+        repository.submitCommand(BrokerClusterCommandFixture.summarizeDrain(
                 "drain-1", "digest-1", summary(3L, 3L, 0L, true), 1_600L));
         BrokerClusterOperation beforeAck = repository.findOperation(new ClusterOperationId("drain-1")).orElseThrow();
 
         GatewayRouteSnapshotAckResult result = service.confirmGatewayRoutes(
                 new ConfirmGatewayRoutesCommand(
                         "gateway-a", 5L, 13L, 3L,
-                        snapshotDigest("changed-checksum").value(), 2_000L));
+                        snapshotDigest("changed-checksum").value(), Instant.ofEpochMilli(2_000L)));
 
         assertThat(result.status())
                 .isEqualTo(GatewayRouteSnapshotAckResult.Status.NOT_REQUIRED);
@@ -108,11 +107,11 @@ class BrokerClusterAppServiceGatewayRoutesTest {
 
         assertThat(service.confirmGatewayRoutes(new ConfirmGatewayRoutesCommand(
                 "gateway-a", 6L, 12L, 3L, snapshotDigest("checksum-a").value(),
-                2_000L)).status())
+                Instant.ofEpochMilli(2_000L))).status())
                 .isEqualTo(GatewayRouteSnapshotAckResult.Status.NOT_REQUIRED);
         assertThat(service.confirmGatewayRoutes(new ConfirmGatewayRoutesCommand(
                 "gateway-a", 5L, 12L, 3L, snapshotDigest("checksum-a").value(),
-                1_500L)).status())
+                Instant.ofEpochMilli(1_500L))).status())
                 .isEqualTo(GatewayRouteSnapshotAckResult.Status.REJECTED);
     }
 
@@ -130,25 +129,24 @@ class BrokerClusterAppServiceGatewayRoutesTest {
                 new DrainProgress(List.of(
                         checkpoint("gateway-a", 900L)),
                         Instant.ofEpochMilli(1_900L), null)));
-        repository.submitChange(BrokerClusterCommandFixture.advanceOperation(
+        repository.submitCommand(BrokerClusterCommandFixture.advanceOperation(
                 "drain-1", "digest-1", BrokerClusterOperationPhase.RAFT_COMMITTED,
                 BrokerClusterOperationPhase.AUTHORIZING_NEW_EPOCH, null, 1_100L));
-        repository.submitChange(BrokerClusterCommandFixture.advanceOperation(
+        repository.submitCommand(BrokerClusterCommandFixture.advanceOperation(
                 "drain-1", "digest-1", BrokerClusterOperationPhase.AUTHORIZING_NEW_EPOCH,
                 BrokerClusterOperationPhase.REBUILDING_ROUTES, null, 1_200L));
         return repository;
     }
 
     private BrokerClusterAppService service(TestRepository repository) {
-        BrokerClusterAdapter adapter = mock(BrokerClusterAdapter.class);
-        doCallRealMethod().when(adapter).confirmGatewayRoutes(any(), any(), any());
+        BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
         when(adapter.findActiveRouteRecoveryOperation(any())).thenAnswer(
                 invocation -> repository.findActiveRouteRecoveryOperation(invocation.getArgument(0)));
-        when(adapter.submitChange(any())).thenAnswer(
-                invocation -> repository.submitChange(invocation.getArgument(0)));
-        return new BrokerClusterAppService(adapter, mock(GatewayRegistry.class),
+        BrokerRaftTestBindings.bindOperations(adapter, repository::submitCommand);
+        return new BrokerClusterAppService(adapter,
+                mock(BrokerPeerAdapter.class), mock(GatewayRegistry.class),
                 Duration.ofMillis(1), Duration.ofSeconds(10),
-                mock(ScheduledExecutorService.class), Duration.ofSeconds(10));
+                mock(ScheduledExecutorService.class), Duration.ofSeconds(10), null, null, Duration.ofSeconds(60));
     }
 
     private BrokerNode node(String brokerId, BrokerRoutingState state) {
@@ -160,11 +158,11 @@ class BrokerClusterAppServiceGatewayRoutesTest {
         private final RaftBrokerClusterStateMachine stateMachine;
 
         private TestRepository(BrokerClusterState initial) {
-            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", initial);
+            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", initial, 1000, Map.of());
         }
 
         @Override
-        public BrokerClusterState committedState() {
+        public BrokerClusterState getCommittedState() {
             return stateMachine.committedState();
         }
 
@@ -185,7 +183,7 @@ class BrokerClusterAppServiceGatewayRoutesTest {
         }
 
         @Override
-        public CompletionStage<BrokerClusterConsensusResult> submitChange(BrokerClusterConsensusCommand command) {
+        public CompletionStage<BrokerClusterConsensusResult> submitCommand(BrokerClusterConsensusCommand command) {
             return CompletableFuture.completedFuture(stateMachine.apply(command));
         }
     }

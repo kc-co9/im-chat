@@ -1,48 +1,44 @@
 package com.co.kc.imchat.broker.interfaces.handler;
 
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
-
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
+import com.co.kc.imchat.broker.application.frame.FrameDispatchAppService;
+import com.co.kc.imchat.broker.application.local.LocalGatewayCleanupAppService;
+import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
-import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
-import java.time.Instant;
-
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
-
+import com.co.kc.imchat.broker.domain.connection.model.GatewayRegistration;
+import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
+import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryConnectionRegistry;
+import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry;
 import com.co.kc.imchat.broker.interfaces.handler.frame.FrameProcessHandler;
 import com.co.kc.imchat.broker.interfaces.handler.gateway.GatewayHeartbeatHandler;
 import com.co.kc.imchat.broker.interfaces.handler.gateway.GatewayRegisterHandler;
 import com.co.kc.imchat.broker.interfaces.handler.gateway.GatewayUnregisterHandler;
+import com.co.kc.imchat.broker.model.cqrs.event.ConnectionSyncedEvent;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltService;
+import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayHeartbeatParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayUnregisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
 import com.co.kc.imchat.broker.support.BrokerRequestChainTestSupport;
-import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryConnectionRegistry;
-import com.co.kc.imchat.common.utils.JsonUtils;
+import com.co.kc.imchat.broker.support.observation.NoopDomainEventPublisher;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
+import com.co.kc.imchat.common.domain.shared.event.DomainEvent;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.common.model.io.FrameRequest;
+import com.co.kc.imchat.common.utils.JsonUtils;
+import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import com.co.kc.imchat.service.message.facade.MessageService;
-import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry;
-import com.co.kc.imchat.broker.support.observation.NoopDomainEventPublisher;
-import com.co.kc.imchat.broker.domain.connection.model.GatewayRegistration;
-import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
-import com.co.kc.imchat.broker.model.cqrs.event.ConnectionSyncedEvent;
-import com.co.kc.imchat.common.domain.shared.event.DomainEvent;
-import org.junit.jupiter.api.Test;
-import com.co.kc.imchat.broker.application.frame.FrameDispatchAppService;
-import com.co.kc.imchat.broker.application.local.LocalGatewayCleanupAppService;
-import com.co.kc.imchat.broker.adapter.gossip.BrokerStateStore;
-import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
-
 import java.lang.reflect.Proxy;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.time.Duration;
-
+import java.util.Set;
+import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
@@ -52,7 +48,7 @@ class BrokerBoltHandlerTest {
     private LocalGatewayCleanupAppService cleanupService(
             InMemoryGatewayRegistry gatewayRegistry, InMemoryConnectionRegistry connectionRegistry) {
         return new LocalGatewayCleanupAppService(gatewayRegistry, connectionRegistry,
-                mock(BrokerStateStore.class), Duration.ofSeconds(1), Duration.ofMillis(100));
+                mock(BrokerGossipAdapter.class), Duration.ofSeconds(1), Duration.ofMillis(100));
     }
 
     @Test
@@ -133,7 +129,7 @@ class BrokerBoltHandlerTest {
     }
 
     private BoltRequestContext requestContext() {
-        return new BoltRequestContext("127.0.0.1:12345", "127.0.0.1", GATEWAY_IDENTITY);
+        return new BoltRequestContext("127.0.0.1:12345", "127.0.0.1", GATEWAY_IDENTITY, false, Set.of());
     }
 
     @Test
@@ -172,6 +168,13 @@ class BrokerBoltHandlerTest {
 
     private static BoltInvoker unusedBoltInvoker() {
         return new BoltInvoker() {
+            @Override
+            public <T, R> R invokeAuthenticated(String address, String service, String operation,
+                                               T request, Class<R> responseType, int timeoutMillis,
+                                               String expectedPeerIdentity, String identityPrefix) {
+                throw new AssertionError("ordinary data plane must not request authenticated observation RPC");
+            }
+
             @Override
             public <T, R> R invoke(String address, String service, String operation, T request,
                                    Class<R> responseType, int timeoutMillis) {

@@ -3,7 +3,7 @@ package com.co.kc.imchat.broker.sdk.model.result;
 import java.io.Serializable;
 
 /**
- * holder 生成的单次 Lease 请求 nonce。
+ * 目标 Broker 为一次 Lease 安装生成的 nonce，连同目标身份返回 Leader。
  */
 public record RouteLeasePrepareResult(String brokerId, String requestNonce)
         implements Serializable {

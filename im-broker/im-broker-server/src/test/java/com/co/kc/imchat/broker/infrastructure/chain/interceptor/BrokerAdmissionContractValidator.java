@@ -6,14 +6,15 @@ import com.co.kc.imchat.broker.sdk.access.BrokerPeerRequest;
 import com.co.kc.imchat.broker.sdk.access.GatewayRouteRequest;
 import com.co.kc.imchat.broker.sdk.access.ServiceDataPlaneRequest;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
+import com.co.kc.imchat.broker.sdk.model.params.BrokerHealthReportParams;
+import com.co.kc.imchat.broker.sdk.model.params.BrokerProbeParams;
 import com.co.kc.imchat.broker.sdk.model.params.QuorumReadIndexParams;
 import com.co.kc.imchat.broker.sdk.model.params.RouteLeaseInstallParams;
 import com.co.kc.imchat.broker.sdk.model.params.RouteLeasePrepareParams;
 import com.co.kc.imchat.broker.sdk.model.params.RoutingFenceParams;
 import com.co.kc.imchat.plugin.gossip.model.param.GossipPeerRequest;
-
-import java.util.EnumSet;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.Set;
 
 /** 仅供测试验证实际 Handler 装配，不参与生产启动。 */
@@ -37,6 +38,11 @@ public final class BrokerAdmissionContractValidator {
     static void validateRequestType(BrokerBoltOperation operation, Class<?> requestType) {
         boolean matches = switch (operation.admissionType()) {
             case CLUSTER_READ -> true;
+            case BROKER_OBSERVATION -> switch (operation) {
+                case PROBE_BROKER -> requestType == BrokerProbeParams.class;
+                case FETCH_BROKER_HEALTH_REPORT -> requestType == BrokerHealthReportParams.class;
+                default -> false;
+            };
             case BROKER_PEER -> BrokerPeerRequest.class.isAssignableFrom(requestType)
                     || GossipPeerRequest.class.isAssignableFrom(requestType);
             case BROKER_CONTROL -> switch (operation) {

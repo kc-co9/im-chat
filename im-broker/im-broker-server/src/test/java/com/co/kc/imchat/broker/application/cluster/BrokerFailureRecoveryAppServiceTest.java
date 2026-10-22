@@ -1,54 +1,47 @@
 package com.co.kc.imchat.broker.application.cluster;
 
-import static org.mockito.ArgumentMatchers.any;
-
-import static org.mockito.Mockito.*;
-
-import java.util.concurrent.ScheduledExecutorService;
-
-import java.time.Duration;
-
-
-
-import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-
-import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
-
-import com.co.kc.imchat.broker.model.cqrs.command.BrokerOperationReconcileCommand;
-import com.co.kc.imchat.broker.support.BrokerClusterCommandFixture;
-
-import com.co.kc.imchat.broker.model.cqrs.result.BrokerFailureRecoveryResult;
-import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
-import com.co.kc.imchat.broker.model.cqrs.command.AdvanceClusterOperationCommand;
-import com.co.kc.imchat.broker.model.cqrs.command.UpdateBrokerDrainProgressCommand;
-import com.co.kc.imchat.broker.model.cqrs.command.CompleteRouteRecoveryCommand;
-import com.co.kc.imchat.broker.support.TestClock;
-import org.mockito.MockedStatic;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
-import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
+import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.domain.cluster.model.DrainProgress;
-import com.co.kc.imchat.broker.adapter.cluster.raft.RaftBrokerClusterStateMachine;
+import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
+import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.BrokerOperationReconcileCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.CompleteRouteRecoveryCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.UpdateBrokerDrainProgressCommand;
+import com.co.kc.imchat.broker.model.cqrs.result.BrokerFailureRecoveryResult;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Optional;
+import com.co.kc.imchat.broker.support.BrokerClusterCommandFixture;
+import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
+import com.co.kc.imchat.broker.support.TestClock;
+import com.co.kc.imchat.broker.support.raft.statemachine.RaftBrokerClusterStateMachine;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.checkpoint;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.summary;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 /** Broker 故障恢复应用服务行为测试。 */
 class BrokerFailureRecoveryAppServiceTest {
@@ -129,7 +122,7 @@ class BrokerFailureRecoveryAppServiceTest {
         assertThat(interrupted.phase()).isEqualTo(BrokerClusterOperationPhase.VERIFYING);
         assertThat(interrupted.error().value()).contains("gateway-a");
         // 即使提交方绕过恢复分支，日志应用边界也不能把持久化的降级意图覆盖为成功。
-        BrokerClusterConsensusResult incorrectSuccess = repository.submitChange(
+        BrokerClusterConsensusResult incorrectSuccess = repository.submitCommand(
                 BrokerClusterCommandFixture.advanceOperation("failure-1", "digest-1",
                         BrokerClusterOperationPhase.VERIFYING, BrokerClusterOperationPhase.SUCCEEDED,
                         null, Instant.now().toEpochMilli())).toCompletableFuture().join();
@@ -210,24 +203,43 @@ class BrokerFailureRecoveryAppServiceTest {
                 .isEqualTo(BrokerClusterOperationPhase.VERIFYING);
     }
 
+    @Test
+    void evidenceAndVerificationReuseTheGatewayDecisionTime() {
+        TestRepository repository = repository(true);
+        BrokerClusterOperation operation =
+                repository.findOperation(new ClusterOperationId("failure-1")).orElseThrow();
+        BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
+        when(adapter.findOperation(any())).thenReturn(Optional.of(operation));
+        when(adapter.saveRecoveryEvidence(any(), any(), any())).thenReturn(
+                CompletableFuture.completedFuture(BrokerClusterConsensusResult.applied(operation)));
+        when(adapter.verifyRouteRecovery(any(), any(), any())).thenReturn(
+                CompletableFuture.completedFuture(BrokerClusterConsensusResult.applied(operation)));
+        BrokerClusterAppService service = new BrokerClusterAppService(adapter,
+                mock(BrokerPeerAdapter.class), mock(GatewayRegistry.class),
+                Duration.ofMillis(1), Duration.ofSeconds(10), mock(ScheduledExecutorService.class), Duration.ofSeconds(10), null, null, Duration.ofSeconds(60));
+        AtomicLong time = new AtomicLong(2_100L);
+        try (MockedStatic<Instant> clock = TestClock.interceptNow(() -> time.getAndAdd(1_000L))) {
+            service.recoverRoutes(new BrokerOperationReconcileCommand("failure-1")).toCompletableFuture().join();
+        }
+        ArgumentCaptor<Instant> evidenceTime = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Instant> verificationTime = ArgumentCaptor.forClass(Instant.class);
+        Mockito.verify(adapter).saveRecoveryEvidence(any(), any(), evidenceTime.capture());
+        Mockito.verify(adapter).verifyRouteRecovery(any(), any(), verificationTime.capture());
+        assertThat(evidenceTime.getValue()).isEqualTo(Instant.ofEpochMilli(2_100L));
+        assertThat(verificationTime.getValue()).isSameAs(evidenceTime.getValue());
+    }
+
     private BrokerClusterAppService service(TestRepository repository, Duration drainOperationTimeout) {
-        BrokerClusterAdapter adapter = mock(BrokerClusterAdapter.class);
-        org.mockito.Mockito.doCallRealMethod().when(adapter).saveRecoveryEvidence(any(), any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).completeDrain(any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).forceDrain(any(), any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).startEpochAuthorization(any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).completeEpochAuthorization(any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).verifyRouteRecovery(any(), any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).completeRouteRecovery(any(), any());
+        BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
         when(adapter.findOperation(any())).thenAnswer(
                 invocation -> repository.findOperation(invocation.getArgument(0)));
-        when(adapter.committedState()).thenAnswer(ignored -> repository.committedState());
-        when(adapter.submitChange(any())).thenAnswer(
-                invocation -> repository.submitChange(invocation.getArgument(0)));
-        return new BrokerClusterAppService(adapter, mock(GatewayRegistry.class),
+        when(adapter.getCommittedState()).thenAnswer(ignored -> repository.getCommittedState());
+        BrokerRaftTestBindings.bindOperations(adapter, repository::submitCommand);
+        return new BrokerClusterAppService(adapter,
+                mock(BrokerPeerAdapter.class), mock(GatewayRegistry.class),
                 Duration.ofMillis(1), Duration.ofSeconds(10),
                 mock(ScheduledExecutorService.class),
-                drainOperationTimeout);
+                drainOperationTimeout, null, null, Duration.ofSeconds(60));
     }
 
     private TestRepository repository(boolean confirmGateway) {
@@ -260,7 +272,7 @@ class BrokerFailureRecoveryAppServiceTest {
     }
 
     private void apply(TestRepository repository, BrokerClusterConsensusCommand command) {
-        assertThat(repository.submitChange(command).toCompletableFuture().join().accepted()).isTrue();
+        assertThat(repository.submitCommand(command).toCompletableFuture().join().accepted()).isTrue();
     }
 
     private BrokerNode node(String brokerId, BrokerRoutingState state) {
@@ -275,11 +287,11 @@ class BrokerFailureRecoveryAppServiceTest {
         private boolean rejectCompletionSubmission;
 
         private TestRepository(BrokerClusterState state) {
-            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", state);
+            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", state, 1000, Map.of());
         }
 
         @Override
-        public BrokerClusterState committedState() {
+        public BrokerClusterState getCommittedState() {
             return stateMachine.committedState();
         }
 
@@ -289,7 +301,7 @@ class BrokerFailureRecoveryAppServiceTest {
         }
 
         @Override
-        public CompletionStage<BrokerClusterConsensusResult> submitChange(BrokerClusterConsensusCommand command) {
+        public CompletionStage<BrokerClusterConsensusResult> submitCommand(BrokerClusterConsensusCommand command) {
             if (rejectCompletionSubmission && command instanceof CompleteRouteRecoveryCommand) {
                 return CompletableFuture.completedFuture(BrokerClusterConsensusResult.unavailable(null, "completion unavailable"));
             }

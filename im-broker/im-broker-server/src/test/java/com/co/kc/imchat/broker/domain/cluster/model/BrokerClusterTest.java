@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.cluster.model;
 
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+
 import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -324,7 +326,17 @@ class BrokerClusterTest {
                     cluster.brokers().stream().filter(node -> node.trafficState() == BrokerTrafficState.ACTIVE)
                             .map(BrokerNode::id).toList())).accepted()).isTrue();
         }
+        ClusterRevision revisionBeforeCommit = cluster.revision();
+        RoutingEpoch epochBeforeCommit = cluster.epoch();
         assertThat(commitOperation(cluster, proposalFor(operation)).accepted()).isTrue();
+        assertThat(cluster.revision()).isEqualTo(revisionBeforeCommit.next());
+        assertThat(cluster.epoch()).isEqualTo(operation.resultEpoch());
+        if (type == BrokerClusterOperationType.ACTIVATE_BROKER
+                || type == BrokerClusterOperationType.DEACTIVATE_BROKER
+                || type == BrokerClusterOperationType.DRAIN_BROKER
+                || type == BrokerClusterOperationType.FAIL_BROKER) {
+            assertThat(cluster.epoch()).isNotEqualTo(epochBeforeCommit);
+        }
         ClusterRevision committedRevision = cluster.revision();
 
         BrokerClusterDecision retry = businessChange(cluster, type, digest("retry-digest"));
@@ -948,7 +960,7 @@ class BrokerClusterTest {
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> new BrokerFailureObservationDecision(
                 BrokerFailureObservationEligibility.INELIGIBLE,
-                new RequiredObservationReports(1), List.of(), null))
+                new ObservationQuorum(1), List.of(), null))
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> BrokerCluster.builder()
                 .revision(new ClusterRevision(1L))

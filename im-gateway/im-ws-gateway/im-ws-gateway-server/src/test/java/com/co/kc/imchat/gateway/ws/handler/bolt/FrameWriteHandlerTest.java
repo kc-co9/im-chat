@@ -19,6 +19,7 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Set;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -77,6 +78,6 @@ class FrameWriteHandlerTest {
     }
 
     private BoltRequestContext requestContext() {
-        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", null);
+        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", null, false, Set.of());
     }
 }

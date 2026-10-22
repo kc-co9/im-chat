@@ -23,6 +23,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GatewayRouteSnapshotCoordinatorTest {
 
@@ -50,6 +51,7 @@ class GatewayRouteSnapshotCoordinatorTest {
             assertThat(ack.routeCount()).isEqualTo(3L);
             assertThat(ack.routeRevision()).isPositive();
             assertThat(ack.contentChecksum()).isNotBlank();
+            assertThat(ack.updateExpireAtMs()).isEqualTo(6_000L);
         });
     }
 
@@ -127,7 +129,34 @@ class GatewayRouteSnapshotCoordinatorTest {
 
         assertThat(client.requests).hasSize(2);
         assertThat(delays).hasSize(2);
-        assertThat(delays.get(1).toMillis()).isBetween(50L, 100L);
+        long jitterMs = Math.floorMod(java.util.Objects.hash(
+                "gateway-process-1", 3L, "broker-a", 0), 51L);
+        assertThat(delays.get(1)).isEqualTo(Duration.ofMillis(125L + jitterMs));
+        assertThat(client.requests.get(0).updateExpireAtMs()).isEqualTo(6_000L);
+        assertThat(client.requests.get(1)).isSameAs(client.requests.get(0));
+    }
+
+    @Test
+    void stopsWhenBackoffWouldReachOriginalExpiry() {
+        BrokerClusterState state = state(3L, "broker-a");
+        CapturingClient client = new CapturingClient(state);
+        client.retryFirstRequest = true;
+        List<Duration> delays = new ArrayList<>();
+        long jitterMs = Math.floorMod(java.util.Objects.hash(
+                "gateway-process-1", 3L, "broker-a", 0), 51L);
+
+        try (GatewayRouteSnapshotCoordinator coordinator = new GatewayRouteSnapshotCoordinator(
+                "gateway-process-1", registryWithOneUserPerBroker(state), client,
+                10, 1, 125L + jitterMs, 0L, () -> 1_000L, delays::add)) {
+            assertThatThrownBy(coordinator::synchronize)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("backpressure retry exhausted");
+        }
+
+        assertThat(client.requests).singleElement().satisfies(request ->
+                assertThat(request.updateExpireAtMs()).isEqualTo(1_125L + jitterMs));
+        assertThat(client.acks).isEmpty();
+        assertThat(delays).isEmpty();
     }
 
     private GatewayRouteSnapshotCoordinator coordinator(
@@ -225,7 +254,7 @@ class GatewayRouteSnapshotCoordinatorTest {
                 if (retryFirstRequest && requests.size() == 1 && call == 1) {
                     return new AcceptGatewayRoutesResult(
                             AcceptGatewayRoutesResult.Status.RETRY_AFTER,
-                            params.routingEpoch(), 25L);
+                            params.routingEpoch(), 125L);
                 }
                 return AcceptGatewayRoutesResult.applied(params.routingEpoch());
             } catch (InterruptedException exception) {

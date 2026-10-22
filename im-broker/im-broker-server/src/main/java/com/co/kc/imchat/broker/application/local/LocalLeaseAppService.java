@@ -19,7 +19,7 @@ import com.alicp.jetcache.Cache;
 import java.time.Duration;
 
 /**
- * 将 holder 本机的申请起点与 Leader 返回的 Lease nonce 重新绑定。
+ * 关联本机 prepare 记录与 Leader 下发的 Lease，并编排一次性安装。
  * 首次授权和续租都先 prepare 再 accept；申请起点和过期判断使用同一单调时间语义。
  * pending 是本机一次性安装记录，不复制集群操作状态，也不决定 Leader 是否有签发资格。
  */
@@ -36,7 +36,7 @@ public final class LocalLeaseAppService {
     }
 
     /**
-     * 为本机 holder 申请生成一次性 nonce，等待 Leader 返回匹配的 lease。
+     * 为本机 Lease 安装生成一次性 nonce，并记录单调准备起点。
      * <p>核心步骤：转换 epoch → 登记 nonce 与单调起点；JetCache 管理 TTL 与容量淘汰。</p>
      *
      * @param command 本次准备安装的路由代次

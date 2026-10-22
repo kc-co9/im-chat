@@ -1,0 +1,8 @@
+JRaft applied membership private distribution
+Based on SOFAJRaft 1.4.1, https://github.com/sofastack/sofa-jraft
+Upstream commit cb1a0c7ac16ff146ad8abb04b1bcb035270bb234
+
+Upstream LICENSE is preserved without modification. The upstream checkout
+contains no NOTICE file. This distribution adds a local applied-membership
+accessor and build/test changes; this NOTICE identifies those modifications
+and is not an assertion that upstream supplied a NOTICE file.

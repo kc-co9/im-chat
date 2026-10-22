@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 
+/** 以固定大端编码和 SHA-256 生成路由算法使用的用户哈希及用户与 Broker 的匹配分值。 */
 final class RouteBrokerHashing {
 
     private RouteBrokerHashing() {

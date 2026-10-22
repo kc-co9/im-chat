@@ -1,6 +1,5 @@
 package com.co.kc.imchat.broker.model.io;
 
-import java.time.Instant;
 
 /** Gateway 注册快照响应。 */
 public record GatewayNodeResponse(
@@ -11,8 +10,8 @@ public record GatewayNodeResponse(
         /* Gateway 端口。 */
         Integer port,
         /* 注册时间。 */
-        Instant registeredAt,
+        Long registeredAtMs,
         /* 最后心跳时间。 */
-        Instant lastSeenAt
+        Long lastSeenAtMs
 ) {
 }

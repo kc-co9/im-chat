@@ -54,6 +54,12 @@
 - Refresh Token 原子轮换；复用凭证或并发竞争失败的凭证被拒绝，但不使竞争成功的新凭证失效。
 - 登出和 Session 替换先提交 Session 状态，再发布 best-effort WebSocket 关闭控制；控制投递不是认证权威。
 
+## Broker 自动故障观察身份
+
+健康报告只接受当前Raft membership与已提交Broker角色/endpoint绑定一致的voter。观察操作入站必须有成功TLS握手和namespace内唯一Broker URI SAN；无URI、Subject-only、多Broker身份、错误/未受信证书在业务Handler前拒绝。可信网络回退不能生成独立报告票。
+
+出站在实际调用的同一池内连接核验证书身份，载荷不能覆盖来源。报告请求绑定 cluster/revision/epoch/nonce，不复用上轮失败报告；probe/report 不携带绝对期限，接收方允许晚到只读请求，调用方仍以单调预算和报告新鲜度决定结果可接受性。目标自报、非voter或重复reporter不能增加票数。多数仅允许进入原fence/quarantine流程，不直接授权新epoch副作用。人工force-deactivate风险确认不由自动路径伪造。
+
 ## 变更要求
 
 - 新增入口必须明确认证和授权决策。

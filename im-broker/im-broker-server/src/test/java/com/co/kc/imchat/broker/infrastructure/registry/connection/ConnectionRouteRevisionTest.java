@@ -3,7 +3,7 @@ package com.co.kc.imchat.broker.infrastructure.registry.connection;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
 
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
 import java.time.Instant;

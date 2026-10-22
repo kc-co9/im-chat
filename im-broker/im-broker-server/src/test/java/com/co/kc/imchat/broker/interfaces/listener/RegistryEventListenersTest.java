@@ -2,8 +2,8 @@ package com.co.kc.imchat.broker.interfaces.listener;
 
 import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-import com.co.kc.imchat.broker.application.gossip.RegistryGossipAppService;
-import com.co.kc.imchat.broker.adapter.gossip.BrokerStateStore;
+import com.co.kc.imchat.broker.application.gossip.BrokerGossipAppService;
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import com.co.kc.imchat.broker.interfaces.listener.broker.BrokerRegistryEventListener;
 import com.co.kc.imchat.broker.interfaces.listener.connection.ConnectionRegistryEventListener;
 import com.co.kc.imchat.broker.interfaces.listener.gateway.GatewayRegistryEventListener;
@@ -18,7 +18,7 @@ import com.co.kc.imchat.broker.model.cqrs.event.GatewayRegisteredEvent;
 import com.co.kc.imchat.broker.model.cqrs.event.GatewayRemovedEvent;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
 import org.junit.jupiter.api.Test;
@@ -37,15 +37,15 @@ class RegistryEventListenersTest {
     void springEventsStillUpdateObservationsAndRemovalFacts() {
         BrokerRegistry brokers = mock(BrokerRegistry.class);
         GatewayRegistry gateways = mock(GatewayRegistry.class);
-        BrokerStateStore store = mock(BrokerStateStore.class);
+        BrokerGossipAdapter store = mock(BrokerGossipAdapter.class);
         when(brokers.find("broker-a")).thenReturn(Optional.empty());
         when(gateways.find(new GatewayId("gateway-a"))).thenReturn(Optional.empty());
         LocalDateTime occurredOn = LocalDateTime.of(2026, 10, 6, 0, 0);
         List<ConnectionRegistration> removed = List.of(ConnectionRegistration.active(
                 new ConnectionRouteId(new UserId(2L), new GatewayId("gateway-a")), new RouteRevision(1L), Instant.MAX));
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.registerBean(RegistryGossipAppService.class,
-                    () -> new RegistryGossipAppService(brokers, gateways, store));
+            context.registerBean(BrokerGossipAppService.class,
+                    () -> new BrokerGossipAppService(brokers, gateways, store));
             context.register(BrokerRegistryEventListener.class, GatewayRegistryEventListener.class,
                     ConnectionRegistryEventListener.class);
             context.refresh();
@@ -75,8 +75,8 @@ class RegistryEventListenersTest {
 
     @Test
     void observationFailureDoesNotPreventLaterEventsFromBeingHandled() {
-        BrokerStateStore store = mock(BrokerStateStore.class);
-        RegistryGossipAppService service = new RegistryGossipAppService(
+        BrokerGossipAdapter store = mock(BrokerGossipAdapter.class);
+        BrokerGossipAppService service = new BrokerGossipAppService(
                 mock(BrokerRegistry.class), mock(GatewayRegistry.class), store);
         BrokerRegistryEventListener listener = new BrokerRegistryEventListener(service);
         doThrow(new IllegalStateException("observation unavailable"))

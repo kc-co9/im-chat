@@ -212,15 +212,9 @@ Harness 将高确定性规则自动化，同时把需要业务判断的 DDD 语�
 
 Harness 是持续演进的工程能力，不追求一次性把所有约定都变成自动检查。只有形成稳定需求、明确维护者和验证方式时才增加新规则或专题入口，避免出现无人维护的文档和高误报门禁。
 
-开始工作时检查环境，日常修改运行快速验证，收尾检查可交接状态，提交或交付前运行完整验证：
+日常迭代可用 `./scripts/verify.sh quick`，完整验收入口为 `./scripts/verify.sh full`。后者依次执行 readiness/clean、一次父 Harness 自测、一次完整 Maven reactor、同轮报告校验和一次真实 HA。Architecture、启动映射/Nacos 隔离、behavior 与 E2E 的实际报告经校验后记录来源；HA 复用同轮报告与制品证明，但仍实际运行容器拓扑、故障恢复和清理。独立验证入口继续用于定位，无需在同一成功 full 前后重复执行。
 
-```bash
-./scripts/verify.sh readiness
-./scripts/verify.sh quick
-./scripts/verify.sh e2e
-./scripts/verify.sh clean
-./scripts/verify.sh full
-```
+当前不提供阶段恢复、跨运行缓存或归档审计命令。实现验收与纯状态归档分开处理，旧证据的时间、指纹及 freshness 不改写；边界见 [Harness Guide](docs/references/HARNESS_GUIDE.md#完整验收与状态归档)。去重实现尚待真实 full 验收，不承诺实际耗时收益。
 
 `e2e` 启动真实 Broker HTTP/Bolt 与 Netty WebSocket runtime，验证实时链路的认证连接、路由、私聊发送、ACK、断开和 Gateway 重启恢复。Account 认证与 Message Facade 使用受控测试边界，因此它不替代包含 MySQL、Redis、Nacos 的全栈环境验证。完整输出保存在 `.harness/runtime/e2e.log`。
 
@@ -281,6 +275,8 @@ infra 包含 MySQL、Redis、Nacos、Kafka、Prometheus、Grafana、BanyanDB 和
 ### 生产机器配置基线
 
 机器规格必须来自生产候选拓扑的重复容量测量，不能由开发机、单机 Compose 或 smoke 结果外推。当前仓库尚未接入生产候选环境 driver，因此下表只固定测量口径和扩容信号，不给出没有证据支撑的 CPU、内存或磁盘数字。
+
+在真实候选环境不可用期间，只保留以下规划估算，不作为容量承诺：3-voter/2-Gateway；单 Broker 2-4 core/4-8 GiB；单 WebSocket Gateway 2-4 core/4-8 GiB；总连接目标约 1,000-2,000；消息目标先按 5 msg/s；预留至少 30% 余量。该估算来自本机 Docker 基线和 HA 拓扑假设，5-voter 不得直接套用，正式采用前仍需真实候选压测。
 
 | 模块/运行角色 | 拓扑与目标负载 | CPU | 内存/JVM | 磁盘容量与 IOPS | 网络 | 扩容信号 | 证据状态 |
 |---|---|---|---|---|---|---|---|

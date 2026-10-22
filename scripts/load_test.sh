@@ -257,7 +257,8 @@ wait_pid_with_timeout() {
   local total_deadline=$((START_SECONDS + TOTAL_TIMEOUT_SECONDS))
   while kill -0 "$pid" 2>/dev/null; do
     local process_state
-    process_state="$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')"
+    # kill -0 与 ps 之间子进程可能已退出；查询失败不替代 wait 的原始命令状态。
+    process_state="$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')" || process_state=""
     [[ -n "$process_state" && "$process_state" != Z* ]] || break
     if ((SECONDS >= stage_deadline || SECONDS >= total_deadline)); then
       terminate_pid "$pid" 2 TERM

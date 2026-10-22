@@ -13,12 +13,12 @@ import java.util.List;
 /**
  * 关闭旧路由纪元执行权的领域事实。
  *
- * <p>它记录一次集群操作要隔离的旧 {@link RoutingEpoch}、需要确认的 Broker 持有者集合，
- * 以及生成 fence 时的 Leader 任期和多数派读取位置。权威侧提交该事实后，各持有者必须停止
- * 接受旧纪元的租约和路由副作用。</p>
+ * <p>它记录一次集群操作要隔离的旧 {@link RoutingEpoch}、旧 epoch 的 committed ACTIVE Broker 冻结集合，
+ * 以及生成 fence 时的 Leader 任期和多数派读取位置。提交该事实关闭权威侧旧 epoch grant；
+ * 目标 Broker 完成本机 fence 或等待完整 quarantine 后，才允许提交新拓扑。</p>
  *
  * <p>该对象用于 BrokerCluster 拓扑变化、Broker 摘流和故障恢复场景，在新路由纪元生效前形成
- * 明确的旧纪元安全边界；持有者列表必须非空、唯一且按 Broker 身份稳定排序。</p>
+ * 明确的旧纪元安全边界；冻结的目标 Broker 列表必须非空、唯一且按 Broker 身份稳定排序。</p>
  */
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
 @EqualsAndHashCode
@@ -26,7 +26,7 @@ import java.util.List;
 public final class RoutingEpochFence implements Serializable {
     /* 触发 fence 的集群操作。 */
     private ClusterOperationId operationId;
-    /* 需要被旧持有者停止写入的路由纪元。 */
+    /* 本次关闭 grant 并要求隔离路由副作用准入的旧 epoch。 */
     private RoutingEpoch epoch;
     /* 生成 fence 时的权威 Leader 任期。 */
     private LeaderTerm leaderTerm;

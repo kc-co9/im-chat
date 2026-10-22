@@ -3,7 +3,11 @@ package com.co.kc.imchat.broker.infrastructure.config;
 import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
 import com.co.kc.imchat.broker.application.frame.FrameDispatchAppService;
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.broker.adapter.gateway.GatewayDispatchAdapter;
+import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
+import com.co.kc.imchat.plugin.metrics.support.MetricsCollector;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRoutingProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.RegistryProperties;
 import org.springframework.context.annotation.Bean;
@@ -27,16 +31,26 @@ public class FrameDeliveryConfiguration {
     }
 
     @Bean
+    public GatewayDispatchAdapter gatewayDispatchAdapter(
+            GatewayClient gatewayClient,
+            @Qualifier("brokerFrameDispatchExecutor") ExecutorService executor,
+            MetricsCollector metricsCollector) {
+        return new GatewayDispatchAdapter(gatewayClient, executor, metricsCollector);
+    }
+
+    @Bean
     public FrameDispatchAppService frameDispatchAppService(
             ConnectionRegistry connectionRegistry,
             GatewayRegistry gatewayRegistry,
             BrokerRoutingProperties routingProperties,
-            BrokerClusterAdapter brokerClusterAdapter,
+            BrokerRaftAdapter brokerClusterAdapter,
+            BrokerPeerAdapter brokerPeerAdapter,
+            GatewayDispatchAdapter gatewayDispatchAdapter,
             RegistryProperties registryProperties,
             JetCacheFactory cacheFactory,
             @Qualifier("brokerFrameDispatchExecutor") ExecutorService frameDispatchExecutor) {
         return new FrameDispatchAppService(connectionRegistry, gatewayRegistry,
-                brokerClusterAdapter,
+                brokerClusterAdapter, brokerPeerAdapter, gatewayDispatchAdapter,
                 registryProperties.getGatewayTtl(),
                 routingProperties.getRouteLookupNegativeCache(),
                 cacheFactory.local("broker.route.negative", routingProperties.getRouteLookupNegativeCache().isZero()

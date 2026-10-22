@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.application.local;
 
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.domain.connection.repository.BatchConnectionRegistry;
 import com.co.kc.imchat.broker.domain.authority.service.LocalRoutingLeaseService;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
@@ -16,7 +16,7 @@ import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteBatch;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteBatchReception;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteBatchId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteChunkIndex;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteSnapshotDigest;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
 import com.co.kc.imchat.broker.model.cqrs.command.AcceptGatewayRoutesCommand;
@@ -30,7 +30,7 @@ import com.co.kc.imchat.broker.sdk.routing.RouteBrokerSelectors;
 import com.co.kc.imchat.broker.sdk.routing.RouteBrokerSelector;
 import com.co.kc.imchat.common.domain.shared.event.DomainEvent;
 import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
-import com.co.kc.imchat.broker.transformer.infrastructure.BrokerDrainTransformer;
+import com.co.kc.imchat.broker.transformer.adapter.BrokerDrainTransformer;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -46,7 +46,7 @@ import java.util.List;
  */
 public final class LocalRouteAppService {
     private final String localBrokerId;
-    private final BrokerClusterConsensus stateRepository;
+    private final BrokerRaftAdapter stateRepository;
     private final LocalRoutingLeaseService leaseService;
     private final BatchConnectionRegistry connectionRegistry;
     private final DomainEventPublisher eventPublisher;
@@ -58,7 +58,7 @@ public final class LocalRouteAppService {
     private final Object cleanupLock = new Object();
 
     public LocalRouteAppService(
-            String localBrokerId, BrokerClusterConsensus stateRepository,
+            String localBrokerId, BrokerRaftAdapter stateRepository,
             LocalRoutingLeaseService leaseService, BatchConnectionRegistry connectionRegistry,
             DomainEventPublisher eventPublisher, Duration batchTimeout) {
         this.localBrokerId = localBrokerId;
@@ -96,15 +96,15 @@ public final class LocalRouteAppService {
                 .routeBrokerId(new BrokerId(command.routeBrokerId()))
                 .chunkCount(command.chunkCount())
                 .contentDigest(new GatewayRouteSnapshotDigest(command.contentChecksum()))
-                .updateExpiresAt(Instant.ofEpochMilli(command.eventDeadline()))
+                .updateExpireAt(command.updateExpireAt())
                 .build();
 
         synchronized (snapshotLock) {
             // 2. 核对期限、已提交代次、接收目标和分片用户的路由归属。
             Instant now = Instant.now();
-            BrokerClusterState state = stateRepository.committedState();
+            BrokerClusterState state = stateRepository.getCommittedState();
             RoutingEpoch committedEpoch = new RoutingEpoch(state.epoch());
-            if (!now.isBefore(incomingBatch.updateExpiresAt())) {
+            if (!now.isBefore(incomingBatch.updateExpireAt())) {
                 return AcceptGatewayRoutesResult.invalidBatch(state.epoch());
             }
             if (!incomingBatch.routingEpoch().equals(committedEpoch)
@@ -165,7 +165,7 @@ public final class LocalRouteAppService {
         BrokerId brokerId = new BrokerId(localBrokerId);
         RoutingEpoch oldEpoch = new RoutingEpoch(command.oldEpoch());
         RoutingEpoch newEpoch = new RoutingEpoch(command.newEpoch());
-        Instant oldEventDeadline = Instant.ofEpochMilli(command.eventDeadline());
+        Instant oldEventExpireAt = command.oldEventExpireAt();
         List<DrainProgressUpdate> confirmations = command.gateways().stream()
                 .map(watermark -> DrainProgressUpdate.confirmGateway(
                         new GatewayId(watermark.gatewayId()), new RouteRevision(watermark.routeRevision()),
@@ -176,12 +176,12 @@ public final class LocalRouteAppService {
             // 2. 本轮只读取一次已提交操作，领域对象核对目标、阶段、代次、期限和完整水位。
             BrokerClusterOperation operation = stateRepository.findOperation(operationId).orElse(null);
             if (operation == null || !operation.matchesRouteCleanup(
-                    brokerId, oldEpoch, newEpoch, oldEventDeadline, confirmations)) {
+                    brokerId, oldEpoch, newEpoch, oldEventExpireAt, confirmations)) {
                 return DrainRouteCleanupResult.rejected(connectionRegistry.count());
             }
 
             // 3. Registry 负责按水位删除、复用首次结果及有界缓存，不在应用层展开存储策略。
-            RouteCleanupResult cleanup = connectionRegistry.cleanupRoutes(operationId, confirmations, oldEventDeadline);
+            RouteCleanupResult cleanup = connectionRegistry.cleanupRoutes(operationId, confirmations, oldEventExpireAt);
             // 4. 转换本机清理事实，不将其解释为整个排空已经完成。
             return BrokerDrainTransformer.INSTANCE.drainRouteCleanupResultFrom(cleanup);
         }

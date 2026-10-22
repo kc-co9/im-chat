@@ -80,7 +80,7 @@ public class BrokerProperties {
             /**
              * 单次 Gateway Bolt RPC 调用超时时间，单位为毫秒。
              */
-            private int timeoutMillis = 3000;
+            private int timeoutMs = 3000;
         }
     }
 
@@ -99,6 +99,6 @@ public class BrokerProperties {
         /**
          * 单次 Broker 节点间 RPC 调用超时时间，单位为毫秒。
          */
-        private int timeoutMillis = 3000;
+        private int timeoutMs = 3000;
     }
 }

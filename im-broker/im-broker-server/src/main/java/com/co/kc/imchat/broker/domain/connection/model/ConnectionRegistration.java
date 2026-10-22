@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.connection.model;
 
+import com.co.kc.imchat.common.domain.user.model.UserId;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 import lombok.Getter;
 import lombok.experimental.Accessors;
@@ -28,7 +30,7 @@ public final class ConnectionRegistration {
     /**
      * 形成当前状态的路由更新有效截止时刻；不表示 ACTIVE 连接的断开时刻。
      */
-    private Instant updateExpiresAt;
+    private Instant updateExpireAt;
     /**
      * 连接路由生命周期状态。
      */
@@ -48,18 +50,18 @@ public final class ConnectionRegistration {
 
     private ConnectionRegistration(ConnectionRouteId id,
                             RouteRevision revision,
-                            Instant updateExpiresAt,
+                            Instant updateExpireAt,
                             ConnectionRouteStatus status,
                             Instant tombstonedAt,
                             RouteRevision coverageRevision) {
-        AssertUtils.allDomainPropNotNull("connection route is incomplete", id, revision, updateExpiresAt, status);
+        AssertUtils.allDomainPropNotNull("connection route is incomplete", id, revision, updateExpireAt, status);
         AssertUtils.domainPropTrue("active route cannot contain tombstone evidence",
                 status != ConnectionRouteStatus.ACTIVE || (tombstonedAt == null && coverageRevision == null));
         AssertUtils.domainPropTrue("tombstone route requires creation time",
                 status != ConnectionRouteStatus.TOMBSTONE || tombstonedAt != null);
         this.id = id;
         this.revision = revision;
-        this.updateExpiresAt = updateExpiresAt;
+        this.updateExpireAt = updateExpireAt;
         this.status = status;
         this.tombstonedAt = tombstonedAt;
         this.coverageRevision = coverageRevision;
@@ -69,25 +71,25 @@ public final class ConnectionRegistration {
 
     public static ConnectionRegistration active(ConnectionRouteId id,
                                   RouteRevision revision,
-                                  Instant updateExpiresAt) {
-        return new ConnectionRegistration(id, revision, updateExpiresAt,
+                                  Instant updateExpireAt) {
+        return new ConnectionRegistration(id, revision, updateExpireAt,
                 ConnectionRouteStatus.ACTIVE, null, null);
     }
 
     static ConnectionRegistration tombstone(ConnectionRouteId id,
                                      RouteRevision revision,
-                                     Instant updateExpiresAt,
+                                     Instant updateExpireAt,
                                      Instant tombstonedAt,
                                      RouteRevision coverageRevision) {
-        return new ConnectionRegistration(id, revision, updateExpiresAt,
+        return new ConnectionRegistration(id, revision, updateExpireAt,
                 ConnectionRouteStatus.TOMBSTONE, tombstonedAt, coverageRevision);
     }
 
     static ConnectionRegistration tombstone(ConnectionRouteId id,
                                      RouteRevision revision,
-                                     Instant updateExpiresAt,
+                                     Instant updateExpireAt,
                                      Instant tombstonedAt) {
-        return new ConnectionRegistration(id, revision, updateExpiresAt,
+        return new ConnectionRegistration(id, revision, updateExpireAt,
                 ConnectionRouteStatus.TOMBSTONE, tombstonedAt, null);
     }
 
@@ -104,13 +106,13 @@ public final class ConnectionRegistration {
 
         public Builder id(ConnectionRouteId value) { registration.id = value; return this; }
         public Builder revision(RouteRevision value) { registration.revision = value; return this; }
-        public Builder updateExpiresAt(Instant value) { registration.updateExpiresAt = value; return this; }
+        public Builder updateExpireAt(Instant value) { registration.updateExpireAt = value; return this; }
         public Builder connectedAt(Instant value) { registration.connectedAt = value; return this; }
         public Builder refreshedAt(Instant value) { registration.refreshedAt = value; return this; }
 
         public ConnectionRegistration build() {
             AssertUtils.allDomainPropNotNull("connection registration is incomplete",
-                    registration.id, registration.revision, registration.updateExpiresAt,
+                    registration.id, registration.revision, registration.updateExpireAt,
                     registration.connectedAt, registration.refreshedAt);
             registration.status = ConnectionRouteStatus.ACTIVE;
             return registration;
@@ -147,10 +149,10 @@ public final class ConnectionRegistration {
      * 应用不早于当前状态的 ACTIVE 更新。
      */
     ConnectionRegistration acceptActiveUpdate(RouteRevision updateRevision,
-                                       Instant updateExpiresAt) {
+                                       Instant updateExpireAt) {
         AssertUtils.domainPropTrue("active update is older than connection route",
                 !supersedes(updateRevision));
-        ConnectionRegistration updated = active(id, updateRevision, updateExpiresAt);
+        ConnectionRegistration updated = active(id, updateRevision, updateExpireAt);
         updated.connectedAt = connectedAt;
         return updated;
     }
@@ -159,10 +161,10 @@ public final class ConnectionRegistration {
      * 应用严格更新的注销，将当前路由转换为尚未被快照覆盖的 tombstone。
      */
     ConnectionRegistration acceptRemovalUpdate(RouteRevision updateRevision,
-                                        Instant updateExpiresAt,
+                                        Instant updateExpireAt,
                                         Instant now) {
         AssertUtils.domainPropTrue("removal update is not newer than connection route", !hasRevisionAtLeast(updateRevision));
-        ConnectionRegistration removed = tombstone(id, updateRevision, updateExpiresAt, now);
+        ConnectionRegistration removed = tombstone(id, updateRevision, updateExpireAt, now);
         removed.connectedAt = connectedAt;
         removed.refreshedAt = now;
         return removed;
@@ -172,11 +174,11 @@ public final class ConnectionRegistration {
      * 接受完整快照确认的删除，将缺失路由转换为已被该快照覆盖的 tombstone。
      */
     ConnectionRegistration acceptSnapshotRemoval(RouteRevision snapshotRevision,
-                                          Instant updateExpiresAt,
+                                          Instant updateExpireAt,
                                           Instant now) {
         AssertUtils.domainPropTrue("snapshot is older than connection route",
                 !supersedes(snapshotRevision));
-        ConnectionRegistration removed = tombstone(id, revision.max(snapshotRevision), updateExpiresAt, now, snapshotRevision);
+        ConnectionRegistration removed = tombstone(id, revision.max(snapshotRevision), updateExpireAt, now, snapshotRevision);
         removed.connectedAt = connectedAt;
         removed.refreshedAt = now;
         return removed;
@@ -193,11 +195,11 @@ public final class ConnectionRegistration {
      * 将当前 ACTIVE 路由转换为已由 drain 水位确认删除的 tombstone。
      */
     ConnectionRegistration purgeAt(RouteRevision confirmedRevision,
-                            Instant updateExpiresAt,
+                            Instant updateExpireAt,
                             Instant now) {
         AssertUtils.domainPropTrue("connection route is outside purge watermark",
                 canPurgeAt(confirmedRevision));
-        ConnectionRegistration removed = tombstone(id, confirmedRevision, updateExpiresAt, now, confirmedRevision);
+        ConnectionRegistration removed = tombstone(id, confirmedRevision, updateExpireAt, now, confirmedRevision);
         removed.connectedAt = connectedAt;
         removed.refreshedAt = now;
         return removed;
@@ -210,7 +212,7 @@ public final class ConnectionRegistration {
         return status == ConnectionRouteStatus.TOMBSTONE
                 && coverageRevision != null
                 && coverageRevision.compareTo(revision) >= 0
-                && !now.isBefore(updateExpiresAt)
+                && !now.isBefore(updateExpireAt)
                 && !now.isBefore(tombstonedAt.plus(gracePeriod));
     }
 }

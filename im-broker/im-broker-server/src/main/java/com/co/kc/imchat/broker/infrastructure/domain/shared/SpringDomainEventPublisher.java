@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/** 将公共领域事件发布契约适配到 Spring 事件机制，批量事件按列表顺序逐个发布。 */
 @Component
 @RequiredArgsConstructor
 public class SpringDomainEventPublisher implements DomainEventPublisher {

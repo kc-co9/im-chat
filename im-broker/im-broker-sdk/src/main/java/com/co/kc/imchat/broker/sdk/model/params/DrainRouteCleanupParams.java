@@ -12,13 +12,13 @@ public record DrainRouteCleanupParams(
         String operationId,
         long oldEpoch,
         long newEpoch,
-        long eventDeadline,
+        long oldEventExpireAtMs,
         List<DrainGatewayWatermarkDTO> gateways) implements Serializable, BrokerDataPlaneRequest {
 
     public DrainRouteCleanupParams {
         if (requesterBrokerId == null || requesterBrokerId.isBlank()
                 || operationId == null || operationId.isBlank()
-                || oldEpoch < 0L || newEpoch <= oldEpoch || eventDeadline <= 0L
+                || oldEpoch < 0L || newEpoch <= oldEpoch || oldEventExpireAtMs <= 0L
                 || gateways == null) {
             throw new IllegalArgumentException("invalid drain route cleanup request");
         }

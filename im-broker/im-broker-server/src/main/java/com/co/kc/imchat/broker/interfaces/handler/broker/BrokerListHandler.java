@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.interfaces.handler.broker;
 
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
 import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;

@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.interfaces.listener.gateway;
 
-import com.co.kc.imchat.broker.application.gossip.RegistryGossipAppService;
+import com.co.kc.imchat.broker.application.gossip.BrokerGossipAppService;
 
 import com.co.kc.imchat.broker.interfaces.listener.AbstractRegistryEventListener;
 import com.co.kc.imchat.broker.model.cqrs.event.GatewayHeartbeatEvent;
@@ -16,9 +16,9 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class GatewayRegistryEventListener extends AbstractRegistryEventListener {
-    private final RegistryGossipAppService gossipService;
+    private final BrokerGossipAppService gossipService;
 
-    public GatewayRegistryEventListener(RegistryGossipAppService gossipService) {
+    public GatewayRegistryEventListener(BrokerGossipAppService gossipService) {
         this.gossipService = gossipService;
     }
 

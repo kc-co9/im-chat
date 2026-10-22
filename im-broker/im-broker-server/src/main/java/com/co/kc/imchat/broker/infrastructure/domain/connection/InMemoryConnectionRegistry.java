@@ -8,7 +8,7 @@ import com.co.kc.imchat.broker.domain.connection.model.ConnectionSyncResult;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteTable;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -37,9 +37,9 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
     }
 
     @Override
-    public synchronized boolean unregister(ConnectionRouteId id, RouteRevision revision, Instant updateExpiresAt) {
+    public synchronized boolean unregister(ConnectionRouteId id, RouteRevision revision, Instant updateExpireAt) {
         GatewayRouteTable table = routeTables.computeIfAbsent(id.gatewayId(), GatewayRouteTable::new);
-        ConnectionRouteChangeSet changes = table.unregister(id.userId(), revision, updateExpiresAt);
+        ConnectionRouteChangeSet changes = table.unregister(id.userId(), revision, updateExpireAt);
         indexChanges(changes);
         return changes.accepted();
     }
@@ -62,10 +62,10 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
 
     @Override
     public synchronized ConnectionSyncResult reconcileRoutes(
-            GatewayId gatewayId, RouteRevision revision, Instant updateExpiresAt, List<UserId> users) {
+            GatewayId gatewayId, RouteRevision revision, Instant updateExpireAt, List<UserId> users) {
         GatewayRouteTable table = routeTables.computeIfAbsent(gatewayId, GatewayRouteTable::new);
         List<ConnectionRegistration> before = table.registrations();
-        ConnectionRouteChangeSet changes = table.reconcile(users, revision, updateExpiresAt);
+        ConnectionRouteChangeSet changes = table.reconcile(users, revision, updateExpireAt);
         indexChanges(changes);
         return new ConnectionSyncResult(
                 changes.added().stream().map(id -> table.find(id.userId()).orElseThrow()).toList(),
@@ -88,10 +88,10 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
 
     @Override
     public synchronized ConnectionSyncResult purgeRoutes(
-            GatewayId gatewayId, RouteRevision revision, Instant oldEventDeadline) {
+            GatewayId gatewayId, RouteRevision revision, Instant oldEventExpireAt) {
         GatewayRouteTable table = routeTables.computeIfAbsent(gatewayId, GatewayRouteTable::new);
         List<ConnectionRegistration> before = table.registrations();
-        ConnectionRouteChangeSet changes = table.purge(revision, oldEventDeadline);
+        ConnectionRouteChangeSet changes = table.purge(revision, oldEventExpireAt);
         indexChanges(changes);
         return new ConnectionSyncResult(List.of(),
                 before.stream().filter(registration -> changes.removed().contains(registration.id())).toList());

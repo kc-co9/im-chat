@@ -1,6 +1,6 @@
 # Broker 权威集群状态与高可用路由切换设计
 
-> 状态：原设计已批准，四轮独立 Review 结论为 `Approved`。2026-10-08 用户确认 D17/D18 增量调整为查询当前所有可路由 Broker、专用虚拟线程并发、每个 peer IO 独立超时；代码/集成范围已独立复评 `Accept`，不替代生产容量验收。实施状态见 [`2026-09-20-broker-routing-consensus`](../exec-plans/completed/2026-09-20-broker-routing-consensus.md)，容量见[独立计划](../exec-plans/active/2026-10-10-broker-routing-capacity.md)。
+> 状态：原设计已批准，四轮独立 Review 结论为 `Approved`。2026-10-08 用户确认 D17/D18 增量调整为查询当前所有可路由 Broker、专用虚拟线程并发、每个 peer IO 独立超时；代码/集成范围已独立复评 `Accept`，不替代生产容量验收。实施状态见 [`2026-09-20-broker-routing-consensus`](../exec-plans/completed/2026-09-20-broker-routing-consensus.md)，容量计划已归档于[本地模拟计划](../exec-plans/completed/2026-10-10-broker-routing-capacity.md)。
 
 ## 摘要
 
@@ -1102,6 +1102,8 @@ sequenceDiagram
 ### Broker 故障与网络分区闭环
 
 #### 自动停止分流
+
+接入细节补充：[自动故障观察与摘流设计](2026-10-16-broker-automatic-failure-observation-design.md)。D22继续有效；voter主动探测、Leader拉取独立报告，采用保守重置冷却而不增加Raft持久时间，当前实现/验收进度由活跃A5维护，不以本文历史批准冒充当前门禁通过。
 
 针对 Broker 的 Gossip 和主动探针产生 `BrokerHealthObservation`。自动摘流要求：
 

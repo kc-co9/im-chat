@@ -5,7 +5,7 @@ import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionSyncResult;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -19,7 +19,7 @@ public interface ConnectionRegistry {
     boolean register(ConnectionRegistration registration);
 
     /** 按删除更新的版本证据注销并保留 tombstone，禁止无版本删除。 */
-    boolean unregister(ConnectionRouteId id, RouteRevision revision, Instant updateExpiresAt);
+    boolean unregister(ConnectionRouteId id, RouteRevision revision, Instant updateExpireAt);
 
     /** 查询用户当前活跃注册，包括版本、水位和观察时间，不触发跨 Broker 查询。 */
     List<ConnectionRegistration> find(UserId userId);
@@ -35,7 +35,7 @@ public interface ConnectionRegistry {
      * 输入可由分片汇总而来；保留 revision 更高的增量路由，同 revision 的内容一致性由聚合校验。
      */
     ConnectionSyncResult reconcileRoutes(
-            GatewayId gatewayId, RouteRevision revision, Instant updateExpiresAt, List<UserId> users);
+            GatewayId gatewayId, RouteRevision revision, Instant updateExpireAt, List<UserId> users);
 
     /** 回收已覆盖且超过更新期限和宽限期的删除标记。 */
     int collectExpiredTombstones(Duration gracePeriod);
@@ -44,5 +44,5 @@ public interface ConnectionRegistry {
     ConnectionSyncResult removeGateway(GatewayId gatewayId);
 
     /** 只删除确认 revision 覆盖的旧路由并保留 tombstone。 */
-    ConnectionSyncResult purgeRoutes(GatewayId gatewayId, RouteRevision revision, Instant oldEventDeadline);
+    ConnectionSyncResult purgeRoutes(GatewayId gatewayId, RouteRevision revision, Instant oldEventExpireAt);
 }

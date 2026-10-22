@@ -54,12 +54,12 @@ onMounted(async () => {
       >
       <ElTableColumn label="注册时间" min-width="180"
         ><template #default="{ row }">{{
-          formatTime(row.registeredAt)
+          formatTime(row.registeredAtMs)
         }}</template></ElTableColumn
       >
       <ElTableColumn label="最后心跳" min-width="180"
         ><template #default="{ row }">{{
-          formatTime(row.lastSeenAt)
+          formatTime(row.lastSeenAtMs)
         }}</template></ElTableColumn
       >
     </ElTable>

@@ -1,19 +1,19 @@
 package com.co.kc.imchat.broker.application.diagnostic;
 
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
 
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 
 import com.co.kc.imchat.broker.model.cqrs.query.GossipRecordsQuery;
 
 import com.co.kc.imchat.broker.model.cqrs.query.ConnectionRoutesQuery;
 
-import com.co.kc.imchat.broker.adapter.diagnostic.GossipSyncTracker;
+import com.co.kc.imchat.broker.support.gossip.GossipSyncTracker;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
 import com.co.kc.imchat.broker.model.enums.DiagnosticStatus;
 import com.co.kc.imchat.broker.model.cqrs.dto.GossipRecordDTO;
@@ -52,7 +52,7 @@ class BrokerDiagnosticAppServiceTest {
         gateways.register(RegistryTransformer.INSTANCE.gatewayEndpointFrom("gateway-1", "10.0.1.1", 12300, "test-identity"));
         connections.register(ConnectionRegistration.active(new ConnectionRouteId(new UserId(1L), new GatewayId("gateway-1")), new RouteRevision(0L), Instant.MAX));
         gossip.track(new GossipRecordDTO(
-                Instant.parse("2026-08-23T01:00:00Z"), "broker-2", DiagnosticStatus.SUCCESS, 2, 3L, null));
+                Instant.parse("2026-08-23T01:00:00Z"), "broker-2", DiagnosticStatus.SUCCESS, 2, java.time.Duration.ofMillis(3), null));
         BrokerDiagnosticAppService service = service(brokers);
 
         BrokerOverviewDTO overview = service.overview();
@@ -60,7 +60,7 @@ class BrokerDiagnosticAppServiceTest {
         assertThat(overview.broker().id()).isEqualTo(properties.getInstance().getId());
         assertThat(overview.broker().address()).isEqualTo("10.0.0.1:12200");
         assertThat(overview.broker().startedAt()).isNotNull();
-        assertThat(overview.broker().uptimeSeconds()).isNotNegative();
+        assertThat(overview.broker().uptime().isNegative()).isFalse();
         assertThat(overview.statistics().brokerCount()).isEqualTo(1);
         assertThat(overview.statistics().gatewayCount()).isEqualTo(1);
         assertThat(overview.statistics().connectionCount()).isEqualTo(1);

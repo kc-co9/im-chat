@@ -1,12 +1,12 @@
 package com.co.kc.imchat.broker.infrastructure.registry.connection;
 
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
 import java.time.Instant;
 
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 
 import com.co.kc.imchat.broker.infrastructure.domain.cluster.InMemoryBrokerRegistry;
@@ -35,7 +35,7 @@ class InMemoryConnectionRegistryTest {
         Instant connectedAt = Instant.parse("2026-09-09T10:00:00Z");
         ConnectionRouteId id = new ConnectionRouteId(new UserId(42L), new GatewayId("gw-1"));
         ConnectionRegistration initial = ConnectionRegistration.builder()
-                .id(id).revision(new RouteRevision(1L)).updateExpiresAt(Instant.MAX)
+                .id(id).revision(new RouteRevision(1L)).updateExpireAt(Instant.MAX)
                 .connectedAt(connectedAt).refreshedAt(connectedAt).build();
         assertTrue(store.register(initial));
         assertThat(store.find(id.userId())).containsExactly(initial);

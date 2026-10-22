@@ -25,7 +25,7 @@ import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteBatchReceptio
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteChunkIndex;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteSnapshotDigest;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 
 import static com.co.kc.imchat.broker.support.BrokerRoutingPropertiesFixture.routingProperties;
 import com.co.kc.imchat.common.utils.HashUtils;
@@ -57,7 +57,7 @@ class InMemoryBatchConnectionRegistryTest {
                 .routingEpoch(new RoutingEpoch(7L)).routeRevision(new RouteRevision(3L))
                 .routeBrokerId(new BrokerId("broker-a")).chunkCount(2)
                 .contentDigest(new GatewayRouteSnapshotDigest(HashUtils.sha256HexLongs(List.of(101L, 102L))))
-                .updateExpiresAt(Instant.MAX).build();
+                .updateExpireAt(Instant.MAX).build();
         try {
             assertThat(registry.acceptBatch(batch, new GatewayRouteChunkIndex(0), List.of(new UserId(101L))).status())
                     .isEqualTo(GatewayRouteBatchReception.Status.CHUNK_ACCEPTED);
@@ -129,7 +129,7 @@ class InMemoryBatchConnectionRegistryTest {
                 .routeBrokerId(new BrokerId("broker-a"))
                 .chunkCount(1)
                 .contentDigest(new GatewayRouteSnapshotDigest(HashUtils.sha256HexLongs(List.of(101L))))
-                .updateExpiresAt(Instant.ofEpochMilli(Long.MAX_VALUE)).build();
+                .updateExpireAt(Instant.ofEpochMilli(Long.MAX_VALUE)).build();
 
         GatewayRouteBatchReception reception = batches.acceptBatch(batch,
                 new GatewayRouteChunkIndex(0), List.of(new UserId(101L)));

@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.application.local;
 
-import com.co.kc.imchat.broker.adapter.gossip.BrokerStateStore;
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
@@ -15,13 +15,13 @@ import java.util.List;
 public final class LocalGatewayCleanupAppService {
     private final GatewayRegistry gatewayRegistry;
     private final ConnectionRegistry connectionRegistry;
-    private final BrokerStateStore stateStore;
+    private final BrokerGossipAdapter stateStore;
     private final Duration gatewayTtl;
     private final Duration gracePeriod;
 
     public LocalGatewayCleanupAppService(GatewayRegistry gatewayRegistry,
                                          ConnectionRegistry connectionRegistry,
-                                         BrokerStateStore stateStore,
+                                         BrokerGossipAdapter stateStore,
                                          Duration gatewayTtl, Duration gracePeriod) {
         this.gatewayRegistry = gatewayRegistry;
         this.connectionRegistry = connectionRegistry;

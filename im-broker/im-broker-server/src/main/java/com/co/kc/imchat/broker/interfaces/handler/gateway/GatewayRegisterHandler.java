@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.interfaces.handler.gateway;
 
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 
 import com.co.kc.imchat.broker.model.cqrs.event.GatewayRegisteredEvent;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;

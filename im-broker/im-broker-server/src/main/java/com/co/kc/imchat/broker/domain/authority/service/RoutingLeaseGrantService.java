@@ -15,7 +15,7 @@ import java.util.Map;
 /**
  * 路由租约签发领域服务，维护当前签发进程内各 Broker 的任期与序列。
  * 同任期序列递增，新任期从首个序列开始，拒绝旧任期证据；不执行 RPC 或共识读取。
-     * 调用方通过 BrokerCluster 检查签发资格，本服务只负责签发；租约有效期由 holder 的准备起点约束。
+     * 调用方通过 BrokerCluster 检查签发资格，本服务只负责签发；租约有效期由目标 Broker 本机的准备起点约束。
  */
 public final class RoutingLeaseGrantService {
     private final Duration leaseDuration;

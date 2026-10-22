@@ -23,4 +23,12 @@ public interface BoltInvoker {
     <T, R> R invoke(String address, String service, String operation, T request,
                     Class<R> responseType, int timeoutMillis);
 
+    /**
+     * 在同一池内连接验证 TLS 和唯一命名空间 URI 后调用；序列化至解码共用单调接受预算。
+     * 过期结果不接受；底层池等待和同步 DNS 可能阻塞超过预算，不承诺方法硬返回期限。
+     * identityPrefix 由调用方拥有，匹配该前缀的 URI 必须恰好一个且等于 expectedPeerIdentity。
+     */
+    <T, R> R invokeAuthenticated(String address, String service, String operation, T request,
+                                 Class<R> responseType, int timeoutMillis,
+                                 String expectedPeerIdentity, String identityPrefix);
 }

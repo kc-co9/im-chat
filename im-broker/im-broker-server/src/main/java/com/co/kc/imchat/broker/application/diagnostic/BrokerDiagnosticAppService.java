@@ -1,8 +1,8 @@
 package com.co.kc.imchat.broker.application.diagnostic;
 
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 
-import com.co.kc.imchat.broker.adapter.diagnostic.GossipSyncTracker;
+import com.co.kc.imchat.broker.support.gossip.GossipSyncTracker;
 
 import com.co.kc.imchat.broker.model.cqrs.query.ConnectionRoutesQuery;
 import com.co.kc.imchat.broker.model.cqrs.query.GossipRecordsQuery;
@@ -47,7 +47,7 @@ public class BrokerDiagnosticAppService {
                 brokerId,
                 address,
                 STARTED_AT,
-                uptimeSeconds());
+                uptime());
         BrokerStatisticsDTO statistics = new BrokerStatisticsDTO(
                 (long) brokerRegistry.list().size(),
                 (long) gatewayRegistry.list().size(),
@@ -83,7 +83,8 @@ public class BrokerDiagnosticAppService {
         return gossipSyncTracker.summary();
     }
 
-    private Long uptimeSeconds() {
-        return Math.max(0L, Duration.between(STARTED_AT, Instant.now()).toSeconds());
+    private Duration uptime() {
+        Duration uptime = Duration.between(STARTED_AT, Instant.now());
+        return uptime.isNegative() ? Duration.ZERO : uptime;
     }
 }

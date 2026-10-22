@@ -1,0 +1,2082 @@
+diff --git a/jraft-core/pom.xml b/jraft-core/pom.xml
+index 83ab773..da12143 100644
+--- a/jraft-core/pom.xml
++++ b/jraft-core/pom.xml
+@@ -7,10 +7,16 @@
+         <groupId>com.alipay.sofa</groupId>
+         <version>1.4.1</version>
+     </parent>
++    <groupId>com.co.kc.thirdparty.sofa</groupId>
+     <artifactId>jraft-core</artifactId>
++    <version>1.4.1-imchat.1</version>
+     <packaging>jar</packaging>
+     <name>jraft-core ${project.version}</name>
+ 
++    <properties>
++        <project.build.outputTimestamp>1781481600</project.build.outputTimestamp>
++    </properties>
++
+     <dependencies>
+         <!-- junit -->
+         <dependency>
+@@ -124,4 +130,41 @@
+             <artifactId>jmh-generator-annprocess</artifactId>
+         </dependency>
+     </dependencies>
++
++    <build>
++        <plugins>
++            <plugin>
++                <groupId>org.apache.maven.plugins</groupId>
++                <artifactId>maven-source-plugin</artifactId>
++                <version>2.0.2</version>
++                <executions>
++                    <execution>
++                        <id>attach-sources</id>
++                        <goals>
++                            <goal>jar</goal>
++                        </goals>
++                    </execution>
++                </executions>
++            </plugin>
++            <plugin>
++                <groupId>org.apache.maven.plugins</groupId>
++                <artifactId>maven-jar-plugin</artifactId>
++                <version>3.4.2</version>
++                <configuration>
++                    <outputTimestamp>${project.build.outputTimestamp}</outputTimestamp>
++                    <archive>
++                        <manifest>
++                            <addDefaultEntries>false</addDefaultEntries>
++                        </manifest>
++                        <manifestEntries>
++                            <Archiver-Version>Plexus Archiver</Archiver-Version>
++                            <Created-By>Apache Maven 3.8.4</Created-By>
++                            <Built-By>${user.name}</Built-By>
++                            <Build-Jdk>${java.version}</Build-Jdk>
++                        </manifestEntries>
++                    </archive>
++                </configuration>
++            </plugin>
++        </plugins>
++    </build>
+ </project>
+diff --git a/jraft-core/src/main/java/com/alipay/sofa/jraft/FSMCaller.java b/jraft-core/src/main/java/com/alipay/sofa/jraft/FSMCaller.java
+index a6ebc6b..c91feec 100644
+--- a/jraft-core/src/main/java/com/alipay/sofa/jraft/FSMCaller.java
++++ b/jraft-core/src/main/java/com/alipay/sofa/jraft/FSMCaller.java
+@@ -16,6 +16,9 @@
+  */
+ package com.alipay.sofa.jraft;
+ 
++import com.alipay.sofa.jraft.conf.AppliedConfiguration;
++import java.util.concurrent.TimeoutException;
++
+ import com.alipay.sofa.jraft.closure.LoadSnapshotClosure;
+ import com.alipay.sofa.jraft.closure.SaveSnapshotClosure;
+ import com.alipay.sofa.jraft.entity.LeaderChangeContext;
+@@ -53,6 +56,9 @@ public interface FSMCaller extends Lifecycle<FSMCallerOptions>, Describer {
+      */
+     boolean isRunningOnFSMThread();
+ 
++    AppliedConfiguration getAppliedConfiguration(final long timeoutMillis) throws InterruptedException,
++                                                                          TimeoutException;
++
+     /**
+      * Adds a LastAppliedLogIndexListener.
+      */
+diff --git a/jraft-core/src/main/java/com/alipay/sofa/jraft/Node.java b/jraft-core/src/main/java/com/alipay/sofa/jraft/Node.java
+index fe89d9c..d24111d 100644
+--- a/jraft-core/src/main/java/com/alipay/sofa/jraft/Node.java
++++ b/jraft-core/src/main/java/com/alipay/sofa/jraft/Node.java
+@@ -16,6 +16,9 @@
+  */
+ package com.alipay.sofa.jraft;
+ 
++import com.alipay.sofa.jraft.conf.AppliedConfiguration;
++import java.util.concurrent.TimeoutException;
++
+ import java.util.List;
+ 
+ import com.alipay.sofa.jraft.closure.ReadIndexClosure;
+@@ -48,6 +51,18 @@ public interface Node extends Lifecycle<NodeOptions>, Describer {
+      */
+     PeerId getLeaderId();
+ 
++    /**
++     * Read full immutable membership at a local applied FSM point, not quorum proof.
++     * The positive budget bounds completion waiting, not arbitrary JVM lock pauses.
++     * Snapshot anchors are not original configuration-change indexes.
++     * @throws IllegalArgumentException if timeoutMillis is not positive
++     * @throws IllegalStateException if unavailable, stopped, in error, full or on FSM thread
++     * @throws InterruptedException if waiting is interrupted (Future.get semantics)
++     * @throws TimeoutException if the completion budget expires
++     */
++    AppliedConfiguration getAppliedConfiguration(final long timeoutMillis) throws InterruptedException,
++                                                                          TimeoutException;
++
+     /**
+      * Get current node id.
+      */
+diff --git a/jraft-core/src/main/java/com/alipay/sofa/jraft/conf/AppliedConfiguration.java b/jraft-core/src/main/java/com/alipay/sofa/jraft/conf/AppliedConfiguration.java
+new file mode 100644
+index 0000000..30f2428
+--- /dev/null
++++ b/jraft-core/src/main/java/com/alipay/sofa/jraft/conf/AppliedConfiguration.java
+@@ -0,0 +1,84 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.alipay.sofa.jraft.conf;
++
++import java.util.Collections;
++import java.util.LinkedHashSet;
++import java.util.Set;
++
++import com.alipay.sofa.jraft.entity.PeerId;
++
++/**
++ * Immutable membership at a local FSM application ordering point. Peer values
++ * retain the canonical PeerId identity without exposing mutable PeerId objects.
++ */
++public final class AppliedConfiguration {
++    private final long        appliedIndex;
++    private final long        configurationAnchor;
++    private final Set<String> voters;
++    private final Set<String> learners;
++    private final Set<String> oldVoters;
++    private final Set<String> oldLearners;
++    private final boolean     stable;
++
++    public AppliedConfiguration(final long appliedIndex, final ConfigurationEntry entry) {
++        this.appliedIndex = appliedIndex;
++        this.configurationAnchor = entry.getId().getIndex();
++        this.voters = copy(entry.getConf());
++        this.learners = copy(entry.getConf().getLearners());
++        this.oldVoters = copy(entry.getOldConf());
++        this.oldLearners = copy(entry.getOldConf().getLearners());
++        this.stable = entry.isStable();
++    }
++
++    public long getAppliedIndex() {
++        return this.appliedIndex;
++    }
++
++    /** Latest configuration entry or snapshot anchor, NOT the original change index. */
++    public long getConfigurationAnchor() {
++        return this.configurationAnchor;
++    }
++
++    public Set<String> getVoters() {
++        return this.voters;
++    }
++
++    public Set<String> getLearners() {
++        return this.learners;
++    }
++
++    public Set<String> getOldVoters() {
++        return this.oldVoters;
++    }
++
++    public Set<String> getOldLearners() {
++        return this.oldLearners;
++    }
++
++    public boolean isStable() {
++        return this.stable;
++    }
++
++    private static Set<String> copy(final Iterable<PeerId> peers) {
++        final Set<String> values = new LinkedHashSet<>();
++        for (final PeerId peer : peers) {
++            values.add(peer.toString());
++        }
++        return Collections.unmodifiableSet(values);
++    }
++}
+diff --git a/jraft-core/src/main/java/com/alipay/sofa/jraft/core/FSMCallerImpl.java b/jraft-core/src/main/java/com/alipay/sofa/jraft/core/FSMCallerImpl.java
+index abce719..18f66b4 100644
+--- a/jraft-core/src/main/java/com/alipay/sofa/jraft/core/FSMCallerImpl.java
++++ b/jraft-core/src/main/java/com/alipay/sofa/jraft/core/FSMCallerImpl.java
+@@ -16,6 +16,12 @@
+  */
+ package com.alipay.sofa.jraft.core;
+ 
++import com.alipay.sofa.jraft.conf.AppliedConfiguration;
++import java.util.concurrent.TimeoutException;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.ExecutionException;
++import java.util.concurrent.TimeUnit;
++
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.concurrent.CopyOnWriteArrayList;
+@@ -92,6 +98,7 @@ public class FSMCallerImpl implements FSMCaller {
+         STOP_FOLLOWING, //
+         SHUTDOWN, //
+         FLUSH, //
++        READ_APPLIED_CONFIGURATION, //
+         ERROR;
+ 
+         private String metricName;
+@@ -112,14 +119,15 @@ public class FSMCallerImpl implements FSMCaller {
+      * 2018-Apr-03 11:12:35 AM
+      */
+     private static class ApplyTask {
+-        TaskType            type;
++        TaskType                                type;
+         // union fields
+-        long                committedIndex;
+-        long                term;
+-        Status              status;
+-        LeaderChangeContext leaderChangeCtx;
+-        Closure             done;
+-        CountDownLatch      shutdownLatch;
++        long                                    committedIndex;
++        long                                    term;
++        Status                                  status;
++        LeaderChangeContext                     leaderChangeCtx;
++        Closure                                 done;
++        CompletableFuture<AppliedConfiguration> configurationResult;
++        CountDownLatch                          shutdownLatch;
+ 
+         public void reset() {
+             this.type = null;
+@@ -128,6 +136,7 @@ public class FSMCallerImpl implements FSMCaller {
+             this.status = null;
+             this.leaderChangeCtx = null;
+             this.done = null;
++            this.configurationResult = null;
+             this.shutdownLatch = null;
+         }
+     }
+@@ -251,6 +260,44 @@ public class FSMCallerImpl implements FSMCaller {
+         return true;
+     }
+ 
++    @Override
++    public AppliedConfiguration getAppliedConfiguration(final long timeoutMillis) throws InterruptedException, TimeoutException {
++        if (timeoutMillis <= 0) {
++            throw new IllegalArgumentException("timeoutMillis must be positive");
++        }
++        // Reject before admission: a callback must never wait on its own FSM queue.
++        if (isRunningOnFSMThread()) {
++            throw new IllegalStateException("Cannot wait from FSM callback");
++        }
++        final long startNanos = System.nanoTime();
++        final CompletableFuture<AppliedConfiguration> result = new CompletableFuture<>();
++        synchronized (this) {
++            if (this.shutdownLatch != null || !this.node.getNodeState().isActive()) {
++                throw new IllegalStateException("FSM/node stopped");
++            }
++            if (!this.taskQueue.tryPublishEvent((task, sequence) -> {
++                task.type = TaskType.READ_APPLIED_CONFIGURATION;
++                task.configurationResult = result;
++            })) {
++                throw new IllegalStateException("FSM queue full");
++            }
++        }
++        try {
++            final long remainingNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis) - (System.nanoTime() - startNanos);
++            if (remainingNanos <= 0) {
++                throw new TimeoutException("snapshot budget exhausted");
++            }
++            return result.get(remainingNanos, TimeUnit.NANOSECONDS);
++        } catch (final ExecutionException failure) {
++            throw new IllegalStateException("Applied configuration unavailable", failure.getCause());
++        } finally {
++            // Only this caller owns completion. No callback or late result can escape.
++            if (!result.isDone()) {
++                result.cancel(false);
++            }
++        }
++    }
++
+     @Override
+     public boolean hasAvailableCapacity(int requiredCapacity) {
+         if (this.shutdownLatch != null) {
+@@ -415,6 +462,20 @@ public class FSMCallerImpl implements FSMCaller {
+                     case COMMITTED:
+                         Requires.requireTrue(false, "Impossible");
+                         break;
++                    case READ_APPLIED_CONFIGURATION:
++                        try {
++                            if (task.configurationResult.isCancelled())
++                                break;
++                            if (this.shutdownLatch != null || !this.node.getNodeState().isActive()
++                                || this.error.getType() != EnumOutter.ErrorType.ERROR_TYPE_NONE) {
++                                throw new IllegalStateException("FSM stopped or in error");
++                            }
++                            task.configurationResult.complete(this.logManager
++                                .copyAppliedConfiguration(this.lastAppliedIndex.get()));
++                        } catch (final RuntimeException failure) {
++                            task.configurationResult.completeExceptionally(failure);
++                        }
++                        break;
+                     case SNAPSHOT_SAVE:
+                         onSnapshotSaveSync(task);
+                         break;
+diff --git a/jraft-core/src/main/java/com/alipay/sofa/jraft/core/NodeImpl.java b/jraft-core/src/main/java/com/alipay/sofa/jraft/core/NodeImpl.java
+index 9cf3c5a..411696d 100644
+--- a/jraft-core/src/main/java/com/alipay/sofa/jraft/core/NodeImpl.java
++++ b/jraft-core/src/main/java/com/alipay/sofa/jraft/core/NodeImpl.java
+@@ -16,6 +16,10 @@
+  */
+ package com.alipay.sofa.jraft.core;
+ 
++import com.alipay.sofa.jraft.conf.AppliedConfiguration;
++import java.util.concurrent.TimeoutException;
++import java.util.concurrent.TimeUnit;
++
+ import java.nio.ByteBuffer;
+ import java.util.ArrayList;
+ import java.util.Collection;
+@@ -3606,6 +3610,21 @@ public class NodeImpl implements Node, RaftServerService {
+         }
+     }
+ 
++    @Override
++    public AppliedConfiguration getAppliedConfiguration(final long timeoutMillis) throws InterruptedException,
++                                                                                 TimeoutException {
++        this.readLock.lock();
++        try {
++            if (!this.state.isActive()) {
++                throw new IllegalStateException("Node not active");
++            }
++        } finally {
++            this.readLock.unlock();
++        }
++        // Never wait or enqueue while retaining Node lock: snapshot completion needs it.
++        return this.fsmCaller.getAppliedConfiguration(timeoutMillis);
++    }
++
+     @Override
+     public long getLastAppliedLogIndex() {
+         this.readLock.lock();
+diff --git a/jraft-core/src/main/java/com/alipay/sofa/jraft/storage/LogManager.java b/jraft-core/src/main/java/com/alipay/sofa/jraft/storage/LogManager.java
+index d310b6b..fe74d40 100644
+--- a/jraft-core/src/main/java/com/alipay/sofa/jraft/storage/LogManager.java
++++ b/jraft-core/src/main/java/com/alipay/sofa/jraft/storage/LogManager.java
+@@ -16,6 +16,8 @@
+  */
+ package com.alipay.sofa.jraft.storage;
+ 
++import com.alipay.sofa.jraft.conf.AppliedConfiguration;
++
+ import java.util.List;
+ 
+ import com.alipay.sofa.jraft.Closure;
+@@ -37,6 +39,7 @@ import com.alipay.sofa.jraft.util.Describer;
+  * 2018-Apr-04 3:02:42 PM
+  */
+ public interface LogManager extends Lifecycle<LogManagerOptions>, Describer {
++    AppliedConfiguration copyAppliedConfiguration(long appliedIndex);
+ 
+     /**
+      * Closure to to run in stable state.
+diff --git a/jraft-core/src/main/java/com/alipay/sofa/jraft/storage/impl/LogManagerImpl.java b/jraft-core/src/main/java/com/alipay/sofa/jraft/storage/impl/LogManagerImpl.java
+index 03ba040..8535218 100644
+--- a/jraft-core/src/main/java/com/alipay/sofa/jraft/storage/impl/LogManagerImpl.java
++++ b/jraft-core/src/main/java/com/alipay/sofa/jraft/storage/impl/LogManagerImpl.java
+@@ -16,6 +16,9 @@
+  */
+ package com.alipay.sofa.jraft.storage.impl;
+ 
++import com.alipay.sofa.jraft.conf.AppliedConfiguration;
++import java.util.concurrent.TimeUnit;
++
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+@@ -1104,6 +1107,23 @@ public class LogManagerImpl implements LogManager {
+         }
+     }
+ 
++    @Override
++    public AppliedConfiguration copyAppliedConfiguration(final long index) {
++        this.readLock.lock();
++        try {
++            if (index < this.configManager.getSnapshot().getId().getIndex()) {
++                throw new IllegalStateException("applied index precedes snapshot");
++            }
++            final ConfigurationEntry entry = this.configManager.get(index);
++            if (entry == null || entry.isEmpty() || index <= 0 || entry.getId().getIndex() > index) {
++                throw new IllegalStateException("No applied configuration");
++            }
++            return new AppliedConfiguration(index, entry);
++        } finally {
++            this.readLock.unlock();
++        }
++    }
++
+     @Override
+     public ConfigurationEntry getConfiguration(final long index) {
+         this.readLock.lock();
+diff --git a/jraft-core/src/main/resources/META-INF/LICENSE b/jraft-core/src/main/resources/META-INF/LICENSE
+new file mode 100644
+index 0000000..261eeb9
+--- /dev/null
++++ b/jraft-core/src/main/resources/META-INF/LICENSE
+@@ -0,0 +1,201 @@
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
++
++   APPENDIX: How to apply the Apache License to your work.
++
++      To apply the Apache License to your work, attach the following
++      boilerplate notice, with the fields enclosed by brackets "[]"
++      replaced with your own identifying information. (Don't include
++      the brackets!)  The text should be enclosed in the appropriate
++      comment syntax for the file format. We also recommend that a
++      file or class name and description of purpose be included on the
++      same "printed page" as the copyright notice for easier
++      identification within third-party archives.
++
++   Copyright [yyyy] [name of copyright owner]
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
+diff --git a/jraft-core/src/main/resources/META-INF/NOTICE b/jraft-core/src/main/resources/META-INF/NOTICE
+new file mode 100644
+index 0000000..0b4d4a9
+--- /dev/null
++++ b/jraft-core/src/main/resources/META-INF/NOTICE
+@@ -0,0 +1,8 @@
++JRaft applied membership private distribution
++Based on SOFAJRaft 1.4.1, https://github.com/sofastack/sofa-jraft
++Upstream commit cb1a0c7ac16ff146ad8abb04b1bcb035270bb234
++
++Upstream LICENSE is preserved without modification. The upstream checkout
++contains no NOTICE file. This distribution adds a local applied-membership
++accessor and build/test changes; this NOTICE identifies those modifications
++and is not an assertion that upstream supplied a NOTICE file.
+diff --git a/jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationClusterTest.java b/jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationClusterTest.java
+new file mode 100644
+index 0000000..34bf1c7
+--- /dev/null
++++ b/jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationClusterTest.java
+@@ -0,0 +1,455 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.alipay.sofa.jraft.core;
++
++import java.io.File;
++import java.net.ServerSocket;
++import java.nio.ByteBuffer;
++import java.nio.file.Files;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.Collections;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Set;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicLong;
++import java.util.concurrent.atomic.AtomicReference;
++
++import org.apache.commons.io.FileUtils;
++import org.junit.After;
++import org.junit.Before;
++import org.junit.Test;
++
++import com.alipay.sofa.jraft.Closure;
++import com.alipay.sofa.jraft.Node;
++import com.alipay.sofa.jraft.Status;
++import com.alipay.sofa.jraft.conf.AppliedConfiguration;
++import com.alipay.sofa.jraft.conf.Configuration;
++import com.alipay.sofa.jraft.entity.EnumOutter.EntryType;
++import com.alipay.sofa.jraft.entity.LogEntry;
++import com.alipay.sofa.jraft.entity.PeerId;
++import com.alipay.sofa.jraft.entity.Task;
++import com.alipay.sofa.jraft.option.RaftOptions;
++import com.alipay.sofa.jraft.storage.LogStorage;
++import com.alipay.sofa.jraft.storage.impl.RocksDBLogStorage;
++
++import static org.junit.Assert.*;
++
++/** Real network/RocksDB coverage; no membership state is supplied by a mock. */
++public class AppliedConfigurationClusterTest {
++
++    private static final long                 TIMEOUT_MS          = 15000;
++    private TestCluster                       cluster;
++    private File                              dataPath;
++    private List<PeerId>                      voters;
++    private PeerId                            learner;
++    private final AtomicReference<StableGate> stableGate          = new AtomicReference<>();
++    private final AtomicLong                  firstCompactedIndex = new AtomicLong();
++
++    @Before
++    public void setup() throws Exception {
++        this.dataPath = Files.createTempDirectory("jraft-applied-cluster-").toFile();
++        final List<PeerId> peers = freePeers(4);
++        this.voters = new ArrayList<>(peers.subList(0, 3));
++        this.learner = peers.get(3);
++        this.cluster = new TestCluster("applied-" + this.dataPath.getName(), this.dataPath.getPath(), this.voters,
++            new LinkedHashSet<>(Collections.singletonList(this.learner)), 3000);
++        this.cluster.setRaftServiceFactory(new TestJRaftServiceFactory() {
++            @Override
++            public LogStorage createLogStorage(final String uri, final RaftOptions options) {
++                return new RocksDBLogStorage(uri, options) {
++                    @Override
++                    public int appendEntries(final List<LogEntry> entries) {
++                        final StableGate gate = stableGate.get();
++                        if (gate != null) {
++                            gate.beforeAppend(entries);
++                        }
++                        return super.appendEntries(entries);
++                    }
++
++                    @Override
++                    public boolean truncatePrefix(final long firstIndexKept) {
++                        final boolean truncated = super.truncatePrefix(firstIndexKept);
++                        if (truncated) {
++                            firstCompactedIndex.accumulateAndGet(firstIndexKept, Math::max);
++                        }
++                        return truncated;
++                    }
++                };
++            }
++        });
++        for (final PeerId peer : peers) {
++            assertTrue(this.cluster.start(peer.getEndpoint(), false, 0));
++        }
++        await("leader election", () -> this.cluster.getLeader() != null);
++        apply(this.cluster.getLeader(), 1);
++        assertAllStable(this.voters, Collections.singletonList(this.learner));
++    }
++
++    @After
++    public void teardown() throws Exception {
++        final StableGate gate = this.stableGate.getAndSet(null);
++        if (gate != null) {
++            gate.release.countDown();
++        }
++        try {
++            if (this.cluster != null) {
++                this.cluster.stopAll();
++            }
++        } finally {
++            if (this.dataPath != null) {
++                FileUtils.deleteDirectory(this.dataPath);
++            }
++        }
++    }
++
++    @Test(timeout = 90000)
++    public void testFollowerAndLearnerFullStableMembershipAndImmutableResult() throws Exception {
++        assertEquals(2, this.cluster.getFollowers().size());
++        final AppliedConfiguration follower = read(this.cluster.getFollowers().get(0));
++        final AppliedConfiguration learning = read(node(this.learner));
++        assertStable(follower, this.voters, Collections.singletonList(this.learner));
++        assertStable(learning, this.voters, Collections.singletonList(this.learner));
++        assertImmutable(follower.getVoters());
++        assertImmutable(follower.getLearners());
++        assertImmutable(follower.getOldVoters());
++        assertImmutable(follower.getOldLearners());
++    }
++
++    @Test(timeout = 90000)
++    public void testAddAndRemoveLearnerKeepsPreviousAppliedSnapshot() throws Exception {
++        final Node leader = this.cluster.getLeader();
++        final AppliedConfiguration before = read(node(this.learner));
++        final PeerId added = freePeers(1).get(0);
++        assertTrue(this.cluster.startLearner(added));
++        final Completion add = new Completion();
++        leader.addLearners(Collections.singletonList(added), add);
++        add.assertOk();
++        assertAllStable(this.voters, Arrays.asList(this.learner, added));
++        final AppliedConfiguration withAdded = read(node(added));
++        final Completion remove = new Completion();
++        leader.removeLearners(Collections.singletonList(added), remove);
++        remove.assertOk();
++        // A removed learner need not receive the removal; inspect the surviving real nodes.
++        assertTrue(this.cluster.stop(added.getEndpoint()));
++        this.cluster.getLearners().remove(added);
++        assertAllStable(this.voters, Collections.singletonList(this.learner));
++        assertStable(before, this.voters, Collections.singletonList(this.learner));
++        assertStable(withAdded, this.voters, Arrays.asList(this.learner, added));
++        assertTrue(withAdded.getConfigurationAnchor() > before.getConfigurationAnchor());
++    }
++
++    @Test(timeout = 120000)
++    public void testRealDemotionAndPromotionJointToStable() throws Exception {
++        final Node leader = this.cluster.getLeader();
++        final PeerId demoted = this.cluster.getFollowers().get(0).getNodeId().getPeerId();
++        final List<PeerId> twoVoters = new ArrayList<>(this.voters);
++        twoVoters.remove(demoted);
++        final List<PeerId> twoLearners = Arrays.asList(this.learner, demoted);
++        // Match BrokerRaftAdapter: remove voter, then add learner. Cross-role changes
++        // in one entry are rejected because joint voters and learners intersect.
++        final AppliedConfiguration demotion = changeThroughJoint(leader, this.voters, twoVoters,
++            Collections.singletonList(this.learner));
++        final Completion addLearner = new Completion();
++        leader.addLearners(Collections.singletonList(demoted), addLearner);
++        addLearner.assertOk();
++        assertAllStable(twoVoters, twoLearners);
++        // Promotion likewise removes the learner before adding the voter.
++        final Completion removeLearner = new Completion();
++        leader.removeLearners(Collections.singletonList(demoted), removeLearner);
++        removeLearner.assertOk();
++        assertAllStable(twoVoters, Collections.singletonList(this.learner));
++        final AppliedConfiguration promotion = changeThroughJoint(leader, twoVoters, this.voters,
++            Collections.singletonList(this.learner));
++        // Held results must not become stable or change when subsequent entries apply.
++        assertFalse(demotion.isStable());
++        assertEquals(values(twoVoters), demotion.getVoters());
++        assertEquals(values(this.voters), demotion.getOldVoters());
++        assertEquals(values(Collections.singletonList(this.learner)), demotion.getLearners());
++        assertFalse(promotion.isStable());
++        assertEquals(values(twoVoters), promotion.getOldVoters());
++        assertTrue(promotion.getConfigurationAnchor() > demotion.getConfigurationAnchor());
++        assertAllStable(this.voters, Collections.singletonList(this.learner));
++    }
++
++    @Test(timeout = 120000)
++    public void testLaggingFollowerInstallsSnapshotAndRestartRecoversMembership() throws Exception {
++        final Node leader = this.cluster.getLeader();
++        final PeerId lagging = this.cluster.getFollowers().get(0).getNodeId().getPeerId();
++        assertTrue(this.cluster.stop(lagging.getEndpoint()));
++        apply(leader, 20);
++        snapshot(leader);
++        final AppliedConfiguration saved = read(leader);
++        apply(leader, 20);
++        snapshot(leader);
++        await("persisted leader prefix compaction", () -> this.firstCompactedIndex.get() > saved.getAppliedIndex());
++        // Empty local storage cannot obtain the compacted prefix via AppendEntries.
++        this.cluster.clean(lagging.getEndpoint());
++        assertTrue(this.cluster.start(lagging.getEndpoint(), true, 0));
++        await("real follower snapshot load", () -> this.cluster.getFsmByPeer(lagging).getLoadSnapshotTimes() > 0);
++        final AppliedConfiguration installed = awaitStable(node(lagging), this.voters,
++            Collections.singletonList(this.learner));
++        assertTrue(installed.getConfigurationAnchor() >= saved.getAppliedIndex());
++        assertTrue(installed.getAppliedIndex() >= installed.getConfigurationAnchor());
++        assertTrue(this.cluster.ensureSame(1500));
++        snapshot(node(lagging));
++        assertTrue(this.cluster.stop(lagging.getEndpoint()));
++        // Keep disk state; no bootstrap configuration is provided on restart.
++        assertTrue(this.cluster.start(lagging.getEndpoint(), true, 0));
++        await("restart snapshot recovery", () -> this.cluster.getFsmByPeer(lagging).getLoadSnapshotTimes() > 0);
++        final AppliedConfiguration recovered = awaitStable(node(lagging), this.voters,
++            Collections.singletonList(this.learner));
++        assertTrue(recovered.getConfigurationAnchor() >= installed.getConfigurationAnchor());
++        assertStable(installed, this.voters, Collections.singletonList(this.learner));
++    }
++
++    private AppliedConfiguration changeThroughJoint(final Node leader, final List<PeerId> oldVoters,
++                                                    final List<PeerId> newVoters, final List<PeerId> newLearners)
++                                                                                                                 throws Exception {
++        final StableGate gate = new StableGate(newVoters, newLearners);
++        this.stableGate.set(gate);
++        final Completion changed = new Completion();
++        leader.changePeers(new Configuration(newVoters, newLearners), changed);
++        AppliedConfiguration captured;
++        try {
++            assertTrue("stable append did not reach the storage barrier",
++                gate.entered.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
++            // Stable is already in LogManager but cannot commit: all real disks hold its append.
++            // The accessor must resolve by applied watermark, not latest-seen configuration.
++            captured = awaitJoint(node(this.learner), oldVoters, newVoters, newLearners);
++            for (final PeerId voter : oldVoters) {
++                if (!voter.equals(leader.getNodeId().getPeerId())) {
++                    awaitJoint(node(voter), oldVoters, newVoters, newLearners);
++                }
++            }
++            assertNull("stable change completed while stable persistence was held", changed.status.get());
++        } finally {
++            gate.release.countDown();
++            this.stableGate.compareAndSet(gate, null);
++        }
++        changed.assertOk();
++        assertAllStable(newVoters, newLearners);
++        return captured;
++    }
++
++    private AppliedConfiguration awaitJoint(final Node node, final List<PeerId> oldVoters,
++                                            final List<PeerId> newVoters, final List<PeerId> newLearners)
++                                                                                                     throws Exception {
++        final AtomicReference<AppliedConfiguration> result = new AtomicReference<>();
++        await("joint applied on " + node.getNodeId(), () -> {
++            final AppliedConfiguration value = read(node);
++            if (value.isStable() || !value.getVoters().equals(values(newVoters))) {
++                return false;
++            }
++            assertEquals(values(oldVoters), value.getOldVoters());
++            assertEquals(values(newLearners), value.getLearners());
++            // Upstream ConfigurationCtx.nextStage builds oldConf from oldPeers only.
++            // Do not fabricate old learners omitted by the actual upstream log entry.
++            assertTrue(value.getOldLearners().isEmpty());
++            assertTrue(value.getConfigurationAnchor() > 0);
++            assertTrue(value.getAppliedIndex() >= value.getConfigurationAnchor());
++            result.set(value);
++            return true;
++        });
++        return result.get();
++    }
++
++    private void assertAllStable(final List<PeerId> peers, final List<PeerId> learners) throws Exception {
++        for (final Node node : this.cluster.getNodes()) {
++            final PeerId peer = node.getNodeId().getPeerId();
++            // Removed members have no obligation to receive their removal entry.
++            if (peers.contains(peer) || learners.contains(peer)) {
++                awaitStable(node, peers, learners);
++            }
++        }
++    }
++
++    private static AppliedConfiguration awaitStable(final Node node, final List<PeerId> peers,
++                                                     final List<PeerId> learners) throws Exception {
++        final AtomicReference<AppliedConfiguration> result = new AtomicReference<>();
++        await("stable membership on " + node.getNodeId(), () -> {
++            final AppliedConfiguration value;
++            try {
++                value = read(node);
++            } catch (final IllegalStateException unavailableBeforeFirstApply) {
++                return false;
++            }
++            if (!value.isStable() || !value.getVoters().equals(values(peers))
++                || !value.getLearners().equals(values(learners))) {
++                return false;
++            }
++            assertStable(value, peers, learners);
++            result.set(value);
++            return true;
++        });
++        return result.get();
++    }
++
++    private static AppliedConfiguration read(final Node node) throws Exception {
++        return node.getAppliedConfiguration(2000);
++    }
++
++    private static void assertStable(final AppliedConfiguration value, final List<PeerId> peers,
++                                     final List<PeerId> learners) {
++        assertTrue(value.isStable());
++        assertEquals(values(peers), value.getVoters());
++        assertEquals(values(learners), value.getLearners());
++        assertTrue(value.getOldVoters().isEmpty());
++        assertTrue(value.getOldLearners().isEmpty());
++        assertTrue("bootstrap index zero is not applied evidence", value.getAppliedIndex() > 0);
++        assertTrue(value.getConfigurationAnchor() > 0);
++        assertTrue(value.getConfigurationAnchor() <= value.getAppliedIndex());
++    }
++
++    private Node node(final PeerId peer) {
++        for (final Node node : this.cluster.getNodes()) {
++            if (node.getNodeId().getPeerId().equals(peer)) {
++                return node;
++            }
++        }
++        throw new AssertionError("No running node for " + peer);
++    }
++
++    private static void apply(final Node leader, final int count) throws Exception {
++        final Completion done = new Completion(count);
++        for (int i = 0; i < count; i++) {
++            leader.apply(new Task(ByteBuffer.wrap(new byte[] { (byte) i }), done));
++        }
++        done.assertOk();
++    }
++
++    private static void snapshot(final Node node) throws Exception {
++        final Completion done = new Completion();
++        node.snapshot(done);
++        done.assertOk();
++    }
++
++    private static Set<String> values(final Iterable<PeerId> peers) {
++        final Set<String> values = new LinkedHashSet<>();
++        for (final PeerId peer : peers) {
++            values.add(peer.toString());
++        }
++        return values;
++    }
++
++    private static void assertImmutable(final Set<String> values) {
++        try {
++            values.add("127.0.0.1:1");
++            fail("membership set is mutable");
++        } catch (final UnsupportedOperationException expected) {
++            // expected
++        }
++    }
++
++    // Hold all reservations until allocation finishes, avoiding duplicate ephemeral ports.
++    private static List<PeerId> freePeers(final int count) throws Exception {
++        final List<ServerSocket> reservations = new ArrayList<>();
++        final List<PeerId> peers = new ArrayList<>();
++        try {
++            for (int i = 0; i < count; i++) {
++                final ServerSocket reservation = new ServerSocket(0);
++                reservations.add(reservation);
++                peers.add(new PeerId("127.0.0.1", reservation.getLocalPort()));
++            }
++            return peers;
++        } finally {
++            for (final ServerSocket reservation : reservations) {
++                reservation.close();
++            }
++        }
++    }
++
++    private interface Condition {
++        boolean evaluate() throws Exception;
++    }
++
++    // Bounded observation polling, never a delay used to create a race or transition.
++    private static void await(final String description, final Condition condition) throws Exception {
++        final long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(TIMEOUT_MS);
++        do {
++            if (condition.evaluate()) {
++                return;
++            }
++            Thread.sleep(10);
++        } while (System.nanoTime() < deadline);
++        fail("Timed out waiting for " + description);
++    }
++
++    private static final class Completion implements Closure {
++        private final CountDownLatch          latch;
++        private final AtomicReference<Status> status = new AtomicReference<>();
++        private final AtomicReference<Status> error  = new AtomicReference<>();
++
++        private Completion() {
++            this(1);
++        }
++
++        private Completion(final int count) {
++            this.latch = new CountDownLatch(count);
++        }
++
++        @Override
++        public void run(final Status value) {
++            this.status.set(value);
++            if (!value.isOk()) {
++                this.error.compareAndSet(null, value);
++            }
++            this.latch.countDown();
++        }
++
++        private void assertOk() throws Exception {
++            assertTrue("raft operation did not complete", this.latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
++            assertNull("raft operation failed: " + this.error.get(), this.error.get());
++            assertNotNull(this.status.get());
++        }
++    }
++
++    /** Delay only actual stable persistence; joint/data entries still use real RocksDB. */
++    private static final class StableGate {
++        private final Set<String>    voters;
++        private final Set<String>    learners;
++        private final CountDownLatch entered = new CountDownLatch(1);
++        private final CountDownLatch release = new CountDownLatch(1);
++
++        private StableGate(final List<PeerId> voters, final List<PeerId> learners) {
++            this.voters = values(voters);
++            this.learners = values(learners);
++        }
++
++        private void beforeAppend(final List<LogEntry> entries) {
++            for (final LogEntry entry : entries) {
++                if (entry.getType() == EntryType.ENTRY_TYPE_CONFIGURATION
++                    && (entry.getOldPeers() == null || entry.getOldPeers().isEmpty())
++                    && values(entry.getPeers()).equals(this.voters)
++                    && values(entry.getLearners() == null ? Collections.<PeerId> emptyList() : entry.getLearners())
++                        .equals(this.learners)) {
++                    this.entered.countDown();
++                    try {
++                        if (!this.release.await(30, TimeUnit.SECONDS)) {
++                            throw new AssertionError("stable persistence barrier was not released");
++                        }
++                    } catch (final InterruptedException interrupted) {
++                        Thread.currentThread().interrupt();
++                        throw new AssertionError(interrupted);
++                    }
++                }
++            }
++        }
++    }
++}
+diff --git a/jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationLifecycleTest.java b/jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationLifecycleTest.java
+new file mode 100644
+index 0000000..05fc20d
+--- /dev/null
++++ b/jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationLifecycleTest.java
+@@ -0,0 +1,387 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.alipay.sofa.jraft.core;
++
++import java.nio.ByteBuffer;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.Future;
++import java.util.concurrent.FutureTask;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.TimeoutException;
++import java.util.concurrent.atomic.AtomicBoolean;
++
++import org.junit.Test;
++import static org.junit.Assert.*;
++import static org.mockito.Mockito.*;
++
++import com.alipay.sofa.jraft.Status;
++import com.alipay.sofa.jraft.Iterator;
++import com.alipay.sofa.jraft.conf.AppliedConfiguration;
++import com.alipay.sofa.jraft.conf.Configuration;
++import com.alipay.sofa.jraft.conf.ConfigurationEntry;
++import com.alipay.sofa.jraft.entity.EnumOutter;
++import com.alipay.sofa.jraft.entity.LogEntry;
++import com.alipay.sofa.jraft.entity.PeerId;
++import com.alipay.sofa.jraft.error.RaftError;
++import com.alipay.sofa.jraft.error.RaftException;
++import com.alipay.sofa.jraft.closure.ClosureQueueImpl;
++import com.alipay.sofa.jraft.closure.LoadSnapshotClosure;
++import com.alipay.sofa.jraft.entity.LogId;
++import com.alipay.sofa.jraft.entity.RaftOutter;
++import com.alipay.sofa.jraft.option.FSMCallerOptions;
++import com.alipay.sofa.jraft.storage.LogManager;
++import com.alipay.sofa.jraft.storage.snapshot.SnapshotReader;
++
++public class AppliedConfigurationLifecycleTest {
++    @Test(timeout = 15000)
++    public void rejectsReentryQueueFullTimeoutAndStoppedState() throws Exception {
++        final FSMCallerImpl caller = new FSMCallerImpl();
++        final LogManager logs = mock(LogManager.class);
++        final NodeImpl node = mock(NodeImpl.class);
++        when(node.getNodeMetrics()).thenReturn(new NodeMetrics(false));
++        when(node.getGroupId()).thenReturn("applied-lifecycle");
++        when(node.getNodeState()).thenReturn(State.STATE_FOLLOWER);
++        final CountDownLatch entered = new CountDownLatch(1);
++        final CountDownLatch release = new CountDownLatch(1);
++        final AtomicBoolean reentryRejected = new AtomicBoolean();
++        final FSMCallerOptions options = new FSMCallerOptions();
++        options.setNode(node);
++        options.setLogManager(logs);
++        options.setClosureQueue(new ClosureQueueImpl("applied-lifecycle"));
++        options.setBootstrapId(new LogId());
++        options.setDisruptorBufferSize(4);
++        options.setFsm(new StateMachineAdapter() {
++            @Override
++            public void onApply(final com.alipay.sofa.jraft.Iterator iterator) {
++                while (iterator.hasNext()) {
++                    iterator.next();
++                }
++            }
++
++            @Override
++            public boolean onSnapshotLoad(final SnapshotReader reader) {
++                try {
++                    caller.getAppliedConfiguration(100);
++                } catch (final IllegalStateException expected) {
++                    reentryRejected.set(true);
++                } catch (final Exception failure) {
++                    throw new AssertionError(failure);
++                }
++                entered.countDown();
++                try {
++                    assertTrue(release.await(10, TimeUnit.SECONDS));
++                } catch (final InterruptedException failure) {
++                    throw new AssertionError(failure);
++                }
++                return true;
++            }
++        });
++        assertTrue(caller.init(options));
++        try {
++            assertThrows(IllegalArgumentException.class, () -> caller.getAppliedConfiguration(0));
++            final SnapshotReader reader = mock(SnapshotReader.class);
++            when(reader.load()).thenReturn(RaftOutter.SnapshotMeta.newBuilder()
++                .setLastIncludedIndex(0).setLastIncludedTerm(0).build());
++            assertTrue(caller.onSnapshotLoad(new LoadSnapshotClosure() {
++                public SnapshotReader start() { return reader; }
++                public void run(final Status status) { assertTrue(status.isOk()); }
++            }));
++            assertTrue(entered.await(5, TimeUnit.SECONDS));
++            assertTrue(reentryRejected.get());
++            assertThrows(TimeoutException.class, () -> caller.getAppliedConfiguration(1));
++            assertTrue(caller.onLeaderStart(1));
++            assertTrue(caller.onLeaderStart(1));
++            final IllegalStateException full = assertThrows(IllegalStateException.class,
++                () -> caller.getAppliedConfiguration(100));
++            assertTrue(full.getMessage().contains("queue full"));
++            release.countDown();
++            caller.flush();
++            verify(logs, never()).copyAppliedConfiguration(anyLong());
++            caller.shutdown();
++            assertThrows(IllegalStateException.class, () -> caller.getAppliedConfiguration(100));
++        } finally {
++            release.countDown();
++            caller.shutdown();
++            caller.join();
++        }
++    }
++
++    @Test(timeout = 15000)
++    public void partialApplyErrorRejectsAlreadyAdmittedAndSubsequentReads() throws Exception {
++        try (final ReadFixture fixture = new ReadFixture(true)) {
++            final AppliedConfiguration before = fixture.caller.getAppliedConfiguration(5000);
++            assertValue(before, 1);
++            reset(fixture.logs);
++            when(fixture.logs.getTerm(anyLong())).thenReturn(1L);
++            for (long index = 2; index <= 4; index++) {
++                final LogEntry entry = new LogEntry(EnumOutter.EntryType.ENTRY_TYPE_DATA);
++                entry.setId(new LogId(index, 1));
++                entry.setData(ByteBuffer.wrap(new byte[] { (byte) index }));
++                when(fixture.logs.getEntry(index)).thenReturn(entry);
++            }
++            assertTrue(fixture.caller.onCommitted(4));
++            await(fixture.entered);
++            final Future<AppliedConfiguration> queued = fixture.read(5000);
++            fixture.awaitQueued(1);
++            fixture.release.countDown();
++            assertUnavailable(queued);
++            assertThrows(IllegalStateException.class, () -> fixture.caller.getAppliedConfiguration(5000));
++            assertEquals(2, fixture.caller.getLastAppliedIndex());
++            verify(fixture.logs).setAppliedId(new LogId(2, 1));
++            verify(fixture.logs, never()).copyAppliedConfiguration(anyLong());
++            assertValue(before, 1);
++            assertThrows(UnsupportedOperationException.class, () -> before.getVoters().clear());
++        }
++    }
++
++    @Test(timeout = 15000)
++    public void admittedQueuedReadFailsOnShutdownWithoutCopying() throws Exception {
++        try (final ReadFixture fixture = new ReadFixture(false)) {
++            fixture.block();
++            final Future<AppliedConfiguration> queued = fixture.read(5000);
++            fixture.awaitQueued(1);
++            fixture.caller.shutdown();
++            fixture.release.countDown();
++            assertUnavailable(queued);
++            verify(fixture.logs, never()).copyAppliedConfiguration(anyLong());
++        }
++    }
++
++    @Test(timeout = 15000)
++    public void admittedQueuedReadFailsOnEarlierErrorWithoutCopying() throws Exception {
++        try (final ReadFixture fixture = new ReadFixture(false)) {
++            fixture.block();
++            assertTrue(fixture.caller.onError(new RaftException(EnumOutter.ErrorType.ERROR_TYPE_STATE_MACHINE,
++                new Status(RaftError.ESTATEMACHINE, "fixture error"))));
++            final Future<AppliedConfiguration> queued = fixture.read(5000);
++            fixture.awaitQueued(2);
++            fixture.release.countDown();
++            assertUnavailable(queued);
++            verify(fixture.logs, never()).copyAppliedConfiguration(anyLong());
++        }
++    }
++
++    @Test(timeout = 15000)
++    public void interruptedQueuedWaiterThrowsInterruptedExceptionAndDoesNotPoisonReusedSlots() throws Exception {
++        try (final ReadFixture fixture = new ReadFixture(false)) {
++            fixture.block();
++            final CompletableFuture<Thread> waiter = new CompletableFuture<>();
++            final Future<Class<?>> terminal = fixture.workers.submit(() -> {
++                waiter.complete(Thread.currentThread());
++                try {
++                    fixture.caller.getAppliedConfiguration(5000);
++                    throw new AssertionError("interrupted read succeeded");
++                } catch (final InterruptedException expected) {
++                    return expected.getClass();
++                }
++            });
++            fixture.awaitQueued(1);
++            waiter.get(5, TimeUnit.SECONDS).interrupt();
++            assertEquals(InterruptedException.class, terminal.get(5, TimeUnit.SECONDS));
++            fixture.release.countDown();
++            fixture.caller.flush();
++            verify(fixture.logs, never()).copyAppliedConfiguration(anyLong());
++            fixture.assertFreshReads();
++            assertEquals(InterruptedException.class, terminal.get(5, TimeUnit.SECONDS));
++        }
++    }
++
++    @Test(timeout = 15000)
++    public void timeoutDuringCopyIgnoresLateCompletionAndDoesNotPoisonReusedSlots() throws Exception {
++        try (final ReadFixture fixture = new ReadFixture(false)) {
++            when(fixture.logs.copyAppliedConfiguration(anyLong())).thenAnswer(invocation -> {
++                fixture.entered.countDown();
++                await(fixture.release);
++                return value(99);
++            });
++            final Future<Class<?>> terminal = fixture.workers.submit(() -> {
++                try {
++                    fixture.caller.getAppliedConfiguration(1000);
++                    throw new AssertionError("blocked copy succeeded");
++                } catch (final TimeoutException expected) {
++                    return expected.getClass();
++                }
++            });
++            await(fixture.entered);
++            assertEquals(TimeoutException.class, terminal.get(5, TimeUnit.SECONDS));
++            fixture.release.countDown();
++            fixture.caller.flush();
++            verify(fixture.logs).copyAppliedConfiguration(1);
++            fixture.assertFreshReads();
++            assertEquals(TimeoutException.class, terminal.get(5, TimeUnit.SECONDS));
++        }
++    }
++
++    private static void assertUnavailable(final Future<?> future) throws Exception {
++        final java.util.concurrent.ExecutionException failure = assertThrows(
++            java.util.concurrent.ExecutionException.class, () -> future.get(5, TimeUnit.SECONDS));
++        assertTrue(failure.getCause().toString(), failure.getCause() instanceof IllegalStateException);
++        assertNotNull(failure.getCause().getCause());
++    }
++
++    private static AppliedConfiguration value(final long index) {
++        final ConfigurationEntry entry = new ConfigurationEntry();
++        entry.setId(new LogId(index, 1));
++        entry.setConf(new Configuration(Collections.singletonList(new PeerId("127.0.0.1", 18000 + (int) index))));
++        return new AppliedConfiguration(index, entry);
++    }
++
++    private static void assertValue(final AppliedConfiguration value, final long index) {
++        assertEquals(index, value.getAppliedIndex());
++        assertEquals(index, value.getConfigurationAnchor());
++        assertEquals(Collections.singleton("127.0.0.1:" + (18000 + index)), value.getVoters());
++        assertTrue(value.isStable());
++        assertTrue(value.getLearners().isEmpty());
++        assertTrue(value.getOldVoters().isEmpty());
++        assertTrue(value.getOldLearners().isEmpty());
++    }
++
++    private static void await(final CountDownLatch latch) throws InterruptedException {
++        assertTrue("fixture barrier timed out", latch.await(5, TimeUnit.SECONDS));
++    }
++
++    private static final class ReadFixture implements AutoCloseable {
++        private final FSMCallerImpl   caller  = new FSMCallerImpl();
++        private final LogManager      logs    = mock(LogManager.class);
++        private final ExecutorService workers = Executors.newFixedThreadPool(3);
++        private final CountDownLatch  entered = new CountDownLatch(1);
++        private final CountDownLatch  release = new CountDownLatch(1);
++
++        private ReadFixture(final boolean partialApply) {
++            final NodeImpl node = mock(NodeImpl.class);
++            when(node.getNodeMetrics()).thenReturn(new NodeMetrics(false));
++            when(node.getGroupId()).thenReturn("applied-read-exits");
++            when(node.getNodeState()).thenReturn(State.STATE_FOLLOWER);
++            when(this.logs.copyAppliedConfiguration(anyLong())).thenReturn(value(1));
++            final FSMCallerOptions options = new FSMCallerOptions();
++            options.setNode(node);
++            options.setLogManager(this.logs);
++            options.setClosureQueue(new ClosureQueueImpl("applied-read-exits"));
++            options.setBootstrapId(new LogId(1, 1));
++            options.setDisruptorBufferSize(16);
++            options.setFsm(new StateMachineAdapter() {
++                @Override
++                public void onApply(final Iterator iterator) {
++                    assertTrue(partialApply);
++                    assertEquals(2, iterator.getIndex());
++                    iterator.next();
++                    assertEquals(3, iterator.getIndex());
++                    hold();
++                    iterator.setErrorAndRollback(1, new Status(RaftError.ESTATEMACHINE, "reject tail"));
++                }
++
++                @Override
++                public void onLeaderStart(final long term) {
++                    hold();
++                }
++
++                private void hold() {
++                    entered.countDown();
++                    try {
++                        await(release);
++                    } catch (final InterruptedException interrupted) {
++                        Thread.currentThread().interrupt();
++                        throw new AssertionError(interrupted);
++                    }
++                }
++            });
++            assertTrue(this.caller.init(options));
++        }
++
++        private void block() throws Exception {
++            assertTrue(this.caller.onLeaderStart(1));
++            await(this.entered);
++        }
++
++        private Future<AppliedConfiguration> read(final long timeout) {
++            return this.workers.submit(() -> this.caller.getAppliedConfiguration(timeout));
++        }
++
++        private void awaitQueued(final int count) {
++            // The blocked event retains one slot; capacity observes publication, not thread launch.
++            final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
++            while (this.caller.hasAvailableCapacity(16 - count)) {
++                assertTrue("read was not admitted", System.nanoTime() < deadline);
++                Thread.yield();
++            }
++        }
++
++        private void assertFreshReads() throws Exception {
++            // More than one ring wrap, three simultaneous readers per bounded round.
++            for (int round = 2; round <= 7; round++) {
++                final AppliedConfiguration expected = value(round);
++                final CountDownLatch copying = new CountDownLatch(1);
++                final CountDownLatch finishCopy = new CountDownLatch(1);
++                when(this.logs.copyAppliedConfiguration(anyLong())).thenAnswer(invocation -> {
++                    copying.countDown();
++                    await(finishCopy);
++                    return expected;
++                });
++                final CountDownLatch start = new CountDownLatch(1);
++                final List<Future<AppliedConfiguration>> reads = new ArrayList<>();
++                for (int reader = 0; reader < 3; reader++) {
++                    reads.add(this.workers.submit(() -> {
++                        await(start);
++                        return this.caller.getAppliedConfiguration(5000);
++                    }));
++                }
++                start.countDown();
++                try {
++                    await(copying);
++                    // One executing read plus two published reads must occupy the ring.
++                    awaitQueued(2);
++                } finally {
++                    finishCopy.countDown();
++                }
++                for (final Future<AppliedConfiguration> read : reads) {
++                    assertValue(read.get(5, TimeUnit.SECONDS), round);
++                }
++            }
++        }
++
++        @Override
++        public void close() throws Exception {
++            this.release.countDown();
++            // Resource cleanup preserves a caller termination failure and suppresses worker cleanup failures.
++            try (final AutoCloseable cleanupWorkers = () -> {
++                this.workers.shutdownNow();
++                assertTrue(this.workers.awaitTermination(5, TimeUnit.SECONDS));
++            }) {
++                final FutureTask<Void> stopped = new FutureTask<>(() -> {
++                    this.caller.shutdown();
++                    this.caller.join();
++                    return null;
++                });
++                final Thread cleanupCaller = new Thread(stopped, "applied-read-fixture-cleanup");
++                cleanupCaller.setDaemon(true);
++                cleanupCaller.start();
++                try {
++                    stopped.get(5, TimeUnit.SECONDS);
++                } finally {
++                    stopped.cancel(true);
++                }
++            }
++        }
++    }
++
++}
+diff --git a/jraft-core/src/test/java/com/alipay/sofa/jraft/core/NodeTest.java b/jraft-core/src/test/java/com/alipay/sofa/jraft/core/NodeTest.java
+index e1bb4df..b2323d7 100644
+--- a/jraft-core/src/test/java/com/alipay/sofa/jraft/core/NodeTest.java
++++ b/jraft-core/src/test/java/com/alipay/sofa/jraft/core/NodeTest.java
+@@ -2527,34 +2527,39 @@ public class NodeTest {
+         NodeManager.getInstance().addAddress(addr);
+         final Node node = new NodeImpl("unittest", new PeerId(addr, 0));
+         final NodeOptions nodeOptions = createNodeOptionsWithSharedTimer();
+-        nodeOptions.setSnapshotIntervalSecs(3600);
++        nodeOptions.setSnapshotIntervalSecs(0);
+         final List<LogId> logs = Collections.synchronizedList(new ArrayList<LogId>());
+         final List<LogId> snapshotsExpected = Collections.synchronizedList(new ArrayList<LogId>());
+         final List<LogId> snapshots = Collections.synchronizedList(new ArrayList<LogId>());
+-        final CountDownEvent running = new CountDownEvent();
++        final List<Status> snapshotStatuses = Collections.synchronizedList(new ArrayList<Status>());
++        final CountDownLatch leaderReady = new CountDownLatch(1);
++        final CountDownLatch[] snapshotDone = { new CountDownLatch(1), new CountDownLatch(1) };
+         final StateMachine fsm = new StateMachineAdapter() {
+ 
++            @Override
++            public void onLeaderStart(long term) {
++                leaderReady.countDown();
++            }
++
+             @Override
+             public void onApply(Iterator iter) {
+                 while (iter.hasNext()) {
+                     final LogId logId = new LogId(iter.getIndex(), iter.getTerm());
+                     logs.add(logId);
+-                    //random snapshot
+-                    if (ThreadLocalRandom.current().nextInt(10) < 5) {
+-                        // commit before do snapshot
++                    // Complete each snapshot before the test thread submits the next batch.
++                    if (logs.size() == 500 || logs.size() == 1000) {
++                        final int snapshotNumber = logs.size() / 500 - 1;
+                         iter.commit();
+-                        running.incrementAndGet();
++                        snapshotsExpected.add(logId.copy());
+                         node.snapshotSync(new Closure() {
+ 
+                             @Override
+                             public void run(Status status) {
+-                                if (status.isOk()) {
+-                                    snapshotsExpected.add(logId.copy());
+-                                } else {
+-                                    assertEquals(status.getCode(), RaftError.EBUSY.getNumber());
++                                try {
++                                    snapshotStatuses.add(status);
++                                } finally {
++                                    snapshotDone[snapshotNumber].countDown();
+                                 }
+-                                running.countDown();
+-
+                             }
+                         });
+                     }
+@@ -2576,40 +2581,46 @@ public class NodeTest {
+         nodeOptions.setLogUri(this.dataPath + File.separator + "log");
+         nodeOptions.setSnapshotUri(this.dataPath + File.separator + "snapshot");
+         nodeOptions.setRaftMetaUri(this.dataPath + File.separator + "meta");
+-        nodeOptions.setSnapshotIntervalSecs(10);
+         nodeOptions.setInitialConf(new Configuration(Collections.singletonList(new PeerId(addr, 0))));
+ 
+-        assertTrue(node.init(nodeOptions));
+-        // wait node elect self as leader
+-        Thread.sleep(2000);
+-
+-        CountDownLatch latch = new CountDownLatch(1000);
+-        for (int i = 0; i < 1000; i++) {
+-            final ByteBuffer data = ByteBuffer.wrap(("hello" + i).getBytes());
+-            final Task task = new Task(data, new ExpectClosure(0, null, latch));
+-            node.apply(task);
+-            if (i % 10 == 0) {
+-                try {
+-                    node.snapshotSync(null);
+-                    fail();
+-                } catch (IllegalStateException e) {
++        try {
++            assertTrue(node.init(nodeOptions));
++            waitLatch(leaderReady);
++
++            for (int batch = 0; batch < 2; batch++) {
++                final CountDownLatch applied = new CountDownLatch(500);
++                for (int i = batch * 500; i < (batch + 1) * 500; i++) {
++                    final ByteBuffer data = ByteBuffer.wrap(("hello" + i).getBytes());
++                    final Task task = new Task(data, new ExpectClosure(0, null, applied));
++                    node.apply(task);
++                    if (i % 10 == 0) {
++                        try {
++                            node.snapshotSync(null);
++                            fail();
++                        } catch (IllegalStateException e) {
+ 
++                        }
++                    }
+                 }
++                waitLatch(applied);
++                waitLatch(snapshotDone[batch]);
++                assertEquals(batch + 1, snapshotStatuses.size());
++                assertTrue(snapshotStatuses.get(batch).toString(), snapshotStatuses.get(batch).isOk());
+             }
+-        }
+-        waitLatch(latch);
+-
+-        running.await();
+ 
+-        assertEquals(1000, logs.size());
+-        assertTrue(snapshotsExpected.size() > 1);
+-        //The metadata should be the same.
+-        assertEquals(snapshotsExpected, snapshots);
+-
+-        latch = new CountDownLatch(1);
+-        node.shutdown(new ExpectClosure(latch));
+-        node.join();
+-        waitLatch(latch);
++            assertEquals(1000, logs.size());
++            assertEquals(2, snapshotStatuses.size());
++            assertEquals(2, snapshotsExpected.size());
++            assertEquals(2, snapshots.size());
++            // The full ordered snapshot metadata must match the committed boundaries.
++            assertEquals(snapshotsExpected, snapshots);
++        } finally {
++            try {
++                node.shutdown();
++            } finally {
++                node.join();
++            }
++        }
+     }
+ 
+     @Test
+diff --git a/jraft-core/src/test/java/com/alipay/sofa/jraft/storage/impl/AppliedConfigurationSnapshotTest.java b/jraft-core/src/test/java/com/alipay/sofa/jraft/storage/impl/AppliedConfigurationSnapshotTest.java
+new file mode 100644
+index 0000000..619ebf5
+--- /dev/null
++++ b/jraft-core/src/test/java/com/alipay/sofa/jraft/storage/impl/AppliedConfigurationSnapshotTest.java
+@@ -0,0 +1,442 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.alipay.sofa.jraft.storage.impl;
++
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.Collections;
++import java.util.Set;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.Future;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.TimeoutException;
++
++import org.junit.After;
++import org.junit.Before;
++import org.junit.Test;
++
++import com.alipay.sofa.jraft.Closure;
++import com.alipay.sofa.jraft.Iterator;
++import com.alipay.sofa.jraft.Status;
++import com.alipay.sofa.jraft.closure.ClosureQueueImpl;
++import com.alipay.sofa.jraft.closure.LoadSnapshotClosure;
++import com.alipay.sofa.jraft.closure.SaveSnapshotClosure;
++import com.alipay.sofa.jraft.conf.AppliedConfiguration;
++import com.alipay.sofa.jraft.conf.ConfigurationManager;
++import com.alipay.sofa.jraft.core.FSMCallerImpl;
++import com.alipay.sofa.jraft.core.NodeImpl;
++import com.alipay.sofa.jraft.core.NodeMetrics;
++import com.alipay.sofa.jraft.core.State;
++import com.alipay.sofa.jraft.core.StateMachineAdapter;
++import com.alipay.sofa.jraft.entity.EnumOutter.EntryType;
++import com.alipay.sofa.jraft.entity.LogEntry;
++import com.alipay.sofa.jraft.entity.LogId;
++import com.alipay.sofa.jraft.entity.PeerId;
++import com.alipay.sofa.jraft.entity.RaftOutter.SnapshotMeta;
++import com.alipay.sofa.jraft.error.RaftError;
++import com.alipay.sofa.jraft.option.FSMCallerOptions;
++import com.alipay.sofa.jraft.option.LogManagerOptions;
++import com.alipay.sofa.jraft.option.RaftOptions;
++import com.alipay.sofa.jraft.storage.BaseStorageTest;
++import com.alipay.sofa.jraft.storage.LogManager;
++import com.alipay.sofa.jraft.storage.snapshot.SnapshotReader;
++import com.alipay.sofa.jraft.storage.snapshot.SnapshotWriter;
++
++import static org.junit.Assert.*;
++import static org.mockito.Mockito.*;
++
++/** Exercises the FSM ordering point against the real configuration owner and RocksDB. */
++public class AppliedConfigurationSnapshotTest extends BaseStorageTest {
++    private static final long                TIMEOUT_SECONDS = 5;
++    private static final String              GROUP_ID        = "applied-configuration-snapshot";
++
++    private final CountDownLatch             loadEntered     = new CountDownLatch(1);
++    private final CountDownLatch             allowLoad       = new CountDownLatch(1);
++    private final CountDownLatch             installEntered  = new CountDownLatch(1);
++    private final CountDownLatch             allowInstall    = new CountDownLatch(1);
++    private final CompletableFuture<Closure> pendingSave     = new CompletableFuture<>();
++    private final ExecutorService            workers         = Executors.newFixedThreadPool(2);
++    private volatile boolean                 loadSucceeds    = true;
++    private FSMCallerImpl                    fsmCaller;
++    private LogManagerImpl                   logManager;
++    private RocksDBLogStorage                logStorage;
++
++    @Override
++    @Before
++    public void setup() throws Exception {
++        super.setup();
++        this.fsmCaller = new FSMCallerImpl();
++        this.logManager = new LogManagerImpl();
++        final NodeImpl node = mock(NodeImpl.class);
++        when(node.getNodeMetrics()).thenReturn(new NodeMetrics(false));
++        when(node.getGroupId()).thenReturn(GROUP_ID);
++        when(node.getNodeState()).thenReturn(State.STATE_FOLLOWER);
++        final RaftOptions raftOptions = new RaftOptions();
++        this.logStorage = new RocksDBLogStorage(this.path, raftOptions);
++        final LogManagerOptions logOptions = new LogManagerOptions();
++        logOptions.setGroupId(GROUP_ID);
++        logOptions.setRaftOptions(raftOptions);
++        logOptions.setConfigurationManager(new ConfigurationManager());
++        logOptions.setFsmCaller(this.fsmCaller);
++        logOptions.setNodeMetrics(new NodeMetrics(false));
++        logOptions.setLogStorage(this.logStorage);
++        assertTrue(this.logManager.init(logOptions));
++
++        final FSMCallerOptions fsmOptions = new FSMCallerOptions();
++        fsmOptions.setNode(node);
++        fsmOptions.setLogManager(this.logManager);
++        fsmOptions.setClosureQueue(new ClosureQueueImpl(GROUP_ID));
++        fsmOptions.setBootstrapId(new LogId());
++        fsmOptions.setDisruptorBufferSize(32);
++        fsmOptions.setFsm(new StateMachineAdapter() {
++            @Override
++            public void onApply(final Iterator iterator) {
++                fail("This fixture contains configuration and no-op entries only");
++            }
++
++            @Override
++            public boolean onSnapshotLoad(final SnapshotReader reader) {
++                loadEntered.countDown();
++                await(allowLoad);
++                return loadSucceeds;
++            }
++
++            @Override
++            public void onSnapshotSave(final SnapshotWriter writer, final Closure done) {
++                // Retain completion as a real asynchronous StateMachine implementation would.
++                pendingSave.complete(done);
++            }
++        });
++        assertTrue(this.fsmCaller.init(fsmOptions));
++    }
++
++    @Override
++    @After
++    public void teardown() throws Exception {
++        this.allowLoad.countDown();
++        this.allowInstall.countDown();
++        this.workers.shutdownNow();
++        try {
++            if (this.fsmCaller != null) {
++                this.fsmCaller.shutdown();
++                this.fsmCaller.join();
++            }
++            if (this.logManager != null) {
++                this.logManager.shutdown();
++                this.logManager.join();
++            }
++            if (this.logStorage != null) {
++                this.logStorage.shutdown();
++            }
++            assertTrue(this.workers.awaitTermination(TIMEOUT_SECONDS, TimeUnit.SECONDS));
++        } finally {
++            super.teardown();
++        }
++    }
++
++    @Test
++    public void testJointAppliedConfigurationExcludesUncommittedStableEntry() throws Exception {
++        final AppliedConfiguration before = applyJointWithUncommittedStable();
++        assertJoint(before, 2, 2, 18001);
++        assertEquals(3, this.logManager.getLastLogIndex());
++        assertTrue(this.logManager.getConfiguration(3).isStable());
++        assertImmutable(before);
++
++        assertTrue(this.fsmCaller.onCommitted(3));
++        final AppliedConfiguration after = read();
++        assertEquals(3, after.getAppliedIndex());
++        assertEquals(3, after.getConfigurationAnchor());
++        assertTrue(after.isStable());
++        assertEquals(Collections.singleton(address(18009)), after.getVoters());
++        assertTrue(after.getOldVoters().isEmpty());
++        assertTrue(after.getOldLearners().isEmpty());
++        assertJoint(before, 2, 2, 18001);
++    }
++
++    @Test
++    public void testSnapshotLoadReadWaitsForRestoreAndLogManagerInstallation() throws Exception {
++        final AppliedConfiguration before = applyJointWithUncommittedStable();
++        final SnapshotMeta meta = jointSnapshot(10, 2, 18005);
++        final CompletableFuture<Status> loaded = load(meta);
++        await(this.loadEntered);
++        final CountDownLatch reading = new CountDownLatch(1);
++        final Future<AppliedConfiguration> duringLoad = this.workers.submit(() -> {
++            reading.countDown();
++            return read();
++        });
++        await(reading);
++        assertPending(duringLoad);
++        this.allowLoad.countDown();
++        await(this.installEntered);
++        // FSM has advanced its watermark, but the synchronous install closure still owns the event.
++        assertEquals(10, this.fsmCaller.getLastAppliedIndex());
++        assertEquals(1, this.logManager.getFirstLogIndex());
++        assertPending(duringLoad);
++        this.allowInstall.countDown();
++        assertTrue(loaded.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).isOk());
++        assertJoint(duringLoad.get(TIMEOUT_SECONDS, TimeUnit.SECONDS), 10, 10, 18005);
++        assertEquals(11, this.logManager.getFirstLogIndex());
++        assertNull(this.logManager.getEntry(2));
++        assertJoint(read(), 10, 10, 18005);
++        assertJoint(before, 2, 2, 18001);
++        assertImmutable(before);
++    }
++
++    @Test
++    public void testSnapshotRestoreFailureRejectsConfigurationRead() throws Exception {
++        final AppliedConfiguration before = applyJointWithUncommittedStable();
++        this.loadSucceeds = false;
++        this.allowLoad.countDown();
++        this.allowInstall.countDown();
++        assertFalse(load(jointSnapshot(10, 2, 18005)).get(TIMEOUT_SECONDS, TimeUnit.SECONDS).isOk());
++        assertReadUnavailable();
++        assertEquals(2, this.fsmCaller.getLastAppliedIndex());
++        assertEquals(1, this.logManager.getFirstLogIndex());
++        assertJoint(before, 2, 2, 18001);
++    }
++
++    @Test
++    public void testSnapshotMetadataIOFailureRejectsConfigurationRead() throws Exception {
++        applyJointWithUncommittedStable();
++        final SnapshotReader reader = mock(SnapshotReader.class);
++        when(reader.load()).thenReturn(null);
++        when(reader.getRaftError()).thenReturn(RaftError.EIO);
++        final CompletableFuture<Status> loaded = new CompletableFuture<>();
++        assertTrue(this.fsmCaller.onSnapshotLoad(new LoadSnapshotClosure() {
++            @Override
++            public SnapshotReader start() {
++                return reader;
++            }
++
++            @Override
++            public void run(final Status status) {
++                loaded.complete(status);
++            }
++        }));
++        assertFalse(loaded.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).isOk());
++        assertReadUnavailable();
++        assertEquals(2, this.fsmCaller.getLastAppliedIndex());
++    }
++
++    @Test
++    public void testAsyncSnapshotSaveCompletionUsesSnapshotAnchorNotOriginalConfigurationIndex() throws Exception {
++        // Data-free no-ops advance application without changing the joint configuration at index 2.
++        append(configuration(1, 1, false, 18001), configuration(2, 1, true, 18001),
++            noop(3, 1), noop(4, 1), noop(5, 1));
++        assertTrue(this.fsmCaller.onCommitted(5));
++        final AppliedConfiguration before = read();
++        assertJoint(before, 5, 2, 18001);
++        final CompletableFuture<SnapshotMeta> savedMeta = new CompletableFuture<>();
++        final CompletableFuture<Status> saved = new CompletableFuture<>();
++        final SnapshotWriter writer = mock(SnapshotWriter.class);
++        assertTrue(this.fsmCaller.onSnapshotSave(new SaveSnapshotClosure() {
++            @Override
++            public SnapshotWriter start(final SnapshotMeta meta) {
++                savedMeta.complete(meta);
++                return writer;
++            }
++
++            @Override
++            public void run(final Status status) {
++                if (status.isOk()) {
++                    logManager.setSnapshot(savedMeta.join());
++                    logManager.clearBufferedLogs();
++                }
++                saved.complete(status);
++            }
++        }));
++        final Closure completion = this.pendingSave.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
++        final SnapshotMeta meta = savedMeta.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
++        assertEquals(5, meta.getLastIncludedIndex());
++        assertEquals(Collections.singletonList(address(18004)), meta.getOldLearnersList());
++        // The FSM is free while save completion is outstanding.
++        assertJoint(read(), 5, 2, 18001);
++        final CountDownLatch race = new CountDownLatch(1);
++        final Future<?> finishing = this.workers.submit(() -> {
++            await(race);
++            completion.run(Status.OK());
++        });
++        final Future<?> reading = this.workers.submit(() -> {
++            await(race);
++            for (int i = 0; i < 32; i++) {
++                final AppliedConfiguration value = read();
++                final long anchor = value.getConfigurationAnchor();
++                assertTrue("Only the original or installed snapshot anchor is valid", anchor == 2 || anchor == 5);
++                assertJoint(value, 5, anchor, 18001);
++            }
++            return null;
++        });
++        race.countDown();
++        finishing.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
++        reading.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
++        assertTrue(saved.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).isOk());
++        assertEquals(6, this.logManager.getFirstLogIndex());
++        assertJoint(read(), 5, 5, 18001);
++        assertJoint(before, 5, 2, 18001);
++        assertImmutable(before);
++    }
++
++    @Test
++    public void testConflictingUncommittedSuffixDoesNotReplaceAppliedJointConfiguration() throws Exception {
++        final AppliedConfiguration before = applyJointWithUncommittedStable();
++        append(configuration(4, 1, false, 18011));
++        assertEquals(4, this.logManager.getConfiguration(4).getId().getIndex());
++        // Follower receives a higher-term replacement at 3; real append conflict handling truncates 3 and 4.
++        append(noop(3, 2));
++        assertEquals(3, this.logManager.getLastLogIndex(true));
++        assertEquals(2, this.logManager.getTerm(3));
++        assertNull(this.logManager.getEntry(4));
++        assertEquals(2, this.logManager.getConfiguration(4).getId().getIndex());
++        assertJoint(read(), 2, 2, 18001);
++        assertTrue(this.fsmCaller.onCommitted(3));
++        assertJoint(read(), 3, 2, 18001);
++        assertJoint(before, 2, 2, 18001);
++    }
++
++    private AppliedConfiguration applyJointWithUncommittedStable() throws Exception {
++        append(configuration(1, 1, false, 18001), configuration(2, 1, true, 18001), configuration(3, 1, false, 18009));
++        assertTrue(this.fsmCaller.onCommitted(2));
++        return read();
++    }
++
++    private AppliedConfiguration read() throws Exception {
++        return this.fsmCaller.getAppliedConfiguration(TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS));
++    }
++
++    private void append(final LogEntry... entries) throws Exception {
++        final CompletableFuture<Status> appended = new CompletableFuture<>();
++        this.logManager.appendEntries(new ArrayList<>(Arrays.asList(entries)), new LogManager.StableClosure() {
++            @Override
++            public void run(final Status status) {
++                appended.complete(status);
++            }
++        });
++        final Status status = appended.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
++        assertTrue(status.toString(), status.isOk());
++    }
++
++    private CompletableFuture<Status> load(final SnapshotMeta meta) {
++        final SnapshotReader reader = mock(SnapshotReader.class);
++        when(reader.load()).thenReturn(meta);
++        final CompletableFuture<Status> loaded = new CompletableFuture<>();
++        assertTrue(this.fsmCaller.onSnapshotLoad(new LoadSnapshotClosure() {
++            @Override
++            public SnapshotReader start() {
++                return reader;
++            }
++
++            @Override
++            public void run(final Status status) {
++                if (status.isOk()) {
++                    installEntered.countDown();
++                    await(allowInstall);
++                    // Same synchronous ordering as SnapshotExecutorImpl's install-done closure.
++                    logManager.setSnapshot(meta);
++                }
++                loaded.complete(status);
++            }
++        }));
++        return loaded;
++    }
++
++    private void assertReadUnavailable() throws Exception {
++        try {
++            read();
++            fail("A failed snapshot load must not supply usable membership");
++        } catch (final IllegalStateException expected) {
++            assertNotNull(expected.getCause());
++        }
++    }
++
++    private static void assertPending(final Future<?> future) throws Exception {
++        try {
++            future.get(100, TimeUnit.MILLISECONDS);
++            fail("Read returned while the snapshot event was still blocked");
++        } catch (final TimeoutException expected) {
++            assertFalse(future.isDone());
++        }
++    }
++
++    private static void await(final CountDownLatch latch) {
++        try {
++            assertTrue("Timed out waiting for fixture boundary", latch.await(TIMEOUT_SECONDS, TimeUnit.SECONDS));
++        } catch (final InterruptedException interrupted) {
++            Thread.currentThread().interrupt();
++            throw new AssertionError(interrupted);
++        }
++    }
++
++    private static void assertJoint(final AppliedConfiguration value, final long applied, final long anchor,
++                                    final int basePort) {
++        assertEquals(applied, value.getAppliedIndex());
++        assertEquals(anchor, value.getConfigurationAnchor());
++        assertFalse(value.isStable());
++        assertEquals(Collections.singleton(address(basePort)), value.getVoters());
++        assertEquals(Collections.singleton(address(basePort + 1)), value.getLearners());
++        assertEquals(Collections.singleton(address(basePort + 2)), value.getOldVoters());
++        assertEquals(Collections.singleton(address(basePort + 3)), value.getOldLearners());
++    }
++
++    private static void assertImmutable(final AppliedConfiguration value) {
++        for (final Set<String> members : Arrays.asList(value.getVoters(), value.getLearners(), value.getOldVoters(),
++            value.getOldLearners())) {
++            try {
++                members.add(address(19000));
++                fail("Membership must be immutable");
++            } catch (final UnsupportedOperationException expected) {
++                assertFalse(members.contains(address(19000)));
++            }
++        }
++    }
++
++    private static LogEntry configuration(final long index, final long term, final boolean joint, final int basePort) {
++        final LogEntry entry = new LogEntry(EntryType.ENTRY_TYPE_CONFIGURATION);
++        entry.setId(new LogId(index, term));
++        entry.setPeers(Arrays.asList(peer(basePort)));
++        entry.setLearners(Arrays.asList(peer(basePort + 1)));
++        if (joint) {
++            entry.setOldPeers(Arrays.asList(peer(basePort + 2)));
++            entry.setOldLearners(Arrays.asList(peer(basePort + 3)));
++        }
++        return entry;
++    }
++
++    private static LogEntry noop(final long index, final long term) {
++        final LogEntry entry = new LogEntry(EntryType.ENTRY_TYPE_NO_OP);
++        entry.setId(new LogId(index, term));
++        return entry;
++    }
++
++    private static SnapshotMeta jointSnapshot(final long index, final long term, final int basePort) {
++        return SnapshotMeta.newBuilder().setLastIncludedIndex(index).setLastIncludedTerm(term)
++            .addPeers(address(basePort)).addLearners(address(basePort + 1)).addOldPeers(address(basePort + 2))
++            .addOldLearners(address(basePort + 3)).build();
++    }
++
++    private static PeerId peer(final int port) {
++        final PeerId peer = new PeerId();
++        assertTrue(peer.parse(address(port)));
++        return peer;
++    }
++
++    private static String address(final int port) {
++        return "127.0.0.1:" + port;
++    }
++}

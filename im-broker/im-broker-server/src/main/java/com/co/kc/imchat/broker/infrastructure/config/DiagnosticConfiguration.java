@@ -6,7 +6,7 @@ import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
 import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerManagementProperties;
-import com.co.kc.imchat.broker.adapter.diagnostic.GossipSyncTracker;
+import com.co.kc.imchat.broker.support.gossip.GossipSyncTracker;
 import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.annotation.Bean;

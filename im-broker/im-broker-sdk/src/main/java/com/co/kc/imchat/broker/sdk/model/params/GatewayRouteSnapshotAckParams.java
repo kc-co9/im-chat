@@ -11,13 +11,13 @@ public record GatewayRouteSnapshotAckParams(
         long routeRevision,
         long routeCount,
         String contentChecksum,
-        long eventDeadline) implements Serializable, GatewayRouteRequest {
+        long updateExpireAtMs) implements Serializable, GatewayRouteRequest {
 
     public GatewayRouteSnapshotAckParams {
         if (gatewayId == null || gatewayId.isBlank() || routingEpoch < 0L
                 || routeRevision < 0L || routeCount < 0L
                 || contentChecksum == null || contentChecksum.isBlank()
-                || eventDeadline <= 0L) {
+                || updateExpireAtMs <= 0L) {
             throw new IllegalArgumentException("invalid Gateway route snapshot ACK");
         }
     }

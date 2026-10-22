@@ -2,7 +2,7 @@ package com.co.kc.imchat.broker.infrastructure.chain.interceptor;
 
 import com.co.kc.imchat.broker.infrastructure.chain.BrokerRequestChain;
 
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.infrastructure.chain.invocation.BrokerRequestInvocation;
 import com.co.kc.imchat.broker.support.security.BrokerCallerPrincipal;
 import com.co.kc.imchat.broker.sdk.access.BrokerAdmissionType;
@@ -11,11 +11,11 @@ import com.co.kc.imchat.broker.sdk.access.BrokerCallerRole;
 
 /** 将 Broker 数据面请求声明绑定到传输身份和 committed member。 */
 public final class BrokerRouteCallerInterceptor implements BrokerRequestInterceptor {
-    private final BrokerClusterConsensus stateRepository;
+    private final BrokerRaftAdapter stateRepository;
     private final String identityPrefix;
     private final boolean allowTrustedNetworkIdentity;
 
-    public BrokerRouteCallerInterceptor(BrokerClusterConsensus stateRepository,
+    public BrokerRouteCallerInterceptor(BrokerRaftAdapter stateRepository,
                                             String identityPrefix,
                                             boolean allowTrustedNetworkIdentity) {
         if (stateRepository == null || identityPrefix == null || identityPrefix.isBlank()) {
@@ -45,7 +45,7 @@ public final class BrokerRouteCallerInterceptor implements BrokerRequestIntercep
         if (!trustedTls && !trustedNetwork) {
             throw new SecurityException("Broker data-plane identity mismatch");
         }
-        boolean committed = stateRepository.committedState().brokers().stream()
+        boolean committed = stateRepository.getCommittedState().brokers().stream()
                 .anyMatch(node -> node.brokerId().equals(requesterBrokerId));
         if (!committed) {
             throw new SecurityException("Broker data-plane requester is not committed");

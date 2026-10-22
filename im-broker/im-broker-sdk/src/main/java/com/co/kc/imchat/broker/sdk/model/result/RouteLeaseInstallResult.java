@@ -3,7 +3,7 @@ package com.co.kc.imchat.broker.sdk.model.result;
 import java.io.Serializable;
 
 /**
- * holder 是否已经接受并安装对应 Lease。
+ * 目标 Broker 是否已接受并安装本次下发的 Lease。
  */
 public record RouteLeaseInstallResult(boolean accepted) implements Serializable {
 }

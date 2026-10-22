@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.connection.model;
 
+import com.co.kc.imchat.common.domain.user.model.UserId;
+
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.common.utils.AssertUtils;
@@ -34,7 +36,7 @@ public final class GatewayRouteBatch {
     /* 完整有序用户内容的预期摘要。 */
     private GatewayRouteSnapshotDigest contentDigest;
     /* 本轮路由事件有效截止时间。 */
-    private Instant updateExpiresAt;
+    private Instant updateExpireAt;
     /* 已接收用户载荷的估算字节，由应用层用于全局容量统计。 */
     private Long bytes = 0L;
     /* 已收集的分片；不向调用方暴露可变索引。 */
@@ -55,7 +57,7 @@ public final class GatewayRouteBatch {
                 && batchId.equals(incoming.batchId)
                 && routingEpoch.equals(incoming.routingEpoch) && routeRevision.equals(incoming.routeRevision)
                 && routeBrokerId.equals(incoming.routeBrokerId) && chunkCount.equals(incoming.chunkCount)
-                && contentDigest.equals(incoming.contentDigest) && updateExpiresAt.equals(incoming.updateExpiresAt)
+                && contentDigest.equals(incoming.contentDigest) && updateExpireAt.equals(incoming.updateExpireAt)
                 && (existing == null || existing.equals(users));
     }
 
@@ -111,12 +113,12 @@ public final class GatewayRouteBatch {
         public Builder routeBrokerId(BrokerId value) { batch.routeBrokerId = value; return this; }
         public Builder chunkCount(Integer value) { batch.chunkCount = value; return this; }
         public Builder contentDigest(GatewayRouteSnapshotDigest value) { batch.contentDigest = value; return this; }
-        public Builder updateExpiresAt(Instant value) { batch.updateExpiresAt = value; return this; }
+        public Builder updateExpireAt(Instant value) { batch.updateExpireAt = value; return this; }
 
         public GatewayRouteBatch build() {
             AssertUtils.allDomainPropNotNull("Gateway route batch is incomplete", batch.batchId,
                     batch.routingEpoch, batch.routeRevision, batch.routeBrokerId, batch.chunkCount,
-                    batch.contentDigest, batch.updateExpiresAt);
+                    batch.contentDigest, batch.updateExpireAt);
             AssertUtils.domainPropTrue("Gateway route chunk count must be positive", batch.chunkCount > 0);
             return batch;
         }

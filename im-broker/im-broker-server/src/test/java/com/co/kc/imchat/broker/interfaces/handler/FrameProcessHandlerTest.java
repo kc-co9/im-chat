@@ -1,51 +1,47 @@
 package com.co.kc.imchat.broker.interfaces.handler;
 
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
+import com.co.kc.imchat.broker.adapter.gateway.GatewayDispatchAdapter;
+import com.co.kc.imchat.broker.application.frame.FrameDispatchAppService;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
-
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
-
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
-import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
-import java.time.Instant;
-
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
-
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-
+import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
+import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
+import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
+import com.co.kc.imchat.broker.infrastructure.config.properties.RegistryProperties;
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryConnectionRegistry;
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry;
 import com.co.kc.imchat.broker.interfaces.handler.frame.FrameProcessHandler;
+import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
+import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
+import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
+import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
+import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
 import com.co.kc.imchat.broker.sdk.model.dto.BrokerFrameWriteDTO;
 import com.co.kc.imchat.broker.sdk.model.dto.GatewayEndpointDTO;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
 import com.co.kc.imchat.broker.sdk.model.result.RouteBrokerResult;
 import com.co.kc.imchat.broker.sdk.routing.RouteRequestContext;
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
 import com.co.kc.imchat.broker.support.BrokerRequestChainTestSupport;
-import com.co.kc.imchat.broker.application.frame.FrameDispatchAppService;
 import com.co.kc.imchat.broker.support.RouteLookupStub;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
-import com.co.kc.imchat.broker.infrastructure.config.properties.RegistryProperties;
-import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
-import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
-import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
-import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
-import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
-import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 import com.co.kc.imchat.common.constant.HttpErrorCode;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.common.exception.BusinessException;
 import com.co.kc.imchat.common.exception.RpcException;
+import com.co.kc.imchat.common.model.enums.FrameType;
 import com.co.kc.imchat.common.model.io.FrameRequest;
 import com.co.kc.imchat.common.model.io.FrameResponse;
-import com.co.kc.imchat.common.model.enums.FrameType;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
-import com.co.kc.imchat.gateway.ws.sdk.model.result.GatewayFrameWriteResult;
 import com.co.kc.imchat.gateway.ws.sdk.model.params.GatewayFrameWriteParams;
+import com.co.kc.imchat.gateway.ws.sdk.model.result.GatewayFrameWriteResult;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.metrics.support.MetricsCollector;
 import com.co.kc.imchat.service.message.facade.MessageService;
 import com.co.kc.imchat.service.message.facade.params.GroupMessageReadParams;
 import com.co.kc.imchat.service.message.facade.params.GroupMessageRevokeParams;
@@ -54,14 +50,16 @@ import com.co.kc.imchat.service.message.facade.params.NotificationAckParams;
 import com.co.kc.imchat.service.message.facade.params.PrivateMessageReadParams;
 import com.co.kc.imchat.service.message.facade.params.PrivateMessageRevokeParams;
 import com.co.kc.imchat.service.message.facade.params.PrivateMessageSendParams;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.time.Duration;
-
+import java.util.concurrent.CompletableFuture;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -215,7 +213,7 @@ class FrameProcessHandlerTest {
         assertEquals(List.of(
                 BrokerFrameWriteDTO.accepted("conn-1"),
                 BrokerFrameWriteDTO.accepted("conn-2")), response.writeList().stream()
-                .sorted(java.util.Comparator.comparing(BrokerFrameWriteDTO::connectionId))
+                .sorted(Comparator.comparing(BrokerFrameWriteDTO::connectionId))
                 .toList());
         assertEquals(List.of("conn-1", "conn-2"), response.acceptedConnectionIds().stream().sorted().toList());
     }
@@ -265,7 +263,7 @@ class FrameProcessHandlerTest {
 
         assertEquals(List.of(
                 BrokerFrameWriteDTO.accepted("conn-2")), response.writeList().stream()
-                .sorted(java.util.Comparator.comparing(BrokerFrameWriteDTO::connectionId))
+                .sorted(Comparator.comparing(BrokerFrameWriteDTO::connectionId))
                 .toList());
         assertEquals(List.of("conn-2"), response.acceptedConnectionIds());
         assertEquals(List.of(), response.failedConnectionIds());
@@ -306,21 +304,22 @@ class FrameProcessHandlerTest {
                                                     MessageService messageService,
                                                     GatewayClient gatewayClient) {
         RouteLookupStub unusedLookupClient = (candidate, targetUserId, routingEpoch) ->
-                java.util.concurrent.CompletableFuture.completedFuture(List.of());
-        BrokerClusterConsensus repository = org.mockito.Mockito.mock(
-                BrokerClusterConsensus.class);
-        org.mockito.Mockito.when(repository.committedState()).thenReturn(new BrokerClusterState(
+                CompletableFuture.completedFuture(List.of());
+        BrokerRaftAdapter repository = Mockito.mock(
+                BrokerRaftAdapter.class);
+        Mockito.when(repository.getCommittedState()).thenReturn(new BrokerClusterState(
                 7L, BrokerRequestChainTestSupport.EPOCH,
                 BrokerSelectionAlgorithm.RENDEZVOUS_HASH,
                 List.of(new BrokerNode(BrokerRequestChainTestSupport.BROKER_ID,
                         "127.0.0.1:12200", BrokerMembershipRole.VOTER,
                         BrokerRoutingState.ACTIVE))));
         RegistryProperties registryProperties = new RegistryProperties();
-        BrokerClusterAdapter adapter = unusedLookupClient.adapter(gatewayClient);
-        org.mockito.Mockito.when(adapter.committedState()).thenAnswer(ignored -> repository.committedState());
-        org.mockito.Mockito.when(adapter.localBrokerId()).thenReturn(new BrokerId(BrokerRequestChainTestSupport.BROKER_ID));
+        BrokerRaftAdapter adapter = Mockito.mock(BrokerRaftAdapter.class);
+        Mockito.doAnswer(ignored -> repository.getCommittedState()).when(adapter).getCommittedState();
+        Mockito.when(BrokerRaftTestBindings.bindLocalBroker(adapter).getId()).thenReturn(new BrokerId(BrokerRequestChainTestSupport.BROKER_ID));
         FrameDispatchAppService deliveryService = new FrameDispatchAppService(
-                connectionRegistry, gatewayRegistry, adapter,
+                connectionRegistry, gatewayRegistry, adapter, unusedLookupClient.peerAdapter(),
+                new GatewayDispatchAdapter(gatewayClient, Runnable::run, Mockito.mock(MetricsCollector.class)),
                 registryProperties.getGatewayTtl(), Duration.ZERO,
                 RouteLookupStub.negativeCache(Duration.ZERO));
         return new FrameProcessHandler(messageService, deliveryService);
@@ -328,6 +327,13 @@ class FrameProcessHandlerTest {
 
     private BoltInvoker unusedBoltInvoker() {
         return new BoltInvoker() {
+            @Override
+            public <T, R> R invokeAuthenticated(String address, String service, String operation,
+                                               T request, Class<R> responseType, int timeoutMillis,
+                                               String expectedPeerIdentity, String identityPrefix) {
+                throw new AssertionError("ordinary data plane must not request authenticated observation RPC");
+            }
+
             @Override
             public <T, R> R invoke(String address, String service, String operation, T request,
                                    Class<R> responseType, int timeoutMillis) {

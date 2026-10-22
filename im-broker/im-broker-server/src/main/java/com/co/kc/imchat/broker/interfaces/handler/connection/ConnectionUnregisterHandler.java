@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.interfaces.handler.connection;
 
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
@@ -35,7 +35,7 @@ public class ConnectionUnregisterHandler extends
     protected Object process(ConnectionUnregisterParams params) {
         boolean accepted = connectionRegistry.unregister(
                 new ConnectionRouteId(new UserId(params.userId()), new GatewayId(params.gatewayId())), new RouteRevision(params.routeRevision()),
-                Instant.ofEpochMilli(params.routeContext().deadlineEpochMillis()));
+                Instant.ofEpochMilli(params.routeContext().expireAtMs()));
         if (accepted) {
             brokerEventPublisher.publish(
                     new ConnectionRemovedEvent(params.userId(), params.gatewayId()));

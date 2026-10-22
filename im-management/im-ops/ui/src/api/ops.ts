@@ -10,7 +10,7 @@ export interface BrokerStatistics {
 
 export interface BrokerOverviewData {
   brokerId: string;
-  startedAt: number;
+  broker: { id: string; address: string; startedAtMs: string | null; uptimeMs: string | null };
   statistics: BrokerStatistics;
 }
 
@@ -19,7 +19,7 @@ export interface BrokerNodeOverview {
   status: NodeStatus;
   data: BrokerOverviewData | null;
   errorSummary: string | null;
-  queriedAt?: number;
+  queriedAt?: string;
 }
 
 export interface ClusterOverview {
@@ -27,7 +27,7 @@ export interface ClusterOverview {
   gatewayCount: number;
   connectionCount: number;
   nodes: BrokerNodeOverview[];
-  queriedAt: number;
+  queriedAt: string;
 }
 
 export interface SourcedValue<T> {
@@ -44,15 +44,15 @@ export interface BrokerNodeFailure {
 export interface ClusterQueryResult<T> {
   values: SourcedValue<T>[];
   failures: BrokerNodeFailure[];
-  queriedAt: number;
+  queriedAt: string;
 }
 
 export interface BrokerNode {
   brokerId: string;
   host: string;
   port: number;
-  registeredAt: number;
-  lastSeenAt: number;
+  registeredAtMs: string | null;
+  lastSeenAtMs: string | null;
 }
 
 export interface BrokerClusterNode {
@@ -82,22 +82,22 @@ export interface GatewayNode {
   gatewayId: string;
   host: string;
   port: number;
-  registeredAt: number;
-  lastSeenAt: number;
+  registeredAtMs: string | null;
+  lastSeenAtMs: string | null;
 }
 
 export interface ConnectionRoute {
   userId: string;
   gatewayId: string;
-  registeredAt: number;
-  lastSeenAt: number;
+  registeredAtMs: string | null;
+  lastSeenAtMs: string | null;
 }
 
 export interface DiagnosticRecord {
-  executedAt: number;
+  executedAtMs: string | null;
   status: string;
   processedCount: number;
-  durationMillis: number;
+  durationMs: string | null;
   errorSummary: string | null;
   target?: string;
   targetBrokerId?: string;

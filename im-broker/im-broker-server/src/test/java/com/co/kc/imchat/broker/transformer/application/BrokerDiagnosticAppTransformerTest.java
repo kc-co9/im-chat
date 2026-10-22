@@ -2,7 +2,7 @@ package com.co.kc.imchat.broker.transformer.application;
 
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
 import com.co.kc.imchat.broker.model.cqrs.dto.ConnectionRouteDTO;
@@ -20,7 +20,7 @@ class BrokerDiagnosticAppTransformerTest {
         Instant refreshedAt = Instant.parse("2026-09-09T10:01:00Z");
         ConnectionRegistration connection = ConnectionRegistration.builder()
                 .id(new ConnectionRouteId(new UserId(7496072726080262144L), new GatewayId("gateway-1")))
-                .revision(new RouteRevision(7L)).updateExpiresAt(Instant.MAX)
+                .revision(new RouteRevision(7L)).updateExpireAt(Instant.MAX)
                 .connectedAt(connectedAt).refreshedAt(refreshedAt).build();
 
         ConnectionRouteDTO result = BrokerDiagnosticAppTransformer.INSTANCE.connectionFrom(connection);

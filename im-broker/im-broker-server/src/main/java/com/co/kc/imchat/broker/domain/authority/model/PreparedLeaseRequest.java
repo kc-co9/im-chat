@@ -7,7 +7,7 @@ import java.time.Duration;
 /**
  * 本机为一次路由 Lease 安装提前登记的领域证据。
  *
- * <p>holder 在向权威节点申请 Lease 前先生成该对象，记录一次性 nonce、目标路由纪元和本机
+ * <p>目标 Broker 收到 prepare 请求时生成该对象，记录一次性 nonce、目标路由纪元和本机
  * 单调时钟起点。Leader 返回 Lease 后，本机只能用同一准备记录安装对应 Lease，并以准备起点
  * 计算有效截止时间，避免迟到响应或重复响应延长执行许可。</p>
  */

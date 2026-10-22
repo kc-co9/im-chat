@@ -40,6 +40,14 @@
 
 为支持跨会话恢复，活跃计划记录当前任务、已完成证据、当前阻塞项或 `none`，以及下一项具体步骤。根 `PROGRESS.md` 只索引全仓活跃计划、当前任务和机器报告入口，详细状态由对应计划拥有，验证结果、耗时和测试数由 `.harness/report.json` 拥有。不要把机器结果复制回 PROGRESS，否则该文档变化会使 revision-bound evidence 产生自引用失效。
 
+## 收尾组织与验证批次
+
+同一任务的多轮讨论和小型维护应先汇总到当前范围，用窄层反馈迭代；不要为每次命名或注释调整重复运行完整门禁。进入最终验证前，在原计划中用简短关闭账本区分已完成、被后续决定取代、明确延期和仍阻塞事项；保留历史证据，不批量勾绿历史步骤，也不另建竞争事实源。
+
+最终窗口遵循 [Harness 有界验证流程](references/HARNESS_GUIDE.md#有界验证与收尾窗口)：先完成范围内源码与文档、协调构建/写入者，再冻结输入并执行规定门禁。失败后先保留证据、窄层定位；只有修复或前提变化得到最小复核，才恢复较宽验证。同因重复失败没有新依据时停止并记录 blocked 与最小下一步，不能靠无界重跑或扩大无关修复完成计划。
+
+状态回填尽量集中在批次之间；实际机器结果仍由 Harness 报告拥有，PROGRESS 只保留当前任务索引。不改变现有 freshness 判定；纯状态关闭按下述两时点规则处理，不能用流程提效降低正式验收条件。
+
 ## 生命周期
 
 1. 在 `docs/exec-plans/active` 中按 `YYYY-MM-DD-<topic>.md` 命名创建计划。
@@ -48,4 +56,11 @@
 4. 只有记录验收证据后，才能将任务标记为 `passing`。
 5. 全部任务为 `passing` 且满足所有验收标准后，将计划原样移动到 `docs/exec-plans/completed`，更新相关索引，并把 PROGRESS 切换到下一活跃计划或 `none`。
 
-归档计划和更新 PROGRESS 会改变 worktree fingerprint。需要 revision-bound 最终证据的任务必须在计划中定义“归档后关闭审计”：归档前先取得足以将全部任务标为 `passing` 的证据，归档后不再修改 tracked 文件，并重新执行受状态文件变化影响的机器验证。关闭审计不是可提前标记 passing 的实施任务；若失败，必须恢复 active plan 并重新打开受影响任务。语义 Review 只有在其 review scope 明确排除执行状态文件且 scope fingerprint 未变化时才可跨归档复用。
+归档计划和更新 PROGRESS 会改变 worktree fingerprint。依据[精简实施设计](design-docs/2026-10-22-closeout-process-simplification-implementation-design.md)，关闭分为两个时点：
+
+- **实现验收时点**：所有实现、依赖、共享检查器、稳定文档与设计定稿，冻结完整 Git 输入，取得真实完整验收与独立 `Accept` 后才能标记任务 `passing`。full 通过同轮报告校验满足 architecture/startup/behavior/E2E 风险要求；不强制先跑 quick 或另行重复这些入口。
+- **状态迁移时点**：只修改 `PROGRESS.md`、`docs/exec-plans/active/**`、`docs/exec-plans/completed/**` 及这两个目录索引中的执行状态内容。独立 Reviewer 对照原验收和 Review 记录，核对迁移前后的精确 diff，而不只核对路径；计划路径内的需求、范围、命令或实现事实变化不算状态迁移。其他索引、README、设计、history 与规范须在首次冻结前定稿。迁移后实际执行廉价 `drift`、`clean`、`quality` scope 校验、`cleanup` 与 `handoff`，不为纯状态变动重复 Java/HA。
+
+原 full 的状态、时间、完整指纹与归档后的 stale 均照实保留；没有跨运行缓存、归档基线复制或 `archive-audit` 发布命令，不擦除历史失败。原验收不成立、有未解决失败或差异超出状态内容时，恢复 active 并重新打开受影响任务，按实际变化重新验收。语义 Review 仅在既有 scope 明确排除执行状态且 scope fingerprint 不变时复用，不扩大排除范围。
+
+路径/任务结构由现有 drift 检查；精确内容差异与原验收归属暂为 **Review-only**，自动化条件是具备可靠、低成本的状态内容差异正反 fixture，且不重新引入 chain/journal 框架。该关闭规则不证明当前生产或外部环境健康，也不把历史 full 晋级为当前 fresh。

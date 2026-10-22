@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.adapter.cluster.consensus;
 
+import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
+
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
 import org.junit.jupiter.api.Test;
@@ -23,7 +25,7 @@ class BrokerClusterConsensusResultTest {
     @Test
     void notLeaderFactoryPreservesReasonAndEndpoint() {
         BrokerClusterConsensusResult result = BrokerClusterConsensusResult.notLeader("127.0.0.1:19001", "learner progress check requires the cluster leader");
-        assertThat(result.status()).isEqualTo(BrokerClusterConsensusStatus.NOT_LEADER);
+        assertThat(result.status()).isEqualTo(Status.NOT_LEADER);
         assertThat(result.leaderEndpoint()).isEqualTo("127.0.0.1:19001");
         assertThat(result.message()).isEqualTo("learner progress check requires the cluster leader");
         assertThat(result.operation()).isNull();
@@ -35,7 +37,7 @@ class BrokerClusterConsensusResultTest {
             "learner has not applied the committed Raft read index"})
     void rejectionFactoryPreservesDifferentReasons(String message) {
         BrokerClusterConsensusResult result = BrokerClusterConsensusResult.rejected(message);
-        assertThat(result.status()).isEqualTo(BrokerClusterConsensusStatus.REJECTED);
+        assertThat(result.status()).isEqualTo(Status.REJECTED);
         assertThat(result.message()).isEqualTo(message);
         assertThat(result.operation()).isNull();
         assertThat(result.leaderEndpoint()).isNull();
@@ -46,12 +48,12 @@ class BrokerClusterConsensusResultTest {
     void pendingOperationRequiresAcceptedResultAndPendingPhase() {
         BrokerClusterOperation operation = mock(BrokerClusterOperation.class);
         when(operation.phase()).thenReturn(BrokerClusterOperationPhase.PENDING);
-        assertThat(result(BrokerClusterConsensusStatus.APPLIED, operation).hasPendingOperation()).isTrue();
-        assertThat(result(BrokerClusterConsensusStatus.DUPLICATE, operation).hasPendingOperation()).isTrue();
-        assertThat(result(BrokerClusterConsensusStatus.REJECTED, operation).hasPendingOperation()).isFalse();
-        assertThat(result(BrokerClusterConsensusStatus.APPLIED, null).hasPendingOperation()).isFalse();
+        assertThat(result(Status.APPLIED, operation).hasPendingOperation()).isTrue();
+        assertThat(result(Status.DUPLICATE, operation).hasPendingOperation()).isTrue();
+        assertThat(result(Status.REJECTED, operation).hasPendingOperation()).isFalse();
+        assertThat(result(Status.APPLIED, null).hasPendingOperation()).isFalse();
         when(operation.phase()).thenReturn(BrokerClusterOperationPhase.RAFT_COMMITTED);
-        assertThat(result(BrokerClusterConsensusStatus.APPLIED, operation).hasPendingOperation()).isFalse();
+        assertThat(result(Status.APPLIED, operation).hasPendingOperation()).isFalse();
     }
 
     @Test
@@ -59,21 +61,21 @@ class BrokerClusterConsensusResultTest {
         BrokerClusterOperation operation = mock(BrokerClusterOperation.class);
         when(operation.phase()).thenReturn(BrokerClusterOperationPhase.RAFT_COMMITTED);
 
-        assertThat(result(BrokerClusterConsensusStatus.APPLIED, operation)
+        assertThat(result(Status.APPLIED, operation)
                 .hasCommittedOperationToComplete()).isTrue();
-        assertThat(result(BrokerClusterConsensusStatus.DUPLICATE, operation)
+        assertThat(result(Status.DUPLICATE, operation)
                 .hasCommittedOperationToComplete()).isTrue();
-        assertThat(result(BrokerClusterConsensusStatus.REJECTED, operation)
+        assertThat(result(Status.REJECTED, operation)
                 .hasCommittedOperationToComplete()).isFalse();
-        assertThat(result(BrokerClusterConsensusStatus.APPLIED, null)
+        assertThat(result(Status.APPLIED, null)
                 .hasCommittedOperationToComplete()).isFalse();
 
         when(operation.phase()).thenReturn(BrokerClusterOperationPhase.SUCCEEDED);
-        assertThat(result(BrokerClusterConsensusStatus.APPLIED, operation)
+        assertThat(result(Status.APPLIED, operation)
                 .hasCommittedOperationToComplete()).isFalse();
     }
 
-    private BrokerClusterConsensusResult result(BrokerClusterConsensusStatus status,
+    private BrokerClusterConsensusResult result(Status status,
                                                 BrokerClusterOperation operation) {
         return new BrokerClusterConsensusResult(status, operation, null, null);
     }

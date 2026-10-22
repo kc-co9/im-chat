@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.infrastructure.gossip;
 
-import com.co.kc.imchat.broker.adapter.gossip.BrokerStateStore;
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.ClusterProperties;
 import com.co.kc.imchat.broker.infrastructure.domain.cluster.InMemoryBrokerRegistry;
@@ -9,7 +9,7 @@ import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayR
 import com.co.kc.imchat.broker.interfaces.scheduler.BrokerGossipScheduler;
 import com.co.kc.imchat.broker.model.enums.DiagnosticStatus;
 import com.co.kc.imchat.broker.interfaces.scheduler.BrokerGossipProperties;
-import com.co.kc.imchat.broker.adapter.diagnostic.GossipSyncTracker;
+import com.co.kc.imchat.broker.support.gossip.GossipSyncTracker;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import com.co.kc.imchat.plugin.gossip.client.GossipPeerClient;
 import com.co.kc.imchat.plugin.gossip.sync.GossipSynchronizer;
@@ -33,11 +33,11 @@ class BrokerGossipSchedulerTest {
     void skipsGossipWhenNoPeerExists() {
         ClusterProperties properties = new ClusterProperties();
         InMemoryBrokerRegistry brokerRegistry = new InMemoryBrokerRegistry();
-        BrokerStateStore brokerStateStore = gossipStateStore(properties, brokerRegistry);
+        BrokerGossipAdapter brokerGossipAdapter = gossipStateStore(properties, brokerRegistry);
         BoltInvoker boltInvoker = mock(BoltInvoker.class);
         BrokerGossipScheduler lifecycle = new BrokerGossipScheduler(
                 brokerRegistry,
-                new GossipSynchronizer(brokerStateStore, new GossipPeerClient(boltInvoker)),
+                new GossipSynchronizer(brokerGossipAdapter, new GossipPeerClient(boltInvoker)),
                 gossipProperties(properties, brokerProperties("10.0.0.1", 12200)),
                 new GossipSyncTracker(10));
 
@@ -65,7 +65,7 @@ class BrokerGossipSchedulerTest {
                 eq(brokerProperties.getInstance().getId()),
                 eq("10.0.0.2:12200"),
                 any(),
-                eq(properties.getGossipTimeoutMillis()));
+                eq(properties.getGossipTimeoutMs()));
         assertThat(tracker.recent(10)).singleElement().satisfies(record -> {
             assertThat(record.target()).isEqualTo("10.0.0.2:12200");
             assertThat(record.status()).isEqualTo(DiagnosticStatus.SUCCESS);
@@ -93,7 +93,7 @@ class BrokerGossipSchedulerTest {
                 eq(brokerProperties.getInstance().getId()),
                 eq("10.0.0.2:12200"),
                 any(),
-                eq(properties.getGossipTimeoutMillis()));
+                eq(properties.getGossipTimeoutMs()));
     }
 
     @Test
@@ -139,9 +139,9 @@ class BrokerGossipSchedulerTest {
         assertThatCode(lifecycle::gossip).doesNotThrowAnyException();
     }
 
-    private BrokerStateStore gossipStateStore(ClusterProperties properties,
+    private BrokerGossipAdapter gossipStateStore(ClusterProperties properties,
                                                InMemoryBrokerRegistry brokerRegistry) {
-        return new BrokerStateStore(
+        return new BrokerGossipAdapter(
                 brokerRegistry,
                 new InMemoryGatewayRegistry(),
                 new InMemoryConnectionRegistry(),
@@ -159,6 +159,6 @@ class BrokerGossipSchedulerTest {
     private BrokerGossipProperties gossipProperties(ClusterProperties cluster, BrokerProperties broker) {
         BrokerProperties.Instance instance = broker.getInstance();
         return new BrokerGossipProperties(instance.getId(), instance.getAddress(),
-                cluster.getSeedAddresses(), cluster.getGossipFanout(), cluster.getGossipTimeoutMillis());
+                cluster.getSeedAddresses(), cluster.getGossipFanout(), java.time.Duration.ofMillis(cluster.getGossipTimeoutMs()));
     }
 }

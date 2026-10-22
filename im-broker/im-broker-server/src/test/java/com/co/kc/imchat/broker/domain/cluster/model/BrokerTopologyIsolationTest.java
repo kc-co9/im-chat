@@ -1,16 +1,67 @@
 package com.co.kc.imchat.broker.domain.cluster.model;
 
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+
 import org.junit.jupiter.api.Test;
 import com.co.kc.imchat.common.utils.JsonUtils;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class BrokerTopologyIsolationTest {
     private final BrokerId targetId = new BrokerId("broker-b");
+
+    @Test
+    void topologyCopiesNodesAndEndpointsOnConstructionAndRead() {
+        BrokerNode supplied = discovered();
+        MembershipEndpoint endpoint = new MembershipEndpoint("10.0.0.2:18120");
+        Map<BrokerId, MembershipEndpoint> endpoints = new LinkedHashMap<>(Map.of(targetId, endpoint));
+        ConsensusMembership membership = new ConsensusMembership(Set.of(endpoint), Set.of());
+        BrokerClusterTopology topology = new BrokerClusterTopology(
+                new RoutingEpoch(0L), List.of(supplied), endpoints, membership);
+        BrokerClusterTopology expected = new BrokerClusterTopology(
+                new RoutingEpoch(0L), List.of(discovered()), Map.of(targetId, endpoint), membership);
+        int hash = topology.hashCode();
+
+        supplied.joinAsLearner();
+        endpoints.clear();
+        topology.brokers().getFirst().joinAsLearner();
+
+        assertThat(topology).isEqualTo(expected).hasSameHashCodeAs(expected);
+        assertThat(topology.hashCode()).isEqualTo(hash);
+        assertThat(topology.brokers().getFirst().membershipRole()).isEqualTo(BrokerMembershipRole.DISCOVERED);
+        assertThat(topology.endpoints()).containsEntry(targetId, endpoint);
+        assertThatThrownBy(() -> topology.endpoints().clear()).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> topology.brokers().clear()).isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void aggregateTopologyIgnoresRevisionAndMembershipOrder() {
+        MembershipEndpoint first = new MembershipEndpoint("10.0.0.1:18120");
+        MembershipEndpoint second = new MembershipEndpoint("10.0.0.2:18120");
+        ConsensusMembership membership = new ConsensusMembership(
+                new LinkedHashSet<>(List.of(second, first)), Set.of());
+        BrokerCluster cluster = cluster(discovered());
+        BrokerClusterTopology before = cluster.topology(membership);
+        BrokerCluster later = BrokerCluster.builder()
+                .algorithm(cluster.algorithm()).revision(new ClusterRevision(1L)).epoch(cluster.epoch())
+                .brokers(cluster.brokers()).operations(List.of())
+                .operationHistoryCapacity(new OperationHistoryCapacity(20)).build();
+
+        BrokerClusterTopology after = later.topology(new ConsensusMembership(
+                new LinkedHashSet<>(List.of(first, second)), Set.of()));
+
+        assertThat(later.revision()).isNotEqualTo(cluster.revision());
+        assertThat(after).isEqualTo(before).hasSameHashCodeAs(before);
+        assertThat(after.membership()).isEqualTo(before.membership());
+    }
 
     @Test
     void invalidCompletionTimeReturnsRejectionWithoutChangingCommittedOperation() {

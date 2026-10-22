@@ -7,7 +7,7 @@ import java.io.Serializable;
  */
 public record RouteRequestContext(long routingEpoch,
                                   String operationId,
-                                  long deadlineEpochMillis) implements Serializable {
+                                  long expireAtMs) implements Serializable {
 
     public RouteRequestContext {
         if (routingEpoch < 0L) {
@@ -16,12 +16,12 @@ public record RouteRequestContext(long routingEpoch,
         if (operationId == null || operationId.isBlank()) {
             throw new IllegalArgumentException("operationId must not be blank");
         }
-        if (deadlineEpochMillis <= 0L) {
-            throw new IllegalArgumentException("deadlineEpochMillis must be positive");
+        if (expireAtMs <= 0L) {
+            throw new IllegalArgumentException("expireAtMs must be positive");
         }
     }
 
     public RouteRequestContext withRoutingEpoch(long nextRoutingEpoch) {
-        return new RouteRequestContext(nextRoutingEpoch, operationId, deadlineEpochMillis);
+        return new RouteRequestContext(nextRoutingEpoch, operationId, expireAtMs);
     }
 }

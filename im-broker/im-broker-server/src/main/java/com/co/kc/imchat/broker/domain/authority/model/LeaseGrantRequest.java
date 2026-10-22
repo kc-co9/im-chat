@@ -7,9 +7,9 @@ import com.co.kc.imchat.common.utils.AssertUtils;
 /**
  * Broker 针对当前 committed epoch 申请路由执行许可的领域请求。
  *
- * <p>请求绑定申请者、目标路由 epoch 和一次性 nonce。权威签发方用这些事实校验
- * 请求是否仍对应当前提交状态，并把 nonce 贯穿 prepare、grant 和 install，避免旧请求
- * 或重复请求获得执行权。</p>
+ * <p>请求绑定申请者、目标路由 epoch 和一次性 nonce。权威签发方校验请求是否匹配当前提交
+ * 状态；nonce 关联 prepare、grant 和 install，目标通过消费匹配的准备记录限制安装尝试，
+ * 避免迟到或重复响应重新安装。</p>
  */
 public record LeaseGrantRequest(
         /* 申请 Lease 的 Broker。 */

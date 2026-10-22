@@ -1,28 +1,28 @@
 package com.co.kc.imchat.broker.interfaces.scheduler;
 
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
 import com.co.kc.imchat.broker.domain.cluster.model.MinimumVoterCount;
 
 import com.co.kc.imchat.broker.domain.cluster.model.LearnerJoinIntent;
 
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-import com.co.kc.imchat.broker.adapter.cluster.LocalBroker;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.application.cluster.BrokerMembershipAppService;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerCluster;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterDecision;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.domain.cluster.model.CommandDigest;
-import com.co.kc.imchat.broker.domain.cluster.model.MembershipEndpoint;
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
 import com.co.kc.imchat.broker.model.cqrs.command.AddLearnerCommand;
 import com.co.kc.imchat.broker.support.StatefulClusterAdapterFixture;
-import com.co.kc.imchat.broker.adapter.cluster.raft.BrokerClusterSnapshotCodec;
+import com.co.kc.imchat.broker.support.raft.model.BrokerClusterSnapshot;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
-import com.co.kc.imchat.broker.transformer.domain.BrokerClusterDomainTransformer;
+import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterStateTransformer;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -51,26 +51,27 @@ class BrokerMembershipSchedulerTest {
         BrokerId brokerId = new BrokerId("broker-b");
         MembershipEndpoint endpoint = new MembershipEndpoint("10.0.0.2:18120");
         AddLearnerCommand command = new AddLearnerCommand(operationId.value(), brokerId.value(), 0L, endpoint.value());
-        BrokerCluster cluster = original.adapter.getCluster();
+        BrokerCluster cluster = original.adapter.getClusterSnapshot();
         BrokerClusterDecision pending = cluster.addLearner(LearnerJoinIntent.builder()
                 .operationId(operationId).commandDigest(command.digest())
                 .expectedRevision(cluster.revision()).brokerId(brokerId)
                 .membershipEndpoint(endpoint).changedAt(Instant.EPOCH).build());
-        assertThat(original.adapter.registerOperation(pending.operation()).toCompletableFuture().join().accepted()).isTrue();
+        assertThat(original.adapter.beginOperation(pending.operation()).toCompletableFuture().join().accepted()).isTrue();
 
         // 恢复持久化操作和端点绑定；模拟 Raft 成员已加入、Broker 拓扑尚未提交的状态。
         StatefulClusterAdapterFixture recovered = new StatefulClusterAdapterFixture(initialState);
-        recovered.stateMachine.restore(BrokerClusterSnapshotCodec.decode(
-                BrokerClusterSnapshotCodec.encode(original.stateMachine.snapshot())));
+        recovered.stateMachine.restore(BrokerClusterSnapshot.decode(
+                BrokerClusterSnapshot.encode(original.stateMachine.snapshotState())));
         recovered.learners.add(endpoint.value());
         BrokerMembershipAppService service = new BrokerMembershipAppService(recovered.adapter,
+                mock(com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter.class),
                 new MinimumVoterCount(1));
         BrokerMembershipScheduler lifecycle = new BrokerMembershipScheduler(recovered.adapter, service, Duration.ofSeconds(4));
 
-        doReturn(false).when(recovered.localBroker).isLeader();
+        org.mockito.Mockito.when(recovered.adapter.getLocalBroker().isLeader()).thenReturn(false);
         lifecycle.reconcile();
         verify(recovered.adapter, never()).addLearner(endpoint);
-        doReturn(true).when(recovered.localBroker).isLeader();
+        org.mockito.Mockito.when(recovered.adapter.getLocalBroker().isLeader()).thenReturn(true);
         lifecycle.reconcile();
         lifecycle.reconcile();
 
@@ -84,11 +85,9 @@ class BrokerMembershipSchedulerTest {
 
     @Test
     void recoversOnlyAgedPendingOperationOnCurrentLeader() {
-        BrokerClusterAdapter adapter = mock(BrokerClusterAdapter.class);
-        LocalBroker localBroker = mock(LocalBroker.class);
-        when(adapter.getLocalBroker()).thenReturn(localBroker);
+        BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
         BrokerMembershipAppService service = mock(BrokerMembershipAppService.class);
-        BrokerCluster cluster = BrokerClusterDomainTransformer.INSTANCE.restoreAggregate(
+        BrokerCluster cluster = BrokerClusterStateTransformer.INSTANCE.brokerClusterFrom(
                 new BrokerClusterState(0L, 0L,
                         BrokerSelectionAlgorithm.RENDEZVOUS_HASH,
                         List.of(new BrokerNode("broker-a", "10.0.0.1:18020",
@@ -106,8 +105,10 @@ class BrokerMembershipSchedulerTest {
                 .changedAt(Instant.ofEpochMilli(1_000L))
                 .build());
         assertThat(decision.accepted()).isTrue();
-        when(adapter.getCluster()).thenReturn(cluster);
+        when(adapter.getClusterSnapshot()).thenReturn(cluster);
         when(service.resume(operationId)).thenReturn(CompletableFuture.completedFuture(null));
+        BrokerRaftAdapter.LocalBroker localBroker = BrokerRaftTestBindings.bindLocalBroker(adapter);
+        when(localBroker.isLeader()).thenReturn(false);
         BrokerMembershipScheduler lifecycle = new BrokerMembershipScheduler(adapter, service, Duration.ofSeconds(4));
 
         lifecycle.reconcile();

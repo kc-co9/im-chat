@@ -3,7 +3,7 @@ package com.co.kc.imchat.broker.infrastructure.domain.connection;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRegistration;
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 
 import java.util.Map;
 import java.util.Optional;
@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 
+/**
+ * 保存本机 Gateway 注册与心跳观察，注册身份绑定认证主体。
+ * 注销后的 gatewayId 在本实例内退役，不能用于重新注册。
+ */
 public class InMemoryGatewayRegistry implements GatewayRegistry {
     private static final RegistryTransformer REGISTRY_TRANSFORMER = RegistryTransformer.INSTANCE;
 

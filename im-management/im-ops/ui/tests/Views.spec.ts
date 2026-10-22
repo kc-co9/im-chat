@@ -21,8 +21,8 @@ describe("ops detail views", () => {
             brokerId: "broker-a",
             host: "10.0.0.1",
             port: 19020,
-            registeredAt: 0,
-            lastSeenAt: 0,
+            registeredAtMs: "0",
+            lastSeenAtMs: "0",
           },
         },
       ],
@@ -33,7 +33,7 @@ describe("ops detail views", () => {
           errorSummary: "timeout",
         },
       ],
-      queriedAt: 0,
+      queriedAt: "0",
     });
     vi.mocked(api.getBrokerClusterState).mockResolvedValue({
       revision: 1,
@@ -53,18 +53,18 @@ describe("ops detail views", () => {
           value: {
             userId: "7496072518638374912",
             gatewayId: "gateway-a",
-            registeredAt: 0,
-            lastSeenAt: 1787446800000,
+            registeredAtMs: "0",
+            lastSeenAtMs: "1787446800000",
           },
         },
       ],
       failures: [],
-      queriedAt: 0,
+      queriedAt: "0",
     });
     vi.mocked(api.getGossipRecords).mockResolvedValue({
       values: [],
       failures: [],
-      queriedAt: 0,
+      queriedAt: "0",
     });
   });
 
@@ -98,6 +98,18 @@ describe("ops detail views", () => {
     expect(api.getConnections).toHaveBeenCalledWith("7496072518638374912");
     expect(wrapper.text()).toContain("7496072518638374912");
     expect(wrapper.text()).toContain("gateway-a");
+  });
+
+  it("shows wire duration in milliseconds without truncating to seconds", async () => {
+    vi.mocked(api.getGossipRecords).mockResolvedValue({
+      values: [{ sourceBroker: "broker-a", value: {
+        executedAtMs: "1787446800123", status: "SUCCESS", processedCount: 1,
+        durationMs: "1001", errorSummary: null, target: "broker-b",
+      }}], failures: [], queriedAt: "1787446800123",
+    });
+    const wrapper = mount(DiagnosticsView);
+    await flushPromises();
+    expect(wrapper.text()).toContain("1001");
   });
 
   it("shows empty diagnostic histories", async () => {

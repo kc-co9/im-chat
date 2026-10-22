@@ -4,7 +4,7 @@ import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 
 import com.co.kc.imchat.broker.model.io.BrokerClusterOperationResponse;
 import com.co.kc.imchat.broker.transformer.interfaces.BrokerManagementHttpTransformer;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,11 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 @RequestMapping("/management/cluster-state")
 public class BrokerClusterController {
-    private final BrokerClusterConsensus repository;
+    private final BrokerRaftAdapter repository;
 
     @GetMapping
     public BrokerClusterState state() {
-        return repository.committedState();
+        return repository.getCommittedState();
     }
 
     @GetMapping("/operations/{operationId}")

@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # 用途：提供 readiness、clean、drift、architecture、behavior、e2e、routing-ha、routing-capacity、load-test、quick、affected、full、report、handoff 统一验证入口。
-# 输入：第一个参数为模式；affected 模式可接收 baseline revision。
-# 输出/副作用：执行对应检查，并始终写入绑定当前 HEAD/worktree 的 .harness/verifications/<mode>.json。
+# 输入：第一个参数为模式；affected 可接收 baseline；full 不接受额外参数。
+# 输出/副作用：执行检查并写入 latest JSON；full 取消保留 incomplete，Maven 日志写入 .harness/runtime/full-maven.log。
 # 依赖：Maven、Ruby、rg、find、Harness 子脚本，以及 UI 构建所需 Node/npm。
 # 退出码：透传所选验证模式结果；未知模式返回 2，失败结果仍会被记录。
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+REACTOR_MANIFEST="$ROOT_DIR/.harness/runtime/full-reactor-evidence.json"
+REACTOR_SUMMARY="$ROOT_DIR/.harness/runtime/full-reactor-summary.json"
 MODE="${1:-quick}"
 source "$ROOT_DIR/scripts/lib/harness-evidence.sh"
 source "$ROOT_DIR/scripts/lib/load-test-evidence.sh"
@@ -32,7 +34,7 @@ record_verification() {
   local detail_path="$ROOT_DIR/.harness/verifications/$mode-detail.json"
   local output_dir="$ROOT_DIR/.harness/verifications"
   mkdir -p "$output_dir"
-  if [[ "$mode" == "e2e" ]]; then
+  if [[ "$mode" == "e2e" && "$MODE" != full ]]; then
     log_path=".harness/runtime/e2e.log"
     workload="realtime-messaging-golden-path"
     test_count="$(ruby -r rexml/document -e '
@@ -40,21 +42,11 @@ record_verification() {
     ' $(find "$ROOT_DIR/im-test/im-e2e-test/target/surefire-reports" \
       -type f -name 'TEST-*.xml' -print 2>/dev/null))"
   elif [[ "$mode" == "full" ]]; then
-    test_summary_json="$(ruby -rjson -rrexml/document -e '
-      root = ARGV.fetch(0)
-      threshold = ARGV.fetch(1).to_i
-      totals = Hash.new(0)
-      Dir.glob(File.join(root, "**/target/surefire-reports/TEST-*.xml")).each do |file|
-        next if File.mtime(file).to_i < threshold
-        suite = REXML::Document.new(File.read(file)).root
-        %w[tests failures errors skipped].each do |name|
-          totals[name] += suite.attributes[name].to_i
-        end
-      end
-      print JSON.generate(%w[tests failures errors skipped].to_h { |name| [name, totals[name]] })
-    ' "$ROOT_DIR" "$started_epoch")"
+    if [[ -f "$REACTOR_SUMMARY" ]]; then
+      test_summary_json="$(cat "$REACTOR_SUMMARY")"
+    fi
   fi
-  ruby -rjson -e '
+  FULL_GATE_STATUS="${gate_status:-incomplete}" FULL_FINALIZATION_STATUS="${finalization_status:-incomplete}" FULL_GATE_EXIT="${gate_exit:-}" FULL_REPORT_EXIT="${report_exit:-}" FULL_HANDOFF_EXIT="${handoff_exit:-}" ruby -rjson -e '
     output, mode, command, status, duration, started_epoch, finished_at,
       started_head, finished_head, started_fingerprint, finished_fingerprint,
       stable, log_path, test_count, workload, test_summary_json, detail_path = ARGV
@@ -77,14 +69,23 @@ record_verification() {
       evidence["workload"] = workload
     end
     evidence["testSummary"] = JSON.parse(test_summary_json) unless test_summary_json.empty?
-    if File.file?(detail_path)
+    if mode == "full"
+      {"originalExitCode" => "FULL_GATE_EXIT", "reportExitCode" => "FULL_REPORT_EXIT", "handoffExitCode" => "FULL_HANDOFF_EXIT"}.each do |key, variable|
+        evidence[key] = ENV[variable].to_i unless ENV.fetch(variable, "").empty?
+      end
+      evidence["logPath"] = ".harness/runtime/full-maven.log"
+      evidence["gateStatus"] = ENV.fetch("FULL_GATE_STATUS", "incomplete")
+      evidence["finalizationStatus"] = ENV.fetch("FULL_FINALIZATION_STATUS", "incomplete")
+    end
+    if mode != "full" && File.file?(detail_path)
       detail = JSON.parse(File.read(detail_path))
-      detail.delete("mode")
-      detail.delete("status")
-      evidence.merge!(detail)
+      protected = %w[mode command status durationSeconds startedAtEpoch finishedAt headRevision worktreeFingerprint startedHeadRevision startedWorktreeFingerprint finishedHeadRevision finishedWorktreeFingerprint worktreeStable originalExitCode reportExitCode handoffExitCode gateStatus finalizationStatus testSummary]
+      evidence.merge!(detail.reject { |key, _| protected.include?(key) })
       File.delete(detail_path)
     end
-    File.write(output, JSON.generate(evidence) + "\n")
+    abort "symlink verification output" if File.symlink?(output)
+    File.write(output + ".tmp", JSON.generate(evidence) + "\n", mode: "wx")
+    File.rename(output + ".tmp", output)
   ' "$output_dir/$mode.json" "$mode" "$command" "$status" "$duration" \
     "$started_epoch" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$started_head" \
     "$finished_head" "$started_fingerprint" "$finished_fingerprint" "$worktree_stable" \
@@ -304,9 +305,85 @@ run_full() {
   run_readiness
   run_clean
   run_script_tests
-  run_routing_ha
   printf '\n==> Running full Maven verification suite\n'
-  mvn -q verify
+  mkdir -p "$ROOT_DIR/.harness/runtime"
+  rm -f "$REACTOR_MANIFEST" "$REACTOR_SUMMARY"
+  ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" prepare "$ROOT_DIR" "$REACTOR_MANIFEST"
+  set +e
+  mvn -q verify 2>&1 | tee "$ROOT_DIR/.harness/runtime/full-maven.log"
+  local pipeline_codes=("${PIPESTATUS[@]}")
+  set -e
+  (( pipeline_codes[0] == 0 )) || return "${pipeline_codes[0]}"
+  (( pipeline_codes[1] == 0 )) || return "${pipeline_codes[1]}"
+  ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" verify "$ROOT_DIR" "$REACTOR_MANIFEST"
+  local reactor_sha256
+  reactor_sha256="$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV[0]).hexdigest' "$REACTOR_MANIFEST")"
+  # 总数在 Maven 窗口内固定；后续 HA 不再读取可能覆盖的 target 报告。
+  ruby -rjson -rrexml/document -e '
+    root, manifest, output = ARGV
+    since = JSON.parse(File.read(manifest)).fetch("startedAt")
+    totals = %w[tests failures errors skipped].to_h { |key| [key, 0] }
+    Dir.glob(File.join(root, "**/target/surefire-reports/TEST-*.xml")).each do |file|
+      next if File.mtime(file).to_f < since
+      suite = REXML::Document.new(File.read(file)).root
+      totals.each_key { |key| totals[key] += suite.attributes[key].to_i }
+    end
+    File.write(output, JSON.generate(totals) + "\n")
+  ' "$ROOT_DIR" "$REACTOR_MANIFEST" "$REACTOR_SUMMARY"
+  assert_full_frozen
+  local maven_finished_at="$(date +%s)"
+  local maven_started_at
+  maven_started_at="$(ruby -rjson -e 'puts JSON.parse(File.read(ARGV[0])).fetch("startedAt").to_i' "$REACTOR_MANIFEST")"
+  local mode
+  for mode in architecture startup behavior e2e; do
+    write_reactor_detail "$mode" "$maven_finished_at"
+    record_verification "$mode" passed "$((maven_finished_at - maven_started_at))" "$maven_started_at" \
+      "mvn -q verify; full-reactor validation: $mode" "$started_head" "$started_head" "$started_fingerprint" "$started_fingerprint" true
+  done
+  rm -f "$ROOT_DIR/.harness/verifications/routing-ha-detail.json"
+  local ha_started_at="$(date +%s)"
+  assert_reactor_identity "$reactor_sha256"
+  ROUTING_HA_REACTOR_EVIDENCE="$REACTOR_MANIFEST" ROUTING_HA_REACTOR_SHA256="$reactor_sha256" run_routing_ha
+  assert_reactor_identity "$reactor_sha256"
+  assert_full_frozen
+  ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" check "$ROOT_DIR" "$REACTOR_MANIFEST"
+  [[ -f "$ROOT_DIR/.harness/verifications/routing-ha-detail.json" ]] || return 1
+  ruby -rjson -rdigest -e '
+    file, manifest, fixed_sha = ARGV
+    data = JSON.parse(File.read(file))
+    data["evidenceSource"] = "full-reactor"
+    data["reactorEvidencePath"] = manifest
+    data["reactorEvidenceSha256"] = fixed_sha
+    File.write(file, JSON.generate(data) + "\n")
+  ' "$ROOT_DIR/.harness/verifications/routing-ha-detail.json" "$REACTOR_MANIFEST" "$reactor_sha256"
+  record_verification routing-ha passed "$(( $(date +%s) - ha_started_at ))" "$ha_started_at" \
+    "./scripts/routing_ha.sh verify (full-reactor validation)" "$started_head" "$started_head" "$started_fingerprint" "$started_fingerprint" true
+}
+
+# 固定首次 verify 后的清单字节身份；自洽重写也不属于原 Maven 证明。
+assert_reactor_identity() {
+  [[ "$1" =~ ^[0-9a-f]{64}$ && "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV[0]).hexdigest' "$REACTOR_MANIFEST")" == "$1" ]]
+}
+
+# full 的源码冻结与报告摘要独立；任何后续阶段修改输入都不能借当前报告发布成功。
+assert_full_frozen() {
+  [[ "$(harness_head_revision "$ROOT_DIR")" == "$started_head" \
+    && "$(harness_worktree_fingerprint "$ROOT_DIR")" == "$started_fingerprint" ]]
+}
+
+# 参数：模式、Maven 完成 epoch；只从已固定清单生成对应模式的普通验证详情。
+write_reactor_detail() {
+  ruby -rjson -rdigest -e '
+    manifest, mode, finished, output, fixed_sha = ARGV
+    data = JSON.parse(File.read(manifest))
+    detail = {"evidenceSource" => "full-reactor", "reactorEvidencePath" => manifest,
+      "reactorEvidenceSha256" => fixed_sha,
+      "mavenStartedAtEpoch" => data.fetch("startedAt"), "mavenFinishedAtEpoch" => finished.to_i,
+      "logPath" => ".harness/runtime/full-maven.log", "testCount" => data.fetch("summaries").fetch(mode).fetch("tests"),
+      "workload" => mode == "e2e" ? "realtime-messaging-golden-path" : mode}
+    detail["applicationCount"] = data.fetch("groups").fetch("startup").size if mode == "startup"
+    File.write(output, JSON.generate(detail) + "\n")
+  ' "$REACTOR_MANIFEST" "$1" "$2" "$ROOT_DIR/.harness/verifications/$1-detail.json" "$reactor_sha256"
 }
 
 # 运行 3 Broker + 2 Gateway 的真实路由故障场景；runner 负责场景计数、超时与资源清理。
@@ -664,49 +741,105 @@ dispatch() {
   esac
 }
 
+# 延期入口和扩展参数在抢锁或产生验证记录之前拒绝。
+if [[ "$MODE" == archive-audit || ( "$MODE" == full && $# -gt 1 ) ]]; then
+  printf 'Unsupported verification arguments: %s\n' "$*" >&2
+  exit 2
+fi
+# 共享 target、本地安装工件和运行拓扑的入口串行；工具/治理检查不占构建锁。
+case "$MODE" in
+  full|quick|architecture|startup|behavior|e2e|affected|init|routing-ha|routing-capacity|load-test|load-test-smoke)
+    harness_execution_lock || exit $? ;;
+esac
 verification_command="./scripts/verify.sh${*:+ $*}"
 started_at="$(date +%s)"
 started_head="$(harness_head_revision "$ROOT_DIR")"
 started_fingerprint="$(harness_worktree_fingerprint "$ROOT_DIR")"
+if [[ "$MODE" == full ]]; then
+  [[ "$started_head" != unavailable && "$started_fingerprint" != unavailable ]] || exit 2
+  rm -f "$REACTOR_MANIFEST" "$REACTOR_SUMMARY"
+  gate_status=incomplete
+  finalization_status=incomplete
+  record_verification full incomplete 0 "$started_at" "$verification_command" "$started_head" "$started_head" "$started_fingerprint" "$started_fingerprint" true
+fi
+
 set +e
-(set -e; dispatch "$@")
+# 独立进程组使取消能终止整个阶段，不在子进程仍写 target 时释放仓库锁。
+set -m
+(set +m; set -e; dispatch "$@") &
+dispatch_pid=$!
+trap 'kill -TERM -- "-$dispatch_pid" 2>/dev/null || true; wait "$dispatch_pid" 2>/dev/null || true; exit 130' INT
+trap 'kill -TERM -- "-$dispatch_pid" 2>/dev/null || true; wait "$dispatch_pid" 2>/dev/null || true; exit 143' TERM
+wait "$dispatch_pid"
 exit_code=$?
+trap 'exit 130' INT
+trap 'exit 143' TERM
+set +m
 set -e
 
 finished_head="$(harness_head_revision "$ROOT_DIR")"
 finished_fingerprint="$(harness_worktree_fingerprint "$ROOT_DIR")"
 worktree_stable=true
 if [[ "$started_head" != "$finished_head" \
-    || "$started_fingerprint" != "$finished_fingerprint" ]]; then
+    || "$started_fingerprint" != "$finished_fingerprint" \
+    || "$finished_fingerprint" == unavailable ]]; then
   worktree_stable=false
   if (( exit_code == 0 )); then
-    printf '\n[verification] WHAT: 验证期间仓库内容发生变化。\n' >&2
-    printf 'WHY: 结果无法绑定到单一 revision/worktree，不能作为完成证据。\n' >&2
-    printf 'FIX: 停止并发修改后重新运行相同验证命令。\n' >&2
+    printf '\n[verification] Repository changed during verification; refusing success.\n' >&2
     exit_code=1
   fi
+fi
+
+if [[ "$MODE" == full ]] && (( exit_code == 0 )); then
+  reactor_sha256="$(ruby -rjson -e 'puts JSON.parse(File.read(ARGV[0])).fetch("reactorEvidenceSha256")' "$ROOT_DIR/.harness/verifications/architecture.json")"
+  assert_reactor_identity "$reactor_sha256" || exit_code=1
 fi
 
 status="passed"
 if (( exit_code != 0 )); then
   status="failed"
 fi
-record_verification "$MODE" "$status" "$(( $(date +%s) - started_at ))" "$started_at" \
+publication_status="$status"
+if [[ "$MODE" == full ]]; then
+  publication_status=incomplete
+  gate_exit=$exit_code
+  gate_status=$status
+fi
+record_verification "$MODE" "$publication_status" "$(( $(date +%s) - started_at ))" "$started_at" \
   "$verification_command" "$started_head" "$finished_head" "$started_fingerprint" \
   "$finished_fingerprint" "$worktree_stable"
 
-# full 无论成功或失败都尝试刷新报告与交接。原门禁失败优先保留；仅当门禁成功时才采用后处理失败码。
+# full 的 gate 退出码与后处理分别记录；未完成后处理时不发布 passed。
 if [[ "$MODE" == "full" ]]; then
+  finalization_status=incomplete
   set +e
   "$ROOT_DIR/scripts/harness-report.sh"
   report_exit=$?
   "$ROOT_DIR/scripts/harness-handoff.sh"
   handoff_exit=$?
   set -e
+  finalization_status=passed
+  if (( report_exit != 0 || handoff_exit != 0 )); then finalization_status=failed; fi
   if (( exit_code == 0 && report_exit != 0 )); then
     exit_code=$report_exit
   elif (( exit_code == 0 && handoff_exit != 0 )); then
     exit_code=$handoff_exit
   fi
+  # 后处理也属于本次运行；状态文档并发修改同样不能保留 full 成功。
+  finished_head="$(harness_head_revision "$ROOT_DIR")"
+  finished_fingerprint="$(harness_worktree_fingerprint "$ROOT_DIR")"
+  if [[ "$started_head" != "$finished_head" || "$started_fingerprint" != "$finished_fingerprint" || "$finished_fingerprint" == unavailable ]]; then
+    worktree_stable=false
+    gate_status=failed
+    (( exit_code != 0 )) || exit_code=1
+  fi
+  if (( exit_code == 0 )); then
+    assert_reactor_identity "$reactor_sha256" || { exit_code=1; gate_status=failed; }
+  fi
+  status=passed
+  (( exit_code == 0 )) || status=failed
+  record_verification full "$status" "$(( $(date +%s) - started_at ))" "$started_at" \
+    "$verification_command" "$started_head" "$finished_head" "$started_fingerprint" \
+    "$finished_fingerprint" "$worktree_stable"
 fi
 exit "$exit_code"

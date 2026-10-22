@@ -1,21 +1,16 @@
 package com.co.kc.imchat.broker.infrastructure.interceptor;
 
+import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
+import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.BrokerCallerIdentityInterceptor;
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.BrokerPeerAdmissionInterceptor;
-import com.co.kc.imchat.broker.infrastructure.chain.invocation.BrokerRequestInvocation;
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.BrokerRouteCallerInterceptor;
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.GatewayRegistrationInterceptor;
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.GatewayRouteAuthorizationInterceptor;
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
-
-import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
-
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
-import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
-import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
-import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
+import com.co.kc.imchat.broker.infrastructure.chain.invocation.BrokerRequestInvocation;
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry;
-import com.co.kc.imchat.broker.support.security.BrokerCallerPrincipal;
+import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
 import com.co.kc.imchat.broker.sdk.access.BrokerCallerRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
@@ -25,21 +20,22 @@ import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayHeartbeatParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.RouteLeaseInstallParams;
 import com.co.kc.imchat.broker.sdk.model.params.QuorumReadIndexParams;
+import com.co.kc.imchat.broker.sdk.model.params.RouteLeaseInstallParams;
 import com.co.kc.imchat.broker.sdk.model.params.RouteLeasePrepareParams;
 import com.co.kc.imchat.broker.sdk.model.params.RouteLookupParams;
+import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
+import com.co.kc.imchat.broker.support.security.BrokerCallerPrincipal;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 import com.co.kc.imchat.plugin.gossip.model.param.GossipDigestParams;
-import org.junit.jupiter.api.Test;
-
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
-
+import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -113,7 +109,7 @@ class IdentityAccessInterceptorsTest {
     @Test
     void brokerDataPlaneBindsClaimedRequesterToCommittedTlsIdentity() throws Exception {
         BrokerRouteCallerInterceptor interceptor = new BrokerRouteCallerInterceptor(
-                repository, BROKER_PREFIX, false);
+                repository.asAdapter(), BROKER_PREFIX, false);
         RouteLookupParams params = new RouteLookupParams(
                 "broker-a", 1L, 7L, 2_000L, 1);
         BrokerRequestInvocation<RouteLookupParams> invocation =
@@ -128,7 +124,7 @@ class IdentityAccessInterceptorsTest {
     @Test
     void peerInterceptorBindsGossipNodeButTreatsLeaseHolderAsLocalTarget() throws Exception {
         BrokerPeerAdmissionInterceptor interceptor = new BrokerPeerAdmissionInterceptor(
-                "broker-b", repository, BROKER_PREFIX);
+                "broker-b", repository.asAdapter(), BROKER_PREFIX, "cluster");
         BrokerRequestInvocation<GossipDigestParams> gossip =
                 BrokerRequestInvocation.initial(BrokerBoltOperation.GOSSIP_DIGEST,
                         new GossipDigestParams("broker-a", List.of()), null)
@@ -152,7 +148,7 @@ class IdentityAccessInterceptorsTest {
     @Test
     void controlInterceptorRejectsUnknownRequestType() {
         BrokerPeerAdmissionInterceptor interceptor = new BrokerPeerAdmissionInterceptor(
-                "broker-b", repository, BROKER_PREFIX);
+                "broker-b", repository.asAdapter(), BROKER_PREFIX, "cluster");
         BrokerRequestInvocation<Object> invocation = BrokerRequestInvocation.initial(
                         BrokerBoltOperation.FETCH_QUORUM_READ_INDEX, new Object(), null)
                 .withPrincipal(new BrokerCallerPrincipal(
@@ -187,7 +183,7 @@ class IdentityAccessInterceptorsTest {
     }
 
     private BoltRequestContext context(String identity) {
-        return new BoltRequestContext("remote", "127.0.0.1", identity);
+        return new BoltRequestContext("remote", "127.0.0.1", identity, false, Set.of());
     }
 
     private static BrokerClusterState state() {
@@ -201,7 +197,7 @@ class IdentityAccessInterceptorsTest {
                 BrokerMembershipRole.VOTER, BrokerRoutingState.ACTIVE);
     }
 
-    private record FixedRepository(BrokerClusterState committedState)
+    private record FixedRepository(BrokerClusterState getCommittedState)
             implements BrokerClusterConsensusStub {
         @Override
         public Optional<BrokerClusterOperation> findOperation(ClusterOperationId operationId) {
@@ -209,7 +205,7 @@ class IdentityAccessInterceptorsTest {
         }
 
         @Override
-        public CompletionStage<BrokerClusterConsensusResult> submitChange(BrokerClusterConsensusCommand command) {
+        public CompletionStage<BrokerClusterConsensusResult> submitCommand(BrokerClusterConsensusCommand command) {
             throw new UnsupportedOperationException();
         }
     }

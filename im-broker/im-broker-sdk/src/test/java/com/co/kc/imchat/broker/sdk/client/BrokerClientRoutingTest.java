@@ -13,15 +13,13 @@ import com.co.kc.imchat.broker.sdk.model.result.RouteBrokerStatus;
 import com.co.kc.imchat.broker.sdk.routing.RouteBrokerSelectors;
 import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
-import org.junit.jupiter.api.Test;
-import org.springframework.cloud.client.ServiceInstance;
-import org.springframework.cloud.client.discovery.DiscoveryClient;
-
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
+import org.junit.jupiter.api.Test;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -45,6 +43,7 @@ class BrokerClientRoutingTest {
         assertThat(invoker.addresses).containsExactly("10.0.0.9:18020", expected);
         assertThat(invoker.operations).containsExactly(
                 "getClusterState", "registerConnection");
+        assertThat(invoker.timeoutsMs).containsExactly(3000, 3000);
     }
 
     @Test
@@ -69,8 +68,8 @@ class BrokerClientRoutingTest {
         assertThat(invoker.routeRequests).hasSize(2);
         assertThat(invoker.routeRequests.get(0).routeContext().operationId())
                 .isEqualTo(invoker.routeRequests.get(1).routeContext().operationId());
-        assertThat(invoker.routeRequests.get(0).routeContext().deadlineEpochMillis())
-                .isEqualTo(invoker.routeRequests.get(1).routeContext().deadlineEpochMillis());
+        assertThat(invoker.routeRequests.get(0).routeContext().expireAtMs())
+                .isEqualTo(invoker.routeRequests.get(1).routeContext().expireAtMs());
         assertThat(invoker.routeRequests.get(0).routeContext().routingEpoch()).isEqualTo(3L);
         assertThat(invoker.routeRequests.get(1).routeContext().routingEpoch()).isEqualTo(4L);
     }
@@ -159,12 +158,20 @@ class BrokerClientRoutingTest {
     }
 
     private static final class CapturingInvoker implements BoltInvoker {
+        @Override
+        public <T, R> R invokeAuthenticated(String address, String service, String operation,
+                                             T request, Class<R> responseType, int timeoutMillis,
+                                             String expectedPeerIdentity, String identityPrefix) {
+            throw new UnsupportedOperationException("ordinary SDK client does not use authenticated peer calls");
+        }
+
 
         private final BrokerClusterState state;
         private final List<BrokerClusterState> clusterStates = new ArrayList<>();
         private final List<RouteBrokerResult> routeResults = new ArrayList<>();
         private final List<String> addresses = new ArrayList<>();
         private final List<String> operations = new ArrayList<>();
+        private final List<Integer> timeoutsMs = new ArrayList<>();
         private final List<ConnectionRegisterParams> routeRequests = new ArrayList<>();
         private boolean failRouteCall;
 
@@ -179,6 +186,7 @@ class BrokerClientRoutingTest {
                                T request, Class<R> responseType, int timeoutMillis) {
             addresses.add(address);
             operations.add(operation);
+            timeoutsMs.add(timeoutMillis);
             if (operation.equals("getClusterState")) {
                 return (R) (clusterStates.isEmpty() ? state : clusterStates.remove(0));
             }

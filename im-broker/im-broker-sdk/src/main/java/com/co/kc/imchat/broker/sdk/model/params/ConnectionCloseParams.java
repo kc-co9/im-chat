@@ -7,6 +7,7 @@ import com.co.kc.imchat.broker.sdk.routing.RouteRequestContext;
 
 import java.io.Serializable;
 
+/** Account 发起的用户会话关闭参数，sessionVersion 由 Gateway 用于筛选待关闭的本地连接。 */
 public record ConnectionCloseParams(Long userId,
                                     String sessionVersion,
                                     RouteRequestContext routeContext)

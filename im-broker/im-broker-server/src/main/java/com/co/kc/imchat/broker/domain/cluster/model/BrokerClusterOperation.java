@@ -1,9 +1,12 @@
 package com.co.kc.imchat.broker.domain.cluster.model;
 
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
@@ -128,6 +131,12 @@ public final class BrokerClusterOperation implements Serializable {
                 .build();
     }
 
+    /** 成员变更尚未到终态时，实际配置与集群状态不能用于一致性判定。 */
+    @JsonIgnore
+    public boolean isUnfinishedMembershipChange() {
+        return !phase.terminal() && type.membershipChange();
+    }
+
     /** 本操作是否属于首次加入 learner，登记时需要保存成员端点绑定。 */
     public boolean learnerJoin() {
         return type == BrokerClusterOperationType.START_LEARNER_SYNC
@@ -189,12 +198,12 @@ public final class BrokerClusterOperation implements Serializable {
 
     /** 核对本机清理请求与已登记操作的目标、代次、事件期限和完整 Gateway 确认是否一致。 */
     public boolean matchesRouteCleanup(BrokerId localBrokerId, RoutingEpoch oldEpoch, RoutingEpoch newEpoch,
-                                        Instant oldEventDeadline, List<DrainProgressUpdate> confirmations) {
+                                        Instant oldEventExpireAt, List<DrainProgressUpdate> confirmations) {
         return canCleanupRoutes()
                 && targetBrokerId.equals(localBrokerId)
                 && acceptedEpoch.equals(oldEpoch) && resultEpoch.equals(newEpoch)
                 // RPC 期限使用毫秒精度，持久化事实可能含更高精度。
-                && drainProgress.oldEventDeadline().toEpochMilli() == oldEventDeadline.toEpochMilli()
+                && drainProgress.oldEventExpireAt().toEpochMilli() == oldEventExpireAt.toEpochMilli()
                 && drainProgress.matchesGatewayConfirmations(confirmations);
     }
 

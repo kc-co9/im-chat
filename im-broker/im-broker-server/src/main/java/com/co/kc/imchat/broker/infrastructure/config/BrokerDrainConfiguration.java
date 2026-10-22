@@ -1,7 +1,7 @@
 package com.co.kc.imchat.broker.infrastructure.config;
 
 import com.co.kc.imchat.broker.application.cluster.BrokerClusterAppService;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.interfaces.scheduler.BrokerDrainScheduler;
 import com.co.kc.imchat.broker.interfaces.scheduler.BrokerFailureRecoveryScheduler;
 import org.springframework.context.annotation.Bean;
@@ -14,14 +14,14 @@ public class BrokerDrainConfiguration {
 
     @Bean
     public BrokerDrainScheduler brokerDrainLifecycle(
-            BrokerClusterConsensus repository,
+            BrokerRaftAdapter repository,
             BrokerClusterAppService service) {
         return new BrokerDrainScheduler(repository, service);
     }
 
     @Bean
     public BrokerFailureRecoveryScheduler brokerFailureRecoveryLifecycle(
-            BrokerClusterConsensus repository,
+            BrokerRaftAdapter repository,
             BrokerClusterAppService service) {
         return new BrokerFailureRecoveryScheduler(repository, service);
     }

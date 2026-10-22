@@ -1,8 +1,8 @@
 package com.co.kc.imchat.broker.interfaces.handler.connection;
 
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
@@ -12,6 +12,7 @@ import com.co.kc.imchat.broker.sdk.model.result.RouteBrokerResult;
 import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
 import org.springframework.stereotype.Component;
 
+/** 按本机用户路由向已注册 Gateway 发送关闭控制，透传操作标识和会话版本供网关去重与筛选。 */
 @Component
 public class ConnectionCloseHandler extends
         AbstractBrokerRpcHandler<ConnectionCloseParams, RouteBrokerResult> {

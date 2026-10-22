@@ -92,6 +92,8 @@ im-test             -> test-scope access to runtime modules; no production code
 6. Bolt、Dubbo、Nacos、Redis、HTTP 等运行协议在边界完成转换，不进入领域模型。
 7. `im-web` 只拥有通用 HTTP 行为；Session-to-Servlet 适配属于 `im-session`，IAM 身份语义属于 IAM。
 
+成员通信端点值 `MembershipEndpoint` 归 `im-common/domain/cluster/model`，只拥有不透明非空白字符串和值语义。Raft 插件提供 String 列表技术快照 `RaftMembership`；BrokerRaftAdapter 将它转换为 Broker 领域 `ConsensusMembership`，BrokerCluster 拥有成员绑定与一致性判断，不建立 Plugin → Broker 或 Domain → Plugin 的依赖。
+
 机械可判断的依赖规则由 `im-test/im-architecture-test` 与 `scripts/check-drift.sh` 执行；跨模块实时运行旅程由 `im-test/im-e2e-test` 验证。业务语义和合理例外由 Review 判断。
 
 ## 数据与运行状态所有权

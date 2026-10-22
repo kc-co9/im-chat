@@ -1,5 +1,5 @@
 package com.co.kc.imchat.management.ops.model.io;
 
 /** Broker 当前实例响应。 */
-public record BrokerInstanceResponse(String id, String address, Long startedAt, Long uptimeSeconds) {
+public record BrokerInstanceResponse(String id, String address, Long startedAtMs, Long uptimeMs) {
 }

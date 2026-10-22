@@ -14,7 +14,7 @@ public enum BrokerClusterOperationPhase {
     FENCING_OLD_EPOCH,
     /** 新拓扑已经 Raft 提交。 */
     RAFT_COMMITTED,
-    /** 正向新的 RouteBroker 持有者授权。 */
+    /** 正向新 epoch 的 ACTIVE Broker 签发并安装 Lease。 */
     AUTHORIZING_NEW_EPOCH,
     /** 正重建连接路由并收集 Gateway 快照。 */
     REBUILDING_ROUTES,

@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.cluster.model;
 
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;

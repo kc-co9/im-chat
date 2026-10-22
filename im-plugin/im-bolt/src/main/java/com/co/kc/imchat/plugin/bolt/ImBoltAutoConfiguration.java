@@ -64,7 +64,7 @@ public class ImBoltAutoConfiguration {
     @ConditionalOnMissingBean
     @ConditionalOnBean(RpcClient.class)
     public BoltInvoker boltInvoker(RpcClient rpcClient) {
-        return new BoltClientInvoker(rpcClient);
+        return new BoltClientInvoker(rpcClient, System::nanoTime);
     }
 
     @Bean

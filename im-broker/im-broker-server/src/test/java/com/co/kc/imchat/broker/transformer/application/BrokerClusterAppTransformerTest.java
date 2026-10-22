@@ -1,8 +1,9 @@
 package com.co.kc.imchat.broker.transformer.application;
 
+import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterRaftTransformer;
 import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerConsensusMembershipResult;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusStatus;
+import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
 import com.co.kc.imchat.broker.model.cqrs.result.AddLearnerResult;
 import com.co.kc.imchat.broker.model.cqrs.result.CompleteLearnerSyncResult;
 import com.co.kc.imchat.broker.model.cqrs.result.PromoteLearnerResult;
@@ -15,7 +16,7 @@ import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterRevision;
 import com.co.kc.imchat.broker.domain.cluster.model.CommandDigest;
-import com.co.kc.imchat.broker.domain.cluster.model.MembershipEndpoint;
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.broker.domain.cluster.model.OperationFailureReason;
 import com.co.kc.imchat.common.utils.JsonUtils;
@@ -34,13 +35,35 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class BrokerClusterAppTransformerTest {
 
+    @Test
+    void routingCommandMappingsConvertOnlyTheirOwnDeadlineMeaning() {
+        com.co.kc.imchat.broker.transformer.interfaces.BrokerRoutingCommandTransformer mapper =
+                com.co.kc.imchat.broker.transformer.interfaces.BrokerRoutingCommandTransformer.INSTANCE;
+        String checksum = "a".repeat(64);
+        com.co.kc.imchat.broker.sdk.model.params.GatewayRouteSnapshotParams snapshot =
+                new com.co.kc.imchat.broker.sdk.model.params.GatewayRouteSnapshotParams(
+                        "gateway-a", 7L, 3L, "broker-a", "batch-a", 0, 1, checksum, 12_345L, java.util.List.of(1L));
+        assertThat(mapper.acceptGatewayRoutesCommandFrom(snapshot).updateExpireAt())
+                .isEqualTo(Instant.ofEpochMilli(12_345L));
+        assertThat(mapper.acceptGatewayRoutesCommandFrom(snapshot).userIds()).containsExactly(1L);
+        assertThat(mapper.confirmGatewayRoutesCommandFrom(
+                new com.co.kc.imchat.broker.sdk.model.params.GatewayRouteSnapshotAckParams(
+                        "gateway-a", 7L, 3L, 1L, checksum, 12_346L)).updateExpireAt())
+                .isEqualTo(Instant.ofEpochMilli(12_346L));
+        assertThat(mapper.cleanupCommandFrom(
+                new com.co.kc.imchat.broker.sdk.model.params.DrainRouteCleanupParams(
+                        "broker-a", "drain-a", 7L, 8L, 12_347L, java.util.List.of())).oldEventExpireAt())
+                .isEqualTo(Instant.ofEpochMilli(12_347L));
+        assertThat(mapper.instantFrom(null)).isNull();
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void routingResultsPreserveHistoricalEpoch(boolean associatedOperation) {
         BrokerClusterOperation operation = associatedOperation ? pendingOperation() : null;
         RoutingEpoch observedEpoch = new RoutingEpoch(7L);
         ClusterOperationId operationId = new ClusterOperationId("join-1");
-        BrokerClusterConsensusResult consensus = new BrokerClusterConsensusResult(BrokerClusterConsensusStatus.DUPLICATE, operation, "leader", "retry");
+        BrokerClusterConsensusResult consensus = new BrokerClusterConsensusResult(Status.DUPLICATE, operation, "leader", "retry");
         long expectedEpoch = associatedOperation ? 0L : 7L;
         assertThat(BrokerClusterAppTransformer.INSTANCE.activateBrokerResultFrom(
                 operationId, observedEpoch, consensus).acceptedEpoch()).isEqualTo(expectedEpoch);
@@ -53,8 +76,8 @@ class BrokerClusterAppTransformerTest {
     }
 
     @ParameterizedTest
-    @EnumSource(BrokerClusterConsensusStatus.class)
-    void consensusMappingPreservesStatusLeaderEndpointAndReason(BrokerClusterConsensusStatus status) {
+    @EnumSource(Status.class)
+    void consensusMappingPreservesStatusLeaderEndpointAndReason(Status status) {
         ClusterOperationId operationId = new ClusterOperationId("join");
         BrokerClusterConsensusResult consensus = new BrokerClusterConsensusResult(status, null, "127.0.0.1:19001", "processing result");
         AddLearnerResult result = BrokerClusterAppTransformer.INSTANCE.addLearnerResultFrom(operationId, consensus);
@@ -70,7 +93,7 @@ class BrokerClusterAppTransformerTest {
         BrokerClusterOperation operation = associatedOperation ? pendingOperation() : null;
         RoutingEpoch observedEpoch = new RoutingEpoch(7L);
         ClusterOperationId operationId = new ClusterOperationId("join-1");
-        BrokerClusterConsensusResult consensus = new BrokerClusterConsensusResult(BrokerClusterConsensusStatus.CONFLICT, operation, "127.0.0.1:19001", "conflict");
+        BrokerClusterConsensusResult consensus = new BrokerClusterConsensusResult(Status.CONFLICT, operation, "127.0.0.1:19001", "conflict");
         long acceptedEpoch = associatedOperation ? 0L : 7L;
         Long targetEpoch = associatedOperation ? 0L : null;
         CompleteLearnerSyncResult sync = BrokerClusterAppTransformer.INSTANCE
@@ -81,7 +104,7 @@ class BrokerClusterAppTransformerTest {
                 .demoteVoterResultFrom(operationId, observedEpoch, consensus);
         RemoveBrokerResult removal = BrokerClusterAppTransformer.INSTANCE
                 .removeBrokerResultFrom(operationId, observedEpoch, consensus);
-        assertThat(sync.status()).isEqualTo(BrokerClusterConsensusStatus.CONFLICT);
+        assertThat(sync.status()).isEqualTo(Status.CONFLICT);
         assertThat(promotion.status()).isEqualTo("CONFLICT");
         assertThat(demotion.status()).isEqualTo("CONFLICT");
         assertThat(removal.status()).isEqualTo("CONFLICT");
@@ -102,7 +125,7 @@ class BrokerClusterAppTransformerTest {
     @Test
     void completionCommandPreservesStagesAndCallerTime() {
         BrokerClusterOperation operation = pendingOperation();
-        AdvanceClusterOperationCommand command = BrokerClusterAppTransformer.INSTANCE
+        AdvanceClusterOperationCommand command = BrokerClusterRaftTransformer.INSTANCE
                 .membershipCompletionCommandFrom(operation, Instant.EPOCH);
 
         assertThat(command.operationId()).isEqualTo(operation.id());
@@ -110,7 +133,7 @@ class BrokerClusterAppTransformerTest {
         assertThat(command.expectedPhase()).isEqualTo(BrokerClusterOperationPhase.RAFT_COMMITTED);
         assertThat(command.nextPhase()).isEqualTo(BrokerClusterOperationPhase.SUCCEEDED);
         assertThat(command.error()).isNull();
-        assertThat(command.changedAtEpochMilli()).isZero();
+        assertThat(command.changedAt()).isEqualTo(Instant.EPOCH);
     }
 
     @ParameterizedTest
@@ -120,7 +143,7 @@ class BrokerClusterAppTransformerTest {
         BrokerClusterOperation operation = pendingOperation();
         BrokerConsensusMembershipResult result = new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, message);
 
-        AdvanceClusterOperationCommand command = BrokerClusterAppTransformer.INSTANCE
+        AdvanceClusterOperationCommand command = BrokerClusterRaftTransformer.INSTANCE
                 .membershipFailureCommandFrom(operation, result, Instant.EPOCH);
 
         assertThat(command.operationId()).isEqualTo(operation.id());
@@ -128,18 +151,18 @@ class BrokerClusterAppTransformerTest {
         assertThat(command.expectedPhase()).isEqualTo(BrokerClusterOperationPhase.PENDING);
         assertThat(command.nextPhase()).isEqualTo(BrokerClusterOperationPhase.FAILED);
         assertThat(command.error()).isEqualTo("membership rejected");
-        assertThat(command.changedAtEpochMilli()).isZero();
+        assertThat(command.changedAt()).isEqualTo(Instant.EPOCH);
     }
 
     @Test
     void failureCommandKeepsGivenReasonAndLaterTime() {
         BrokerConsensusMembershipResult result = new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, "peer rejected");
 
-        AdvanceClusterOperationCommand command = BrokerClusterAppTransformer.INSTANCE
+        AdvanceClusterOperationCommand command = BrokerClusterRaftTransformer.INSTANCE
                 .membershipFailureCommandFrom(pendingOperation(), result, Instant.ofEpochMilli(2_000L));
 
         assertThat(command.error()).isEqualTo("peer rejected");
-        assertThat(command.changedAtEpochMilli()).isEqualTo(2_000L);
+        assertThat(command.changedAt()).isEqualTo(Instant.ofEpochMilli(2_000L));
     }
 
     @Test
@@ -170,13 +193,13 @@ class BrokerClusterAppTransformerTest {
     @Test
     void earlierCompletionIsNotRepairedAndIsRejectedByOperation() {
         BrokerClusterOperation operation = pendingOperation();
-        AdvanceClusterOperationCommand command = BrokerClusterAppTransformer.INSTANCE
+        AdvanceClusterOperationCommand command = BrokerClusterRaftTransformer.INSTANCE
                 .membershipFailureCommandFrom(operation,
                         new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, "rejected"), Instant.ofEpochMilli(999L));
 
-        assertThat(command.changedAtEpochMilli()).isEqualTo(999L);
+        assertThat(command.changedAt()).isEqualTo(Instant.ofEpochMilli(999L));
         assertThatThrownBy(() -> operation.advance(command.nextPhase(),
-                new OperationFailureReason(command.error()), Instant.ofEpochMilli(command.changedAtEpochMilli())))
+                new OperationFailureReason(command.error()), command.changedAt()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("operation completion precedes creation");
         assertThat(operation.phase()).isEqualTo(BrokerClusterOperationPhase.PENDING);

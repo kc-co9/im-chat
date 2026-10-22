@@ -8,7 +8,7 @@
 - 生产代码引用类型时使用 `import` 和简单类名，不在注解、表达式、构造调用或方法体中直接书写全限定类名。只有两个同名类型确实同时出现在同一源码文件、无法通过清晰的边界转换消除歧义时，才允许对其中一个使用全限定类名，并由 Review 确认。
 - 一个类只承担一个清晰职责；类名表达角色，公开方法名使用调用方能够理解的业务动作。
 - 包按稳定职责和依赖方向组织。使用 `model`、`codec`、`spi`、`client`、`repository` 等已有语义，不把能力接口、技术实现和数据模型堆在同一包，也不按类数量机械拆包。单个 Adapter 可直接放在 `adapter` 根包；只有形成多个同类能力或明确独立依赖边界时才增加二级包，不为预期扩展创建只有一个类的空洞层级。
-- 方法优先提前返回。复杂条件提取为能够表达业务判断的方法，避免嵌套分支和难以阅读的 Stream 链。
+- 方法优先提前返回，避免嵌套分支和难以阅读的 Stream 链。编写或梳理用例时，先在同一处展示完整流程，明确执行顺序、状态变化、失败传播、资源释放和一致性边界，再判断是否需要提取方法。不要提前把每个步骤、判断、构造或集合操作封装起来，以方法名隐藏流程问题；方法更短、私有方法更多不代表质量更高。只有提取后能表达已理清的稳定职责、真实复用或独立规则，且读者仍能直接理解主流程时，才进行封装；复杂条件也按此原则判断，不因条件较长就机械提取。
 - Stream 用于纯转换、过滤和聚合；删除、异常隔离、多步副作用和状态修改使用普通循环。
 - 请求责任链由配置声明节点顺序，业务 Handler 放在最后一个节点；Handler 不反向持有链，
   不用额外的 Terminal 回调把业务排除在链节点之外。需要 Lease 等执行保护时，前置节点环绕
@@ -68,9 +68,13 @@ interfaces -> application -> domain
   不定义 `from`、`fromConsensusResult`、`xxxFrom`，也不以 `outcome` 或 `success` 重命名纯映射来绕过职责。
   应用服务直接调用 Transformer，不为字段转换增加成功/失败分支。映射必须保留原状态、Leader 端点、
   原因及已关联操作的接受/目标 epoch，不能把共识接受状态重新解释为业务终态。
-- 运行态监控和诊断属于技术能力，不建模为业务领域聚合。查询编排与输出放 application，HTTP 响应放 interfaces，指标与采样资源装配放 infrastructure；向应用提供技术状态或历史查询的具体能力放 adapter，可以直接维护其有界历史，不为同一能力拆出 port 和转发实现。不得在 `support/<capability>` 下重新建立 `model/service/io/tracker` 小型分层。远端诊断访问使用 Adapter 语义，不伪装成持久化 Repository；只有出现真实替代实现或需要稳定依赖倒置接口时才额外抽象 Gateway，不为唯一 Adapter 创建同形接口。
+- 运行态监控和诊断属于技术能力，不建模为业务领域聚合。查询编排与输出放 application，HTTP 响应放 interfaces，指标与采样资源装配放 infrastructure；向应用提供技术状态或历史查询的具体能力放 adapter，可以直接维护其有界历史，不为同一能力拆出 port 和转发实现。有界、非权威且可选的跨层诊断记录辅助类型可进入明确批准的 `support.<capability>` 精确能力包；允许有界内存记录和累计计数，不参与业务决策，不拥有网络、运行资源或生命周期，不依赖 application、interfaces、infrastructure、配置、生命周期、Adapter 或具体网络 client。不得扩展为任意子包许可或按类名豁免，领域仍不得依赖 support。Broker 当前仅批准 `support.gossip` 精确包承担此职责；运行态 Gossip store/Adapter 仍归 `adapter.gossip`，不因此移入 support。不得在 `support/<capability>` 下重新建立 `model/service/io/tracker` 小型分层。远端诊断访问使用 Adapter 语义，不伪装成持久化 Repository；只有出现真实替代实现或需要稳定依赖倒置接口时才额外抽象 Gateway，不为唯一 Adapter 创建同形接口。
+
+- Broker 自动健康观察另行批准精确 `support.health`（不允许后代包），当前具体实现为 `BrokerHealthObservationTracker`，允许 Tracker 后缀，不建 Repository、port/实现对或兼容壳。它只维护按当前目标裁剪的有界采样、结构化上下文、freshness 与快照；观察非权威，但属于安全决策输入，不是可选诊断。成员一致性由聚合 `BrokerCluster.findConsistentVoters` 判定，最新事实、多数与稳定窗口由领域服务 `BrokerFailureObservationService.evaluate` 判定，应用层编排。允许依赖领域 model、common 和 JDK 时间/集合；禁止 application、interfaces、infrastructure、config/configuration、lifecycle、Adapter、领域 service/repository、Spring、client/network、plugin 及运行资源拥有，domain 不得反向依赖 support。装配归配置、入口归 Handler/Application；此例外不放宽 Gossip、Monitoring 或其他 support。精确包和稳定依赖由生产/fixture 共用架构规则保护；有界性、无决策及实际完成回调语义由聚焦测试和 Review 保护，待可靠资源/决策数据流分析后自动化。
 
 - Broker 保留 `support.context` 作为请求上下文与入口访问控制的集中目录，包括上下文、线程绑定、权限注解、scope 和拦截器；这是明确的横切职责，不是业务分层的兜底包。拦截器可以读取 typed 管理配置，不调用 application、domain、adapter、interfaces 或 Registry 实现；MVC Bean 注册仍放 infrastructure/config，领域层不得依赖 support。
+
+- Broker 专属 `support.raft` 是已批准的窄技术接入例外，只允许 `codec`、`model`、`statemachine` 三个精确包（不含后代），承载命令协议、快照载体及类型化状态回调。禁止 application、interfaces、运行配置/生命周期、RaftRuntime、具体网络 client；可依赖领域、命令、结果、转换器和 Raft SPI，领域不得反向依赖。唯一 Runtime 和 close 仍归 BrokerRaftAdapter；不推广为任意 support.<capability> 许可。通过 Transformer 间接渗入用例编排为 Review-only，自动化条件为可可靠识别调用数据流。
 
 - 同一组应用用例对可预期业务分支采用一致的结果契约：状态/版本冲突和资格不满足返回明确业务结果，不混用参数异常与结果对象。输入格式校验仍属于边界，非预期程序错误不得伪装为业务拒绝；基础设施失败仅在明确约定的边界映射为可用性结果，否则保留异常传播。
 - 领域行为已登记本地操作后，后续流程依据返回的领域决定识别幂等重复，不重新查询已变化的聚合 exists 来判定是否为新请求；新的准入检查与历史重试恢复分开，不能因本地登记而跳过必要的远端证据。
@@ -128,7 +132,7 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - 应用层 CQRS 查询意图使用 `*Query`；Repository 或持久化查询的过滤条件使用 `*QueryCondition`。新增过滤对象不使用语义模糊的 `*Criteria`、裸 `*Condition` 或持久化层 `*Query`。
 - 公开用例方法接收单个 Command、Query、Params 或其他明确输入对象，不直接接收 `String`、基本类型等标量业务参数，也不保留无调用方的标量重载。
 - 面向公开用例的 Command、Query 是应用层输入边界，字段使用 `String`、包装数值、`Boolean`、时间、边界枚举或 `im-common` 中稳定的通用边界值对象，不直接持有领域聚合、业务值对象或 Repository 查询条件。共识日志等内部状态变更 Command 也按 type-first 规则放在 `model/cqrs/command`，但必须用封闭基类和明确命名与公开用例命令区分。分页 Query 可以直接持有 `Paging`，由接口 Transformer 从外部分页参数构造；应用服务在用例入口将其他基础值构造成领域对象和内部查询条件。必填数值使用包装类型并显式拒绝 `null`，避免 primitive 默认值掩盖缺失输入。
-- 需要超时、过期、预算或时间边界判断的组件使用 `java.time.Clock` 注入墙上时间，以支持确定性测试；不要用语义模糊的 `LongSupplier clock`。只记录普通创建时间且不存在时间分支时可以直接使用 `Instant.now()`。租约和耗时判断使用 `MonotonicTimestamp` 等值对象封装单调时间语义，领域服务不暴露 `LongSupplier` 时间依赖，也不能用可能回拨的墙上时间替代。
+- 应用服务获取当前绝对时刻时默认直接使用 `Instant.now()`，获取单调时刻时使用现有 `MonotonicTimestamp.now()` 等语义明确的入口。存在超时、过期或冷却分支不构成注入时源的充分理由；不要仅为确定性测试增加 `Clock`、时间 `Supplier`、转发 wrapper 或替代构造器。确有生产时钟替换、框架时钟契约等需求时，才保留时源依赖并说明生产用途；墙上时间依赖优先使用 `java.time.Clock`，不使用语义模糊的 `LongSupplier clock`。同轮共享时间在拥有方采样一次并显式传值，确定性重放使用命令中的冻结时间，两者不要求额外注入时源。租约和耗时判断保持单调时间语义，不能以墙上时间替代；测试仍须覆盖准确阈值、回拨及异步完成，不以真实等待或放宽断言代替可控输入。
 - 可选文本查询条件在 Command/Query 构造边界先将 `null`、空串和纯空白统一归一化为 `null`，再执行字段关联校验；不得把空串继续转换为要求非空的领域值对象。
 - 框架回调提交已经完成协议处理的最终状态快照时，使用一个保存 Command 和应用用例，不根据状态变化来源再次执行协议动作。只有框架回调要求应用执行不同业务流程时，才由适配层选择具体 Command；不要在通用 `handle` 命令中加入可空判别字段和多组互斥参数。
 - 查询和有业务结果的命令返回 DTO、Result 或其他结果对象；没有结果的命令返回 `void`。
@@ -141,7 +145,7 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - 事务与分布式锁属于应用或基础设施边界。优先使用项目已有注解；只有动态锁键、需要返回值或注解无法表达时使用模板。
 - `@DistributeLock` 的 SpEL 锁键直接返回业务标识或值对象，由锁切面统一转换为字符串；不要在表达式中显式调用 `toString()`。
 - 固定要求在事务成功提交后执行的 Adapter 外部副作用，可以在 Adapter 方法上声明 `@AfterTransactionCommit`；需要延迟锁、状态修改和外部调用等完整步骤时，由应用服务通过提交后模板编排整段操作。已经进入 `afterCommit` 回调后，如果后续状态变更不依赖数据库事务，应直接执行；不得为了再次触发提交后回调而人为开启无业务必要的 `REQUIRES_NEW` 事务。确需新事务时必须说明其持久化一致性目的。
-- 不增加仅供单元测试使用的生产构造器、兼容方法、wrapper 或 no-op/fake 实现。测试通过正式 Bean、`@TestConfiguration` 或直接依赖替身控制环境。
+- 不增加仅供单元测试使用的生产构造器、兼容方法、wrapper 或 no-op/fake 实现。测试通过正式 Bean、`@TestConfiguration` 或直接依赖替身控制环境。时间相关测试优先在边界使用固定输入、固定时间值或受控测试环境；不要为了替换 `Instant.now()` 或 `MonotonicTimestamp` 而保留只服务测试的生产注入点。
 - 包迁移或重构确认文件已无生产、测试、配置或文档调用方后，在同一步删除旧类、兼容壳、占位实现和过期测试，不把确定无用的文件留到任务末尾集中清理。只有存在已记录的迁移调用方、兼容期限和退出条件时才允许暂留。
 
 ## Adapter 与跨服务边界
@@ -166,12 +170,14 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - 可部署应用中的 Controller、RPC Provider、应用服务、领域服务、Repository、Adapter、生命周期和必需基础设施 Bean 无条件装配，使缺失配置或依赖在启动阶段立即失败；不得使用 `@ConditionalOnProperty` 关闭整段生产业务链路或为无外部基础设施的测试绕过装配。
 - `@ConditionalOnProperty` 仅用于插件、SDK 和自动配置中的可插拔基础能力；`@ConditionalOnMissingBean` 用于允许业务应用覆盖基础组件默认实现。测试通过测试配置、依赖替身或聚焦上下文隔离外部设施，不为测试增加生产开关。
 - Spring Boot Starter/SDK 中的 Controller、Advice 和其他接入 Bean 只通过其 AutoConfiguration 注册，不得因为包名落入业务应用的组件扫描而绕过启用条件。可部署 Server 不直接依赖自身的客户端接入 SDK；SDK 对可选安全上下文等集成依赖使用 Maven optional 和条件装配，由真正需要该能力的应用显式依赖，不能把整个客户端接入 SDK 传递到无关 Server。共享权限注解等少量接口由 Server 在自身安全边界声明，或在确有多个独立消费者时提取到不包含运行实现的契约模块。
-- 时间、随机数、ID 生成器和执行器按业务需要抽象。不要只为了测试注入一个会显著降低生产代码可读性的依赖；优先在确定性边界、codec 或基础设施组件中控制它。
+- 时间、随机数、ID 生成器和执行器按生产需要抽象，不仅为了测试增加依赖。时源选择遵循「应用服务与 CQRS」的规则；已有框架契约或确有生产替换需求的时源不机械删除。
 - 可水平扩容服务中的 Snowflake 等分布式 ID 生成器必须取得实例唯一且范围合法的节点标识，不在生产 Bean 中硬编码所有副本共享的固定机器标识。固定标识只用于明确的单实例开发环境或测试替身；生产来源、冲突处理和启动失败策略必须可配置并有聚焦测试。
 
 ## 时间与时区
 
 - Token、会话、审计事件、消息和其他表示绝对时刻的业务事实，在应用层、领域层及 Java 服务间契约中使用 `Instant`。`LocalDateTime` 只用于确实没有时区含义的本地日历语义，不能作为绝对时刻在层间传播。
+- 时间字段按语义区分绝对时刻、持续时长和单调计时值。内部绝对时刻使用 `Instant`，名称采用业务动作/含义加 `At`，例如 `createdAt`、`changedAt`、`expireAt`；不同有效期仍保留所属业务含义，不统一改名为 `expireAt`。边界契约需要数字时间戳时，采用对应的 `xxxAtMs`（例如 `expireAtMs`），明确为 Unix epoch milliseconds，并在 Transformer/协议适配边界使用 `toEpochMilli()` / `Instant.ofEpochMilli()` 转换；Java 服务间已使用 `Instant` 的契约不因此强制改为数字。浏览器 HTTP 继续遵循下述 `Long`/字符串 wire 规则。
+- 内部持续时长使用 `Duration`；泛指有效时长优先命名 `validDuration`，具体业务时长保留其含义，例如 `leaseDuration`，不机械统一改名。数字边界字段明确单位，例如 `timeoutMs`、`validMs`，不得使用 `At` 或当成 Unix 时间戳。单调时间沿用 `MonotonicTimestamp` 等值对象及真实 `Nanos` 单位，不转成 `Instant` 或跨节点比较。第三方协议和已发布契约保留规定的名称/单位；本规则用于新增或本次触碰的字段，存量改名须核对全部 caller、序列化、持久化、兼容性及转换测试，不作全仓机械迁移。
 - 领域查询中共同表达一个闭区间的绝对起止时刻，使用 `im-common` 的 `TimeRange`，不在 `*QueryCondition` 中并列传播两个 `Instant`。HTTP Request 和应用层 CQRS Query 可以保留带业务语义的起止字段，由 Transformer 在进入领域条件时组装值对象；单独的创建时间、失效时间等不同业务事实不强行合并。
 - 浏览器 HTTP 边界的绝对时间统一使用毫秒级 Unix 时间戳，Java 请求和响应模型使用 `Long`；`im-web` 将包装 `Long` 序列化为十进制字符串时，TypeScript wire model 使用 `string`，并在 UI 边界校验为安全整数后转换成 `number`。接口 Transformer 负责与内部 `Instant` 转换，不用缺少时区信息的 `yyyy-MM-dd HH:mm:ss` 字符串传递查询时刻。
 - MySQL 中需要毫秒精度的绝对时间使用 `TIMESTAMP(3)`，MyBatis Entity 直接映射为 `Instant`。Repository 和 Transformer 不手写 `Instant`、`LocalDateTime`、固定 `ZoneOffset` 之间的中转转换。数据库连接或客户端的会话时区只影响显示，不改变业务时刻含义。
@@ -193,6 +199,7 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 
 ## Transformer 与 JSON
 
+- Transformer 转换方法统一使用「目标模型 + `From`」命名，例如 `brokerClusterFrom`、`consensusMembershipFrom`；同名跨边界模型在必要时加 `Sdk` 等边界标识，不混用 `toXxx`、`restoreXxx` 表达同一字段转换，也不为改名保留转发方法。按实际触碰范围收敛，不作无关全仓改名。
 - 声明式字段映射使用 MapStruct 生成代码；不要保留一个全部由 handwritten default 方法组成的 `@Mapper` 接口。
 - 不依赖 Spring Bean、Decorator 或其他运行时协作者的无状态 MapStruct Transformer，优先使用普通 `@Mapper` 和 `Mappers.getMapper(...)` 声明的 `INSTANCE`，不要仅为获取转换器而增加 Spring 注入及配置 Bean 参数。确实需要注入协作者时才使用 Spring component model，并由容器统一获取，不同时暴露 `INSTANCE`。
 - MapStruct 可以直接转换同名枚举和普通属性。安全校验、身份覆盖、条件分支和异常转换使用显式方法。
@@ -210,6 +217,7 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - 不做过度防御：协议输入、持久化重建和领域不变量应在明确的拥有方校验；内部调用已由类型、构造入口或既定契约保证的条件，不逐层重复检查，也不为没有事实依据的异常状态增加兜底分支或通用包装。
 - 不用默认值、吞异常、时间补偿或修改输入来掩盖违反契约的数据。先统一事实模型和边界精度，再执行必要校验；例如 Broker operation 的创建与完成统一毫秒精度，允许同毫秒完成，不用创建时间加一毫秒强行修正完成时间，真实早于创建时间仍拒绝。
 - 不把“避免过度防御”解释为取消认证、授权、领域不变量、并发控制、对象引用隔离、跨节点失败处理或必要资源上界；不同入口确实能绕过上游检查时仍需在一致性边界校验。新增防御分支须说明保护的具体契约、可到达路径或回归依据。
+- 删除重复守卫前，须核对所有可达构造和状态迁移路径是否保证该条件；不能仅凭某个调用方的 Mock 假定聚合不变量。跨异步、锁或共识边界后，身份、任期、版本和上下文可能变化，必要重验不属于同一时刻的重复判断；删除需明确接受的行为差异并保留回归证据。
 
 ## 持久化与缓存
 

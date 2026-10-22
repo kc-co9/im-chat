@@ -1,17 +1,17 @@
 package com.co.kc.imchat.broker.application.local;
 
-import com.co.kc.imchat.broker.adapter.gossip.BrokerStateStore;
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.ClusterProperties;
 import com.co.kc.imchat.broker.infrastructure.domain.cluster.InMemoryBrokerRegistry;
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryConnectionRegistry;
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry;
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 import com.co.kc.imchat.plugin.gossip.model.GossipDeltaOperation;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +35,7 @@ class LocalGatewayCleanupAppServiceTest {
         InMemoryGatewayRegistry gateways = new InMemoryGatewayRegistry();
         InMemoryConnectionRegistry connections = new InMemoryConnectionRegistry();
         register(gateways, connections);
-        BrokerStateStore stateStore = mock(BrokerStateStore.class);
+        BrokerGossipAdapter stateStore = mock(BrokerGossipAdapter.class);
         doThrow(new IllegalStateException("gossip unavailable"))
                 .doNothing().when(stateStore).removeGatewayState(GATEWAY_ID.value());
         LocalGatewayCleanupAppService service = service(gateways, connections, stateStore);
@@ -56,7 +56,7 @@ class LocalGatewayCleanupAppServiceTest {
         InMemoryGatewayRegistry gateways = new InMemoryGatewayRegistry();
         InMemoryConnectionRegistry connections = new InMemoryConnectionRegistry();
         register(gateways, connections);
-        BrokerStateStore stateStore = mock(BrokerStateStore.class);
+        BrokerGossipAdapter stateStore = mock(BrokerGossipAdapter.class);
         doThrow(new IllegalStateException("gossip unavailable"))
                 .doNothing().when(stateStore).removeGatewayState(GATEWAY_ID.value());
         LocalGatewayCleanupAppService service = service(gateways, connections, stateStore);
@@ -79,7 +79,7 @@ class LocalGatewayCleanupAppServiceTest {
         InMemoryGatewayRegistry gateways = new InMemoryGatewayRegistry();
         InMemoryConnectionRegistry connections = new InMemoryConnectionRegistry();
         register(gateways, connections);
-        BrokerStateStore stateStore = new BrokerStateStore(new InMemoryBrokerRegistry(), gateways,
+        BrokerGossipAdapter stateStore = new BrokerGossipAdapter(new InMemoryBrokerRegistry(), gateways,
                 connections, new BrokerProperties(), new ClusterProperties());
         stateStore.putGatewayState(GATEWAY_ID.value(), "127.0.0.1", 18012, "test-identity");
         stateStore.putConnectionState(USER_ID.value(), GATEWAY_ID.value());
@@ -98,7 +98,7 @@ class LocalGatewayCleanupAppServiceTest {
 
     private LocalGatewayCleanupAppService service(InMemoryGatewayRegistry gateways,
                                                   InMemoryConnectionRegistry connections,
-                                                  BrokerStateStore stateStore) {
+                                                  BrokerGossipAdapter stateStore) {
         return new LocalGatewayCleanupAppService(gateways, connections, stateStore,
                 Duration.ofSeconds(1), Duration.ofMillis(100));
     }

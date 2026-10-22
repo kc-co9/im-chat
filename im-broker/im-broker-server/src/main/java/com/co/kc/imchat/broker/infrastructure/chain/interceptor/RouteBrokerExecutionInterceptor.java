@@ -2,7 +2,7 @@ package com.co.kc.imchat.broker.infrastructure.chain.interceptor;
 
 import com.co.kc.imchat.broker.infrastructure.chain.BrokerRequestChain;
 
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.domain.authority.service.LocalRoutingLeaseService;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.broker.infrastructure.chain.invocation.BrokerRequestInvocation;
@@ -20,12 +20,12 @@ import java.util.function.Supplier;
 /** 无副作用比较 RouteBroker 后，用 Guard 环绕责任链剩余副作用。 */
 public final class RouteBrokerExecutionInterceptor implements BrokerRequestInterceptor {
     private final String localBrokerId;
-    private final BrokerClusterConsensus stateRepository;
+    private final BrokerRaftAdapter stateRepository;
     private final LocalRoutingLeaseService leaseService;
     private final Supplier<String> leaderEndpoint;
 
     public RouteBrokerExecutionInterceptor(String localBrokerId,
-                                            BrokerClusterConsensus stateRepository,
+                                            BrokerRaftAdapter stateRepository,
                                             LocalRoutingLeaseService leaseService,
                                             Supplier<String> leaderEndpoint) {
         if (localBrokerId == null || localBrokerId.isBlank()
@@ -53,11 +53,11 @@ public final class RouteBrokerExecutionInterceptor implements BrokerRequestInter
         if (context == null) {
             throw new IllegalArgumentException("routeContext must not be null");
         }
-        if (Instant.now().toEpochMilli() >= context.deadlineEpochMillis()) {
+        if (Instant.now().toEpochMilli() >= context.expireAtMs()) {
             throw new IllegalArgumentException("route request deadline has expired");
         }
 
-        BrokerClusterState state = stateRepository.committedState();
+        BrokerClusterState state = stateRepository.getCommittedState();
         BrokerNode routeBroker = RouteBrokerSelectors.forAlgorithm(state.algorithm())
                 .select(userId, state);
         if (context.routingEpoch() < state.epoch()) {

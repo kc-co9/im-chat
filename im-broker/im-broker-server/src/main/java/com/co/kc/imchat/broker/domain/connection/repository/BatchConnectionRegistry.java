@@ -8,7 +8,7 @@ import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteBatch;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteBatchReception;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteChunkIndex;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 
 import java.time.Instant;
 import java.util.List;
@@ -34,5 +34,5 @@ public interface BatchConnectionRegistry extends ConnectionRegistry {
      * 调用方负责先核对已提交操作及完整确认集合，本方法不推进集群排空终态。
      */
     RouteCleanupResult cleanupRoutes(
-            ClusterOperationId operationId, List<DrainProgressUpdate> confirmations, Instant oldEventDeadline);
+            ClusterOperationId operationId, List<DrainProgressUpdate> confirmations, Instant oldEventExpireAt);
 }

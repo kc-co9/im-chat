@@ -6,7 +6,7 @@ import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerRegistration;
 import com.co.kc.imchat.broker.model.cqrs.dto.GossipRecordDTO;
 import com.co.kc.imchat.broker.model.enums.DiagnosticStatus;
-import com.co.kc.imchat.broker.adapter.diagnostic.GossipSyncTracker;
+import com.co.kc.imchat.broker.support.gossip.GossipSyncTracker;
 import com.co.kc.imchat.plugin.gossip.sync.GossipSyncOperations;
 import com.co.kc.imchat.plugin.gossip.sync.GossipSynchronizer;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ import java.util.List;
  */
 @Slf4j
 public class BrokerGossipScheduler {
-    private static final long GOSSIP_DELAY_MILLIS = 5000L;
+    private static final long GOSSIP_DELAY_MS = 5000L;
     private static final GossipSyncOperations SYNC_OPERATIONS = new GossipSyncOperations(
             BrokerBoltOperation.GOSSIP_DIGEST.service().service(),
             BrokerBoltOperation.GOSSIP_DIGEST.operation(),
@@ -51,7 +51,7 @@ public class BrokerGossipScheduler {
     /**
      * 周期性选择一批 peer 发起 Gossip 同步。
      */
-    @Scheduled(fixedDelay = GOSSIP_DELAY_MILLIS)
+    @Scheduled(fixedDelay = GOSSIP_DELAY_MS)
     public void gossip() {
         List<String> peers = new ArrayList<>(peers());
         if (peers.isEmpty()) {
@@ -73,7 +73,7 @@ public class BrokerGossipScheduler {
                     properties.brokerId(),
                     address,
                     SYNC_OPERATIONS,
-                    properties.timeoutMillis());
+                    Math.toIntExact(properties.timeout().toMillis()));
             trackGossip(address, processedCount, startedAt, DiagnosticStatus.SUCCESS, null);
         } catch (RuntimeException exception) {
             trackGossip(address, 0, startedAt, DiagnosticStatus.FAILED, exception.getMessage());
@@ -95,7 +95,7 @@ public class BrokerGossipScheduler {
                     address,
                     status,
                     processedCount,
-                    Duration.between(startedAt, completedAt).toMillis(),
+                    Duration.between(startedAt, completedAt),
                     errorSummary));
         } catch (RuntimeException exception) {
             log.warn("failed to track gossip synchronization, peer:{}, error:{}",
@@ -104,7 +104,7 @@ public class BrokerGossipScheduler {
     }
 
     /**
-     * 优先使用已发现的 Broker；尚未发现远端 Broker 时，使用静态种子节点引导入群。
+     * 优先使用已发现的 Broker；尚未发现远端 Broker 时，使用静态种子节点引导 Gossip 发现。
      */
     private List<String> peers() {
         String localAddress = properties.localAddress();

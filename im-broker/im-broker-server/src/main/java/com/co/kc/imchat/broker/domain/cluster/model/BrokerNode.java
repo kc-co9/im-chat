@@ -14,15 +14,15 @@ import java.util.Optional;
 /**
  * BrokerCluster 聚合内的 Broker 节点实体。
  *
- * <p>{@code id} 标识实体，路由端点在该身份存续期间保持稳定；membership callerRole 描述共识
+ * <p>{@code id} 标识实体，路由端点在该身份存续期间保持稳定；membershipRole 描述共识
  * 成员资格，traffic state 描述是否参与 RouteBroker 选择。两套状态必须形成合法组合，
  * 例如尚未完成发现或日志追赶的节点不能承载用户路由。</p>
  *
  * <p>该实体用于拓扑提议、成员角色迁移、激活/停用和 drain 操作。它只描述节点当前领域
  * 状态，不负责执行 Raft 配置变更、网络探活或路由迁移。</p>
  *
- * <p>具名行为修改本实体的成员角色或流量状态，不提供 setter。聚合仅在独立的目标副本中
- * 执行这些行为，经过共识提交后才更新权威拓扑；读取与冻结边界通过节点复制隔离可变状态。</p>
+ * <p>具名行为修改本实体的成员角色或流量状态，不提供 setter。聚合在已提交命令应用时
+ * 执行节点行为；构造、查询和快照边界通过节点复制隔离可变状态。</p>
  */
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
 @Getter
@@ -117,7 +117,7 @@ public final class BrokerNode implements Serializable {
         trafficState = BrokerTrafficState.ACTIVE;
     }
 
-    /** 停止接收新路由流量；既有排空流程通过 finishDrain 完成。 */
+    /** 将 ACTIVE 节点直接置为 INACTIVE，不执行优雅排空。 */
     public void deactivate() {
         checkOperation(BrokerClusterOperationType.DEACTIVATE_BROKER).ifPresent(reason -> {
             throw new IllegalStateException(reason.value());

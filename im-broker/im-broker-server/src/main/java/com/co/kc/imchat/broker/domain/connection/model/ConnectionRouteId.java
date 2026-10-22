@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.connection.model;
 
+import com.co.kc.imchat.common.domain.user.model.UserId;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 
 /**

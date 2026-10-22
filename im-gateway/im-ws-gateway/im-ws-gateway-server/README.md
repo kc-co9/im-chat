@@ -129,6 +129,8 @@ Broker 下行携带稳定 `deliveryId` 和单次尝试的 `deliveryAttemptId`。
 `deliveryId + connectionId` 去重：RPC timeout 或丢响应后使用相同 deliveryId 重试不会重复写同一 Channel；
 尝试 ID 只用于诊断。关闭控制以 `operationId + userId + sessionVersion` 做有界幂等：请求先占用进行中位置，只有本机关闭全部完成后才登记完成；中途失败释放占位，允许原操作重试。进行中的重复请求返回错误，不提前确认关闭。
 
+Gateway 向 Broker 发送的分片快照及整轮 ACK 使用 `updateExpireAtMs`，表示 Unix epoch milliseconds 更新期限；Broker SDK 的普通路由请求使用 `expireAtMs`。快照背压结果 `retryAfterMs` 是毫秒退避时长，重试仍受原更新窗口约束，达到截止即停止，不因退避延长窗口。Gateway 与 Broker/SDK 必须使用同一字段契约，不保留旧字段别名；这些字段不改变本机 Channel、Session 的时间所有权。完整协议见 [Broker SDK README](../../../im-broker/im-broker-sdk/README.md)。
+
 ## 配置说明
 
 核心配置前缀为 `im.gateway.ws`，集中绑定到 `GatewayProperties`：

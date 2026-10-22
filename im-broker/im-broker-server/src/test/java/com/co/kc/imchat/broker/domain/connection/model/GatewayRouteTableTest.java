@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.connection.model;
 
+import com.co.kc.imchat.common.domain.user.model.UserId;
+
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -25,7 +27,7 @@ class GatewayRouteTableTest {
                 .extracting(ConnectionRegistration::revision)
                 .isEqualTo(revision(2L));
         assertThat(table.find(user(101L))).get()
-                .extracting(ConnectionRegistration::updateExpiresAt)
+                .extracting(ConnectionRegistration::updateExpireAt)
                 .isEqualTo(Instant.MAX);
     }
 
@@ -91,6 +93,8 @@ class GatewayRouteTableTest {
         assertThat(unconfirmed.canCollect(at(4_000L), Duration.ofMillis(100L))).isFalse();
         assertThat(confirmed.canCollect(at(1_999L), Duration.ofMillis(100L))).isFalse();
         assertThat(confirmed.canCollect(at(2_000L), Duration.ofMillis(100L))).isTrue();
+        assertThat(confirmed.canCollect(at(1_999L), Duration.ZERO)).isFalse();
+        assertThat(confirmed.canCollect(at(2_000L), Duration.ZERO)).isTrue();
         assertThat(graceBound.canCollect(at(2_099L), Duration.ofMillis(100L))).isFalse();
         assertThat(graceBound.canCollect(at(2_100L), Duration.ofMillis(100L))).isTrue();
     }

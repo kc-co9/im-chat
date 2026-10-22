@@ -71,7 +71,7 @@ class OpsQueryAppServiceTest {
         BrokerManagementEndpoint second = endpoint("broker-2", 12202);
         when(discovery.discover()).thenReturn(List.of(first, second));
         ConnectionRoutePayload route = new ConnectionRoutePayload(
-                1L, "gateway-1", Instant.now(), Instant.now());
+                1L, "gateway-1", 1787446800123L, 1787446801123L);
         when(client.connections(first, 1L)).thenReturn(List.of(route));
         when(client.connections(second, 1L)).thenReturn(List.of(route));
         OpsQueryAppService service = new OpsQueryAppService(new BrokerDiagnosticAdapter(discovery, client), directExecutor());
@@ -203,7 +203,7 @@ class OpsQueryAppServiceTest {
         DiagnosticSummaryPayload empty = new DiagnosticSummaryPayload(
                 0L, 0L, null, null, null);
         return new BrokerOverviewPayload(
-                new BrokerInstancePayload(id, "127.0.0.1:12200", Instant.now(), 1L),
+                new BrokerInstancePayload(id, "127.0.0.1:12200", 1787446800123L, 1000L),
                 new BrokerStatisticsPayload(brokers, gateways, connections), empty);
     }
 

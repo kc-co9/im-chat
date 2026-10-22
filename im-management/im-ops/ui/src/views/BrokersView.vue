@@ -135,7 +135,7 @@ onMounted(load);
       >
       <ElTableColumn label="注册时间" min-width="180"
         ><template #default="{ row }">{{
-          formatTime(row.registeredAt)
+          formatTime(row.registeredAtMs)
         }}</template></ElTableColumn
       >
       <ElTableColumn label="Raft / 分流" min-width="180"

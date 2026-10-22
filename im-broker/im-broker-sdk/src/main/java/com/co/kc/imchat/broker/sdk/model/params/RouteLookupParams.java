@@ -8,6 +8,6 @@ import java.io.Serializable;
 public record RouteLookupParams(String requesterBrokerId,
                                 long routingEpoch,
                                 Long targetUserId,
-                                long deadlineEpochMillis,
+                                long expireAtMs,
                                 int hopCount) implements Serializable, BrokerDataPlaneRequest {
 }

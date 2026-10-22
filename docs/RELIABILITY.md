@@ -63,6 +63,16 @@
 - Message 通知重试由 Redis 支持且有界，但未与 MySQL 消息事务原子提交，也不是 Outbox。删除当前重试任务之后、安排下次延迟之前若进程故障，可能丢失剩余重投；持久 Message 与 Inbox 事实仍可用于恢复。
 - Audit Producer 不使用本地 Outbox。业务 Commit 后、异步 Transport 接受前若进程故障，可能丢失事件；已被 Kafka 接受的事件因持久化幂等而可以安全重投。
 
+## Broker 自动故障观察
+
+每个当前voter独立探测，Leader按本轮报告形成多数资格，默认30秒稳定窗口；实际membership与Broker绑定不一致或成员操作进行中时不发起新摘流。采样以本机单调时间计算，HEALTHY/UNKNOWN/断档重置连续失败，最新事实先去重后判断，冲突不计票。恢复节点不自动承载流量。
+
+probe/report 的请求与响应不携带 expireAt/expireAtMs，接收方不按墙钟拒绝晚到只读请求；接受调用方已放弃后仍可能处理一次请求的资源成本。本机报告入口为 getHealthReport，远端拉取入口为 fetchHealthReport，RPC operation fetchBrokerHealthReport 不变。单次观察调用仍采用 monotonic acceptance budget 而非同步硬返回期限；应用不再附加整轮耗时上限，较慢轮次只有在最终报告仍新鲜且领导权/Context有效时才允许继续。长DNS/共享连接等待可使专用有界执行器饱和，自动处置此时安全暂停。LOCAL/认证/协议/拒绝不算目标不可达；只有可归因的传输失败计票。报告独立过期，但每目标、轮次和恢复闸门保持至实际底层完成；上下文重置或外层期限不能释放它们制造重复调用。
+
+观察起始仅读取本机 Leader 任期作为冷却与轮次标记，任期不可用则跳过；汇合后取得同任期 quorum 证明并重验 Context，未通过不得进入自动 Begin。本机标记不是 quorum 证据，读取间角色可变；advanceEpoch 的 fencing 确认仍独立执行，最终证明与 Begin 之间不宣称原子绑定任期。
+
+初次人工/自动FAIL_BROKER与恢复调度共用在途保护，早期fencing和授权阶段按已登记operation接续，不要求resultEpoch已成为当前epoch。冷却由 BrokerObservationState.advance 在拉报告前唯一判断，启动/换届/拓扑或实际 membership 变化后重新等待完整窗口，但不延迟既有恢复。报告服务 evaluate 只判断证据资格，不重复注入或判断冷却；汇合后任期/角色/Context变化仍作废该轮次，完整处置还需聚合及共识接受。原quarantine完整等待和Gateway缺证DEGRADED边界不变。
+
 ## 验证
 
 - Unit Test 覆盖状态转换和幂等。

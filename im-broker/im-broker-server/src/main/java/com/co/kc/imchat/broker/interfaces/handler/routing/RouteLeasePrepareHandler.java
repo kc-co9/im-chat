@@ -9,7 +9,7 @@ import com.co.kc.imchat.broker.sdk.model.params.RouteLeasePrepareParams;
 import com.co.kc.imchat.broker.sdk.model.result.RouteLeasePrepareResult;
 
 /**
- * 在 holder 本机记录 Lease 请求的单调起点并返回一次性 nonce。
+ * 在目标 Broker 本机记录 Lease 请求的单调起点并返回一次性 nonce。
  */
 public final class RouteLeasePrepareHandler extends
         AbstractBrokerRpcHandler<RouteLeasePrepareParams, RouteLeasePrepareResult> {

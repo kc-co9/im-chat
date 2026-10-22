@@ -1,46 +1,42 @@
 package com.co.kc.imchat.broker.application.cluster;
 
-import java.time.Duration;
-
-
-
-import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
-
-import com.co.kc.imchat.broker.model.cqrs.result.ActivateBrokerResult;
-import com.co.kc.imchat.broker.model.cqrs.command.ActivateBrokerCommand;
-import com.co.kc.imchat.broker.model.cqrs.command.BeginBrokerClusterOperationCommand;
-import com.co.kc.imchat.broker.transformer.infrastructure.BrokerClusterRaftTransformer;
-import com.co.kc.imchat.broker.domain.cluster.model.BrokerCluster;
-
-import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
-import com.co.kc.imchat.broker.support.BrokerClusterCommandFixture;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-import java.util.function.LongFunction;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerCluster;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
-import com.co.kc.imchat.broker.adapter.cluster.raft.RaftBrokerClusterStateMachine;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
+import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
+import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
+import com.co.kc.imchat.broker.model.cqrs.command.ActivateBrokerCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.ActivateRoutingLeaseCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
+import com.co.kc.imchat.broker.model.cqrs.result.ActivateBrokerResult;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
+import com.co.kc.imchat.broker.support.BrokerClusterCommandFixture;
 import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
-import org.junit.jupiter.api.Test;
-import static org.mockito.Mockito.spy;
-
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
+import com.co.kc.imchat.broker.support.raft.statemachine.RaftBrokerClusterStateMachine;
+import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterRaftTransformer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletionStage;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.LongSupplier;
-
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ScheduledExecutorService;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 class BrokerClusterAppServiceActivationTest {
@@ -114,34 +110,26 @@ class BrokerClusterAppServiceActivationTest {
     private BrokerClusterAppService service(
             ImmediateRepository repository,
             LeaseActivation routeLeaseActivator) {
-        BrokerClusterAdapter brokerClusterAdapter =
-                mock(BrokerClusterAdapter.class);
-        org.mockito.Mockito.doCallRealMethod().when(brokerClusterAdapter).saveRecoveryEvidence(any(), any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(brokerClusterAdapter).completeDrain(any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(brokerClusterAdapter).forceDrain(any(), any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(brokerClusterAdapter).startEpochAuthorization(any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(brokerClusterAdapter).completeEpochAuthorization(any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(brokerClusterAdapter).verifyRouteRecovery(any(), any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(brokerClusterAdapter).completeRouteRecovery(any(), any());
-        when(brokerClusterAdapter.committedState()).thenAnswer(
-                ignored -> repository.committedState());
-        when(brokerClusterAdapter.getCluster()).thenAnswer(
-                ignored -> repository.getCluster());
+        BrokerRaftAdapter brokerClusterAdapter =
+                mock(BrokerRaftAdapter.class);
+        when(brokerClusterAdapter.getCommittedState()).thenAnswer(
+                ignored -> repository.getCommittedState());
+        when(brokerClusterAdapter.getClusterSnapshot()).thenAnswer(
+                ignored -> repository.getClusterSnapshot());
         when(brokerClusterAdapter.findOperation(any(ClusterOperationId.class))).thenAnswer(
                 invocation -> repository.findOperation(invocation.getArgument(0)));
-        when(brokerClusterAdapter.registerOperation(any())).thenAnswer(invocation ->
-                repository.submitChange(new BeginBrokerClusterOperationCommand(
-                        BrokerClusterRaftTransformer.INSTANCE.proposalFrom(invocation.getArgument(0)))));
-        when(brokerClusterAdapter.submitChange(any())).thenAnswer(
-                invocation -> repository.submitChange(invocation.getArgument(0)));
+        when(brokerClusterAdapter.beginOperation(any())).thenAnswer(invocation ->
+                repository.submitCommand(BrokerClusterRaftTransformer.INSTANCE.beginCommandFrom(invocation.getArgument(0))));
+        BrokerRaftTestBindings.bindOperations(brokerClusterAdapter, repository::submitCommand);
         BrokerClusterAppService service = spy(new BrokerClusterAppService(brokerClusterAdapter,
+                mock(BrokerPeerAdapter.class),
                 mock(GatewayRegistry.class),
-                Duration.ofNanos(1_000L), Duration.ofSeconds(1), mock(java.util.concurrent.ScheduledExecutorService.class), java.time.Duration.ofSeconds(10)));
-        org.mockito.Mockito.doAnswer(invocation -> {
-            com.co.kc.imchat.broker.model.cqrs.command.ActivateRoutingLeaseCommand command = invocation.getArgument(0);
-            BrokerCluster cluster = repository.getCluster();
+                Duration.ofNanos(1_000L), Duration.ofSeconds(1), mock(ScheduledExecutorService.class), Duration.ofSeconds(10), null, null, Duration.ofSeconds(60)));
+        Mockito.doAnswer(invocation -> {
+            ActivateRoutingLeaseCommand command = invocation.getArgument(0);
+            BrokerCluster cluster = repository.getClusterSnapshot();
             return routeLeaseActivator.activate(cluster.findNode(
-                    new com.co.kc.imchat.broker.domain.cluster.model.BrokerId(command.brokerId())).orElseThrow(),
+                    new BrokerId(command.brokerId())).orElseThrow(),
                     cluster, command.operationId());
         })
                 .when(service).activateLease(any());
@@ -180,26 +168,26 @@ class BrokerClusterAppServiceActivationTest {
         private final RaftBrokerClusterStateMachine stateMachine;
 
         private ImmediateRepository(BrokerClusterState initialState) {
-            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", initialState);
+            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", initialState, 1000, Map.of());
         }
 
         @Override
-        public BrokerCluster getCluster() {
+        public BrokerCluster getClusterSnapshot() {
             return stateMachine.getCluster();
         }
 
         @Override
-        public BrokerClusterState committedState() {
+        public BrokerClusterState getCommittedState() {
             return stateMachine.committedState();
         }
 
         @Override
-        public java.util.Optional<BrokerClusterOperation> findOperation(ClusterOperationId operationId) {
+        public Optional<BrokerClusterOperation> findOperation(ClusterOperationId operationId) {
             return stateMachine.findOperation(operationId);
         }
 
         @Override
-        public java.util.concurrent.CompletionStage<BrokerClusterConsensusResult> submitChange(
+        public CompletionStage<BrokerClusterConsensusResult> submitCommand(
                 BrokerClusterConsensusCommand command) {
             return CompletableFuture.completedFuture(stateMachine.apply(command));
         }

@@ -39,6 +39,8 @@ import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -55,7 +57,7 @@ public class BrokerClient {
     private final AtomicReference<List<String>> brokerAddresses;
     private final BrokerAddressSelector brokerAddressSelector;
     private final BrokerClusterStateCache clusterStateCache = new BrokerClusterStateCache();
-    private final int timeoutMillis;
+    private final Duration timeout;
 
     /**
      * 从服务发现获取初始 Broker 地址列表创建客户端。
@@ -66,19 +68,19 @@ public class BrokerClient {
      * @param discoveryClient 服务发现客户端
      * @param serviceName    Broker 服务发现名称
      * @param loadBalance    地址负载均衡策略
-     * @param timeoutMillis  调用超时时间
+     * @param timeoutMs  调用超时时间
      */
     public BrokerClient(BoltInvoker boltInvoker,
                         DiscoveryClient discoveryClient,
                         ServiceName serviceName,
                         BrokerLoadBalance loadBalance,
-                        int timeoutMillis) {
+                        int timeoutMs) {
         AssertUtils.argNotNull("discovery client must not be null", discoveryClient);
         AssertUtils.argNotNull("broker service name must not be null", serviceName);
         this.boltInvoker = boltInvoker;
         this.brokerAddresses = new AtomicReference<>(discoverBootstrapAddresses(discoveryClient, serviceName));
         this.brokerAddressSelector = createBrokerAddressSelector(loadBalance);
-        this.timeoutMillis = timeoutMillis;
+        this.timeout = Duration.ofMillis(timeoutMs);
     }
 
     /**
@@ -264,7 +266,7 @@ public class BrokerClient {
     private <T, R> R invokeBroker(String address, BrokerBoltOperation operation,
                                   T params, Class<R> responseType) {
         return boltInvoker.invoke(address, operation.service().service(),
-                operation.operation(), params, responseType, timeoutMillis);
+                operation.operation(), params, responseType, Math.toIntExact(timeout.toMillis()));
     }
 
     private <T extends RoutableBrokerRequest<T>, R> R invokeUserRoute(
@@ -286,8 +288,9 @@ public class BrokerClient {
         BrokerClusterState state = requireClusterState();
         String operationId = requestedOperationId == null || requestedOperationId.isBlank()
                 ? UUID.randomUUID().toString() : requestedOperationId;
+        Instant expireAt = Instant.ofEpochMilli(System.currentTimeMillis()).plus(timeout);
         RouteRequestContext context = new RouteRequestContext(state.epoch(), operationId,
-                System.currentTimeMillis() + timeoutMillis);
+                expireAt.toEpochMilli());
         RouteBrokerResult first = invokeRouteAttempt(state, operation,
                 params.withRouteContext(context));
         if (first.status() == RouteBrokerStatus.EXECUTED) {
@@ -305,8 +308,8 @@ public class BrokerClient {
                     + refreshed.epoch() + ": local=" + refreshedEndpoint
                     + ", remote=" + first.suggestedEndpoint());
         }
-        if (System.currentTimeMillis() >= context.deadlineEpochMillis()) {
-            throw new IllegalStateException("RouteBroker retry deadline exceeded for operation "
+        if (!Instant.ofEpochMilli(System.currentTimeMillis()).isBefore(expireAt)) {
+            throw new IllegalStateException("RouteBroker retry expiry exceeded for operation "
                     + context.operationId());
         }
 

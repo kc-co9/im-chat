@@ -2,22 +2,24 @@ package com.co.kc.imchat.broker.application.frame;
 
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.broker.adapter.gateway.GatewayDispatchAdapter;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRegistration;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.model.cqrs.command.FrameDispatchCommand;
-import com.co.kc.imchat.broker.model.cqrs.query.BrokerRouteLookupParams;
 import com.co.kc.imchat.broker.model.cqrs.result.RouteLocation;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.model.dto.BrokerFrameWriteDTO;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.alicp.jetcache.Cache;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.ListUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -40,34 +42,23 @@ import java.util.stream.Collectors;
  * 查询目标来自当前已提交拓扑；负缓存不替代实际路由。
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class FrameDispatchAppService {
     private final ConnectionRegistry connectionRegistry;
     private final GatewayRegistry gatewayRegistry;
-    private final BrokerClusterAdapter brokerClusterAdapter;
+    private final BrokerRaftAdapter brokerClusterAdapter;
+    private final BrokerPeerAdapter brokerPeerAdapter;
+    private final GatewayDispatchAdapter gatewayDispatchAdapter;
     private final Duration gatewayTtl;
     private final Duration negativeCacheDuration;
     /* 未命中用户的短期抑制标记，TTL 与容量由本地 JetCache 管理。 */
     private final Cache<UserId, Boolean> negativeCache;
 
-    public FrameDispatchAppService(
-            ConnectionRegistry connectionRegistry, GatewayRegistry gatewayRegistry,
-            BrokerClusterAdapter brokerClusterAdapter,
-            Duration gatewayTtl,
-            Duration negativeCacheDuration,
-            Cache<UserId, Boolean> negativeCache) {
-        this.connectionRegistry = connectionRegistry;
-        this.gatewayRegistry = gatewayRegistry;
-        this.brokerClusterAdapter = brokerClusterAdapter;
-        this.gatewayTtl = gatewayTtl;
-        this.negativeCacheDuration = negativeCacheDuration;
-        this.negativeCache = negativeCache;
-    }
-
     /**
      * 定位用户 Gateway 后下行投递，所有定位步骤在本方法中按执行顺序展开。
      * <p>核心步骤：转换和校验输入 → 本地定位 → 检查查询窗口 → 单轮并发查询
      * → 维护负缓存 → 复核远端 Gateway → 逐目标投递并汇总。</p>
-     * 本地命中不查 peer；其他可路由 Broker 并发查询且共享总等待期限，单个节点失败不阻断其他目标。
+     * 本地命中不查 peer；其他可路由 Broker 并发查询，各自受查询超时限制，单个节点失败不阻断其他目标。
      *
      * @return 连接写入结果；无有效目标返回路由不可用
      * @throws IllegalArgumentException 帧内容缺失或 deliveryId 为空白，交协议边界处理
@@ -81,7 +72,7 @@ public final class FrameDispatchAppService {
         AssertUtils.argNotNull("outbound frame is required", command.frame());
         AssertUtils.argNotBlank("deliveryId is required", command.deliveryId());
 
-        BrokerId localBrokerId = brokerClusterAdapter.localBrokerId();
+        BrokerId localBrokerId = brokerClusterAdapter.getLocalBroker().getId();
 
         // 2. 本地活跃 Gateway 优先，按身份去重；本地命中直接进入最后的投递步骤。
         Map<GatewayId, GatewayRegistration> userGateways = new LinkedHashMap<>();
@@ -97,7 +88,7 @@ public final class FrameDispatchAppService {
                 return BrokerFrameWriteResult.failed("ROUTE_UNAVAILABLE", "目标用户连接路由暂不可用");
             }
 
-            CompletableFuture.completedFuture(brokerClusterAdapter.committedState())
+            CompletableFuture.completedFuture(brokerClusterAdapter.getCommittedState())
                     // 4. 从当前拓扑选择所有其他可路由 Broker。
                     .thenApply(state ->
                             state.brokers().stream()
@@ -107,7 +98,7 @@ public final class FrameDispatchAppService {
                     // 5. 并发请求所有候选，汇总完成的响应；单个失败按空结果处理。
                     .thenCompose(candidates ->
                             candidates.stream()
-                                    .map(broker -> brokerClusterAdapter.lookupRoutes(new BrokerRouteLookupParams(broker, userId, routingEpoch))
+                                    .map(broker -> brokerPeerAdapter.lookupRoutes(broker, userId, routingEpoch)
                                             .exceptionally(failure -> List.of()))
                                     .reduce(CompletableFuture.completedFuture(List.of()),
                                             (collected, response) -> collected.thenCombine(response, ListUtils::union)))
@@ -145,7 +136,7 @@ public final class FrameDispatchAppService {
         return CompletableFuture.completedFuture(userGateways.values())
                 // 10. 在专用虚拟线程中并发写入各 Gateway；失败目标不影响其他结果。
                 .thenCompose(gateways -> gateways.stream()
-                        .map(gateway -> brokerClusterAdapter.dispatchFrame(gateway, command)
+                        .map(gateway -> gatewayDispatchAdapter.dispatch(gateway, command)
                                 .exceptionally(failure -> {
                                     log.warn("failed to write outbound frame to gateway:{}, error:{}", gateway.gatewayId(), failure.toString());
                                     return List.of();

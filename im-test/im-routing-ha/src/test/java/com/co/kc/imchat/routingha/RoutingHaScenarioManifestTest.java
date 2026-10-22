@@ -70,6 +70,16 @@ class RoutingHaScenarioManifestTest {
     }
 
     @Test
+    void automaticFailureEvidenceRequiresTheIsolatedTlsRuntimeRatherThanRecoveryOnly() throws IOException {
+        String automatic = Files.readAllLines(Path.of("src/test/resources/routing-ha-scenarios.tsv")).stream()
+                .filter(line -> line.startsWith("RH-05\t")).findFirst().orElseThrow();
+        String[] columns = automatic.split("\t", -1);
+        assertThat(columns[2]).isEqualTo("isolated-runtime-test");
+        assertThat(columns[3]).isEqualTo("AutomaticFailureTlsHaTest");
+        assertThat(columns[4]).contains("mTLS", "FAIL_BROKER", "Lease");
+    }
+
+    @Test
     void definesExactlyTwentyFiveLocatableScenarios() throws IOException {
         Path manifest = Path.of("src/test/resources/routing-ha-scenarios.tsv");
         List<String> lines = Files.readAllLines(manifest).stream()
@@ -83,7 +93,7 @@ class RoutingHaScenarioManifestTest {
             assertThat(columns).as("scenario columns: %s", line).hasSize(5);
             assertThat(columns[0]).matches("RH-(0[1-9]|1[0-9]|2[0-5])");
             assertThat(columns[1]).isNotBlank();
-            assertThat(columns[2]).isIn("topology", "broker-test", "gateway-test", "e2e-test");
+            assertThat(columns[2]).isIn("topology", "broker-test", "gateway-test", "e2e-test", "isolated-runtime-test");
             assertThat(columns[3]).isNotBlank();
             assertThat(columns[4]).isNotBlank();
             assertThat(ids.add(columns[0])).as("unique id %s", columns[0]).isTrue();

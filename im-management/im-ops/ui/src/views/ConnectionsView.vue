@@ -72,7 +72,7 @@ async function search() {
       <ElTableColumn prop="gatewayId" label="Gateway" min-width="180" />
       <ElTableColumn label="最后活跃" min-width="180"
         ><template #default="{ row }">{{
-          formatTime(row.lastSeenAt)
+          formatTime(row.lastSeenAtMs)
         }}</template></ElTableColumn
       >
     </ElTable>

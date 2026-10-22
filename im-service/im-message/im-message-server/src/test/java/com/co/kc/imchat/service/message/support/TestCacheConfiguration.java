@@ -54,6 +54,13 @@ public class TestCacheConfiguration {
 
     private record EmptyPushBoltInvoker() implements BoltInvoker {
         @Override
+        public <T, R> R invokeAuthenticated(String address, String service, String operation, T request,
+                                            Class<R> responseType, int timeoutMillis,
+                                            String expectedPeerIdentity, String identityPrefix) {
+            throw new UnsupportedOperationException("authenticated invocation is not used by this fixture");
+        }
+
+        @Override
         @SuppressWarnings("unchecked")
         public <T, R> R invoke(String address, String service, String operation, T request,
                                Class<R> responseType, int timeoutMillis) {

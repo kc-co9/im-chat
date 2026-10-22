@@ -37,9 +37,13 @@ public enum BrokerBoltOperation {
     /** 查询目标 Broker 已取得并在本机应用的 quorum ReadIndex，不表示最新应用位置。 */
     FETCH_QUORUM_READ_INDEX(BrokerBoltService.BROKER, "fetchQuorumReadIndex", BrokerAdmissionType.BROKER_CONTROL),
 
-    /**
-     * 交换 Gossip 摘要。
-     */
+    /** 已认证 voter 对目标 Broker 的轻量探测，不执行 quorum ReadIndex。 */
+    PROBE_BROKER(BrokerBoltService.BROKER, "probeBroker", BrokerAdmissionType.BROKER_OBSERVATION),
+
+    /** 获取响应者自身的本轮目标观察快照。 */
+    FETCH_BROKER_HEALTH_REPORT(BrokerBoltService.BROKER, "fetchBrokerHealthReport", BrokerAdmissionType.BROKER_OBSERVATION),
+
+    /** 交换 Gossip 摘要。 */
     GOSSIP_DIGEST(BrokerBoltService.GOSSIP, "gossipDigest", BrokerAdmissionType.BROKER_PEER),
 
     /**
@@ -52,10 +56,10 @@ public enum BrokerBoltOperation {
      */
     FENCE_ROUTING_EPOCH(BrokerBoltService.BROKER, "fenceRoutingEpoch", BrokerAdmissionType.BROKER_CONTROL),
 
-    /** 在 holder 本机开始当前 epoch Lease 申请。 */
+    /** 在目标 Broker 本机记录当前 epoch 的 Lease 准备起点。 */
     PREPARE_ROUTE_LEASE(BrokerBoltService.BROKER, "prepareRouteLease", BrokerAdmissionType.BROKER_CONTROL),
 
-    /** 把 quorum-backed Lease grant 安装回原申请 holder。 */
+    /** 将多数派读取证明支持的 Lease 安装到已生成准备记录的目标 Broker。 */
     INSTALL_ROUTE_LEASE(BrokerBoltService.BROKER, "installRouteLease", BrokerAdmissionType.BROKER_CONTROL),
 
     /**
@@ -96,10 +100,6 @@ public enum BrokerBoltOperation {
 
     /** Leader 请求 DRAINING Broker 按 committed 水位清理旧路由。 */
     CLEANUP_DRAIN_ROUTES(BrokerBoltService.CONNECTION, "cleanupDrainRoutes", BrokerAdmissionType.BROKER_DATA_PLANE),
-
-    /**
-     * 迁移用户连接到新的 owner Broker。
-     */
 
     /** 关闭用户连接。 */
     CLOSE_CONNECTIONS(BrokerBoltService.CONNECTION, "closeConnections", BrokerAdmissionType.SERVICE_DATA_PLANE),

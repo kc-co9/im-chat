@@ -2,7 +2,7 @@ package com.co.kc.imchat.broker.infrastructure.domain.cluster;
 
 import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerRegistration;
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+/** 保存本机所见的 Broker 注册与心跳观察，不维护 Raft 权威拓扑或路由资格。 */
 public class InMemoryBrokerRegistry implements BrokerRegistry {
     private static final RegistryTransformer REGISTRY_TRANSFORMER = RegistryTransformer.INSTANCE;
 

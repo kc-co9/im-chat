@@ -18,10 +18,16 @@ import com.co.kc.imchat.management.ops.model.io.GatewayNodeResponse;
 import com.co.kc.imchat.management.ops.model.io.GossipRecordResponse;
 import com.co.kc.imchat.management.ops.model.io.OpsOverviewResponse;
 import com.co.kc.imchat.management.ops.model.io.SourcedResponse;
+import com.co.kc.imchat.management.ops.model.cqrs.dto.BrokerInstanceDTO;
+import com.co.kc.imchat.management.ops.model.cqrs.dto.DiagnosticSummaryDTO;
+import com.co.kc.imchat.management.ops.model.io.BrokerInstanceResponse;
+import com.co.kc.imchat.management.ops.model.io.DiagnosticSummaryResponse;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.function.Function;
 
@@ -34,12 +40,20 @@ public interface OpsHttpTransformer {
 
     BrokerOverviewResponse brokerOverviewResponseFrom(BrokerNodeOverviewDTO overview);
 
+    @Mapping(target = "registeredAtMs", source = "registeredAt")
+    @Mapping(target = "lastSeenAtMs", source = "lastSeenAt")
     BrokerNodeResponse brokerNodeResponseFrom(BrokerNodeDTO node);
 
+    @Mapping(target = "registeredAtMs", source = "registeredAt")
+    @Mapping(target = "lastSeenAtMs", source = "lastSeenAt")
     GatewayNodeResponse gatewayNodeResponseFrom(GatewayNodeDTO node);
 
+    @Mapping(target = "registeredAtMs", source = "registeredAt")
+    @Mapping(target = "lastSeenAtMs", source = "lastSeenAt")
     ConnectionRouteResponse connectionRouteResponseFrom(ConnectionRouteDTO route);
 
+    @Mapping(target = "executedAtMs", source = "executedAt")
+    @Mapping(target = "durationMs", source = "duration")
     GossipRecordResponse gossipRecordResponseFrom(GossipRecordDTO record);
 
     BrokerFailureResponse brokerFailureResponseFrom(BrokerNodeFailureDTO failure);
@@ -87,4 +101,18 @@ public interface OpsHttpTransformer {
     ) {
         return new SourcedResponse<>(value.sourceBroker(), mapper.apply(value.value()));
     }
+
+    @Mapping(target = "startedAtMs", source = "startedAt")
+    @Mapping(target = "uptimeMs", source = "uptime")
+    BrokerInstanceResponse brokerInstanceFrom(BrokerInstanceDTO source);
+
+    @Mapping(target = "lastSuccessAtMs", source = "lastSuccessAt")
+    @Mapping(target = "lastFailureAtMs", source = "lastFailureAt")
+    @Mapping(target = "lastExecutedAtMs", source = "lastExecutedAt")
+    DiagnosticSummaryResponse diagnosticSummaryFrom(DiagnosticSummaryDTO source);
+
+    default Long durationMsFrom(Duration value) {
+        return value == null ? null : value.toMillis();
+    }
+
 }

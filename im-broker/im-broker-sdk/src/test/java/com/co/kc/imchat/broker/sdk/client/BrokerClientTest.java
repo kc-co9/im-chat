@@ -4,32 +4,24 @@ import com.co.kc.imchat.broker.sdk.BrokerClient;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltService;
 import com.co.kc.imchat.broker.sdk.enums.BrokerLoadBalance;
-import com.co.kc.imchat.common.model.enums.ServiceName;
-import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
-import com.co.kc.imchat.broker.sdk.model.params.GatewayHeartbeatParams;
-import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.GatewayUnregisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionCloseParams;
-import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerHeartbeatParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerUnregisterParams;
+import com.co.kc.imchat.broker.sdk.model.params.GatewayHeartbeatParams;
+import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
+import com.co.kc.imchat.broker.sdk.model.params.GatewayUnregisterParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
-import com.co.kc.imchat.broker.sdk.model.result.BrokerListResult;
-import com.co.kc.imchat.common.model.io.FrameRequest;
+import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
-import org.springframework.cloud.client.ServiceInstance;
-import org.springframework.cloud.client.discovery.DiscoveryClient;
-import org.junit.jupiter.api.Test;
-
-import java.time.Instant;
+import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-
+import org.junit.jupiter.api.Test;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class BrokerClientTest {
@@ -140,7 +132,7 @@ class BrokerClientTest {
     private static BrokerClient client(CapturingBoltInvocation invoker,
                                        String addresses,
                                        BrokerLoadBalance loadBalance) {
-        List<ServiceInstance> instances = java.util.Arrays.stream(addresses.split(","))
+        List<ServiceInstance> instances = Arrays.stream(addresses.split(","))
                 .map(String::trim)
                 .filter(address -> !address.isBlank())
                 .<ServiceInstance>map(address -> {
@@ -153,6 +145,13 @@ class BrokerClientTest {
     }
 
     private static class CapturingBoltInvocation implements BoltInvoker {
+        @Override
+        public <T, R> R invokeAuthenticated(String address, String service, String operation,
+                                             T request, Class<R> responseType, int timeoutMillis,
+                                             String expectedPeerIdentity, String identityPrefix) {
+            throw new UnsupportedOperationException("ordinary SDK client does not use authenticated peer calls");
+        }
+
         private String address;
         private final List<String> addresses = new ArrayList<>();
         private String service;
@@ -202,8 +201,8 @@ class BrokerClientTest {
         }
 
         @Override
-        public java.net.URI getUri() {
-            return java.net.URI.create("bolt://" + host + ":" + port);
+        public URI getUri() {
+            return URI.create("bolt://" + host + ":" + port);
         }
 
         @Override
@@ -212,7 +211,7 @@ class BrokerClientTest {
         }
 
         @Override
-        public java.util.Map<String, String> getMetadata() {
+        public Map<String, String> getMetadata() {
             return Map.of();
         }
     }

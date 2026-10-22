@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.support;
 
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
 import com.co.kc.imchat.broker.model.cqrs.command.AdvanceClusterOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.BeginBrokerClusterOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
@@ -8,7 +9,7 @@ import com.co.kc.imchat.broker.model.cqrs.command.CompleteBrokerDrainCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.CommitRoutingEpochFenceCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.ForceDrainOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.UpdateBrokerDrainProgressCommand;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationProposal;
@@ -18,7 +19,7 @@ import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterRevision;
 import com.co.kc.imchat.broker.domain.cluster.model.CommandDigest;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerRouteEndpoint;
-import com.co.kc.imchat.broker.domain.cluster.model.MembershipEndpoint;
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
 import com.co.kc.imchat.broker.domain.cluster.model.MinimumVoterCount;
 import com.co.kc.imchat.broker.domain.cluster.model.DrainProgress;
 import com.co.kc.imchat.broker.domain.cluster.model.DrainProgressUpdate;
@@ -46,15 +47,15 @@ public final class BrokerClusterCommandFixture {
     public static BrokerClusterOperationProposal topology(
             String operationId, String commandDigest, long expectedRevision,
             String operationType, String targetBrokerId, List<BrokerNode> brokers,
-            long changedAtEpochMilli) {
+            long changedAtMs) {
         return topology(operationId, commandDigest, expectedRevision, operationType,
-                targetBrokerId, brokers, changedAtEpochMilli, null);
+                targetBrokerId, brokers, changedAtMs, null);
     }
 
     public static BrokerClusterOperationProposal topology(
             String operationId, String commandDigest, long expectedRevision,
             String operationType, String targetBrokerId, List<BrokerNode> brokers,
-            long changedAtEpochMilli, DrainProgress drainProgress) {
+            long changedAtMs, DrainProgress drainProgress) {
         return BrokerClusterOperationProposal.builder()
                 .operationId(new ClusterOperationId(operationId))
                 .commandDigest(new CommandDigest(commandDigest))
@@ -68,7 +69,7 @@ public final class BrokerClusterCommandFixture {
                         ? new MembershipEndpoint(targetBrokerId + ".example:18120") : null)
                 .minimumVoterCount(operationType.startsWith("DEMOTE_") || operationType.equals("REMOVE_BROKER")
                         ? new MinimumVoterCount(1) : null)
-                .changedAt(Instant.ofEpochMilli(changedAtEpochMilli))
+                .changedAt(Instant.ofEpochMilli(changedAtMs))
                 .initialDrainProgress(drainProgress)
                 .build();
     }
@@ -80,13 +81,19 @@ public final class BrokerClusterCommandFixture {
 
     public static CommitBrokerOperationCommand commitOperation(BrokerClusterOperationProposal proposal) {
         return new CommitBrokerOperationCommand(proposal.operationId(), proposal.commandDigest().value(),
-                proposal.expectedRevision(), proposal.changedAt().toEpochMilli());
+                proposal.expectedRevision(), proposal.changedAt());
     }
 
     public static BrokerClusterConsensusResult applyTopologyChange(
-            BrokerClusterConsensus consensus,
+            BrokerClusterConsensusStub consensus,
             BrokerClusterOperationProposal proposal) {
-        BrokerClusterConsensusResult begun = consensus.submitChange(beginOperation(proposal))
+        return applyTopologyChange(consensus.asAdapter(), proposal);
+    }
+
+    public static BrokerClusterConsensusResult applyTopologyChange(
+            BrokerRaftAdapter consensus,
+            BrokerClusterOperationProposal proposal) {
+        BrokerClusterConsensusResult begun = BrokerRaftTestBindings.submit(consensus, beginOperation(proposal))
                 .toCompletableFuture().join();
         if (!begun.accepted()) {
             return begun;
@@ -94,64 +101,64 @@ public final class BrokerClusterCommandFixture {
         if (begun.operation().phase() == BrokerClusterOperationPhase.FENCING_OLD_EPOCH) {
             RoutingEpochFence fence = RoutingEpochFence.builder()
                     .operationId(proposal.operationId())
-                    .epoch(new RoutingEpoch(consensus.committedState().epoch()))
+                    .epoch(new RoutingEpoch(consensus.getCommittedState().epoch()))
                     .leaderTerm(term(1L))
                     .quorumReadIndex(readIndex(1L))
-                    .fencedBrokerIds(consensus.committedState().activeBrokers().stream()
+                    .fencedBrokerIds(consensus.getCommittedState().activeBrokers().stream()
                             .map(BrokerNode::brokerId).map(BrokerId::new).toList())
                     .build();
-            BrokerClusterConsensusResult fenced = consensus.submitChange(fenceEpoch(fence))
+            BrokerClusterConsensusResult fenced = BrokerRaftTestBindings.submit(consensus, fenceEpoch(fence))
                     .toCompletableFuture().join();
             if (!fenced.accepted()) {
                 return fenced;
             }
         }
-        return consensus.submitChange(commitOperation(proposal)).toCompletableFuture().join();
+        return BrokerRaftTestBindings.submit(consensus, commitOperation(proposal)).toCompletableFuture().join();
     }
 
     public static BrokerClusterConsensusCommand advanceOperation(
             String operationId, String commandDigest,
             BrokerClusterOperationPhase expectedPhase,
             BrokerClusterOperationPhase nextPhase,
-            String error, long changedAtEpochMilli) {
+            String error, long changedAtMs) {
         return AdvanceClusterOperationCommand.builder()
                 .operationId(new ClusterOperationId(operationId))
                 .commandDigest(commandDigest)
                 .expectedPhase(expectedPhase)
                 .nextPhase(nextPhase)
                 .error(error)
-                .changedAtEpochMilli(changedAtEpochMilli)
+                .changedAt(Instant.ofEpochMilli(changedAtMs))
                 .build();
     }
 
     public static BrokerClusterConsensusCommand confirmDrainGateway(
             String operationId, String commandDigest, String gatewayId,
-            long routeRevision, long routeCount, String checksum, long changedAtEpochMilli) {
+            long routeRevision, long routeCount, String checksum, long changedAtMs) {
         return new UpdateBrokerDrainProgressCommand(new ClusterOperationId(operationId), commandDigest,
                 DrainProgressUpdate.confirmGateway(
                         gatewayId(gatewayId), routeRevision(routeRevision),
-                        routeCount(routeCount), snapshotDigest(checksum)), changedAtEpochMilli);
+                        routeCount(routeCount), snapshotDigest(checksum)), Instant.ofEpochMilli(changedAtMs));
     }
 
     public static BrokerClusterConsensusCommand summarizeDrain(
             String operationId, String commandDigest, RouteRecoveryEvidence summary,
-            long changedAtEpochMilli) {
+            long changedAtMs) {
         return new UpdateBrokerDrainProgressCommand(new ClusterOperationId(operationId), commandDigest,
-                DrainProgressUpdate.summarize(summary), changedAtEpochMilli);
+                DrainProgressUpdate.summarize(summary), Instant.ofEpochMilli(changedAtMs));
     }
 
     public static BrokerClusterConsensusCommand completeDrain(
             String operationId, String commandDigest, long expectedRevision,
-            long changedAtEpochMilli) {
+            long changedAtMs) {
         return new CompleteBrokerDrainCommand(new ClusterOperationId(operationId), commandDigest,
-                new ClusterRevision(expectedRevision), changedAtEpochMilli);
+                new ClusterRevision(expectedRevision), Instant.ofEpochMilli(changedAtMs));
     }
 
     public static BrokerClusterConsensusCommand forceDrain(
             String operationId, String commandDigest, long expectedRevision,
-            String reason, long changedAtEpochMilli) {
+            String reason, long changedAtMs) {
         return new ForceDrainOperationCommand(new ClusterOperationId(operationId), commandDigest,
-                new ClusterRevision(expectedRevision), reason, changedAtEpochMilli);
+                new ClusterRevision(expectedRevision), reason, Instant.ofEpochMilli(changedAtMs));
     }
 
     public static BrokerClusterConsensusCommand fenceEpoch(RoutingEpochFence operation) {

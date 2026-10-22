@@ -17,7 +17,7 @@ import java.time.Instant;
 /** 校验 Gateway 请求身份与已提交注册租约绑定。 */
 public final class GatewayRouteAuthorizationInterceptor implements BrokerRequestInterceptor {
     private final GatewayRegistry gatewayRegistry;
-    private final long gatewayTtlMillis;
+    private final Duration gatewayTtl;
     public GatewayRouteAuthorizationInterceptor(GatewayRegistry gatewayRegistry,
                                          Duration gatewayTtl) {
         if (gatewayRegistry == null || gatewayTtl == null || gatewayTtl.isZero()
@@ -25,7 +25,7 @@ public final class GatewayRouteAuthorizationInterceptor implements BrokerRequest
             throw new IllegalArgumentException("invalid Gateway route access configuration");
         }
         this.gatewayRegistry = gatewayRegistry;
-        this.gatewayTtlMillis = gatewayTtl.toMillis();
+        this.gatewayTtl = gatewayTtl;
     }
 
     @Override
@@ -43,7 +43,7 @@ public final class GatewayRouteAuthorizationInterceptor implements BrokerRequest
         }
         boolean authorized = gatewayRegistry.find(new GatewayId(request.gatewayId()))
                 .filter(endpoint -> endpoint.principalId().value().equals(principal.callerIdentity()))
-                .filter(endpoint -> Instant.now().toEpochMilli() - endpoint.lastSeenAt().toEpochMilli() < gatewayTtlMillis)
+                .filter(endpoint -> Instant.now().toEpochMilli() - endpoint.lastSeenAt().toEpochMilli() < gatewayTtl.toMillis())
                 .isPresent();
         if (!authorized) {
             throw new SecurityException("Gateway route lease is missing or expired");

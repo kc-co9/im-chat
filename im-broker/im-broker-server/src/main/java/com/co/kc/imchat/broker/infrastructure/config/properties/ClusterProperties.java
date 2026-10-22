@@ -18,7 +18,7 @@ public class ClusterProperties {
     /**
      * Gossip 初始种子节点地址，地址格式为 {@code host:port}。
      * <p>
-     * Broker 启动时通过种子节点加入集群，后续也会从 Gossip 状态中发现其他 Broker。
+     * Broker 启动时通过种子节点发现 Gossip 观察状态，后续也会从 Gossip 状态中发现其他 Broker。
      */
     private List<String> seedAddresses = new ArrayList<>();
 
@@ -32,7 +32,7 @@ public class ClusterProperties {
     /**
      * 单次 Gossip 同步请求的超时时间，单位为毫秒。
      */
-    private int gossipTimeoutMillis = 3000;
+    private int gossipTimeoutMs = 3000;
 
     /**
      * Gossip 删除标记的保留时间，单位为毫秒。
@@ -40,7 +40,7 @@ public class ClusterProperties {
      * 删除标记需要保留一段时间，以便将删除状态传播到其他 Broker；超时后可从本地状态中清理。
      * 该值应大于 Broker 允许离线后重新加入集群的最长时间，避免旧状态重新传播。
      */
-    private long gossipRemovedTtlMillis = 300000;
+    private long gossipRemovedTtlMs = 300000;
 
     /**
      * 获取每轮 Gossip 使用的有效扇出数量。

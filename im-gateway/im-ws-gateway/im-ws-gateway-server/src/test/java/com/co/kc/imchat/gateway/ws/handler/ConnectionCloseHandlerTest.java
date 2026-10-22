@@ -12,6 +12,7 @@ import com.co.kc.imchat.gateway.ws.security.GatewayBrokerAuthorizer;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 
 import java.time.Duration;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -99,6 +100,6 @@ class ConnectionCloseHandlerTest {
     }
 
     private BoltRequestContext requestContext() {
-        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", null);
+        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", null, false, Set.of());
     }
 }

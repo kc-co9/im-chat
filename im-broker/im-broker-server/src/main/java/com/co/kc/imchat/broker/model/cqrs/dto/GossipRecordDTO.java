@@ -4,6 +4,7 @@ import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.broker.model.enums.DiagnosticStatus;
 
 import java.time.Instant;
+import java.time.Duration;
 
 /**
  * 单次 Broker Gossip 同步诊断记录。
@@ -12,7 +13,7 @@ import java.time.Instant;
  * @param target 目标 Broker 地址
  * @param status 执行状态
  * @param processedCount 处理条目数
- * @param durationMillis 耗时毫秒数
+ * @param duration 耗时
  * @param errorSummary 截断后的错误摘要
  */
 public record GossipRecordDTO(
@@ -20,7 +21,7 @@ public record GossipRecordDTO(
         String target,
         DiagnosticStatus status,
         Integer processedCount,
-        Long durationMillis,
+        Duration duration,
         String errorSummary
 ) {
     public GossipRecordDTO {
@@ -30,9 +31,9 @@ public record GossipRecordDTO(
                 "diagnostic numeric and status properties must not be null",
                 status,
                 processedCount,
-                durationMillis);
+                duration);
         AssertUtils.argTrue("processedCount must not be negative", processedCount >= 0);
-        AssertUtils.argTrue("durationMillis must not be negative", durationMillis >= 0);
+        AssertUtils.argTrue("duration must not be negative", !duration.isNegative());
         if (errorSummary != null && errorSummary.length() > 256) {
             errorSummary = errorSummary.substring(0, 256);
         }

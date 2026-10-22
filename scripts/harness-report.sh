@@ -157,6 +157,7 @@ performance_issues="$(awk -F'|' '/^\| HF-[0-9]+ / && $3 ~ /PERFORMANCE/ && $7 !~
 verification_files=("$ROOT_DIR"/.harness/verifications/*.json)
 verification_json=""
 failed_verifications=()
+incomplete_verifications=false
 if [[ -e "${verification_files[0]}" ]]; then
   for file in "${verification_files[@]}"; do
     freshness="$(verification_freshness "$file")"
@@ -167,8 +168,13 @@ if [[ -e "${verification_files[0]}" ]]; then
     ' "$file" "$freshness")"
     [[ -n "$verification_json" ]] && verification_json+=","
     verification_json+="$enriched_verification"
-    if [[ "$freshness" == "fresh" ]] && rg -q '"status":"failed"' "$file"; then
-      failed_verifications+=("$(sed -E 's/.*"mode":"([^"]+)".*/\1/' "$file")")
+    if [[ "$freshness" == "fresh" ]]; then
+      verification_status="$(ruby -rjson -e 'print JSON.parse(File.read(ARGV.fetch(0)))["status"]' "$file")"
+      case "$verification_status" in
+        failed) failed_verifications+=("$(sed -E 's/.*"mode":"([^"]+)".*/\1/' "$file")") ;;
+        passed) ;;
+        *) incomplete_verifications=true ;;
+      esac
     fi
   done
 fi
@@ -190,6 +196,11 @@ elif [[ "$overall_status" == "passed" \
     && "$full_freshness" != "fresh" \
     ]]; then
   overall_status="stale"
+fi
+
+# fresh 未完成、partial 或未知状态不能因其他证据有效而发布绿色结果。
+if [[ "$overall_status" == passed && "$incomplete_verifications" == true ]]; then
+  overall_status=incomplete
 fi
 
 e2e_verification="$ROOT_DIR/.harness/verifications/e2e.json"

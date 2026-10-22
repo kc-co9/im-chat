@@ -10,7 +10,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 
-/** Registry 传输模型到诊断快照的声明式转换。 */
+/** 已注册领域对象到诊断快照的声明式转换。 */
 @Mapper
 public interface BrokerDiagnosticAppTransformer {
     BrokerDiagnosticAppTransformer INSTANCE = Mappers.getMapper(BrokerDiagnosticAppTransformer.class);

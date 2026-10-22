@@ -12,6 +12,7 @@ import com.co.kc.imchat.broker.sdk.routing.GatewayRouteSnapshotChecksum;
 import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -32,16 +33,16 @@ import java.util.function.LongSupplier;
 public final class GatewayRouteSnapshotCoordinator implements GatewayRouteSnapshotSync, AutoCloseable {
     private static final int DEFAULT_CHUNK_SIZE = 1_000;
     private static final int DEFAULT_MAX_CONCURRENT_SENDS = 4;
-    private static final long DEFAULT_EVENT_TTL_MILLIS = 10_000L;
-    private static final long DEFAULT_MAX_JITTER_MILLIS = 250L;
+    private static final long DEFAULT_EVENT_TTL_MS = 10_000L;
+    private static final long DEFAULT_MAX_JITTER_MS = 250L;
     private static final int MAX_BACKPRESSURE_ATTEMPTS = 3;
 
     private final String gatewayId;
     private final ConnectionRegistry connectionRegistry;
     private final SnapshotClient client;
     private final int chunkSize;
-    private final long eventTtlMillis;
-    private final long maxJitterMillis;
+    private final Duration eventTtl;
+    private final Duration maxJitter;
     private final LongSupplier clock;
     private final Delay delay;
     private final ExecutorService executor;
@@ -52,7 +53,7 @@ public final class GatewayRouteSnapshotCoordinator implements GatewayRouteSnapsh
                                            BrokerClient brokerClient) {
         this(gatewayId, connectionRegistry, new BrokerSnapshotClient(brokerClient),
                 DEFAULT_CHUNK_SIZE, DEFAULT_MAX_CONCURRENT_SENDS,
-                DEFAULT_EVENT_TTL_MILLIS, DEFAULT_MAX_JITTER_MILLIS,
+                DEFAULT_EVENT_TTL_MS, DEFAULT_MAX_JITTER_MS,
                 System::currentTimeMillis, duration -> Thread.sleep(duration.toMillis()));
     }
 
@@ -61,13 +62,13 @@ public final class GatewayRouteSnapshotCoordinator implements GatewayRouteSnapsh
                                     SnapshotClient client,
                                     int chunkSize,
                                     int maxConcurrentSends,
-                                    long eventTtlMillis,
-                                    long maxJitterMillis,
+                                    long eventTtlMs,
+                                    long maxJitterMs,
                                     LongSupplier clock,
                                     Delay delay) {
         if (gatewayId == null || gatewayId.isBlank() || connectionRegistry == null
                 || client == null || chunkSize <= 0 || maxConcurrentSends <= 0
-                || eventTtlMillis <= 0L || maxJitterMillis < 0L
+                || eventTtlMs <= 0L || maxJitterMs < 0L
                 || clock == null || delay == null) {
             throw new IllegalArgumentException("invalid Gateway route snapshot coordinator configuration");
         }
@@ -75,8 +76,8 @@ public final class GatewayRouteSnapshotCoordinator implements GatewayRouteSnapsh
         this.connectionRegistry = connectionRegistry;
         this.client = client;
         this.chunkSize = chunkSize;
-        this.eventTtlMillis = eventTtlMillis;
-        this.maxJitterMillis = maxJitterMillis;
+        this.eventTtl = Duration.ofMillis(eventTtlMs);
+        this.maxJitter = Duration.ofMillis(maxJitterMs);
         this.clock = clock;
         this.delay = delay;
         this.executor = Executors.newFixedThreadPool(maxConcurrentSends, runnable -> {
@@ -134,7 +135,7 @@ public final class GatewayRouteSnapshotCoordinator implements GatewayRouteSnapsh
                     new GatewayRouteSnapshotAckParams(gatewayId, state.epoch(),
                             snapshot.routeRevision(), snapshot.userIds().size(),
                             GatewayRouteSnapshotChecksum.calculate(snapshot.userIds()),
-                            clock.getAsLong() + eventTtlMillis));
+                            Instant.ofEpochMilli(clock.getAsLong()).plus(eventTtl).toEpochMilli()));
             if (acknowledgement.status() == GatewayRouteSnapshotAckResult.Status.REJECTED
                     || acknowledgement.status()
                     == GatewayRouteSnapshotAckResult.Status.NOT_LEADER) {
@@ -162,12 +163,12 @@ public final class GatewayRouteSnapshotCoordinator implements GatewayRouteSnapsh
         List<List<Long>> chunks = chunks(userIds);
         String batchId = UUID.randomUUID().toString();
         String checksum = GatewayRouteSnapshotChecksum.calculate(userIds);
-        long deadline = clock.getAsLong() + eventTtlMillis;
+        Instant updateExpireAt = Instant.ofEpochMilli(clock.getAsLong()).plus(eventTtl);
         boolean routeMoved = false;
         for (int index = 0; index < chunks.size(); index++) {
             GatewayRouteSnapshotParams chunk = new GatewayRouteSnapshotParams(
                     gatewayId, state.epoch(), routeRevision, brokerId, batchId,
-                    index, chunks.size(), checksum, deadline, chunks.get(index));
+                    index, chunks.size(), checksum, updateExpireAt.toEpochMilli(), chunks.get(index));
             AcceptGatewayRoutesResult result = sendWithBackpressure(chunk, brokerId);
             routeMoved |= result.status() == AcceptGatewayRoutesResult.Status.ROUTE_MOVED;
             if (result.status() == AcceptGatewayRoutesResult.Status.INVALID_BATCH
@@ -183,20 +184,21 @@ public final class GatewayRouteSnapshotCoordinator implements GatewayRouteSnapsh
 
     private AcceptGatewayRoutesResult sendWithBackpressure(
             GatewayRouteSnapshotParams chunk, String brokerId) {
+        Instant updateExpireAt = Instant.ofEpochMilli(chunk.updateExpireAtMs());
         for (int attempt = 0; attempt < MAX_BACKPRESSURE_ATTEMPTS; attempt++) {
             AcceptGatewayRoutesResult result = client.send(chunk);
             if (result.status() != AcceptGatewayRoutesResult.Status.RETRY_AFTER) {
                 return result;
             }
-            long exponentialDelay = 50L << attempt;
+            long exponentialDelayMs = 50L << attempt;
             long jitter = Math.floorMod(java.util.Objects.hash(
                     gatewayId, chunk.routingEpoch(), brokerId, attempt), 51L);
-            long delayMillis = Math.max(result.retryAfterMillis(), exponentialDelay) + jitter;
-            if (clock.getAsLong() + delayMillis >= chunk.eventDeadline()) {
+            long delayMs = Math.max(result.retryAfterMs(), exponentialDelayMs) + jitter;
+            if (!Instant.ofEpochMilli(clock.getAsLong()).plusMillis(delayMs).isBefore(updateExpireAt)) {
                 break;
             }
             try {
-                delay.pause(Duration.ofMillis(delayMillis));
+                delay.pause(Duration.ofMillis(delayMs));
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException(
@@ -207,11 +209,11 @@ public final class GatewayRouteSnapshotCoordinator implements GatewayRouteSnapsh
     }
 
     private void pauseBeforeSend(long epoch, String brokerId) {
-        if (maxJitterMillis == 0L) {
+        if (maxJitter.isZero()) {
             return;
         }
         long jitter = Math.floorMod(java.util.Objects.hash(gatewayId, epoch, brokerId),
-                maxJitterMillis + 1L);
+                maxJitter.toMillis() + 1L);
         try {
             delay.pause(Duration.ofMillis(jitter));
         } catch (InterruptedException exception) {

@@ -7,8 +7,8 @@ import java.io.Serializable;
 /**
  * drain 开始时观察到的 Gateway 注册水位值对象。
  *
- * <p>该水位用于标记冻结时已经被 Gateway 接受的注册进度，帮助恢复流程区分冻结前后的
- * 路由事件。它是单调计数事实，不是连接路由 revision，也不直接表示当前在线连接数。</p>
+ * <p>该水位保存冻结时 Broker 注册表观察到的 Gateway lastSeenAt 毫秒值，不表示
+ * Gateway 已确认的注册进度，也不是连接路由 revision 或连接数量。</p>
  */
 public record GatewayRegistrationWatermark(Long value) implements Serializable {
 

@@ -4,12 +4,12 @@
 
 - 目标：完成 Broker DDD、应用编排、接口/基础设施与请求责任链的初轮 Review 收口，刷新真实验证证据。
 - 范围：im-broker、受影响的 Gateway/Message 契约、im-raft/im-cache、Architecture Test、E2E、routing-ha、Harness 与当前文档。
-- 非目标：不提交 Git，不把本机开发测试当作生产容量结论，不伪造独立 Reviewer 响应。2026-10-10 用户授权使用子代理进行独立 Review。生产候选容量定规格由[独立容量计划](../active/2026-10-10-broker-routing-capacity.md)承接。
+- 非目标：不提交 Git，不把本机开发测试当作生产容量结论，不伪造独立 Reviewer 响应。2026-10-10 用户授权使用子代理进行独立 Review。生产候选容量不在本次交付范围。
 - 验收：Broker 全模块、architecture、startup、behavior、e2e、routing-ha、quick、clean、full、cleanup/handoff 取得当前证据；独立 Reviewer 针对本计划代码/集成范围复评并记录结论。容量资格不由本计划宣称。
 - 已批准决策：领域 model/repository/service；应用层直接编排；Adapter 接收领域值；缓存使用 JetCache；责任链按配置顺序执行，业务 Handler 位于链尾，不保留 stage、Terminal 或 support 空接口。
 - 环境：Java 21、Maven 3.8.4、Node 20、Docker；仅清理已确认的生成目录和 Harness 自有资源。
 - 计划压缩：原始 1523 行任务与过程证据完整保存在 [Review 历史](../history/2026-10-09-broker-review-history.md)，原 PROGRESS 在 [进度历史](../history/2026-10-09-broker-progress-history.md)。历史材料不是第二份活跃计划。
-- 原任务映射：T1–T9、T11–T12 的实现记录保留历史；本计划的 T13 统一刷新其受影响验收。原 T10 的完整容量条件于 2026-10-10 用户确认后移交[独立容量计划](../active/2026-10-10-broker-routing-capacity.md)，未取消或降低。范围拆分是验收管理变更，不代表容量已通过。
+- 原任务映射：T1–T9、T11–T12 的实现记录保留历史；本计划的 T13 统一刷新其受影响验收。原 T10 的生产容量条件不在本次交付范围；本地 HA 模拟单独归档，未声明生产容量已通过。
 
 ## 事实源
 

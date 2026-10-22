@@ -116,7 +116,7 @@ class RouteBrokerExecutionInterceptorTest {
 
     private RouteBrokerExecutionInterceptor interceptor(
             String brokerId, BrokerClusterState state, LocalRoutingLeaseService leaseService) {
-        return new RouteBrokerExecutionInterceptor(brokerId, new FixedRepository(state),
+        return new RouteBrokerExecutionInterceptor(brokerId, new FixedRepository(state).asAdapter(),
                 leaseService, () -> "10.0.0.9:18020");
     }
 
@@ -170,7 +170,7 @@ class RouteBrokerExecutionInterceptorTest {
         };
     }
 
-    private record FixedRepository(BrokerClusterState committedState)
+    private record FixedRepository(BrokerClusterState getCommittedState)
             implements BrokerClusterConsensusStub {
         @Override
         public Optional<BrokerClusterOperation> findOperation(ClusterOperationId operationId) {
@@ -178,7 +178,7 @@ class RouteBrokerExecutionInterceptorTest {
         }
 
         @Override
-        public CompletionStage<BrokerClusterConsensusResult> submitChange(BrokerClusterConsensusCommand command) {
+        public CompletionStage<BrokerClusterConsensusResult> submitCommand(BrokerClusterConsensusCommand command) {
             throw new UnsupportedOperationException();
         }
     }

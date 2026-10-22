@@ -1,748 +1,326 @@
 # im-broker-server
 
-Broker 运行服务，提供 Bolt RPC 入口、权威路由控制面、运行态注册表、Broker 间 Gossip observation 同步，以及独立端口上的诊断和受控集群管理接口。
+Broker 运行服务，负责用户到 Gateway 的路由、精确帧投递、权威集群控制面和运行态观察同步，提供 Bolt RPC 与独立管理 HTTP 入口。本模块不保存聊天历史、不持有 WebSocket Channel 或 `connectionId` 集合，也不访问业务服务数据库。
 
-## 代码结构
+本文用于构建、启动、配置和排障；内部拓扑、数据归属、状态转换及故障一致性以 [Broker Architecture](../ARCHITECTURE.md) 为准。
 
-```text
-broker/
-  application/
-    cluster/                 # 集群变更、恢复确认与共识读取用例
-    local/                   # 本机 Lease 安装及连接路由接收/清理
-    frame/                   # 帧分发及其连接路由查找
-    gossip/                  # 注册事实到 Gossip observation 的应用编排
-    diagnostic/              # 运行态诊断查询
-    policy/                  # 身份授权、请求准入和提交事实校验等应用策略
-  model/cqrs/command/        # 应用命令及可序列化、可重放的 Raft 共识命令
-  model/cqrs/dto/            # 应用查询和诊断传输结果
-  model/cqrs/event/          # Registry 已发生事实的事件模型
-  model/cqrs/result/         # 应用命令协调结果
-  model/cqrs/query/          # 只读检查用例的查询条件
-  model/enums/               # 跨层边界枚举
-  model/io/                  # HTTP Request/Response 边界模型
-  domain/cluster/model/      # BrokerCluster 聚合、实体、值对象及领域决策
-  domain/cluster/repository/ # BrokerRegistry 存取契约
-  domain/cluster/service/    # Broker 故障观察领域服务
-  domain/authority/model/    # epoch Lease、fence ACK、quorum evidence 等领域对象
-  domain/authority/service/  # 本机 Lease admission 与 fence 线性化领域服务
-  domain/authority/repository/ # 本机 fence 水位资源库接口
-  domain/connection/model/   # GatewayRouteTable、ConnectionRegistration 与 revision/tombstone
-  domain/connection/repository/ # 连接和 Gateway Registry 存取契约
-  infrastructure/config/     # 按 Cluster、Lease、Lookup、Delivery、Drain 等能力装配
-  infrastructure/gossip/     # Gossip store、Spring publisher/listener 和 Registry adapter
-  infrastructure/diagnostic/ # Registry 诊断聚合与有界 Gossip Tracker
-  infrastructure/monitoring/ # Micrometer 指标实现
-  infrastructure/chain/      # BrokerRequestInterceptorChain、调用上下文及准入节点
-  infrastructure/registry/   # InMemory Registry adapter、注册和过期清理任务
-  interfaces/handler/        # Broker/Gateway/Connection/Frame RPC Handler
-  interfaces/http/management # 诊断、cluster-state 与受控 operation HTTP Controller
-  support/context/           # 请求上下文、ThreadLocal holder、入口权限注解及管理拦截器
-  support/exception/         # 跨层可识别的 Broker 内部异常
-  support/security/          # Broker RPC 入口识别出的调用方身份
-  adapter/cluster/            # BrokerClusterAdapter 集群技术入口：共识、成员配置、远端进度
-                           # LocalBroker 本机角色、已知 Leader 地址和本机应用进度入口
-  adapter/cluster/raft/       # Raft 状态机、Codec 与快照实现
-  adapter/cluster/consensus/  # Adapter 的共识提交契约、结果与状态
-  adapter/cluster/membership/ # Adapter 的成员配置与变更结果
-  infrastructure/authority/  # 本机 fence 水位文件持久化实现
-  transformer/application/   # Registry 状态到诊断 DTO
-  transformer/domain/        # 领域聚合与 SDK 只读投影转换
-  transformer/infrastructure/# Registry 等技术状态转换
-  transformer/interfaces/    # 帧/HTTP 等接口边界转换
-```
+## 阅读入口
 
-路由管理由 `BrokerClusterAppService` 编排，成员管理由 `BrokerMembershipAppService` 编排。
-Lease 和 fence 用例由 BrokerClusterAppService 连续编排，首次授权与续租共用
-activateLease 的 prepare、quorum-backed 签发、install 顺序。关闭旧 grant 的共识读取、
-fence 恢复和持久化也在该应用服务中执行，不相互调用其他应用服务。
-BrokerClusterAdapter 只提供单次 prepare/install/fence RPC、ReadIndex 和共识提交；
-RoutingLeaseGrantService 持有任期/序列及签发资格规则，不读取 SDK、执行 RPC 或持久化。
-RaftRoutingAuthorityLeaseCoordinator 和 BrokerLeaseAdapter 已删除，原六个 lease port 不恢复。
-quarantine 使用配置层拥有的专用 ScheduledExecutorService 非阻塞调度，不使用公共线程池，
-不注入自定义等待函数。调度拒绝返回失败，不继续提交新拓扑；测试控制调度完成时机，
-等待窗口和协议不变。
-集群 Adapter 的提交入口按职责命名：`submitChange` 提交通用共识变更，
-`registerOperation` 通过 Begin 登记操作事实，`commitOperation` 通过 Commit 执行已登记操作的
-拓扑变更。后两者复用通用提交入口，不等于直接执行 Raft 成员配置或推进操作成功终态。
-路由写入口先转换基础类型命令，再读取已提交聚合；新请求 epoch 冲突和领域拒绝通过
-Result 的 conflict/failure 工厂返回，不触发 fence 或共识写入。历史重试的返回 epoch
-以已登记 operation 为准，结果投影和摘要命令映射由 Application Transformer 完成。
-排空与故障恢复每轮读取共识进度；只删除简单时间/结果包装，不把有持久化步骤的恢复方法内联。
-成员用例使用 `addLearner` 加入 learner、`confirmLearner` 确认其已应用到 quorum ReadIndex
-并提交 READY 状态，再通过 promote 晋升为 voter。`confirmLearner` 不执行日志同步；
-现有 `/complete-learner-sync` HTTP 路径、Command/Result 类型和持久化操作类型保持不变。
-`LearnerProgressAppService` 编排本机已应用 quorum 索引查询，返回已装配的本机集群/节点身份；
-Bolt Handler 不持有责任链，不读取基础设施配置。`BrokerRequestConfiguration` 为每个 operation
-按声明顺序组装前置节点，再追加业务 Handler 节点；Bolt Processor 只注册完整链入口。
-路由执行节点环绕业务 Handler，Lease 保护真实副作用。管理写权限注解、scope、请求上下文、
-ThreadLocal holder 和拦截器统一归 `support/context`；该目录只承载请求上下文与入口访问控制，
-拦截器可读取管理配置，但不调用应用服务、领域、Adapter 或 Registry 实现。
-MVC 注册配置仍归 `infrastructure/config`。
-管理 Controller 在开始异步编排前捕获请求上下文；拦截器在异步处理开始时清理初始 Servlet
-线程，并在同步完成时清理，避免线程池复用泄漏请求事实。
-管理 Controller 在开始异步编排前读取请求上下文；拦截器在异步处理开始时清理初始 Servlet
-线程，并在同步完成时清理，避免线程池复用泄漏上一个请求的上下文。
-各用例读取领域聚合，通过 `BrokerClusterAdapter` 提交操作；共识和 membership 契约归属于 Adapter，
-成员配置操作直接使用具体 Adapter，不保留无生产调用方的 BrokerConsensusMembershipClient。
-共识结果只承载 status、operation、leaderEndpoint、message；成员变更结果只承载 status、
-leaderEndpoint、message。结果不附带集群或成员配置快照，查询通过 committedState 和
-consensusMembership 独立完成，避免仅为构造结果重复读取本机状态。
-目标 learner 的应用索引也由同一 Adapter 通过 Broker Bolt 接口查询，并核对 brokerId
-与非负索引。不再保留 LearnerAppliedIndexClient 接口或单独的 LearnerProgressAdapter。
-Adapter 使用 im-raft 的 RaftPeerClient 封装该 RPC 传输，不直接持有 BoltRpcClient；
-旧 epoch 的本机隔离请求由 BrokerClusterAdapter.fenceBroker 发起，直接复用 BoltInvoker，
-不把 Broker fence 业务放入 im-raft。FencePeerClient 和 BoltFencePeerClient 已删除；
-BrokerFenceTransformer 完成领域事实与 RPC 载荷转换，应用服务保留 ACK 身份校验和 quarantine。
-请求在配置层拥有的有界 peerExecutor 上执行，队列拒绝转为未确认 ACK，不在调用线程执行 RPC。
-Broker 操作枚举、SDK 载荷和响应身份校验仍归 Broker，插件不引用业务模型。
-通用 Raft 节点生命周期、日志复制、ReadIndex 和单步成员变更由 `im-plugin/im-raft` 承担。
-不再增加只有单一调用方的 Engine、Coordinator 或二次 Service 转发。Controller 与
-生命周期任务不直接拼装这套提交协议。
+| 想了解 | 文档 |
+|---|---|
+| Broker 能力、SDK 调用与路由拒绝 | [Broker README](../README.md)、[SDK README](../im-broker-sdk/README.md) |
+| 用例入口和状态所有者 | [应用用例与入口](../ARCHITECTURE.md#应用用例与入口)、[DDD 模型与边界](../ARCHITECTURE.md#ddd-模型与边界) |
+| RouteBroker、连接快照和 tombstone | [RouteBroker 与连接路由](../ARCHITECTURE.md#routebroker-与连接路由) |
+| 成员变更、排空和故障恢复 | [成员变化与路由恢复](../ARCHITECTURE.md#成员变化与路由恢复) |
+| Raft、Lease 与 Gossip 的一致性边界 | [Raft 权威状态流程](../ARCHITECTURE.md#raft-权威状态流程)、[Gossip 一致性](../ARCHITECTURE.md#gossip-一致性) |
+| 项目环境与本地编排 | [根 README](../../README.md#本地运行)、[本地运行编排](../../deploy/local/README.md) |
 
-重试先匹配 operation 的摘要、类型与目标；新请求才检查当前 epoch 与节点前置状态。
-Begin 共识命令登记操作类型及必要事实，不修改 BrokerNode；后续 Commit 命令只携带 operationId、
-请求摘要、预期 revision 和提交时间，由聚合读取已登记 operation 并执行内部实体行为。
-九类具名聚合行为各自接收领域 Intent，例如 `addLearner(LearnerJoinIntent)`、
-`activate(BrokerActivationIntent)` 和 `drain(BrokerDrainIntent)`。Intent 只携带该行为必需的事实，
-不包含调用方计算的目标拓扑，也不能填写其他操作的专属参数；操作类型由具体 Intent 固定提供。
-应用服务显式构建 Intent 后调用聚合，领域层不接收应用 Command。已有 operation 通过
-`checkRepeatedIntent` 核对摘要、类型、目标及失败阶段；只对新意图校验节点前置状态和 revision。
-`BrokerChangeIntent` 仅提供重复意图匹配所需的三个属性，操作登记 Proposal 在共识重放时复用该契约。
-`BrokerNode` 使用普通类表达聚合内实体，身份和端点固定，成员角色与流量状态由具名行为修改。
-聚合不为准备操作复制目标拓扑；`joinAsLearner`、激活、排空或成员角色转换仅在 Commit 内执行。
-公开 `findNode` 和 `brokers` 返回分离节点副本，不能用读取结果绕过聚合改变权威状态。
-Builder 与持久化/查询快照深拷贝节点；Proposal 和 operation 不保存节点列表，历史记录只有冻结事实。
-只有共识成功提交后当前节点状态才改变。`List.copyOf` 仅保护集合结构，不能隔离可变节点。
+## 运行概览
 
-### 一次 learner 加入的状态归属
+Broker 把「消息业务」与「在线连接位置」分开：Message 保存消息业务事实，Gateway 持有 WebSocket Channel，Broker 只负责把用户请求送到 Message、把下行送到正确 Gateway。三 Broker 示例和基础术语见 [Broker 入口](../README.md#阅读路线)。
 
-当前采用 Begin 登记事实、Commit 执行实体行为的协议，不再提前计算或保存完整目标拓扑。
-operation 持久化新增节点端点、learner 成员端点、最低 voter 数量与 drain 证据等该操作必要事实。
-Commit 只用这些已提交事实校验和修改节点，不读取当前配置、当前时间或远端状态来决定变更。
-节点角色与流量资格由 `BrokerNode.checkOperation` 判断，其具名转换复用同一规则；
-聚合继续校验节点存在、端点不可变、至少一个 ACTIVE Broker 和最低 voter 数量。
-节点允许转换不代表集群允许该变更；Begin 和 Commit 均组合实体资格与聚合约束。
-operation 的创建和完成时间在领域构建及 JSON 重建时统一到毫秒精度，允许同毫秒完成。
-命令映射直接使用调用方时间，不用创建时间加一毫秒或 Math.max 修正完成时间；
-真实完成时间早于创建时间仍由领域拒绝，系统时钟回拨不会被隐藏。
-
-成员应用用例（包括 `addLearner`）统一返回业务判断结果：新请求 epoch 不匹配为 `CONFLICT`，
-资格或端点绑定不满足为 `REJECTED`，不作为参数异常抛出。已登记操作先核对幂等身份，
-不因当前 epoch 已变化而拒绝历史重试；业务拒绝不提交 Begin、不调用成员变更。
-epoch 与端点前置判断失败直接构造应用结果，不为复用转换器构造共识结果或重复读取已提交投影。
-`AddLearnerResult`、`CompleteLearnerSyncResult` 使用 `BrokerClusterConsensusStatus` 枚举，
-HTTP Transformer 转为现有响应中的状态名称字符串。固定 epoch 冲突和端点拒绝说明由
-结果工厂保存；领域失败通过 failure 工厂保留领域状态、原因和已关联操作的 epoch，
-调用方不传空字段，也不把领域失败包装为共识结果。结果工厂直接接收 ClusterOperationId、
-RoutingEpoch，在工厂内部转换基础值。共识结果到应用结果的字段映射统一归
-BrokerClusterAppTransformer，使用 addLearnerResultFrom 等名称，结果类不承载 from*/*From
-或以 outcome 重命名的转换方法，应用层不为映射增加成功/失败分支。
-Leader 地址字段、访问器以及 HTTP 响应统一命名为 leaderEndpoint，Ops 客户端与前端类型同步，
-不保留 leaderHint 别名；该改名不改变原有地址内容或 Leader 重试规则。
-同步请求在聚合接受后，依据领域决定的 duplicate 判断是否需要远端证据，
-不在本地域登记后重新查询 exists；历史重试沿用原判断，新操作必须获取同步证据。
-应用服务用 completedFuture(decision).thenCompose 衔接该分支，再统一 Commit、完成操作和结果转换。
-进度检查的固定非 Leader 原因由 notLeader 工厂维护；rejected 工厂接收具体 message，
-区分未加入 learner 集合与日志未追上两种原因，统一维护状态对应的空字段。
-本机能力经 getLocalBroker 进入 LocalBroker，使用 isLeader、leaderEndpoint、fetchQuorumReadIndex
-查询同一个 Raft 实例，不缓存另一份角色或进度，也不独立管理生命周期。
-集群提交、成员变更、领导权确认及远端查询保留在 BrokerClusterAdapter；fetchQuorumReadIndex
-接收目标 Broker，不要求目标属于 learner。该值是已取得且应用的 quorum ReadIndex，不保证是
-该节点最新应用位置。Bolt 操作为 FETCH_QUORUM_READ_INDEX/fetchQuorumReadIndex，请求响应使用
-QuorumReadIndexParams/Result，响应字段为 fetchQuorumReadIndex；无旧协议别名，节点版本须匹配。
-该结果可能随换届变化，不能代替 confirmLeadership 获取多数派 ReadIndex 证据。
-
-| 对象/步骤 | 表达什么 | 是否改变权威节点状态 |
+| 运行机制 | 解决的问题 | 不能替代的能力 |
 |---|---|---|
-| LearnerJoinIntent | 目标身份、摘要、预期 revision、端点和时间 | 否 |
-| addLearner | 先识别重复操作，再校验资格并登记操作事实 | 否 |
-| BrokerClusterOperationProposal | 待登记操作事实，供 Begin 共识重放 | 否 |
-| BrokerClusterOperation | Begin 已登记的操作、阶段和恢复事实 | Begin 推进操作元数据，不修改节点 |
-| Adapter.addLearner | 执行实际 Raft learner 配置变更 | 改变 Raft 配置，尚不提交 Broker 目标拓扑 |
-| commitOperation | 校验并调用内部节点 joinAsLearner | 是，同时推进 revision 和操作阶段 |
+| Raft | 多数派提交拓扑、epoch、成员和 operation | 不记录每次心跳、连接位置或逐个实时 Lease |
+| Gossip | 用 digest/delta 与 tombstone 传播运行观察 | 不决定 RouteBroker，不授权副作用，不产生故障票 |
+| Bolt / SDK | 跨进程调用 / 缓存完整 committed state 并选择 RouteBroker | 调用成功不等于客户端 ACK；RPC 超时不证明未执行 |
+| 本机 Lease / fence | 在执行副作用时检查许可与隔离水位 | ACTIVE 状态本身不是执行许可 |
 
-```mermaid
-sequenceDiagram
-    participant App as Membership AppService
-    participant Domain as BrokerCluster
-    participant Adapter as BrokerClusterAdapter
-    participant Raft as Raft StateMachine
-    App->>Domain: addLearner(intent)
-    Domain->>Domain: 查重、校验、登记操作事实
-    Domain-->>App: decision(operation)
-    App->>Adapter: submitOperation(operation)
-    Adapter->>Raft: Begin(proposal)
-    Raft->>Raft: 登记 operation，当前拓扑不变
-    Adapter-->>App: accepted operation
-    App->>Adapter: addLearner(membershipEndpoint)
-    Adapter-->>App: membership result
-    App->>Adapter: commit(operation, changedAt)
-    Adapter->>Raft: Commit(id, digest, revision, time)
-    Raft->>Raft: 校验后调用内部 BrokerNode.joinAsLearner
+高频观察允许逐步收敛，流量归属却必须共同认可；否则不同 Broker 可能同时接管同一用户。健康报告用于提出故障操作，Raft 提交和旧 epoch 隔离才决定接管顺序。应用服务安排外部调用与恢复，领域对象保护规则，Adapter 接入 JRaft、Bolt 和 Gateway；详细状态所有者见 [Architecture](../ARCHITECTURE.md#ddd-模型与边界)。
+
+## 构建与启动
+
+以下命令均在仓库根目录执行。需要 JDK 21、Maven 3.8.4+ 且低于 4.0；使用本地编排还需 Docker 27+、Docker Compose 2.31+。完整环境要求和 UI 构建工具见[根 README](../../README.md#环境)。
+
+当前根 POM 管理私有候选 `com.co.kc.thirdparty.sofa:jraft-core:1.4.1-imchat.1`，仅安装在本机隔离仓库 `/tmp/jraft-artifact-m2`，尚未发布到 Registry。下列通用构建/编排命令以该制品可解析为前提；其他机器不能直接用普通 `mvn` 完成构建，须先按[制品构建材料](../../third-party/jraft-applied-membership/README.md)准备源码构建并隔离安装，或等待获准 Registry 发布。本机候选验证命令需显式添加 `-Dmaven.repo.local=/tmp/jraft-artifact-m2`，这不表示生产发布、双构建或依赖输入锁已完成。
+
+```bash
+mvn clean package
+./scripts/local_up.sh        # 只启动 infra，适合随后在 IDE 启动 Broker
+./scripts/local_up.sh full   # 构建 JAR/镜像并启动全部应用
+./scripts/local_down.sh      # 停止，保留持久化数据卷
 ```
 
-图中成员变更失败不会执行 Commit；确定拒绝和未知结果按已有单步/两步恢复规则处理。
-相同请求重试先返回现有 operation，应用层根据阶段继续，不重复执行已完成的外部步骤。
-本次日志格式为 v2，snapshot 为 v3。项目尚未上线，不实现旧格式混合重放；本地旧 Raft 数据目录
-不能与本版本混用，应按既有本地/CI 状态重建流程重新初始化，不能在真实有业务状态的环境直接删数据。
-领域决策的可缺省属性按状态约束：APPLIED 必有 operation、reason 为空；DUPLICATE 两者必有；
-REJECTED/CONFLICT 可以没有关联 operation，但必须有 reason；UNAVAILABLE 没有 operation。
-这些属性不使用 `Optional` 字段；聚合的 `findNode`、`findOperation` 查询结果继续使用 `Optional`。
-已提交的成员操作不重复执行外部成员变更，FAILED 不作为成功提交返回。
-单步成员变更的确定拒绝记录 FAILED；晋升/降级的两步配置变更发生拒绝时可能部分成功，
-继续保留 PENDING 供核对和恢复，不能提前放开下一项拓扑操作。
-`BrokerMembershipAppService.handleMembershipResult` 统一处理成员结果：接受后提交 operation，
-不确定或可能部分成功时保留 PENDING，可明确失败时提交 FAILED。operation.canFailOnRejection 表达类型策略，
-应用层判断成员拒绝是否明确，并负责共识提交；
-调用方不再传入含义不直观的 singleStep 布尔参数；失败命令映射由现有应用 Transformer 完成。
-drain/故障恢复在 REBUILDING_ROUTES、VERIFYING 等非终态期间继续阻止新拓扑意图，
-保证当前 epoch 的恢复调度不会因下一次变更而失去目标。
-排空恢复进入 VERIFYING 后，应用主流程直接推进完成提交；已有清理证据可在旧事件过期后复用，
-无需重复 cleanup。完成请求的幂等性由 BrokerCluster.completeDrain 保护，重复完成返回 DUPLICATE，
-不再次修改拓扑或增加 revision。路由恢复的汇总证据统一命名为 RouteRecoveryEvidence/recoveryEvidence。
-排空与故障恢复共用 operation.waitingForGatewayAcks/timedOut 表达 ACK 等待和期限；
-operation.needsRouteCleanup 结合操作类型、阶段、ACK 与证据决定是否清理。应用层保留超时后的用例策略：
-排空记录 FAILED、故障恢复登记降级意图；RPC、提交顺序及异常隔离不下沉领域层。
-故障路由恢复由 DrainProgress 汇总检查点、operation 判断等待与降级资格，聚合在日志应用时登记验证意图
-并决定完成终态。应用服务只提交证据、验证与完成请求，不构造降级原因或在两种终态提交之间选择。
-验证命令记录策略时长和时间，完成命令不携带目标阶段或错误原因；VERIFYING 重启恢复保留持久化降级意图。
-聚合保存故障重建证据时核对当前检查点，拒绝过期汇总；证据形成后禁止迟到 ACK 改写检查点，相同确认仍可幂等重试。
-内部命令格式为 v5，拒绝旧日志；快照字段未改，仍为 v6。公共 SDK 请求和结果形状保持不变。
+构建产物由本模块 [POM](pom.xml) 的 Spring Boot 插件生成 `*-exec.jar`。上述启动命令来自仓库编排脚本；仅调试 Broker 时，保持 infra 运行，在 IDE 启动 `com.co.kc.imchat.broker.ImBrokerApplication`。
 
-`application` 直接按 cluster、frame、local、gossip、diagnostic 稳定能力分组，AppService 完整拥有用例流程，
-不保留 application/service 中间目录和已空的 port 目录。Registry 存取接口归各领域包的 repository，
-GatewayRegistry 注册直接接收 GatewayRegistration，查询、心跳、注销、退役判断使用 GatewayId；
-入口经现有 Transformer 转换注册观察，实现不再接收四个基础参数后重新构造领域对象。
-GatewayRegistration 的 gatewayId/host/port/principalId 分别使用 GatewayId/GatewayHost/GatewayPort/
-GatewayPrincipalId。principalId 表示认证主体，区别于进程身份；时间使用 Instant。
-SDK 和 Gossip 保留原 workloadIdentity 平铺字段，通过 Transformer 转换，Gossip 不直接序列化领域对象。
-内存实现归 infrastructure/registry；诊断直接由 BrokerDiagnosticAppService 查询，RouteLookup 调用
-BrokerClusterAdapter，Gateway 写帧也由现有 Adapter 直接使用 GatewayClient，不保留同形 port 和转发实现。
-ConnectionRegistry.register 接收升级后的 ConnectionRegistration，unregister 接收身份及版本/期限证据，
-不保留无版本和基础类型重载。查询统一为 find(UserId)，返回活跃注册及 revision、期限和观察时间。
-原 ConnectionRoute 合并进已有注册实体，删除 findRouteStates、sync 和查询时恢复无版本路由的路径。
-存储直接读取 GatewayRouteTable，用户到 Gateway 仅保留身份索引，无第二套注册状态。
-协议/应用入口转换领域参数，包装实现直接委托；公共 SDK 的字段由边界展开并保持原契约。
-公开用例入口统一使用 `*AppService`；只服务单一入口、没有
-独立调用方、生命周期或替换实现的步骤使用 AppService 私有方法表达，不建立 Engine、Coordinator、Executor
-或仅供测试替换的内部 interface。某个能力只有在出现多个稳定
-应用入口或独立一致性边界后才继续增加子包。诊断与注册事件观察分别位于 diagnostic、gossip 能力包。
-Gateway 快照、快照 ACK 和排空清理的入站 SDK Params 由 Handler 经
-`BrokerRoutingCommandTransformer` 转为 Server CQRS 命令；嵌套 Gateway 水位使用
-`GatewayRouteWatermark`，应用层不直接接收传输请求。快照分块暂存和 Lease pending 是真实的
-本机协议状态：分块暂存由 BatchConnectionRegistry 管理，Lease pending 保留在 LocalLeaseAppService，
-不为其建立新的聚合或协调器。
-`frame` 放置 FrameDispatchAppService；`application/local` 放置 LocalLeaseAppService 和 LocalRouteAppService。
-LocalRouteAppService 的 acceptRoutes 接收 Gateway 路由分片并应用完整数据，cleanupRoutes 按已提交排空证据
-删除本机旧路由；分片暂存与清理幂等缓存使用独立锁，不新增第二套聚合或协调器。
-LocalLeaseAppService 继续独立管理申请与安装。命令/SDK 结果保留原协议语义。
-本机 Lease 输入直接在 LocalLeaseAppService 入口构造领域对象，参数/构造异常向外传播；
-清理确认字段也在应用入口直接构造领域事实，准备记录以 LeaseNonce 索引，
-PreparedLeaseRequest 使用单调时间判断过期。清理请求的完整水位集合及 operation 身份、代次和期限由
-BrokerClusterOperation/DrainProgress 核对，应用服务负责读取、同步和删除编排；应用只接收快照批次超时，
-本机 Registry 容量由基础设施配置直接提供。
-接收流程按批次匹配、增量容量、完整摘要、Lease 保护应用分段，相同分片重试不重复计费。
-接收实体 GatewayRouteBatch 负责分片一致性、收集、组装和摘要验证，身份 GatewayRouteBatchId
-包含 Gateway 与批次标识。RouteCleanupId/RouteCleanupCheckpoint 表达本机清理身份与完成事实，
-BatchConnectionRegistry 位于 domain/connection/repository，是扩展 ConnectionRegistry 的领域契约；
-infrastructure/registry/connection/InMemoryBatchConnectionRegistry 包装实际存储并管理容量与回收，
-直接读取 BrokerRoutingProperties 中的容量字段。GatewayRouteBatchReception 返回领域接收事实，原 Capacity 已删除。
-配置层只对外注册一个连接 Registry Bean，普通存取和分片应用共用同一份路由数据；
-LocalRouteAppService 只持有批次 Registry 契约，不额外持有底层存储。
-应用服务串行检查资格、接收分片，并在 Lease 保护内调用 applyBatch 后发布实际路由；
-Registry 不绕过 Lease 自行写入。清理结果缓存、容量淘汰和幂等删除也由同一实现管理，
-使用独立清理锁，不与分片接收争用集合锁。
-非法摘要格式在领域化入口抛出异常，合法摘要与内容错配仍返回 INVALID_BATCH。
-LocalRouteAppService.cleanupRoutes 转换领域输入、读取一次操作并核对完整请求后调用 Registry。
-Registry 返回 RouteCleanupResult，由 BrokerDrainTransformer 转为 RPC 响应，不携带协议类型进入实现。
-相同请求复用首次删除数量，缓存仍有容量上界；水位冲突不删除更新路由。
-应用异常由 Handler 沿原 RPC 异常通道传播。
-GatewayRouteSnapshotAckHandler 调用 BrokerClusterAppService.confirmGatewayRoutes
-登记整轮恢复 ACK，不新增独立 ACK 服务，也不在应用服务之间相互调用。
-公开应用命令为 ConfirmGatewayRoutesCommand，确认事实通过 BrokerClusterAdapter.confirmGatewayRoutes
-提交；Raft 日志载荷由 BrokerClusterRaftTransformer 构造。应用名称不暴露快照传输方式，SDK 契约保持原名。
-排空清理阶段资格由 `BrokerClusterOperation.canCleanupRoutes` 表达，已确认 Gateway 快照
-由 `DrainProgress.matchesGatewaySnapshot` 核对；应用服务负责完整水位集合、期限与本机目标校验及删除编排。
-Frame 投递只依赖一个 `BrokerClusterAdapter` 读取已提交状态和调用对端，避免同时注入同源共识接口。
-跨 interfaces/application/infrastructure 复用的输入输出
-位于顶层 `model`，先按 CQRS、枚举和 I/O 等类型职责组织；同一类型下出现多个稳定业务组且类数量足够时，
-再增加业务子目录。Registry 已发生事实的数据模型统一位于 `model/cqrs/event`；调用方构造明确事件并通过公共
-`DomainEventPublisher` 发布，Spring publisher 保留在 infrastructure，注册表业务 Listener 位于
-interfaces/listener 并委托 RegistryGossipAppService，不再增加与事件类型一一对应的 Broker 包装接口。routing 在上述三种类型下继续按准入、Lease、快照、Lookup、
-投递和排空分包，不再向 application 根包散放类型。Broker peer 授权位于
-`application/policy/cluster`；跨层拒绝异常位于受限的 `support.exception`，认证后的请求 Principal 与
-受信传输身份解析辅助类型位于 `support.security`，不进入顶层 `model`。
+联调按 MySQL/Redis/Nacos → Account/Social/Message → Broker → WS Gateway → HTTP Gateway 顺序启动。Broker 不需要业务表，但上行处理需要 Message Facade 可用。应用导入 Nacos `im-broker.yml`（默认 `INFRA_GROUP`）；默认本地 Nacos 为 `127.0.0.1:8848`，部署地址、凭据及公共配置见 [im-nacos](../../im-plugin/im-nacos/README.md)。
 
-Broker 采用“DDD 核心 + 技术子系统”，不是把所有运行态类型都放进 domain。`BrokerCluster` 是权威控制面
-唯一聚合：revision、epoch、拓扑转换、operation、drain 和 fence 恢复规则均由聚合保护；Raft 状态机只负责
-将共识命令翻译为具名聚合行为、生成/恢复 snapshot，并由 `BrokerClusterDomainTransformer` 输出 SDK 只读投影。Server
-domain 不依赖 Broker SDK、JRaft 或 Spring。`GatewayRouteTable` 是按
-`GatewayId` 聚合的连接路由一致性边界；其实体索引以 `UserId` 为键，`RouteRevision` 统一表达连接事件、
-快照水位和 tombstone 覆盖修订号。首次完整快照前没有快照绑定，接受后由
-`GatewayRouteSnapshotCheckpoint` 原子保存 revision 与 `GatewayRouteSnapshotDigest`，不使用负数哨兵。
-聚合集中维护单调 revision、完整快照、tombstone、drain 水位与
-回收规则；相同 revision 的完整快照只有内容摘要一致时才幂等接受，不同内容直接拒绝，且重复快照不会重置
-tombstone 回收时间。`ConnectionRegistration` 是聚合内实体；`ConnectionRouteChangeSet.accepted` 表示聚合接受并处理
-本次命令，`changed()` 仅表示外部连接投影发生增删。`ConnectionRegistry` 是领域注册索引接口，内存实现只负责保存
-聚合、维护正反向查询索引并把领域 change set 转换为领域同步结果。注册观察与 SDK 端点模型分离，
-传输端点通过 Transformer 转换。RouteLookup 的并发 fan-out、预算、负缓存，
-Gateway 快照分块暂存，以及 Gossip observation 都是运行时协调机制，不因服务于 Broker 就自动成为领域对象。
+Broker 成员通信端点使用 `im-common` 的 `MembershipEndpoint`。RaftMembership 是插件提供的字符串列表技术快照，BrokerRaftAdapter.getConsensusMembership 将其转换为领域 `ConsensusMembership`，voter/learner 使用不可变 Set，同角色重复合并，跨角色交叠拒绝；BrokerCluster.findConsistentVoters 对照自身角色、端点绑定及成员变更状态，一致时返回 voter BrokerId，否则返回空集合，自动观察失败关闭。报告最新事实、多数和稳定窗口仍由 BrokerFailureObservationService.evaluate 判断。部署配置和外部协议继续使用原字符串格式，不解析或规范化端点，不改变 v2 日志与快照字段。
 
-连接路由聚合在每次写入或 tombstone 回收开始时读取一次当前时间，校验更新有效期并记录删除标记时间；
-`ConnectionRegistry` 不再逐层传递当前时间参数。Gateway 协议仍携带 `eventDeadline`，由 Registry
-adapter 转换为聚合的 `updateExpiresAt`。修订号的新旧比较由 `ConnectionRegistration` 实体统一表达。
-注册实体同时保存 connectedAt/refreshedAt，更新版本不重置首次注册时间。Gossip CONNECTION 删除只收敛
-远端观察，不能用无版本通知删除本机较新路由；GATEWAY 整体移除仍按 Gateway 清理本机注册。
+当前 Runtime 读取本机已应用的 stable membership，支持 Leader、Follower 和 learner；joint、停止/错误、队列拒绝、超时和中断失败关闭，不回退初始配置或缓存。超时/中断保留 cause，中断恢复线程标志。同步成员读取不得在 FSM callback 或其同步 continuation 内执行；它不是 quorum 证明，也不与业务状态读取构成原子快照，详见[成员读取边界](../ARCHITECTURE.md#membership-与-brokerroutingstate)。
 
-## 运行模型
+默认单节点使用本地稳定身份和独立 Raft 目录。多节点建群前必须统一初始成员配置，分配稳定节点身份、可达端点和独立持久卷；不要直接复制单节点默认值。SOFAJRaft 原生端口不接受业务 token，跨主机部署必须由 sidecar/service mesh 的 mTLS 与 workload identity 保护。
 
-- Broker、Gateway 和用户到 Gateway 的映射均保存在各自内存注册表中。
-- 用户连接按 committed `BrokerClusterState + userId` 选择 RouteBroker；普通数据面由 SDK 直达。
-- Broker/Gateway/Connection 状态通过 `im-gossip` 最终一致同步。
-- 上行帧通过 Dubbo 调用 message service；下行帧通过 WS Gateway SDK 精确写入网关。
-- 会话关闭控制直达 RouteBroker，再路由到持有该用户连接的 Gateway。
-- 本模块不保存聊天历史和 WebSocket `connectionId` 集合。
+| 入口 | 本地默认值 | 用途 |
+|---|---|---|
+| Bolt | `18020` | 业务 RPC，也是 Nacos 实例主端口 |
+| 管理 HTTP | `127.0.0.1:19020` | 诊断与受控管理，端口来自 `im.broker.management.port` |
+| Actuator | `127.0.0.1:19020` | 健康和指标，端口独立来自 `management.server.port` |
+| Raft | `127.0.0.1:18120` | JRaft 原生通信，不是业务 RPC |
+| OpenAPI | `/api/doc.html`、`/v3/api-docs` | 管理 HTTP 上的 UI 与 API description |
 
-## Raft 与 Gossip 流程
+管理 HTTP 与 Actuator 的端口配置互不自动联动，均不能与 Bolt 端口相同。Nacos metadata 中的 `management-port` 来自 `management.server.port`；若修改管理 API 端口，必须同步对齐 `im.broker.management.port` 与 `management.server.port`，避免 Ops 发现错误地址。
 
-### Raft：权威控制面
+Nacos metadata 的 `management-host` 发布管理地址，监听地址与发布地址可以不同。Actuator 暴露 `health,info,prometheus,metrics`，健康详情默认不公开。
 
-Raft 只保存需要所有 Broker 一致观察的低频状态：
+## 重要行为与术语
 
-- `BrokerClusterState`：ACTIVE Broker、`routingEpoch`、选择算法、端点和 membership role。
-- `BrokerClusterOperation`：成员变更、drain、故障摘流、route recovery 的幂等阶段和证据。
-- 当前 fence operation：旧 epoch 的 holder、term、ACK 和 quarantine 进度。
-- voter/learner membership：Raft 自身的共识成员，不等同于 Broker 的流量状态。
+| 术语 | 使用时需要知道 |
+|---|---|
+| RouteBroker | 由 committed `BrokerClusterState + userId` 选择的 ACTIVE Broker；普通数据面直达，不广播兜底 |
+| revision / routingEpoch | revision 表示权威内容版本，epoch 表示 ACTIVE 路由集合代次；建群算法和既有 brokerId 的路由端点不能在线修改 |
+| membership / 流量状态 | voter/learner 是共识资格，READY/ACTIVE/DRAINING/INACTIVE 是流量资格，二者不等价 |
+| Lease / fence | 本机副作用执行资格及旧 epoch 隔离；ACTIVE 不等于已安装有效 Lease，Lease 失效时拒绝执行，不靠 Gossip 恢复授权 |
+| operation | 带幂等身份、阶段与恢复证据的管理操作；接受操作不等于排空或恢复已经完成 |
+| Gateway routeRevision | 同一 Gateway 进程的注册、注销和快照共用修订号；完整快照收齐并校验后才应用 |
+| Gossip observation | 最终一致运行观察，不是权威拓扑、路由所有权或强一致事务日志 |
 
-一次权威写入的固定顺序是：
+上行是客户端经 Broker 到 Message，下行是 Message 经 RouteBroker 到 Gateway。下行与关闭控制支持多 Gateway 和部分失败；关闭控制将旧 `sessionVersion` 透传给 Gateway 筛选本机连接，Broker 不解释会话版本。
 
-```text
-Controller/Lifecycle
-  -> BrokerClusterAppService 校验 command、scope、expectedRevision、幂等键
-  -> BrokerClusterConsensus.submit
-  -> 当前 Raft Leader append command
-  -> voter 复制并达到 quorum
-  -> RaftBrokerClusterStateMachine.apply
-  -> BrokerCluster 执行具名领域行为
-  -> 返回 committed state/operation/result
-  -> SDK 与 Broker 安装同一 revision + epoch
-```
+`ROUTE_MOVED`、`BROKER_STATE_STALE`、`ROUTE_MISMATCH`、`ROUTING_FENCED` 均为副作用前的明确拒绝。SDK 仅在这些结果后刷新状态，以原业务标识和 deadline 定向重试一次；timeout 或连接中断不自动换节点重放。详细约束见[帧与控制流](../ARCHITECTURE.md#帧与控制流)。
 
-`RaftBrokerClusterStateMachine` 不承载业务规则，只负责 command 解码、调用 `BrokerCluster`、
-输出 SDK projection 以及保存/恢复 snapshot。任何 epoch、revision、operation phase 或 drain evidence
-变更都必须由聚合行为产生，不能在状态机或 Controller 中直接改字段。
+优雅 drain 要求 Gateway 确认、旧路由清理和重建证据完整，超时为 `FAILED`，显式接受残留风险为 `FORCED`；故障恢复不等待不可达旧节点 cleanup，证据缺口为 `DEGRADED`，不能解释为成功。
 
-写入只接受当前 Leader。非 Leader 返回 `NOT_LEADER` 和 leader hint；quorum 不可用、提交超时或
-状态机拒绝时不能返回 accepted。Leader 切换后，未提交 command 不得被当作成功；新的 Leader 从
-已提交 log/snapshot 和 operation phase 恢复。新 Leader 不能复用旧 term 的 Lease ACK，必须重新完成
-fence barrier 和 Lease 安装。
+## 代码导航
 
-启动恢复顺序为：
+路径相对于 `src/main/java/com/co/kc/imchat/broker/`。
 
-```text
-校验 clusterId/nodeId/endpoint identity
-  -> 加载 Raft meta/log/snapshot
-  -> 恢复 BrokerCluster 聚合、operation history、current fence
-  -> 参与选举
-  -> 只有成为 Leader 后才恢复 Lease 续签和 operation 推进
-```
-
-membership 与流量状态分开管理：
-
-```text
-DISCOVERED -> LEARNER_SYNCING -> LEARNER -> READY -> ACTIVE
-```
-
-加入 learner、追平、promote、demote、remove 必须由 Leader 调用 membership API，并把结果纳入
-`BrokerClusterState`。Gossip 发现节点不可达不能直接修改 membership 或摘除 ACTIVE Broker。
-
-### Gossip：运行观察面
-
-Gossip 只同步 Broker、Gateway 和用户连接的运行态观察，不决定 RouteBroker，也不提交 epoch。
-
-```text
-本地 Registry/快照变化
-  -> BrokerStateStore 写入带版本的 GossipDeltaEntry
-  -> BrokerGossipScheduler 每 5 秒选择 gossipFanout 个 peer
-  -> 交换 digest
-  -> 计算 keysNewerThan/keysOlderThan
-  -> 只传输缺失或较新 delta
-  -> InMemoryGossipEntryStore 按版本合并
-  -> 投影 Broker/Gateway Registry
-```
-
-Connection 的远端观察只保存在 Gossip store，不写入当前 Broker 的业务 `ConnectionRegistry`；
-业务路由仍由 committed `BrokerClusterState + userId` 计算出的 RouteBroker 负责。
-
-注销使用 `REMOVED` tombstone 而不是立即删除。墓碑在配置 TTL 内继续参与同步，阻止离线节点把旧的
-`REGISTERED` 状态重新带回；TTL 到期后才清理删除证据。单个 peer 的同步失败只延迟最终收敛，
-不会改变已提交的 Raft 状态，也不能直接触发 Lease 签发、ACTIVE 摘流或 drain 成功。
-
-### 两条链路如何协作
-
-```text
-Gossip/探针观察 Broker 可能故障
-  -> BrokerFailureObservationService 校验多数、独立 reporter、窗口、新鲜度和冷却期
-  -> BrokerClusterAppService 发起故障 operation
-  -> Raft 提交 fence/拓扑/operation phase
-  -> holder 本地 LocalRoutingLeaseService 停止 admission 并持久化最高 fence epoch
-  -> Gateway 按新 epoch 重建路由
-  -> Raft 提交 drain evidence 和最终状态
-```
-
-因此，Gossip 提供“发生了什么的局部观察”，Raft 决定“集群最终承认什么”。网络分区时：
-
-- 少数派不能提交新的 cluster state、membership 或权威 Lease grant。
-- 少数派仍可继续产生本地运行观察，但这些观察不能升级为权威状态。
-- Leader 切换后从 Raft committed state 恢复，不从 Gossip 反推 epoch、operation 或成员关系。
-- 旧 epoch 的本地 fence marker 跨重启保留，迟到 Lease 即使来自旧 Leader 也不能恢复副作用。
-
-## 权威集群状态策略
-
-Broker 启动时会装配 SOFAJRaft，将 `BrokerClusterState` 和有界管理 operation 持久化到独立数据目录。
-Application service 直接编排具体 `BrokerClusterAdapter`，由它提交可重放的共识 command 并执行
-voter/learner 变更。Raft 状态机直接持有当前聚合，日志和 snapshot 承担持久化，不增加只有单一实现的
-Port 或 Repository 包装。Adapter 不向领域对象暴露 Leader、日志、快照或 JRaft 类型。当前已经完成控制面
-状态机、成员变更、quorum-backed Lease、全旧 epoch fencing barrier 和新 epoch ACTIVE holder 授权。
-普通连接、Frame 和关闭 Handler 已按 `epoch/RouteBroker` 比较后进入 `LocalRoutingLeaseService`；错误节点
-只返回明确拒绝，不再通过 peer client 二次转发。Gateway 分片快照和 `routeRevision` 已接入同一准入
-边界；Gateway 整轮 ACK、DRAINING cleanup、故障重建和终态也进入同一可恢复 operation。
-
-- 任意内容变化令 `revision + 1`；只改变 membership 角色时不改变 `epoch`。
-- ACTIVE Broker 集合变化令 `revision + 1` 且 `epoch + 1`。
-- Broker 输入顺序会先按稳定 `brokerId` 规范化，不产生伪 revision。
-- 建群后的选择算法不可修改；同一 `brokerId` 的 `routeEndpoint` 不可修改。
-- 端点变更必须以新 `brokerId` 加入，再排空并移除旧身份。
-- 新节点只能按 `DISCOVERED -> LEARNER_SYNCING -> LEARNER/READY` 前进；参与流量和 voter
-  晋升/降级仍是显式 operation。
-- 同一 Broker 同时只提交一个集群变更；跨节点并发由 `expectedRevision` 冲突检测收口。
-- `operationId + commandDigest` 提供幂等恢复；Leader 切换后阶段只能前进。容量满时只淘汰最早终态
-  operation，不能驱逐进行中的恢复证据。
-- SDK 契约拒绝空 ACTIVE 集合、重复身份和未完成 membership 却参与路由等非法状态。
-
-两种算法、固定字节编码和错误输入约束见 [Broker SDK README](../im-broker-sdk/README.md)。启动配置为
-`im.broker.routing.algorithm`，默认 `RENDEZVOUS_HASH`；建群后不能在线修改。
-
-### 成员变更与故障观察
-
-- 初始 voter 使用相同的 `cluster-id`、初始 voter 列表和 `bootstrap-brokers` 一次性建群。
-- 自动发现只新增 `DISCOVERED/INACTIVE`；经 peer 身份、scope 和一次性 learner join token 校验后，
-  Leader 才能加入 learner。
-- learner 追平后进入 `READY`；promote/demote/remove 使用 JRaft membership API，结果再提交到
-  `BrokerClusterState`。中途换届时根据已提交 membership 继续，不回滚已完成步骤。
-- 自动故障摘流的 observation 准入要求当前 voter 多数、独立 reporter、持续窗口、报告新鲜度和拓扑
-  冷却期全部满足。该判定只允许后续进入 fencing；Gossip observation 本身不能直接改权威状态。
-- SOFAJRaft 原生端口不接受业务 token。跨主机部署必须由 sidecar/service mesh 以 mTLS 和 workload
-  identity 保护，只把已认证流量转发到本机 Raft 端口；应用层继续校验 cluster、broker、scope 和 join token。
-
-### Lease 与 epoch barrier
-
-改变 ACTIVE 集合的操作先对旧 epoch 执行 barrier。Leader 通过当前 term ReadIndex 关闭并持久化 grant，冻结
-旧 state 中全部 ACTIVE holder；每个 holder 停止新 admission、等待在途 `sideEffect`、原子持久化
-`routing-fence.json` 后才能 ACK。缺少任一有效 ACK 时必须等待完整 quarantine。Leader 换届会用新 term
-重写同一 operation 的 fence 记录并从新的本机单调起点重等，不能沿用旧 term ACK 或不可恢复的旧计时。
-
-新 epoch 提交后，`BrokerClusterAppService` 对每个新 ACTIVE holder 执行两步安装：holder 先生成一次性 nonce
-并记录本机单调申请起点；Leader 完成 quorum-backed grant；holder 再校验 nonce、epoch、term/sequence、
-持久 fence 水位和原 deadline 后安装。任一 holder 未确认时 operation 保持
-`AUTHORIZING_NEW_EPOCH`，同 operation 重试继续推进但不重复 fence。
-
-集群管理用例只负责 epoch 变更 operation 的首次 Lease 激活和阶段推进。运行期间由
-`RoutingLeaseScheduler` 在当前 Leader 上按 `renewal-interval` 维护 committed ACTIVE 集合的 Lease；进程启动
-后也通过同一路径取得首个 Lease。续租轮次不可重入，单个 holder 失败不会改变 `BrokerClusterState`，其旧
-Lease 到期后本机自动 fenced，下一轮成功安装后恢复路由执行。
-
-## 核心处理流程
-
-### Broker 与 Gateway 生命周期
-
-```mermaid
-sequenceDiagram
-    participant Broker as Broker Server
-    participant Peer as peer Broker
-    participant Gateway as WS Gateway
-    Broker->>Broker: BrokerRegistrationLifecycle 注册并周期心跳
-    Broker->>Peer: BrokerGossipScheduler 周期同步
-    Broker->>Peer: Leader 周期维护 ACTIVE holder Lease
-    Broker->>Broker: Leader lifecycle 恢复 drain/故障重建 operation
-    Gateway->>Broker: registerGateway / heartbeatGateway
-    Gateway->>Broker: registerConnection / unregisterConnection + routeRevision
-    Gateway->>Broker: applyGatewayRouteSnapshot(目标 Broker 分片)
-    Gateway->>Broker: ackGatewayRouteSnapshot(整轮水位/摘要)
-```
-
-Gateway 的注册、注销和完整快照共享进程内单调 `routeRevision`。快照按 committed state 分片并直达
-RouteBroker；Broker 在全部 chunk 到齐、checksum 和归属校验通过后才原子应用。租约过期且经过 grace
-period 后，`GatewayCleanupScheduler` 定时触发应用清理；显式注销也委托同一应用服务。两种入口都先记录 Gateway 与连接的 Gossip 删除观察，
-再删除该 `gatewayId` 的本机路由及注册并拒绝旧进程身份再次注册。写入失败时保留注册和连接，超期清理由下轮扫描重试，显式注销由调用方重试；观察仅在
-本机内存中，进程崩溃前尚未传播的删除没有持久化重放保证。
-
-### 连接准入与切换恢复
-
-```mermaid
-flowchart TD
-    SDK[Broker SDK] --> Compute[按 committed state 计算 RouteBroker]
-    Compute --> Direct[直达目标 Broker]
-    Direct --> Validate[校验 deadline / epoch / 本机身份]
-    Validate --> Guard[LocalRoutingLeaseService]
-    Guard --> Registry[更新 ConnectionRegistry]
-    Validate --> Reject[明确拒绝，SDK 刷新后至多重试一次]
-    Miss[本机路由未命中] --> Lookup[当前其他可路由 Broker 单轮并发 RouteLookup]
-    Lookup --> Describe[只返回路由描述]
-    Describe --> Revalidate[当前 RouteBroker 重验 Gateway 租约后定向下行]
-    Ack[Gateway 整轮 ACK] --> Raft[Raft operation 水位/摘要]
-    Raft --> Cleanup[DRAINING Broker 只删除 cleanup]
-```
-
-FrameDispatchAppService 的投递步骤直接展开本地定位、必要时 lookup、注册端点复核及逐 Gateway 并发投递。
-Gateway 写帧由 BrokerClusterAdapter 提交到配置层拥有的专用虚拟线程执行器，
-以 CompletionStage 返回；应用服务等待全部目标完成后汇总连接结果，单个失败不影响其他目标。
-活跃观察由 GatewayRegistration.isFreshAt 判断；短负缓存按 UserId 索引。
-短负缓存从 Gateway 复核完成且无可投递目标时开始计时；单个 peer 的同步提交失败、异步失败或超时不丢弃其他候选结果。
-入口先校验请求期限但不会中断在途调用；dispatch 不重复校验入场期限。
-负缓存仍有效时在本地命中失败后提前结束；整体请求期限由 SDK 和入口检查，
-每次 peer RouteLookup IO 使用 Adapter 配置的固定超时；
-当前拓扑中其他 ACTIVE/DRAINING Broker 全部通过专用虚拟线程并发查询，不排序、不截断；
-各 peer 并发执行，超时的结果按空处理，已返回的结果照常合并。已退出当前拓扑的旧节点不在查询范围。
-定位步骤直接展开在 dispatch 中，按“选择候选 → 并发查询 → 过滤合并”推进，
-不保留单独 lookup/候选/查询私有方法或 RouteLookupCommand。应用层使用
-`BrokerRouteLookupParams` 将当前 BrokerNode、UserId 和 RoutingEpoch 一次传给 Adapter；
-Adapter 在 RPC 边界生成 peer deadline 并固定 hopCount=1。
-未命中负缓存也使用 LOCAL JetCache 的 TTL/容量策略，零期限不写入，移除应用手工 key 裁剪。
-观察入口只 put，不手写过期扫描/淘汰；容量淘汰不保证 FIFO。候选读取有效值快照，网络等待不持有历史锁，
-只有定位结束并复核 Gateway 后才执行投递，不增加 LocalCache 包装类型。
-未完成分片与清理检查点使用同一工厂创建的独立 LOCAL 缓存，前者只在首次暂存时 PUT，
-续分片更新缓存中的同一个对象，不刷新 JetCache TTL，也不手工计算剩余期限；
-字节上限按有效批次计算；后者仅提供有界本机重试记忆，容量淘汰无 FIFO 保证。
-本机 Lease pending nonce 使用 JetCache LOCAL 存储、pendingTtl 过期和容量控制，prepare 不再遍历
-全部记录回收。accept 只匹配并消费目标 nonce；JetCache TTL 决定 pending 是否存在，领域服务另按
-准备起点及 Lease 自身有效期判断能否安装和执行。聚合路由表和 Registry 业务索引不按缓存策略淘汰。
-prepare 不再在容量满时拒绝新申请；缓存可能淘汰旧 nonce，使旧申请安装失败并进入现有重试路径。
-ConnectionRegistry 和 GatewayRouteBatch 使用 updateExpiresAt 表达路由更新有效期；清理契约的
-oldEventDeadline 表达冻结的旧事件截止水位，不表示连接或 Gateway 的到期时间。SDK 字段仍按原协议转换。
-
-RouteLookup responder 不转发 Frame，旧 DRAINING Broker 也不能执行下行。优雅 drain 只有在冻结 Gateway
-全部确认、cleanup 无残留、重建计数/checksum 一致且旧事件 deadline 已过后才 `SUCCEEDED`；超时为
-`FAILED`，显式 force 为 `FORCED`。故障摘流不等待旧节点 cleanup，证据缺口为 `DEGRADED`。
-
-### Gossip 同步
-
-```mermaid
-sequenceDiagram
-    participant Registry
-    participant Store as BrokerStateStore
-    participant Local as 本机 Broker
-    participant Peer as peer Broker
-    Registry->>Store: Domain Event 经 Listener 写入状态
-    Local->>Peer: gossipDigest
-    Peer-->>Local: 版本摘要
-    Local->>Peer: gossipDelta(entries)
-    Peer-->>Local: 较新状态
-    Local->>Store: 合并状态与 REMOVED tombstone
-```
-
-### 帧与关闭控制
-
-方向以客户端为参照：客户端到 Message 是上行，Message 到客户端是下行。RouteBroker 只负责下行
-需要的 `userId -> gatewayId` 路由；上行 Frame 由入口 Broker 直接交给 Message。
-
-```mermaid
-flowchart LR
-    Up[上行 Frame] --> Process[FrameProcessHandler]
-    Process --> Message[Message Facade]
-    Down[下行 Frame] --> Owner[RouteBroker]
-    Close[关闭控制] --> Owner
-    Owner --> Registry[ConnectionRegistry.find userId]
-    Registry --> Write[GatewayClient.writeFrame]
-    Registry --> CloseCall[GatewayClient.closeConnections]
-    Write --> Result[聚合逐连接结果]
-    CloseCall --> Filter[Gateway 按 oldSessionVersion 筛选]
-```
-
-连接、Frame 与关闭请求携带 `routingEpoch + operationId + deadline`。Handler 先比较 committed epoch
-并复核本机是否为 RouteBroker，再通过 `LocalRoutingLeaseService` 准入实际副作用。错误节点不会二次转发：
-
-- 旧 epoch 返回 `ROUTE_MOVED`；future epoch 返回 `BROKER_STATE_STALE`。
-- 同 epoch 但本机不是 RouteBroker 返回 `ROUTE_MISMATCH`。
-- 比较通过后 Lease 已失效或正在切换返回 `ROUTING_FENCED`。
-
-四类结果都保证尚未产生路由副作用。SDK 只有收到明确拒绝才刷新 committed state 并使用同一业务标识、
-同一 deadline 定向重试一次；timeout 或连接中断不会自动换节点重放。下行与关闭控制没有全 Broker 广播
-兜底。具体结果见 [Broker README](../README.md#路由失败时怎么处理)。
-
-### 多实例验证状态
-
-聚焦测试覆盖 committed state 选择、四类拒绝、一次定向重试、Guard 准入、迁移、Gossip、Gateway
-快照和多 Gateway 部分失败。当前 Compose、
-realtime E2E 和 load test 均只有一个 Broker，生产多副本部署前必须补充真实多实例验证。详细矩阵见
-[Broker README](../README.md#已验证和未验证)。
+| 路径 | 阅读目的 |
+|---|---|
+| `ImBrokerApplication.java` | 应用入口 |
+| `interfaces/handler`、`interfaces/http/management` | Bolt 与管理 HTTP 协议入口 |
+| `interfaces/lifecycle`、`interfaces/scheduler` | 注册、心跳、Lease 续签与恢复任务 |
+| `application/{cluster,local,frame,gossip,diagnostic}` | 集群、路由、投递、观察和诊断用例 |
+| `domain/{cluster,authority,connection}` | 权威拓扑、执行授权和连接路由规则 |
+| `adapter/{cluster,gateway,gossip}` | 本机共识、对端调用、Gateway 传输和观察适配；`gossip/BrokerGossipAdapter` 维护运行态观察与合并 |
+| `support/health/BrokerHealthObservationTracker` | 按结构化 Context（`revision`、`BrokerClusterTopology`，目标从拓扑派生）裁剪有界采样并维护 freshness；非权威但作为安全决策输入，不作多数/资格决策，不拥有网络或生命周期 |
+| `support/gossip/GossipSyncTracker` | 有界、非权威、可选的诊断历史与累计摘要，无业务决策、网络或生命周期 |
+| `infrastructure/config/properties`、`infrastructure/config` | 配置键、校验与装配 |
+| `infrastructure/domain` | 内存存取与 fence 文件 |
+| `support/monitoring` | BrokerMetrics、RoutingAuthorityMetrics；保留 Spring/Micrometer 的只读指标观察，不拥有网络、Runtime、执行器或业务写入 |
+| `transformer/application`、`transformer/interfaces` | 应用输出与入口映射，分别保留两个、三个转换器 |
+| `transformer/adapter`、`transformer/registry` | BrokerClusterStateTransformer 及 Raft/Drain/Fence/Lease 转换器；RegistryTransformer |
+| `model`、`transformer`、`support` | 输入输出、边界转换及技术支持；详细依赖规则见 Architecture |
 
 ## 配置
 
-部署身份与网络端点、RPC/Lease 时间窗口、缓存/历史容量和受信身份策略由 Spring typed properties 配置；
-建群成员及选择算法虽由配置提供，已有集群不得单节点修改。`leaseGrantDuration`、`quarantineDuration`
-等安全时长由基础参数计算，不提供第二套可覆盖键；`hopCount=1`、协议阶段规则和事件去重身份属于代码契约。
-应用能力专用的不可变参数快照归所属 application 包，Gossip 定时入口快照归 interfaces/scheduler；
-没有独立契约的顶层 model/properties 包已移除；基础设施拥有 typed 源配置，应用服务不依赖 infrastructure 配置类型。配置层仅传入用例实际使用的简单预算或领域值；Registry 容量仍由基础设施直接读取源配置。
+以下默认值以 [application.yml](src/main/resources/application.yml) 和 [typed properties](src/main/java/com/co/kc/imchat/broker/infrastructure/config/properties) 为准，Nacos 可覆盖部署值。表格首列为完整前缀，第二列为其下配置键；毫秒整数键单位由 `-ms` 后缀明确，其他时长使用 Spring Duration 格式。
 
-- `im.broker.instance`：本机 Broker 地址，ID 自动生成。
-- `im.broker.cluster`：种子、fanout、同步超时和删除状态 TTL。
-- `im.broker.registry.gateway-ttl`：Gateway 注册观察的活跃窗口；未消费的 Broker/Connection TTL 不再提供。
-- `im.broker.routing.lease-pending-capacity`：本机未安装 Lease 申请的缓存容量，默认 `16`；满额时缓存淘汰旧申请，不用于授权判断。
-- `im.broker.gateway-push`、`im.broker.peer-call`：网关与 peer 调用超时。
-- `im.broker.peer-call.max-concurrent-requests`、`max-pending-requests`：控制面 peer RPC
-  工作线程与等待队列上限，默认 8 和 128，均必须为正数，在线程池启动装配时生效。
-  队列饱和或线程池关闭会拒绝新任务；fence 流程按未确认节点等待 quarantine。
-- `im.bolt.server.port`：Broker Bolt 端口，同时作为非 Web Nacos 服务端口。
-- `im.broker.management.host`、`port`：管理 HTTP 与 Actuator 监听地址和端口，默认 `127.0.0.1:19020`。
-- 用户连接路由诊断中的注册时间来自路由 `connectedAt`，最后活跃时间来自 `refreshedAt`；管理接口分别输出为 `registeredAt` 和 `lastSeenAt`。
-- `im.broker.management.history-capacity`：Gossip 和连接迁移最近记录容量，默认 `100`。
-- `im.broker.routing.algorithm`：建群算法，只能为 `RENDEZVOUS_HASH` 或 `MODULO_HASH`，建群后不可修改。
-- `im.broker.routing.max-lease-duration`：旧 Leader 最后一次 Lease 的协议上界，默认 `4s`。
-- `im.broker.routing.renewal-interval`：续租周期，默认 `1s`，必须短于扣除漂移和 Lease safety margin 后的
-  保守 grant 时长。
-- `im.broker.routing.max-clock-drift-allowance`、`lease-safety-margin`：从 grant 时长中扣除的漂移与安全余量，
-  默认 `100ms`、`200ms`。
-- `im.broker.routing.max-scheduling-pause`、`network-safety-margin`：完整 quarantine 的额外暂停和网络余量，
-  默认 `2s`、`500ms`。quarantine 为 `maxLease + clockDrift + schedulingPause + networkMargin`。
-- `im.broker.routing.max-pending-snapshot-batches`、`max-pending-snapshot-bytes`：未完成 Gateway 快照批次的
-  数量和总字节上限，默认 `1024`、`64 MiB`；超过上限返回带退避时间的 `RETRY_AFTER`。
-- `im.broker.routing.snapshot-batch-timeout`：不完整快照批次保留时间，默认 `10s`，超时后整批丢弃，不应用
-  部分路由。
-- `im.broker.routing.route-tombstone-grace-period`：注销 tombstone 在被更新快照覆盖后继续保留的时间，默认
-  `2m`，用于阻止迟到 register 复活旧路由。
-- `im.broker.routing.max-route-event-ttl`：切换时冻结的旧路由事件最大存活窗口，默认 `10s`。
-- `im.broker.routing.drain-operation-timeout`、`drain-reconcile-interval`、`drain-cleanup-rpc-timeout`：排空/故障
-  重建总超时、Leader 恢复轮询和旧 Broker cleanup RPC 超时，默认 `2m`、`1s`、`3s`。
-- `im.broker.routing.route-lookup-timeout`、`route-lookup-negative-cache`：
-  每次 peer RouteLookup IO 超时和短负缓存，默认 `300ms`、`50ms`。
-- `im.broker.routing.route-lookup-negative-cache-capacity`：本地未命中负缓存容量，默认 `1024`；
-  peer 查询使用专用虚拟线程执行器，不设置固定候选截断或工作线程数。
-- `im.broker.routing.broker-workload-identity-prefix` 与
-  `allow-trusted-network-broker-identity`：Broker peer 数据面身份前缀与本地明文回退；生产必须关闭回退。
-- `im.broker.routing.gateway-workload-identity-prefix`：Gateway mTLS 身份前缀，默认
-  `spiffe://im-chat/gateway/`。
-- `im.broker.routing.allow-trusted-network-gateway-identity`：仅本地明文环境的显式回退。默认配置由环境变量
-  `IM_BROKER_ALLOW_TRUSTED_NETWORK_GATEWAY_IDENTITY` 控制；生产必须设为 `false` 并启用 Bolt mTLS。
-- `im.broker.raft.cluster-id`、`node-id`、`endpoint`：稳定集群、节点与 Raft 地址；不能使用临时 Pod IP
-  作为生产身份。
-- `im.broker.raft.data-directory`：term、vote、log、snapshot、identity 和 `routing-fence.json` 的独立持久目录。生产每个 Broker
-  使用独立 PVC/磁盘，不能多个实例共享。
-- `im.broker.raft.initial-voters`、`initial-learners`、`bootstrap-brokers`：仅用于首次建群；所有初始
-  voter 必须完全一致。建群后的成员关系以已提交 Raft 配置为准。
-- `im.broker.raft.election-timeout-millis`、`snapshot-interval-seconds`、`command-timeout-millis`：选举、
-  快照与提交等待边界。
-- `im.broker.raft.minimum-voter-count`：环境允许的最小 voter 数，只能配置正奇数；本地为 `1`，三节点
-  测试和生产通常为 `3`。
-- `im.broker.raft.operation-history-capacity`：Raft 内保留的 operation 上限，默认 `1000`。
+### 地址、观察与调用预算
 
-### 数据目录与灾难恢复
+| 前缀 | 键 | 本地默认值 | 用途/约束 |
+|---|---|---|---|
+| `im.broker.instance` | `host` / `port` | `127.0.0.1` / `${im.bolt.server.port}` | 运行观察地址，观察 ID 从地址生成；不同于 Raft 稳定 node-id |
+| `im.bolt.server` | `port` | `18020` | 业务监听端口 |
+| `im.broker.management` | `bind-host` / `host` / `port` | `127.0.0.1` / `127.0.0.1` / `19020` | 监听地址/发布地址/端口；端口与 Bolt 分离 |
+| `management.server` | `port` | `19020` | Actuator 端口与 Nacos 发布端口；需与 `im.broker.management.port` 对齐 |
+| `im.broker.management` | `history-capacity` | `100` | 最近诊断记录容量，`1..1000`，重启清空 |
+| `im.broker.management` | `write-audience` / `write-token` | `im-broker-management` / 本地开发 token | token 由 `IM_BROKER_MANAGEMENT_WRITE_TOKEN` 覆盖，生产不得用默认值 |
+| `im.broker.cluster` | `seed-addresses` / `gossip-fanout` | `[]` / `2` | Gossip 引导地址/每轮 peer 数，有效 fanout 至少 1 |
+| `im.broker.cluster` | `gossip-timeout-ms` / `gossip-removed-ttl-ms` | `3000` / `300000` | 同步超时/删除观察保留期；TTL 应覆盖允许离线后重入的窗口 |
+| `im.broker.registry` | `gateway-ttl` | `60s` | Gateway 活跃观察窗口；Broker/连接无独立活性 TTL |
+| `im.broker.gateway-push.bolt` | `timeout-ms` | `3000` | 单次 Gateway 调用超时 |
+| `im.broker.peer-call` | `timeout-ms` | `3000` | 控制面 peer 调用超时 |
+| `im.broker.peer-call` | `max-concurrent-requests` / `max-pending-requests` | `8` / `128` | 正数，启动装配生效；队列拒绝不在调用线程执行，fence 按未确认等待 quarantine |
 
-- 正常重启必须复用相同 `cluster-id + node-id + endpoint + data-directory`。identity 不一致时启动失败，
-  不能删除 marker 或把其他节点目录挂过来绕过校验。
-- 备份优先使用存储卷一致性快照，并先触发/确认 Raft snapshot；不要在线逐文件复制正在写入的 RocksDB、
-  log 和 meta。恢复演练必须验证 snapshot 加后续 log 能重建相同 revision、epoch 和 operation。
-- 丢失少数节点时，从原节点独立持久卷恢复或按 learner 重新加入；多数派仍是唯一可提交来源。
-- 丢失多数派时控制面拒绝新提交，现有上行业务进程不因此退出。不得自动调用 `resetPeers`、删除目录或
-  用单个幸存副本覆盖集群。先恢复多数派；只有确认原多数派不可恢复后，才可在保全旧目录与审计证据的
-  前提下执行人工灾难重建，使用新的 `cluster-id` 并重新验证业务路由状态。
+### Raft 身份与持久化
 
-启动类为 `ImBrokerApplication`。Bolt 默认监听 `18020`，管理 HTTP 与 Actuator 默认监听 `127.0.0.1:19020`，二者不能配置为同一端口。Nacos 实例的主端口仍是 Bolt 端口，管理地址通过 `management-host` 与 `im-nacos` 统一提供的 `management-port` metadata 发布。
+| 前缀 | 键 | 本地默认值 | 用途/约束 |
+|---|---|---|---|
+| `im.broker.raft` | `cluster-id` / `group-id` / `node-id` | `local-broker-cluster` / `broker-cluster-state` / `broker-local-1` | 稳定部署身份，已有目录不可改绑 |
+| `im.broker.raft` | `endpoint` / `data-directory` | `127.0.0.1:18120` / `./data/broker-raft` | 原生 Raft 地址/独立持久目录；生产不能用临时 Pod IP 作为身份 |
+| `im.broker.raft` | `initial-voters` / `initial-learners` | `[127.0.0.1:18120]` / `[]` | 初始成员集合，本机端点必须在其中；建群后以 committed 配置为准 |
+| `im.broker.raft` | `bootstrap-brokers` | 本机 `VOTER/ACTIVE` | 每项包含 `broker-id`、`route-endpoint`、`membership-endpoint`、`membership-role`、`routing-state`；所有初始 voter 完全一致，与成员端点绑定一致 |
+| `im.broker.raft` | `election-timeout-ms` / `snapshot-interval` / `command-timeout-ms` | `1000` / `300s` / `5000` | 选举/周期快照/提交等待；snapshot-interval 为 Duration，非负整秒，0s 关闭，其余超时为正数 |
+| `im.broker.raft` | `minimum-voter-count` / `operation-history-capacity` | `1` / `1000` | voter 最小数为正奇数，三节点环境通常为 3；历史只淘汰终态，不驱逐进行中证据 |
 
-管理 HTTP 的 OpenAPI 页面为 `GET /api/doc.html`，API description 为 `GET /v3/api-docs`。
+上述 Broker 自有配置不提供旧键 alias。`snapshot-interval` 绑定为 Duration，仅在 Raft Adapter 调用第三方时转换为秒整数；其他已有 Duration 路由配置仍使用各自业务名称和单位。
 
-## 管理接口
+本地身份与地址可分别通过 `IM_BROKER_CLUSTER_ID`、`IM_BROKER_NODE_ID`、`IM_BROKER_RAFT_ENDPOINT`、`IM_BROKER_RAFT_DATA_DIRECTORY`、`IM_BROKER_ROUTE_ENDPOINT`、`IM_BROKER_HOST` 覆盖；初始成员列表仍须在所有节点统一配置。
+
+### 路由、Lease、快照与恢复
+
+旧 epoch 的隔离范围是冻结的 committed ACTIVE Broker 集合。fence 提交关闭旧 epoch 的新 Lease grant，不会自动撤销远端 Broker 已安装的 Lease；仍需 fence ACK 或完整 quarantine。
+
+目标 epoch 的 ACTIVE Broker 执行 Lease prepare/install。新 epoch 不表示节点新加入，ACTIVE 也不表示已安装有效 Lease。
+
+下表所有键的前缀为 `im.broker.routing`。
+
+| 键 | 默认值 | 用途/约束 |
+|---|---|---|
+| `algorithm` | `RENDEZVOUS_HASH` | 另可选 `MODULO_HASH`，建群后不可变 |
+| `max-lease-duration` / `renewal-interval` | `4s` / `1s` | 最大 Lease/续签周期；续签须短于保守 grant 时长 |
+| `max-clock-drift-allowance` / `lease-safety-margin` | `100ms` / `200ms` | grant 扣减的漂移与安全余量 |
+| `max-scheduling-pause` / `network-safety-margin` | `2s` / `500ms` | quarantine 的额外暂停与网络余量 |
+| `lease-pending-capacity` | `16` | 待安装申请容量；缓存满可淘汰旧申请，不作为授权依据 |
+| `max-pending-snapshot-batches` / `max-pending-snapshot-bytes` | `1024` / `67108864`（64 MiB） | 未完成批次数量/总字节上限，超限返回 `RETRY_AFTER` |
+| `snapshot-batch-timeout` | `10s` | 超时丢弃整批，不应用部分路由 |
+| `route-tombstone-grace-period` | `2m` | 注销标记被快照覆盖后的保留期，阻止迟到注册复活 |
+| `max-route-event-ttl` | `10s` | 切换时冻结的旧事件存活窗口 |
+| `drain-operation-timeout` / `drain-reconcile-interval` / `drain-cleanup-rpc-timeout` | `2m` / `1s` / `3s` | 排空/恢复总超时、Leader 轮询、旧节点清理 RPC 超时 |
+| `drain-cleanup-result-capacity` | `10000` | 本机清理重试检查点容量，不是持久化恢复证据 |
+| `route-lookup-timeout` / `route-lookup-negative-cache` | `300ms` / `50ms` | 每次 peer IO 超时/短负缓存，零负缓存时长不写入 |
+| `route-lookup-negative-cache-capacity` | `1024` | 未命中用户缓存容量；查询当前其他 ACTIVE/DRAINING 节点，不固定截断候选数 |
+
+保守 grant 时长为 `maxLeaseDuration - maxClockDriftAllowance - leaseSafetyMargin`，默认 `3.7s`；必须为正，`renewalInterval` 必须更短。完整 quarantine 为 `maxLeaseDuration + maxClockDriftAllowance + maxSchedulingPause + networkSafetyMargin`，默认 `6.6s`，缺 ACK 不能因 RPC 超时而缩短。
+
+容量和执行超时必须为正数；漂移、余量、tombstone grace 与负缓存时长允许为零但不能为负。派生 grant/quarantine 不提供另一套覆盖键，`hopCount=1` 为协议约束。内部机制见[Lease 签发与恢复](../ARCHITECTURE.md#lease-签发与恢复)、[查询、投递与本机缓存](../ARCHITECTURE.md#查询投递与本机缓存)。
+
+### 自动故障观察配置
+
+健康观察分成「各 voter 主动采样」与「Leader 收集报告并尝试处置」。这不是 Gossip，也不是每次 probe 失败就改拓扑。前缀为 `im.broker.failure-observation`，由 `BrokerFailureObservationProperties` 绑定，Nacos 可覆盖；没有关闭必需 Bean 的业务开关。
+
+| 键 | 默认值 | 约束 |
+|---|---|---|
+| `probe-interval` / `report-interval` | `1s` / `1s` | 正数，短于 freshness |
+| `rpc-timeout` | `500ms` | 单次认证调用的单调结果接受预算，不超过 freshness；不是阻塞连接获取的硬返回期限 |
+| `stable-window` / `freshness` / `cooldown` | `30s` / `10s` / `60s` | 正数；启动、换届、拓扑或实际 membership 变化及一致性恢复后重新冷却 |
+| `max-concurrent-requests` / `max-pending-requests` | `4` / `64` | 观察专用有界线程/队列；拒绝不在调用线程执行 |
+
+#### 从采样到新故障操作
+
+1. `BrokerFailureProbeScheduler` 在当前 voter 上探测其他 committed ACTIVE 目标。`BrokerPeerAdapter.probe` 通过 `invokeAuthenticated` 验证真实 TLS 对端与唯一 Broker URI SAN；Subject、首个 URI 或可信网络回退不能替代此身份。
+2. `BrokerHealthObservationTracker` 保存本机最新样本、单调采样时间和连续失败起点。只有 `TRANSPORT_UNAVAILABLE` 形成 UNHEALTHY；本机预算耗尽、TLS/身份/协议错误和队列拒绝为 UNKNOWN。HEALTHY、UNKNOWN 或采样断档均打断旧失败窗口。
+3. Leader 的 `reconcileFailures` 先恢复既有未终态 `FAIL_BROKER`；没有待恢复操作时，读取本机 `getLeaderTerm()` 的 Optional 任期并检查 revision、实际 membership 与 Broker 绑定。任期为空、非 Leader 或成员不一致时作废冷却并跳过新建。
+4. `BrokerObservationState.advance(topology, leaderTerm, observedAt)` 是冷却的唯一资格入口。冷却满足且没有阻塞操作后，应用读取本机快照，并经 `fetchHealthReport` 并发拉取其他 voter 本轮报告；失败按空报告处理，不沿用旧票。
+5. 报告汇合后才调用 `confirmLeadership`，取得与起始标记相同任期的 quorum 证明，再核对角色和完整 Context。领域服务先选每个 reporter 的最新事实，同一时刻冲突不计票；只统计新鲜且覆盖稳定窗口的 UNHEALTHY，每个独立 voter 最多一票。
+6. 多数分母始终是完整当前 voter 集合，目标自报不计票；三 voter 需要另外两个独立报告。证据合格只允许尝试 Begin；聚合和共识接受后，故障推进另行取得 fencing quorum，再隔离旧 epoch、提交新拓扑和授权。最终 proof 与 Begin 之间仍有并发窗口，不宣称提交原子绑定该任期。
+
+采样 Context 当前为 `revision + BrokerClusterTopology`，ACTIVE 目标从拓扑取得；改变 Context 会清空旧样本。冷却只比较拓扑、任期及一致性背景，不因每个 revision 变化都重置。两者都只存在于本机，重启重新累计，不进入 Raft 快照。结构比较与异步两次检查见 [Architecture](../ARCHITECTURE.md#异步健康观察的两次-context-检查)。
+
+#### 报告字段与时间边界
+
+请求用 `callerBrokerId`、`receiverBrokerId` 区分调用者与接收者，报告查询的 `brokerIds` 是被观察集合；报告外层 `observerBrokerId` 表示实际观察者，行内 `brokerId` 表示被观察者，probe 响应仍用 `brokerId`。旧 target/reporter 字段不作别名，需同版本成组部署；RPC operation `fetchBrokerHealthReport` 和 Raft v2 格式不变。
+
+probe/report 不携带绝对请求期限，接收方允许晚到的只读查询。此处删除期限不影响 Lease、Gateway 快照、RouteLookup 或其他有副作用协议。当前普通调用仍走 `invoke`，健康观察走 `invokeAuthenticated`；[连接层统一 invoke 设计](../../docs/design-docs/2026-10-20-bolt-unified-invoke-design.md)属于后续方案，尚未接入当前生产调用链。
+
+`getHealthReport` 提供本机快照，`fetchHealthReport` 拉取远端报告。Adapter 在执行器任务内构造请求及 nonce，RPC 前取一次 `requestAt = Instant.now()`，用报告年龄还原全部行的观察时刻；实际观察者取自已认证目标，而非信任 payload 身份。报告行的数量、重复、范围、状态和时长仍校验，但客户端不再比较响应上下文回显，也不做返回后的绝对期限检查。这依赖已认证 Broker 按请求生成报告，不表示 TLS 能验证业务内容，亦不再用回显发现服务端错上下文缺陷。
+
+`observationAgeMs` 向上取整，`unreachableDurationMs` 向下取整，不跨节点比较 nanoTime，也不把传输耗时加到连续失败时长。本机快照在读取处采样墙钟与单调时间；汇合及最终重验后统一取 `evaluatedAt = Instant.now()` 判断所有目标。应用没有整轮耗时上限，较慢轮次只要报告仍新鲜且背景有效就可继续；单次认证调用预算仍保留。
+
+正常墙钟下，RPC 后的等待计入报告年龄。当前接受独立墙钟采样造成年龄高估或低估、回拨延长 freshness、前跳提前失效的风险，不宣称消除了轮内墙钟跳变。样本连续时长、冷却和单次 RPC 预算仍使用单调时间。
+
+#### 观察暂停与排查
+
+默认明文开发环境不会形成独立故障票。生产应为每个稳定 brokerId 签发独立 URI SAN 并开启双向 TLS，不能用可信网络回退替代。自动操作未发起时，依次检查 TLS 身份、当前 voter 绑定、freshness、冷却、观察队列和未终态 operation。
+
+同步 DNS 或共享连接等待可能长期占用观察线程；单次预算限制结果接受性，不保证方法按固定墙钟期限返回。专用执行器不占 fence/Lease 队列；在途调用实际结束前不释放闸门，不因超时无限重发。自动处置因此可能安全暂停，但不会降低多数或新鲜度要求。
+
+应用使用两把 `MutexLock`，分别保护观察轮次与故障推进/恢复；两个恢复入口共享后者，`tryLock()` 不等待，锁在同步异常或异步实际完成后释放，允许跨线程完成。同一目标探测复用 `ConcurrentMap<BrokerId, MutexLock>` 中的锁；不同目标可并行，完成链在分类、Context 重验和记录后释放捕获的锁实例。Context 切换和调用结束均不删除锁条目，避免新旧锁并存；历史 BrokerId 保留到应用销毁，存储随历史目标数增长，高频身份更替前需另行设计安全回收。既有故障操作恢复不重新要求冷却或新报告，换 Leader 后按 committed 阶段继续。
+
+### 受信身份与 TLS
+
+下表所有键的前缀为 `im.broker.routing`。
+
+| 键 | 本地默认值 | 部署要求 |
+|---|---|---|
+| `gateway-workload-identity-prefix` | `spiffe://im-chat/gateway/` | 与 Gateway 证书身份匹配 |
+| `broker-workload-identity-prefix` | `spiffe://im-chat/broker/` | 与 peer 证书身份匹配 |
+| `message-workload-identity-prefix` | `spiffe://im-chat/message/` | 下行调用身份 |
+| `account-workload-identity-prefix` | `spiffe://im-chat/account/` | 关闭控制调用身份 |
+| `ops-workload-identity-prefix` | `spiffe://im-chat/im-ops/` | Ops 服务身份 |
+| `allow-trusted-network-gateway-identity` | 环境变量默认 `true` | `IM_BROKER_ALLOW_TRUSTED_NETWORK_GATEWAY_IDENTITY`，生产设 `false` |
+| `allow-trusted-network-broker-identity` | 环境变量默认 `true` | `IM_BROKER_ALLOW_TRUSTED_NETWORK_BROKER_IDENTITY`，生产设 `false` |
+| `allow-trusted-network-service-identity` | 环境变量默认 `true` | `IM_BROKER_ALLOW_TRUSTED_NETWORK_SERVICE_IDENTITY`，生产设 `false` |
+
+三个可信网络回退的 typed properties 默认均为 `false`，本地 `application.yml` 才通过环境变量缺省启用。它们只用于受控明文开发网络，生产必须关闭并启用 Bolt mTLS。
+
+Gateway 路由写入验证 TLS session 身份（优先 URI SAN，其次 Subject）、`im-broker` audience、`broker:route:write` scope、Gateway 租约和注册地址，不能只信任请求体 `gatewayId`。明文连接不能伪造 TLS 身份。
+
+生产环境的 Bolt TLS 配置：
+
+- Broker 服务端配置 `im.bolt.server.tls`，Gateway 客户端配置 `im.bolt.client.tls`；两端启用 `enabled`，服务端启用 `need-client-auth`。
+- 设置 `key-store`、`key-store-password` 和 `key-store-type: PKCS12`，密码从部署 secret 注入。
+- SOFA Bolt 的同一个 keystore 必须包含本机私钥证书链与验证对端的 CA。
+- Broker 下行作为客户端、Gateway 作为服务端时，也要启用对应双向 TLS。
+
+配置键见 [ImBoltProperties](../../im-plugin/im-bolt/src/main/java/com/co/kc/imchat/plugin/bolt/properties/ImBoltProperties.java)，RPC 使用方式见 [im-bolt README](../../im-plugin/im-bolt/README.md)。
+
+## 管理接口与访问控制
+
+所有路径均位于管理 HTTP 端口，普通成功和失败由 `im-web` 包装为 `HttpResult`。
 
 | 接口 | 内容 |
 |---|---|
-| `GET /management/broker/overview` | 当前节点、注册表统计、Gossip/迁移累计摘要 |
-| `GET /management/brokers` | 当前节点已知 Broker 快照 |
-| `GET /management/gateways` | 当前节点已知 Gateway 快照 |
-| `GET /management/connections?userId=...` | 单个用户的 Gateway 路由 |
-| `GET /management/gossip` | Gossip 累计摘要 |
-| `GET /management/gossip/records?limit=...` | 最近 Gossip 记录，`limit` 为 `1..100` |
-| `GET /management/cluster-state` | 当前已提交的权威 revision、epoch、算法与 Broker 状态 |
-| `GET /management/cluster-state/operations/{operationId}` | 返回 `BrokerClusterOperationResponse`：操作身份、类型、目标、阶段、纪元、时间、失败原因和恢复数量；不暴露领域实体、命令摘要或成员端点 |
-| `POST /management/cluster-state/brokers/{brokerId}/activate` | 启用 RouteBroker 分流 |
-| `POST /management/cluster-state/brokers/{brokerId}/deactivate` | 停止 RouteBroker 分流 |
-| `POST /management/cluster-state/brokers/{brokerId}/drain` | 排空 RouteBroker 流量 |
-| `POST /management/cluster-state/brokers/{brokerId}/add-learner` | 加入 Raft learner |
-| `POST /management/cluster-state/brokers/{brokerId}/complete-learner-sync` | 确认 learner 同步完成 |
-| `POST /management/cluster-state/brokers/{brokerId}/promote` | 将 learner 提升为 voter |
-| `POST /management/cluster-state/brokers/{brokerId}/demote` | 将 voter 降为 learner |
-| `POST /management/cluster-state/brokers/{brokerId}/remove` | 移除非活跃 Raft 成员 |
-| `POST /management/cluster-state/brokers/{brokerId}/force-deactivate` | 接受残留风险后的强制摘流 |
+| `GET /management/broker/overview` | 当前节点、注册统计、Gossip/迁移摘要 |
+| `GET /management/brokers`、`GET /management/gateways` | 本机已知运行观察 |
+| `GET /management/connections?userId=...` | 单用户 Gateway 路由，不允许空条件获取全量用户 |
+| `GET /management/gossip`、`GET /management/gossip/records?limit=...` | 累计摘要/最近记录，`limit` 为 `1..100` |
+| `GET /management/cluster-state` | 已提交 revision、epoch、算法和 Broker 状态 |
+| `GET /management/cluster-state/operations/{operationId}` | 操作类型、目标、阶段、纪元、时间、原因和恢复数量；不暴露领域实体、摘要或成员端点 |
 
-诊断接口不允许空条件获取全量用户路由。每个写 URL 对应一个明确应用用例，不使用动态 action 入口；写请求必须提供 `Idempotency-Key`、`If-Match-Epoch`、正确 audience/scope 和 Ops 服务凭证；管理写请求不提供 dry-run 模式。普通响应和异常由 `im-web` 统一包装为
-`HttpResult`。Gossip 记录只保存在固定容量内存中，重启即清空；诊断记录失败不会改变
-原业务执行结果。
+以下写接口均以 `/management/cluster-state/brokers/{brokerId}` 为前缀，方法为 `POST`。
 
-`/management/**`、Broker Actuator 和 OpenAPI 路径不建立普通用户 `UserContext`，访问控制依赖
-管理监听地址、网络策略和调用方基础设施。默认只监听 `127.0.0.1`。仓库 token 只用于本地开发；生产必须覆盖并优先使用 mTLS 或 OAuth2 Client Credentials，不能把浏览器 Header 或网络位置当作管理员身份事实。Broker 只信任 Ops 服务身份，实际管理员授权与审计由 Ops/IAM/Audit 边界负责。
+| 后缀 | 用途 |
+|---|---|
+| `/activate`、`/deactivate` | 启用/停止 RouteBroker 分流 |
+| `/drain` | 排空流量 |
+| `/add-learner`、`/complete-learner-sync` | 加入 learner/确认已追平，不由确认接口发起日志同步 |
+| `/promote`、`/demote`、`/remove` | 晋升 voter/降为 learner/移除非活跃成员 |
+| `/force-deactivate` | 提供风险确认原因，发起故障摘流与路由恢复；仍执行旧 epoch 隔离和新 Lease 授权，不等待故障 Broker cleanup，不移除 Raft 成员；不用于强制结束失败排空 |
 
-Gossip 生命周期在每次 peer 同步结束后记录合并与推送条目数。旧的 Gossip/modulo 连接迁移 RPC 已删除；RouteBroker 变化只由 committed state 的 epoch 切换、Gateway 分片快照和 drain/failure recovery 闭环完成。
+写请求必须提供以下 Header：
 
-## 关键技术点
+| Header | 要求 |
+|---|---|
+| `Authorization` | `Bearer <write-token>` |
+| `X-Im-Audience` | 匹配配置的 `write-audience` |
+| `X-Im-Scopes` | 包含接口所需 scope |
+| `Idempotency-Key` | 同一操作重试使用同一幂等身份 |
+| `If-Match-Epoch` | 请求所依据的路由 epoch |
 
-- 普通用户连接注册/注销、Frame、关闭控制和周期 Gateway 分片快照均按 `userId` 直达 committed state
-  计算出的 RouteBroker，不向全部 Broker 广播路由或业务 Frame。
-- 错误 Broker 只返回副作用前的明确拒绝，不通过 `BrokerPeerClient` 转交普通数据面请求。
-- `InMemoryConnectionRegistry` 同时维护 user/gateway 双向索引、Gateway revision 水位和注销 tombstone，使
-  按用户查询、快照原子替换与租约清理都能直接定位。
-- Broker 成员变化后由 Gateway 按新 epoch 重建目标分片；旧 Broker 只按 committed 水位执行 cleanup。
-- 注册表变化构造 `model/cqrs/event` 中的明确事件并通过公共 `DomainEventPublisher` 发布，再由
-  infrastructure 内部 Spring event 和 Listener 写入 Gossip 状态；调用方不依赖 Spring 发布机制。
-- Gossip 提供最终一致性；连接写入仍由 RouteBroker 串联，不能把 Gossip 当作强一致事务日志。
-- 删除状态通过 `REMOVED` 增量和 TTL 传播，防止离线节点重新带回旧注册数据。
-- 关闭控制携带旧 `sessionVersion`，Broker 不解释该字段，只把它透传给 Gateway 做本地连接筛选。
+路由写入需 `ops:broker:cluster-state:write`，成员写入需 `ops:broker:raft:write`，强制摘流需 `ops:broker:force`。请求体见 OpenAPI；每个 URL 是明确用例，没有动态 action 或 dry-run 模式。
 
-## 故障处理与排查入口
+非 Leader 返回 `NOT_LEADER` 与 `leaderEndpoint`，调用方据此重试。重试保留原幂等身份与请求语义，不创建另一项操作绕过恢复。
 
-| 故障 | 当前行为 | 主要证据 |
+`/management/**`、Actuator 和 OpenAPI 不建立普通用户 `UserContext`。只读访问依赖监听地址、网络策略和调用方基础设施；写入口当前校验配置的服务 Bearer token、audience 和 scope，并非内置 OAuth2 token 验证服务。生产必须覆盖开发 token，并通过受控网络、mTLS 或 OAuth2 Client Credentials 受信接入边界进一步保护。
+
+Broker 只信任 Ops 服务身份，实际管理员授权与审计由 Ops/IAM/Audit 负责，不把浏览器 Header 或网络位置当作管理员身份。
+
+管理 HTTP 的绝对时间使用 `Long xxxAtMs`，包括 `createdAtMs/completedAtMs`、`startedAtMs`、`registeredAtMs/lastSeenAtMs` 和诊断执行时间；耗时及运行时长使用 `durationMs/uptimeMs`。`im-web` 将 Long 序列化为十进制字符串，可空时间保持 null，消费者不能按 ISO 时间字符串或秒数读取。连接诊断的 `registeredAtMs/lastSeenAtMs` 分别在边界由内部 `connectedAt/refreshedAt` 转换；诊断历史为有界内存，重启清空，记录失败不改变业务结果。
+
+## 数据目录与灾难恢复
+
+`im.broker.raft.data-directory` 保存 term、vote、log、snapshot、identity 和 `routing-fence.json`。每个生产 Broker 使用独立 PVC/磁盘，不可共享；正常重启复用相同 `cluster-id + node-id + endpoint + data-directory`。identity 不一致时启动失败，不得删除 marker 或挂载另一节点目录绕过校验。
+
+日志命令和快照均使用 v2，只接受版本 2，明确拒绝 v1 及其他不支持的格式版本，不支持字段别名、旧格式兼容或混合格式重放。不兼容目录须先停止节点并保全原目录，再显式换用新目录；程序不会自动迁移或删除数据，任何数据删除须另行确认。有业务状态的目录必须保全恢复与审计证据，不能直接删除。回调失败与恢复边界见[Raft 回调与持久格式](../ARCHITECTURE.md#raft-回调与持久格式)。
+
+备份优先采用存储卷一致性快照，先触发/确认 Raft snapshot；不要在线逐文件复制正在写入的 RocksDB、log 和 meta。恢复演练须验证 snapshot 加后续 log 重建相同 revision、epoch 与 operation。
+
+少数节点丢失时从原节点独立持久卷恢复，或按 learner 重新加入，多数派仍是唯一提交来源。多数派丢失时控制面拒绝新提交，现有上行业务进程不因此退出；不得自动 `resetPeers`、删除目录或用单个幸存副本覆盖集群。
+
+先恢复多数派。只有确认原多数派不可恢复后，才可在保全旧目录与审计证据的前提下人工灾难重建，使用新的 `cluster-id` 并重新验证业务路由状态。
+
+## 故障排查
+
+| 现象 | 优先检查 | 行为边界 |
 |---|---|---|
-| peer Broker 调用失败 | 当前写入/迁移失败，保留可重试状态并记录诊断 | Gossip/迁移 Tracker、warn 日志 |
-| Gateway 下行失败 | 保留逐连接失败结果返回调用方 | Frame write result、`im.message.broker.frame.write`、`im.broker.gateway.frame.write` |
-| Message Facade 超时 | 上行帧返回未处理，不在 Broker 落消息 | Frame Handler 日志与结果 |
-| Gateway 异常消失 | 心跳/TTL 与后续快照清理路由 | Registry 状态、管理接口 |
-| 诊断记录失败 | 只记录失败，不改变核心操作结果 | Tracker 聚焦测试 |
+| 启动拒绝/identity 不一致 | 稳定身份、Raft 端点、目录挂载、初始成员绑定 | 不删除 marker 绕过校验 |
+| `NOT_LEADER` / `UNAVAILABLE` | Leader hint、多数派连通性、Raft 日志和 operation 阶段 | 超时不当作 accepted，不猜测回滚 |
+| `ROUTING_FENCED` | committed epoch、Lease 续签、fence 水位、peer 队列与隔离等待 | 不手动缩短 quarantine 或借 Gossip 授权 |
+| 下行未命中或失败 | 单用户路由、Gateway 活跃观察、快照 ACK、逐连接结果 | 单 Gateway 失败保留其他结果，不广播重放 |
+| 快照 `RETRY_AFTER` | 未完成批次数/字节数、超时、重试退避 | 不应用部分路由 |
+| Gossip peer 失败/观察不一致 | 多节点诊断、最近 Gossip 记录、tombstone TTL | 仅延迟收敛，不改变权威 epoch |
+| Gateway 异常消失 | 心跳/TTL、注册表、清理日志和后续快照 | 清理失败由扫描或调用方重试 |
+| Message Facade 超时 | 上行 Handler 结果与 Dubbo 日志 | 返回未处理，不在 Broker 落消息 |
+| 管理写拒绝 | token、audience、scope、幂等键与 epoch | 不使用普通用户 token 或伪造管理员 Header |
+| 诊断记录失败 | Tracker 日志 | 不改变注册、同步或核心操作结果 |
 
-`im.broker.gateway.frame.write` 记录 Broker 调用目标 Gateway 的次数、失败和 duration，不携带 userId、
-messageId、connectionId 或 gatewayId。它表示 Gateway RPC 阶段，不代表客户端已经收到或 ACK。
+Gateway 下行查看 Frame write result、`im.message.broker.frame.write` 与 `im.broker.gateway.frame.write`。后者仅表示 Broker 到 Gateway RPC 次数、结果和 duration，不带用户/消息/连接/Gateway 身份标签，不表示客户端收到或 ACK。
 
-### Bolt mTLS
+运行观察不能当作强一致集群真值。跨节点问题同时比较各节点 Registry/Gossip 与 committed cluster-state，再按 [Raft 与 Gossip 的边界](../ARCHITECTURE.md#raft-与-gossip-的边界) 判断。
 
-Gateway 路由写接口不能相信请求体中的 `gatewayId`。Broker 从当前 Bolt TLS session 提取对端证书身份，
-优先使用 URI SAN，缺失时才使用证书 Subject，并要求身份前缀、`im-broker` audience、
-`broker:route:write` scope、Gateway 租约和注册地址全部匹配。明文连接没有 TLS session，不能自行伪造该身份。
+## 验证入口
 
-生产环境应同时配置 Gateway 的 `im.bolt.client.tls` 与 Broker 的 `im.bolt.server.tls`，并关闭可信网络回退：
-
-```yaml
-im:
-  bolt:
-    client:
-      tls:
-        enabled: true
-        key-store: /run/secrets/gateway-bolt.p12
-        key-store-password: ${GATEWAY_BOLT_KEY_STORE_PASSWORD}
-        key-store-type: PKCS12
-    server:
-      tls:
-        enabled: true
-        need-client-auth: true
-        key-store: /run/secrets/broker-bolt.p12
-        key-store-password: ${BROKER_BOLT_KEY_STORE_PASSWORD}
-        key-store-type: PKCS12
-  broker:
-    routing:
-      allow-trusted-network-gateway-identity: false
-```
-
-当前 SOFA Bolt 配置使用同一个 keystore 提供本机私钥和信任材料，文件必须同时包含服务私钥证书链与用于
-验证对端的 CA。Broker 作为 Gateway 下行客户端、Gateway 作为下行服务端时也应启用对应的双向 TLS。
-
-只读管理端点用于判断当前节点看见的 Registry、最近 Gossip 与迁移结果，不是强一致集群真值。跨节点问题需要同时比较多个 Broker，并结合 [Broker Architecture](../ARCHITECTURE.md) 的最终一致性边界判断。
+以下命令在仓库根目录执行，用于复现模块测试和集成验证。
 
 ```bash
 mvn -q -pl im-broker/im-broker-server -am test
+./scripts/verify.sh architecture
+./scripts/verify.sh behavior
+./scripts/verify.sh e2e
 ```
+
+本地 Follower 修复已通过访问器 16 项、Runtime 22 项、Broker 聚焦 87 项及原三项 `AutomaticFailureTlsHaTest`；Runtime reviewer `a682f997`、HA fixture reviewer `cf4028e1` 均 scoped Accept，HA 日志为 `/tmp/follower-ha-three-final.log`。该 HA 使用真实三 Broker TLS，Gateway ACK 为替代边界，不是真实 Gateway E2E；不能据此关闭私有发布、双构建/输入锁或最终全仓门禁缺口。完整证据与当前计划状态通过[计划索引](../../docs/exec-plans/active/README.md)定位，最终门禁以 Harness 当前工作树指纹记录为准。
+
+真实本地多节点故障拓扑入口为 `./scripts/verify.sh routing-ha`，运行隔离的三 Broker/两 Gateway，详情见[本地编排的路由高可用拓扑](../../deploy/local/README.md#路由高可用拓扑)。普通 full Compose、realtime E2E 和本地 load test 的单 Broker 结果不等于生产多副本容量保证；证据范围与生产缺口见 [Broker 验证矩阵](../README.md#验证状态)。

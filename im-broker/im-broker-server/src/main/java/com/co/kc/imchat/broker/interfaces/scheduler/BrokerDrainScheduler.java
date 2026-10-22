@@ -1,7 +1,7 @@
 package com.co.kc.imchat.broker.interfaces.scheduler;
 
 import com.co.kc.imchat.broker.application.cluster.BrokerClusterAppService;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.model.cqrs.command.BrokerOperationReconcileCommand;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -13,23 +13,23 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @Slf4j
 public final class BrokerDrainScheduler {
-    private final BrokerClusterConsensus repository;
+    private final BrokerRaftAdapter brokerRaftAdapter;
     private final BrokerClusterAppService service;
     private final AtomicBoolean running = new AtomicBoolean();
 
-    public BrokerDrainScheduler(BrokerClusterConsensus repository,
+    public BrokerDrainScheduler(BrokerRaftAdapter brokerRaftAdapter,
                                 BrokerClusterAppService service) {
-        this.repository = repository;
+        this.brokerRaftAdapter = brokerRaftAdapter;
         this.service = service;
     }
 
     @Scheduled(fixedDelayString = "${im.broker.routing.drain-reconcile-interval:1s}")
     public void reconcile() {
-        if (!repository.getLocalBroker().isLeader() || !running.compareAndSet(false, true)) {
+        if (!brokerRaftAdapter.getLocalBroker().isLeader() || !running.compareAndSet(false, true)) {
             return;
         }
         try {
-            repository.findActiveDrainOperation(repository.getCluster().epoch())
+            brokerRaftAdapter.findActiveDrainOperation(brokerRaftAdapter.getClusterSnapshot().epoch())
                     .ifPresentOrElse(operation -> service.advanceDrain(
                                     new BrokerOperationReconcileCommand(operation.id().value()))
                             .whenComplete((result, failure) -> {

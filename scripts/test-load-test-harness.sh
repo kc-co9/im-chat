@@ -2,9 +2,19 @@
 # 用途：验证压测 override、Prometheus、Grafana，并用 fake 命令执行统一 runner 的失败恢复契约。
 # 输入：无位置参数；解析 Compose 并运行隔离 fake fixture，不启动真实容器或产生真实负载。
 # 输出/副作用：契约满足时返回 0；临时验证 doctor/锁/timeout/signal/cleanup/restore/resource，退出时清理。
+# 非预期失败在 stderr 输出原退出码、脚本行号和 fixture 命令；set +e 的预期失败保持原处理。
 # 依赖：bash、docker compose、Ruby、rg。
 
 set -euo pipefail
+
+# trap 入口先冻结原状态/行号/命令；仅诊断启用 errexit 的非预期失败，不改变退出或预期负例处理。
+report_harness_failure() {
+  local status=$1 line=$2 command=$3 options=$4
+  if [[ "$options" == *e* ]]; then
+    printf 'load-test Harness failed: exit=%s line=%s command=%s\n' "$status" "$line" "$command" >&2
+  fi
+}
+trap 'report_harness_failure "$?" "$LINENO" "$BASH_COMMAND" "$-"' ERR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export LOAD_TEST_DISCOVERY_SETTLE_SECONDS=0
@@ -14,6 +24,35 @@ DASHBOARD="$ROOT_DIR/deploy/local/grafana/provisioning/dashboards/im-chat-load-t
 RUNNER="$ROOT_DIR/scripts/load_test.sh"
 RESOURCE_SAMPLER="$ROOT_DIR/scripts/load_test_resources.sh"
 EVIDENCE_HELPER="$ROOT_DIR/scripts/lib/load-test-evidence.sh"
+
+# 确定性复现 kill -0 后子进程退出、ps 无匹配的窗口；最终状态必须来自 wait。
+wait_fixture="$(mktemp "${TMPDIR:-/tmp}/im-chat-process-wait.XXXXXX")"
+trap 'rm -f "$wait_fixture"' EXIT
+cat >"$wait_fixture" <<'SH'
+set -euo pipefail
+START_SECONDS=$SECONDS
+TOTAL_TIMEOUT_SECONDS=60
+kill() { return 0; }
+ps() { return 1; }
+wait() { return "$EXPECTED_CHILD_STATUS"; }
+SH
+awk '/^wait_pid_with_timeout\(\) \{/ { capture=1 } /^run_with_timeout\(\)/ { exit } capture { print }' \
+  "$RUNNER" >>"$wait_fixture"
+printf '\nwait_pid_with_timeout 999999 10\n: "child wait completed"\n' >>"$wait_fixture"
+for child_status in 0 23; do
+  if EXPECTED_CHILD_STATUS="$child_status" bash "$wait_fixture"; then
+    actual_status=0
+  else
+    actual_status=$?
+  fi
+  [[ "$actual_status" == "$child_status" ]] || {
+    printf 'exited process inspection must preserve child status %s, got %s\n' \
+      "$child_status" "$actual_status" >&2
+    exit 1
+  }
+done
+rm -f "$wait_fixture"
+trap - EXIT
 
 for file in "$LOAD_COMPOSE" "$DASHBOARD" "$RUNNER" "$RESOURCE_SAMPLER" "$EVIDENCE_HELPER"; do
   [[ -f "$file" ]] || {
@@ -502,6 +541,33 @@ fi
   exit 1
 }
 
+# 算法断言直接执行采样器的剩余等待表达式，不把宿主调度误差当作算法结果。
+RESOURCE_SAMPLER_SOURCE="$RESOURCE_SAMPLER" node <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync(process.env.RESOURCE_SAMPLER_SOURCE, 'utf8');
+const expressions = [...source.matchAll(/remaining_seconds="\$\(node -e '([\s\S]*?)' "\$sample_started_ms" "\$SAMPLE_SECONDS"\)"/g)];
+assert.equal(expressions.length, 1, 'sampler must expose exactly one remaining-wait expression');
+const expression = expressions[0][1];
+const cases = [[0, '1.000'], [100, '0.900'], [600, '0.400'], [1000, ''], [1500, '']];
+function remaining(script, elapsed) {
+  let output = '';
+  vm.runInNewContext(script, {
+    Date: { now: () => 10000 + elapsed },
+    process: { argv: ['node', '10000', '1'], stdout: { write: value => { output += value; } } }
+  });
+  return output;
+}
+for (const [elapsed, expected] of cases) {
+  assert.equal(remaining(expression, elapsed), expected, `elapsed=${elapsed}ms`);
+}
+const mutation = expression.replace('Number(process.argv[2]) - elapsed', 'Number(process.argv[2]) - 0');
+assert.notEqual(mutation, expression, 'full-interval sleep mutation must match the source');
+assert(cases.some(([elapsed, expected]) => remaining(mutation, elapsed) !== expected),
+  'the same vectors must detect failure to subtract collection time');
+JS
+
 sleep 5.5 &
 sample_pid=$!
 sample_file="$temp_dir/resources.jsonl"
@@ -516,13 +582,13 @@ ruby -rjson -e '
   abort "resource sampler did not emit enough data" if lines.length < 4
   samples=lines.map { |line| JSON.parse(line) }
   intervals=samples.each_cons(2).map { |left,right| right.fetch("timestamp")-left.fetch("timestamp") }
-  sorted=intervals.sort
-  middle=sorted.length / 2
-  median=sorted.length.odd? ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2.0
-  valid_intervals=intervals.all? { |interval| interval > 0.5 && interval <= 1.5 }
-  valid_median=median > 0.75 && median <= 1.25
-  abort "resource sampler cadence includes collection time: #{intervals.inspect}" unless
-    valid_intervals && valid_median
+  abort "resource sample timestamps must increase: #{intervals.inspect}" unless
+    intervals.all? { |interval| interval > 0 }
+  samples.each do |sample|
+    abort "resource sample schema is incomplete" unless
+      %w[timestamp status k6CpuPercent k6RssBytes logicalCpu availableMemoryBytes docker].all? { |key| sample.key?(key) }
+    abort "resource sample docker field must be an array" unless sample["docker"].is_a?(Array)
+  end
 ' "$sample_file"
 
 batch=abc123

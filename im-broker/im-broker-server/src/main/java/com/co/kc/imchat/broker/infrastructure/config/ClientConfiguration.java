@@ -1,7 +1,7 @@
 package com.co.kc.imchat.broker.infrastructure.config;
 
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
-import com.co.kc.imchat.broker.adapter.gossip.BrokerStateStore;
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import com.co.kc.imchat.plugin.gossip.client.GossipPeerClient;
@@ -22,7 +22,7 @@ public class ClientConfiguration {
     @ConditionalOnMissingBean
     public GatewayClient gatewayClient(BoltInvoker boltInvoker,
                                        BrokerProperties properties) {
-        return new GatewayClient(boltInvoker, properties.getGatewayPush().getBolt().getTimeoutMillis());
+        return new GatewayClient(boltInvoker, properties.getGatewayPush().getBolt().getTimeoutMs());
     }
 
     @Bean
@@ -33,9 +33,9 @@ public class ClientConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public GossipSynchronizer gossipSynchronizer(BrokerStateStore brokerStateStore,
+    public GossipSynchronizer gossipSynchronizer(BrokerGossipAdapter brokerGossipAdapter,
                                                  GossipPeerClient gossipPeerClient) {
-        return new GossipSynchronizer(brokerStateStore, gossipPeerClient);
+        return new GossipSynchronizer(brokerGossipAdapter, gossipPeerClient);
     }
 
     @Configuration

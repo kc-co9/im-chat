@@ -9,6 +9,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -36,11 +37,11 @@ public class BrokerRaftProperties {
     /* 首次建群的 learner 端点；与 bootstrap 成员绑定一致。 */
     private List<String> initialLearners = new ArrayList<>();
     /* Raft 选举超时，单位毫秒；需要结合网络延迟调节。 */
-    private int electionTimeoutMillis = 1000;
-    /* 周期快照间隔，单位秒；0 表示关闭周期快照。 */
-    private int snapshotIntervalSeconds = 300;
+    private int electionTimeoutMs = 1000;
+    /* 周期快照间隔，必须为整秒；0 表示关闭周期快照。 */
+    private Duration snapshotInterval = Duration.ofSeconds(300);
     /* 提交单条 Raft 命令的最长等待时间，单位毫秒。 */
-    private int commandTimeoutMillis = 5000;
+    private int commandTimeoutMs = 5000;
     /* 管理成员变更允许的最少 voter 数，必须为正奇数。 */
     private int minimumVoterCount = 1;
     /* 已提交 operation 的最大保留数量，限制快照和内存规模。 */
@@ -60,8 +61,9 @@ public class BrokerRaftProperties {
         if (initialVoters.isEmpty()) {
             throw new IllegalArgumentException("initialVoters must not be empty");
         }
-        if (electionTimeoutMillis <= 0 || snapshotIntervalSeconds < 0
-                || commandTimeoutMillis <= 0) {
+        if (electionTimeoutMs <= 0 || snapshotInterval == null || snapshotInterval.isNegative()
+                || snapshotInterval.getNano() != 0 || snapshotInterval.getSeconds() > Integer.MAX_VALUE
+                || commandTimeoutMs <= 0) {
             throw new IllegalArgumentException("Raft timeouts must be positive");
         }
         if (minimumVoterCount < 1 || minimumVoterCount % 2 == 0) {

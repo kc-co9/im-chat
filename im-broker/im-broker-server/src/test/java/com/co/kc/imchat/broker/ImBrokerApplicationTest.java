@@ -104,6 +104,8 @@ class ImBrokerApplicationTest {
                 "com.co.kc.imchat.broker.interfaces.scheduler.BrokerMembershipScheduler.reconcile",
                 "com.co.kc.imchat.broker.interfaces.scheduler.BrokerDrainScheduler.reconcile",
                 "com.co.kc.imchat.broker.interfaces.scheduler.BrokerFailureRecoveryScheduler.reconcile",
+                "com.co.kc.imchat.broker.interfaces.scheduler.BrokerFailureProbeScheduler.probe",
+                "com.co.kc.imchat.broker.interfaces.scheduler.BrokerFailureObservationScheduler.observe",
                 "com.co.kc.imchat.broker.interfaces.scheduler.RoutingLeaseScheduler.renew",
                 "com.co.kc.imchat.broker.interfaces.lifecycle.BrokerRegistrationLifecycle.heartbeat",
                 "com.co.kc.imchat.broker.interfaces.scheduler.GatewayCleanupScheduler.cleanup");

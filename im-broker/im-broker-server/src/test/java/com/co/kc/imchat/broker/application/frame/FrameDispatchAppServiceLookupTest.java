@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.application.frame;
 
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 
 import com.co.kc.imchat.broker.domain.connection.model.GatewayHost;
@@ -8,18 +9,18 @@ import com.co.kc.imchat.broker.domain.connection.model.GatewayPrincipalId;
 
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
+import com.co.kc.imchat.broker.adapter.gateway.GatewayDispatchAdapter;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import com.co.kc.imchat.plugin.metrics.support.MetricsCollector;
 
 import com.co.kc.imchat.broker.support.RouteLookupStub;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
 import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
 import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.broker.model.cqrs.result.RouteLocation;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
@@ -275,8 +276,8 @@ class FrameDispatchAppServiceLookupTest {
                 node(candidate.brokerId(), BrokerRoutingState.ACTIVE)));
         directed.forEach(candidate -> nodes.put(candidate.brokerId(),
                 node(candidate.brokerId(), BrokerRoutingState.DRAINING)));
-        BrokerClusterConsensus repository = mock(BrokerClusterConsensus.class);
-        when(repository.committedState()).thenReturn(new BrokerClusterState(1L, 7L, BrokerSelectionAlgorithm.RENDEZVOUS_HASH,
+        BrokerRaftAdapter repository = mock(BrokerRaftAdapter.class);
+        when(repository.getCommittedState()).thenReturn(new BrokerClusterState(1L, 7L, BrokerSelectionAlgorithm.RENDEZVOUS_HASH,
                 List.copyOf(nodes.values())));
         GatewayClient gatewayClient = mock(GatewayClient.class);
         when(gatewayClient.writeFrame(any(), any())).thenAnswer(invocation -> {
@@ -286,11 +287,12 @@ class FrameDispatchAppServiceLookupTest {
         GatewayRegistry gateways = mock(GatewayRegistry.class);
         when(gateways.find(any(GatewayId.class))).thenAnswer(invocation ->
                 Optional.of(new GatewayRegistration(invocation.<GatewayId>getArgument(0), new GatewayHost("127.0.0.1"), new GatewayPort(18012), new GatewayPrincipalId("identity"), Instant.EPOCH, Instant.now())));
-        BrokerClusterAdapter adapter = peers.adapter(gatewayClient);
-        org.mockito.Mockito.when(adapter.committedState()).thenAnswer(ignored -> repository.committedState());
-        org.mockito.Mockito.when(adapter.localBrokerId()).thenReturn(new BrokerId("broker-current"));
+        BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
+        org.mockito.Mockito.doAnswer(ignored -> repository.getCommittedState()).when(adapter).getCommittedState();
+        when(BrokerRaftTestBindings.bindLocalBroker(adapter).getId()).thenReturn(new BrokerId("broker-current"));
         return new FrameDispatchAppService(mock(ConnectionRegistry.class),
-                gateways, adapter,
+                gateways, adapter, peers.peerAdapter(),
+                new GatewayDispatchAdapter(gatewayClient, Runnable::run, mock(MetricsCollector.class)),
                 Duration.ofSeconds(1), Duration.ofMillis(50),
                 RouteLookupStub.negativeCache(Duration.ofMillis(50)));
     }

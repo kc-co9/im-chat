@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.connection.model;
 
+import com.co.kc.imchat.common.domain.user.model.UserId;
+
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.common.utils.HashUtils;
@@ -68,7 +70,7 @@ class GatewayRouteBatchTest {
                 .batchId(new GatewayRouteBatchId(new GatewayId(gatewayId), "batch-1"))
                 .routingEpoch(new RoutingEpoch(epoch)).routeRevision(new RouteRevision(3L))
                 .routeBrokerId(new BrokerId("broker-a")).chunkCount(2).contentDigest(digest)
-                .updateExpiresAt(Instant.ofEpochMilli(5_000L)).build();
+                .updateExpireAt(Instant.ofEpochMilli(5_000L)).build();
     }
 
     private GatewayRouteSnapshotDigest digest(Long... users) {

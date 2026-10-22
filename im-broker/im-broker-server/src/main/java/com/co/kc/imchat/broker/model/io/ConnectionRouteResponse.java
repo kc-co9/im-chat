@@ -1,6 +1,5 @@
 package com.co.kc.imchat.broker.model.io;
 
-import java.time.Instant;
 
 /** 单用户连接路由响应。 */
 public record ConnectionRouteResponse(
@@ -9,8 +8,8 @@ public record ConnectionRouteResponse(
         /* Gateway 标识。 */
         String gatewayId,
         /* 注册时间。 */
-        Instant registeredAt,
-        /* 最后心跳时间。 */
-        Instant lastSeenAt
+        Long registeredAtMs,
+        /* 最近一次接受的路由更新时间。 */
+        Long lastSeenAtMs
 ) {
 }

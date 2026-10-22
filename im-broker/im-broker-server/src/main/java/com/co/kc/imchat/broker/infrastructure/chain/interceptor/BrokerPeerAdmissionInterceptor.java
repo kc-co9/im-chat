@@ -1,42 +1,56 @@
 package com.co.kc.imchat.broker.infrastructure.chain.interceptor;
 
-
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
+import com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerCluster;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.infrastructure.chain.BrokerRequestChain;
 import com.co.kc.imchat.broker.infrastructure.chain.invocation.BrokerRequestInvocation;
-import com.co.kc.imchat.broker.support.security.BrokerCallerPrincipal;
 import com.co.kc.imchat.broker.sdk.access.BrokerAdmissionType;
-import com.co.kc.imchat.broker.sdk.access.BrokerPeerRequest;
 import com.co.kc.imchat.broker.sdk.access.BrokerCallerRole;
+import com.co.kc.imchat.broker.sdk.access.BrokerObservationRequest;
+import com.co.kc.imchat.broker.sdk.access.BrokerPeerRequest;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
+import com.co.kc.imchat.broker.sdk.model.params.BrokerHealthReportParams;
+import com.co.kc.imchat.broker.sdk.model.params.BrokerProbeParams;
 import com.co.kc.imchat.broker.sdk.model.params.QuorumReadIndexParams;
 import com.co.kc.imchat.broker.sdk.model.params.RouteLeaseInstallParams;
 import com.co.kc.imchat.broker.sdk.model.params.RouteLeasePrepareParams;
 import com.co.kc.imchat.broker.sdk.model.params.RoutingFenceParams;
+import com.co.kc.imchat.broker.support.security.BrokerCallerPrincipal;
 import com.co.kc.imchat.plugin.gossip.model.param.GossipPeerRequest;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /** Broker membership、Gossip 与 Lease/Fence 控制入口的 peer 身份边界。 */
 public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterceptor {
     private final String localBrokerId;
-    private final BrokerClusterConsensus stateRepository;
+    private final BrokerRaftAdapter stateRepository;
     private final String identityPrefix;
+    private final String clusterId;
 
     public BrokerPeerAdmissionInterceptor(String localBrokerId,
-                                       BrokerClusterConsensus stateRepository,
-                                       String identityPrefix) {
+                                       BrokerRaftAdapter stateRepository,
+                                       String identityPrefix, String clusterId) {
         if (localBrokerId == null || localBrokerId.isBlank()
-                || stateRepository == null || identityPrefix == null || identityPrefix.isBlank()) {
+                || stateRepository == null || identityPrefix == null || identityPrefix.isBlank()
+                || clusterId == null || clusterId.isBlank()) {
             throw new IllegalArgumentException("invalid Broker peer access configuration");
         }
         this.localBrokerId = localBrokerId;
         this.stateRepository = stateRepository;
         this.identityPrefix = identityPrefix;
+        this.clusterId = clusterId;
     }
 
     @Override
     public Object intercept(BrokerRequestInvocation<?> invocation,
                             BrokerRequestChain chain) throws Exception {
         BrokerAdmissionType profile = invocation.operation().admissionType();
+        if (profile == BrokerAdmissionType.BROKER_OBSERVATION) {
+            validateObservation(invocation);
+            return chain.proceed(invocation);
+        }
         if (profile != BrokerAdmissionType.BROKER_PEER
                 && profile != BrokerAdmissionType.BROKER_CONTROL) {
             return chain.proceed(invocation);
@@ -54,6 +68,52 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
             validatePeer(invocation, callerBrokerId);
         }
         return chain.proceed(invocation);
+    }
+
+    private void validateObservation(BrokerRequestInvocation<?> invocation) {
+        BrokerCallerPrincipal principal = invocation.principal();
+        if (principal == null || principal.callerRole() != BrokerCallerRole.BROKER) {
+            throw new SecurityException("Broker observation requires authenticated Broker");
+        }
+        boolean typedRequest = switch (invocation.operation()) {
+            case PROBE_BROKER -> invocation.request() instanceof BrokerProbeParams;
+            case FETCH_BROKER_HEALTH_REPORT -> invocation.request() instanceof BrokerHealthReportParams;
+            default -> false;
+        };
+        if (!typedRequest) {
+            throw new SecurityException("Broker observation request capability is missing");
+        }
+        BrokerObservationRequest request = (BrokerObservationRequest) invocation.request();
+        String caller = callerBrokerId(principal);
+        if (!caller.equals(request.callerBrokerId()) || !localBrokerId.equals(request.receiverBrokerId())) {
+            throw new SecurityException("Broker observation caller or target does not match");
+        }
+        if (!clusterId.equals(request.clusterId())) {
+            throw new SecurityException("Broker observation cluster does not match");
+        }
+        BrokerCluster cluster = stateRepository.getClusterSnapshot();
+        if (!request.revision().equals(cluster.revision().value()) || !request.epoch().equals(cluster.epoch().value())) {
+            throw new SecurityException("Broker observation context does not match");
+        }
+        ConsensusMembership membership = stateRepository.getConsensusMembership();
+        Set<BrokerId> currentVoters = stateRepository.getClusterSnapshot().findConsistentVoters(membership);
+        BrokerCluster currentCluster = stateRepository.getClusterSnapshot();
+        if (!cluster.revision().equals(currentCluster.revision()) || !cluster.epoch().equals(currentCluster.epoch())) {
+            throw new SecurityException("Broker observation context changed during admission");
+        }
+        if (!currentVoters.contains(new BrokerId(caller))) {
+            throw new SecurityException("Broker observation caller is not a current voter");
+        }
+        if (request instanceof BrokerHealthReportParams report) {
+            Set<String> targets = cluster.activeBrokers().stream()
+                    .map(node -> node.id().value()).collect(Collectors.toSet());
+            if (!targets.containsAll(report.brokerIds())) {
+                throw new SecurityException("Broker observation brokerIds are not committed ACTIVE Brokers");
+            }
+            if (!currentVoters.contains(new BrokerId(localBrokerId))) {
+                throw new SecurityException("Broker observation reporter is not a current voter");
+            }
+        }
     }
 
     private void validatePeer(BrokerRequestInvocation<?> invocation, String callerBrokerId) {
@@ -111,7 +171,7 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
     }
 
     private boolean isCommitted(String brokerId) {
-        return stateRepository.committedState().brokers().stream()
+        return stateRepository.getCommittedState().brokers().stream()
                 .anyMatch(node -> node.brokerId().equals(brokerId));
     }
 }

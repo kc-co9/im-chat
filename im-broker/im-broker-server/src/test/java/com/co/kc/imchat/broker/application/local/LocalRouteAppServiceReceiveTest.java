@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.application.local;
 
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryBatchConnectionRegistry;
 import com.co.kc.imchat.broker.support.RouteCacheStub;
@@ -32,7 +32,7 @@ import com.co.kc.imchat.broker.model.cqrs.command.AcceptGatewayRoutesCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.CleanupDrainRoutesCommand;
 import com.co.kc.imchat.broker.model.cqrs.dto.GatewayRouteWatermark;
 import com.co.kc.imchat.broker.sdk.model.result.DrainRouteCleanupResult;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.sdk.model.result.AcceptGatewayRoutesResult;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRouteSnapshotParams;
 import com.co.kc.imchat.broker.interfaces.handler.connection.GatewayRouteSnapshotHandler;
@@ -73,7 +73,7 @@ import static com.co.kc.imchat.broker.support.BrokerDomainValues.term;
 
 class LocalRouteAppServiceReceiveTest {
     private LocalRouteAppService createService(
-            String brokerId, BrokerClusterConsensus consensus, LocalRoutingLeaseService lease,
+            String brokerId, BrokerRaftAdapter consensus, LocalRoutingLeaseService lease,
             ConnectionRegistry connections, DomainEventPublisher publisher, BrokerRoutingProperties properties) {
         return new LocalRouteAppService(brokerId, consensus, lease,
                 new InMemoryBatchConnectionRegistry(connections, properties,
@@ -94,7 +94,7 @@ class LocalRouteAppServiceReceiveTest {
     void setUp() {
         wallClock = TestClock.interceptNow(clock::get);
         service = createService(BROKER_ID,
-                new FixedRepository(state()), authorizedLeaseService(), connections,
+                new FixedRepository(state()).asAdapter(), authorizedLeaseService(), connections,
                 new NoopDomainEventPublisher(),
                 routingProperties(
                         2, 1_024L, java.time.Duration.ofMillis(100), 10));
@@ -111,8 +111,8 @@ class LocalRouteAppServiceReceiveTest {
         CountDownLatch releaseCleanup = new CountDownLatch(1);
         BrokerClusterOperation operation = mock(BrokerClusterOperation.class);
         when(operation.matchesRouteCleanup(any(), any(), any(), any(), any())).thenReturn(true);
-        BrokerClusterConsensus consensus = mock(BrokerClusterConsensus.class);
-        when(consensus.committedState()).thenReturn(state());
+        BrokerRaftAdapter consensus = mock(BrokerRaftAdapter.class);
+        when(consensus.getCommittedState()).thenReturn(state());
         when(consensus.findOperation(new ClusterOperationId("drain-lock"))).thenAnswer(invocation -> {
             cleanupEntered.countDown();
             if (!releaseCleanup.await(5, TimeUnit.SECONDS)) {
@@ -125,7 +125,7 @@ class LocalRouteAppServiceReceiveTest {
                 routingProperties(2, 1024L, Duration.ofSeconds(1), 10));
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
             Future<DrainRouteCleanupResult> cleanup = executor.submit(() -> service.cleanupRoutes(new CleanupDrainRoutesCommand(
-                    "broker-leader", "drain-lock", 6L, 7L, Long.MAX_VALUE,
+                    "broker-leader", "drain-lock", 6L, 7L, Instant.ofEpochMilli(Long.MAX_VALUE),
                     List.of(new GatewayRouteWatermark(GATEWAY_ID, 1L, 0L, GatewayRouteSnapshotChecksum.calculate(List.of()))))));
             try {
                 assertThat(cleanupEntered.await(5, TimeUnit.SECONDS)).isTrue();
@@ -145,7 +145,7 @@ class LocalRouteAppServiceReceiveTest {
         LocalRoutingLeaseService leaseService = mock(LocalRoutingLeaseService.class);
         Exception failure = new Exception("lease execution failed");
         when(leaseService.executeOrElse(any(), any(), any())).thenThrow(failure);
-        service = createService(BROKER_ID, new FixedRepository(state()), leaseService, connections,
+        service = createService(BROKER_ID, new FixedRepository(state()).asAdapter(), leaseService, connections,
                 new NoopDomainEventPublisher(), routingProperties(2, 1024L, Duration.ofSeconds(1), 10));
         GatewayRouteSnapshotHandler handler = new GatewayRouteSnapshotHandler(
                 service);
@@ -165,7 +165,7 @@ class LocalRouteAppServiceReceiveTest {
             public void publish(DomainEvent event) { events.add(event); }
             public void publish(List<DomainEvent> published) { events.addAll(published); }
         };
-        service = createService(BROKER_ID, new FixedRepository(state()), leaseService, connections,
+        service = createService(BROKER_ID, new FixedRepository(state()).asAdapter(), leaseService, connections,
                 publisher, routingProperties(1, 1024L, Duration.ofSeconds(1), 10));
 
         AcceptGatewayRoutesResult result = service.acceptRoutes(chunk("fenced", 0, 1,
@@ -179,7 +179,7 @@ class LocalRouteAppServiceReceiveTest {
     @Test
     void staleSnapshotPublishesCurrentRoutesInsteadOfStaleInput() throws Exception {
         List<DomainEvent> events = new ArrayList<>();
-        service = createService(BROKER_ID, new FixedRepository(state()),
+        service = createService(BROKER_ID, new FixedRepository(state()).asAdapter(),
                 authorizedLeaseService(), connections, new DomainEventPublisher() {
                     public void publish(DomainEvent event) { events.add(event); }
                     public void publish(List<DomainEvent> published) { events.addAll(published); }
@@ -272,7 +272,7 @@ class LocalRouteAppServiceReceiveTest {
 
         assertThat(rejected.status()).isEqualTo(
                 AcceptGatewayRoutesResult.Status.RETRY_AFTER);
-        assertThat(rejected.retryAfterMillis()).isEqualTo(100L);
+        assertThat(rejected.retryAfterMs()).isEqualTo(100L);
     }
 
     @Test
@@ -348,7 +348,7 @@ class LocalRouteAppServiceReceiveTest {
 
     private LocalRouteAppService serviceWithPendingLimits(int limit, long maxBytes) {
         return createService(BROKER_ID,
-                new FixedRepository(state()), authorizedLeaseService(), connections,
+                new FixedRepository(state()).asAdapter(), authorizedLeaseService(), connections,
                 new NoopDomainEventPublisher(),
                 routingProperties(
                         limit, maxBytes, java.time.Duration.ofMillis(100), 10));
@@ -363,7 +363,7 @@ class LocalRouteAppServiceReceiveTest {
                                              int index, int count,
                                              String checksum, List<Long> users) {
         return new AcceptGatewayRoutesCommand(GATEWAY_ID, 7L, routeRevision, BROKER_ID,
-                batchId, index, count, checksum, Long.MAX_VALUE, users);
+                batchId, index, count, checksum, Instant.ofEpochMilli(Long.MAX_VALUE), users);
     }
 
     private BrokerClusterState state() {
@@ -404,7 +404,7 @@ class LocalRouteAppServiceReceiveTest {
         };
     }
 
-    private record FixedRepository(BrokerClusterState committedState)
+    private record FixedRepository(BrokerClusterState getCommittedState)
             implements BrokerClusterConsensusStub {
         @Override
         public Optional<BrokerClusterOperation> findOperation(ClusterOperationId operationId) {
@@ -412,7 +412,7 @@ class LocalRouteAppServiceReceiveTest {
         }
 
         @Override
-        public CompletionStage<BrokerClusterConsensusResult> submitChange(BrokerClusterConsensusCommand command) {
+        public CompletionStage<BrokerClusterConsensusResult> submitCommand(BrokerClusterConsensusCommand command) {
             throw new UnsupportedOperationException();
         }
     }

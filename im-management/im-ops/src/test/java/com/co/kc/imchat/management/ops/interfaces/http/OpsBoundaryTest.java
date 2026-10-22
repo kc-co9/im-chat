@@ -37,10 +37,10 @@ class OpsBoundaryTest {
     }
 
     @Test
-    void mapsNestedAbsoluteTimesToEpochMilliseconds() {
+    void mapsNestedAbsoluteTimesToEpochMilliseconds() throws Exception {
         Instant queriedAt = Instant.parse("2026-08-23T01:00:00Z");
         BrokerOverviewDTO data = new BrokerOverviewDTO(
-                new BrokerInstanceDTO("broker-1", "127.0.0.1:12200", queriedAt, 10L),
+                new BrokerInstanceDTO("broker-1", "127.0.0.1:12200", queriedAt, java.time.Duration.ofMillis(10001)),
                 new BrokerStatisticsDTO(1L, 2L, 3L),
                 new DiagnosticSummaryDTO(0L, 0L, null, null, queriedAt));
         ClusterOverviewDTO overview = new ClusterOverviewDTO(1L, 2L, 3L,
@@ -52,7 +52,23 @@ class OpsBoundaryTest {
                 OpsHttpTransformer.INSTANCE.opsOverviewResponseFrom(overview);
 
         assertThat(response.queriedAt()).isEqualTo(1787446800000L);
-        assertThat(response.nodes().getFirst().data().broker().startedAt())
+        assertThat(response.nodes().getFirst().data().broker().startedAtMs())
                 .isEqualTo(1787446800000L);
+        assertThat(response.nodes().getFirst().data().broker().uptimeMs()).isEqualTo(10001L);
+        assertThat(response.nodes().getFirst().data().gossip().lastFailureAtMs()).isNull();
+        assertThat(response.nodes().getFirst().data().gossip().lastExecutedAtMs()).isEqualTo(1787446800000L);
+        org.springframework.http.converter.json.Jackson2ObjectMapperBuilder builder =
+                org.springframework.http.converter.json.Jackson2ObjectMapperBuilder.json();
+        new com.co.kc.imchat.plugin.web.ImWebAutoConfiguration(
+                new org.springframework.beans.factory.support.DefaultListableBeanFactory()
+                        .getBeanProvider(com.co.kc.imchat.plugin.web.mvc.ImWebMvcInterceptor.class))
+                .imJacksonObjectMapperCustomization().customize(builder);
+        com.fasterxml.jackson.databind.JsonNode json = builder.build().readTree(builder.build().writeValueAsString(response));
+        com.fasterxml.jackson.databind.JsonNode dataJson = json.path("nodes").get(0).path("data");
+        assertThat(dataJson.path("broker").path("startedAtMs").textValue()).isEqualTo("1787446800000");
+        assertThat(dataJson.path("broker").path("uptimeMs").textValue()).isEqualTo("10001");
+        assertThat(dataJson.path("broker").has("startedAt")).isFalse();
+        assertThat(dataJson.path("broker").has("uptimeSeconds")).isFalse();
+        assertThat(dataJson.path("gossip").path("lastFailureAtMs").isNull()).isTrue();
     }
 }

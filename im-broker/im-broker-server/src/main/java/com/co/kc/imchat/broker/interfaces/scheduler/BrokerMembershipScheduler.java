@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.interfaces.scheduler;
 
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.application.cluster.BrokerMembershipAppService;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
@@ -23,12 +23,12 @@ public final class BrokerMembershipScheduler {
             BrokerClusterOperationType.DEMOTE_VOTER,
             BrokerClusterOperationType.REMOVE_BROKER);
 
-    private final BrokerClusterAdapter adapter;
+    private final BrokerRaftAdapter adapter;
     private final BrokerMembershipAppService service;
     private final Duration recoveryDelay;
     private final AtomicBoolean running = new AtomicBoolean();
 
-    public BrokerMembershipScheduler(BrokerClusterAdapter adapter,
+    public BrokerMembershipScheduler(BrokerRaftAdapter adapter,
                                      BrokerMembershipAppService service,
                                      Duration recoveryDelay) {
         this.adapter = adapter;
@@ -43,7 +43,7 @@ public final class BrokerMembershipScheduler {
         }
         try {
             Instant pendingBefore = Instant.now().minus(recoveryDelay);
-            adapter.getCluster().operations().stream()
+            adapter.getClusterSnapshot().operations().stream()
                     .filter(operation -> MEMBERSHIP_TYPES.contains(operation.type()))
                     .filter(operation -> operation.phase() == BrokerClusterOperationPhase.RAFT_COMMITTED
                             || (operation.phase() == BrokerClusterOperationPhase.PENDING

@@ -48,6 +48,10 @@
         </dependency>
         <dependency>
             <groupId>com.co.kc.im</groupId>
+            <artifactId>im-lock</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.co.kc.im</groupId>
             <artifactId>im-metrics</artifactId>
         </dependency>
         <dependency>

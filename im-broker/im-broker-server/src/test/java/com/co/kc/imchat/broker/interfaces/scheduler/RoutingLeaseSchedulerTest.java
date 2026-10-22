@@ -1,8 +1,8 @@
 package com.co.kc.imchat.broker.interfaces.scheduler;
 
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
 import com.co.kc.imchat.broker.application.cluster.BrokerClusterAppService;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
-import com.co.kc.imchat.broker.adapter.cluster.LocalBroker;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerCluster;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerNode;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
@@ -32,16 +32,14 @@ class RoutingLeaseSchedulerTest {
 
     @Test
     void leaderRenewsEveryActiveBrokerWithoutOverlappingRounds() {
-        BrokerClusterConsensus repository = mock(BrokerClusterConsensus.class);
+        BrokerRaftAdapter repository = mock(BrokerRaftAdapter.class);
         BrokerClusterAppService activator = mock(BrokerClusterAppService.class);
         BrokerNode brokerA = activeBroker("broker-a");
         BrokerNode brokerB = activeBroker("broker-b");
         BrokerCluster state = state(brokerA, brokerB);
         CompletableFuture<Boolean> firstActivation = new CompletableFuture<>();
-        LocalBroker localBroker = mock(LocalBroker.class);
-        when(repository.getLocalBroker()).thenReturn(localBroker);
-        when(localBroker.isLeader()).thenReturn(true);
-        when(repository.getCluster()).thenReturn(state);
+        when(BrokerRaftTestBindings.bindLocalBroker(repository).isLeader()).thenReturn(true);
+        when(repository.getClusterSnapshot()).thenReturn(state);
         when(activator.activateLease(argThat(command -> command != null && command.brokerId().equals("broker-a")))).thenReturn(firstActivation);
         when(activator.activateLease(argThat(command -> command != null && command.brokerId().equals("broker-b"))))
                 .thenReturn(CompletableFuture.completedFuture(true));
@@ -62,16 +60,14 @@ class RoutingLeaseSchedulerTest {
 
     @Test
     void followerDoesNotIssueLeases() {
-        BrokerClusterConsensus repository = mock(BrokerClusterConsensus.class);
+        BrokerRaftAdapter repository = mock(BrokerRaftAdapter.class);
         BrokerClusterAppService activator = mock(BrokerClusterAppService.class);
-        LocalBroker localBroker = mock(LocalBroker.class);
-        when(repository.getLocalBroker()).thenReturn(localBroker);
-        when(localBroker.isLeader()).thenReturn(false);
+        when(BrokerRaftTestBindings.bindLocalBroker(repository).isLeader()).thenReturn(false);
         RoutingLeaseScheduler lifecycle = new RoutingLeaseScheduler(repository, activator);
 
         lifecycle.renew();
 
-        verify(repository, never()).getCluster();
+        verify(repository, never()).getClusterSnapshot();
         verify(activator, never()).activateLease(any());
     }
 

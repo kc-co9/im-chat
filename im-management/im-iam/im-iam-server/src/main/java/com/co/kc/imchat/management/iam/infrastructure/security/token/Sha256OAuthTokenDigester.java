@@ -14,7 +14,7 @@ public class Sha256OAuthTokenDigester {
 
     public String digest(String token) {
         AssertUtils.argNotBlank("token must not be blank", token);
-        return HEX_FORMAT.formatHex(HashUtils.sha256(token));
+        return HashUtils.sha256Hex(token);
     }
 
     public boolean matches(String token, String expectedDigest) {

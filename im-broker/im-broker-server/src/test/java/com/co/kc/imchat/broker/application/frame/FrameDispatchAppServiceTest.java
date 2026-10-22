@@ -1,44 +1,37 @@
 package com.co.kc.imchat.broker.application.frame;
 
-
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
+import com.co.kc.imchat.broker.adapter.gateway.GatewayDispatchAdapter;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
-
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
-
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
-import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
-import java.time.Instant;
-
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
-
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-
-import com.co.kc.imchat.broker.model.cqrs.command.FrameDispatchCommand;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
-import com.co.kc.imchat.broker.support.RouteLookupStub;
-import com.co.kc.imchat.broker.model.cqrs.result.RouteLocation;
-
+import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
 import com.co.kc.imchat.broker.infrastructure.config.properties.RegistryProperties;
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryConnectionRegistry;
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry;
-import com.co.kc.imchat.broker.sdk.model.dto.GatewayEndpointDTO;
-import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
+import com.co.kc.imchat.broker.model.cqrs.command.FrameDispatchCommand;
+import com.co.kc.imchat.broker.model.cqrs.result.RouteLocation;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
+import com.co.kc.imchat.broker.sdk.model.dto.GatewayEndpointDTO;
+import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
+import com.co.kc.imchat.broker.support.RouteLookupStub;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.common.model.enums.FrameType;
 import com.co.kc.imchat.common.model.io.FrameResponse;
 import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
 import com.co.kc.imchat.gateway.ws.sdk.model.params.GatewayFrameWriteParams;
 import com.co.kc.imchat.gateway.ws.sdk.model.result.GatewayFrameWriteResult;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
-import org.junit.jupiter.api.Test;
-
+import com.co.kc.imchat.plugin.metrics.support.MetricsCollector;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -49,12 +42,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.any;
 
 class FrameDispatchAppServiceTest {
 
@@ -200,16 +194,18 @@ class FrameDispatchAppServiceTest {
                                          RouteLookupStub routeLookupPeerClient,
                                          GatewayClient gatewayClient,
                                          Executor frameDispatchExecutor) {
-        BrokerClusterConsensus repository = mock(BrokerClusterConsensus.class);
-        when(repository.committedState()).thenReturn(new BrokerClusterState(1L, 7L, BrokerSelectionAlgorithm.RENDEZVOUS_HASH,
+        BrokerRaftAdapter repository = mock(BrokerRaftAdapter.class);
+        when(repository.getCommittedState()).thenReturn(new BrokerClusterState(1L, 7L, BrokerSelectionAlgorithm.RENDEZVOUS_HASH,
                 List.of(new BrokerNode("broker-current", "127.0.0.1:18020",
                                 BrokerMembershipRole.VOTER, BrokerRoutingState.ACTIVE),
                         new BrokerNode("broker-old", "127.0.0.1:18021",
                                 BrokerMembershipRole.VOTER, BrokerRoutingState.DRAINING))));
-        BrokerClusterAdapter adapter = routeLookupPeerClient.adapter(gatewayClient, frameDispatchExecutor);
-        org.mockito.Mockito.when(adapter.committedState()).thenAnswer(ignored -> repository.committedState());
-        org.mockito.Mockito.when(adapter.localBrokerId()).thenReturn(new BrokerId("broker-current"));
+        BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
+        Mockito.doAnswer(ignored -> repository.getCommittedState()).when(adapter).getCommittedState();
+        when(BrokerRaftTestBindings.bindLocalBroker(adapter).getId()).thenReturn(new BrokerId("broker-current"));
         return new FrameDispatchAppService(connections, gateways, adapter,
+                routeLookupPeerClient.peerAdapter(),
+                new GatewayDispatchAdapter(gatewayClient, frameDispatchExecutor, mock(MetricsCollector.class)),
                 new RegistryProperties().getGatewayTtl(), Duration.ofMillis(50),
                 RouteLookupStub.negativeCache(Duration.ofMillis(50)));
     }
@@ -250,6 +246,13 @@ class FrameDispatchAppServiceTest {
 
         private static BoltInvoker unusedInvoker() {
             return new BoltInvoker() {
+            @Override
+            public <T, R> R invokeAuthenticated(String address, String service, String operation,
+                                               T request, Class<R> responseType, int timeoutMillis,
+                                               String expectedPeerIdentity, String identityPrefix) {
+                throw new AssertionError("ordinary data plane must not request authenticated observation RPC");
+            }
+
                 @Override
                 public <T, R> R invoke(String address, String service, String operation,
                                        T request, Class<R> responseType, int timeoutMillis) {

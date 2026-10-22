@@ -35,6 +35,11 @@ describe("ops HTTP result boundary", () => {
     ).toEqual({ count: 1 });
   });
 
+  it("preserves Long wire strings and nullable Broker timestamps", () => {
+    const payload = { startedAtMs: "1787446800123", uptimeMs: "30001", lastFailureAtMs: null };
+    expect(unwrapHttpResult({ code: 0, msg: "success", data: payload })).toEqual(payload);
+  });
+
   it("publishes authentication and authorization failures", () => {
     const unauthorized = vi.fn();
     const forbidden = vi.fn();

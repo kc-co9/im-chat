@@ -10,7 +10,7 @@ import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteBatch;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteBatchId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteBatchReception;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRouteChunkIndex;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
 import com.co.kc.imchat.broker.domain.connection.model.RouteCleanupId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteCleanupCheckpoint;
@@ -108,7 +108,7 @@ public final class InMemoryBatchConnectionRegistry implements BatchConnectionReg
     @Override
     public ConnectionSyncResult applyBatch(GatewayRouteBatch batch) {
         return connectionRegistry.reconcileRoutes(batch.batchId().gatewayId(),
-                batch.routeRevision(), batch.updateExpiresAt(), batch.orderedUsers());
+                batch.routeRevision(), batch.updateExpireAt(), batch.orderedUsers());
     }
 
     /** 读取实际连接表中的 Gateway 用户，旧批次不会回退发布的观察结果。 */
@@ -125,7 +125,7 @@ public final class InMemoryBatchConnectionRegistry implements BatchConnectionReg
      */
     @Override
     public RouteCleanupResult cleanupRoutes(
-            ClusterOperationId operationId, List<DrainProgressUpdate> confirmations, Instant oldEventDeadline) {
+            ClusterOperationId operationId, List<DrainProgressUpdate> confirmations, Instant oldEventExpireAt) {
         synchronized (cleanupLock) {
             RouteCount removedRoutes = RouteCount.ZERO;
             for (DrainProgressUpdate confirmation : confirmations) {
@@ -140,7 +140,7 @@ public final class InMemoryBatchConnectionRegistry implements BatchConnectionReg
 
                 // 2. 只删除确认水位覆盖的旧路由，记录本轮删除事实。
                 ConnectionSyncResult changes = connectionRegistry.purgeRoutes(
-                        confirmation.gatewayId(), confirmation.routeRevision(), oldEventDeadline);
+                        confirmation.gatewayId(), confirmation.routeRevision(), oldEventExpireAt);
                 RouteCount removedCount = new RouteCount((long) changes.removed().size());
                 completedCleanups.put(key, new RouteCleanupCheckpoint(confirmation.routeRevision(), removedCount));
                 removedRoutes = removedRoutes.plus(removedCount);
@@ -154,8 +154,8 @@ public final class InMemoryBatchConnectionRegistry implements BatchConnectionReg
     }
 
     @Override
-    public boolean unregister(ConnectionRouteId id, RouteRevision revision, Instant updateExpiresAt) {
-        return connectionRegistry.unregister(id, revision, updateExpiresAt);
+    public boolean unregister(ConnectionRouteId id, RouteRevision revision, Instant updateExpireAt) {
+        return connectionRegistry.unregister(id, revision, updateExpireAt);
     }
 
     @Override
@@ -175,8 +175,8 @@ public final class InMemoryBatchConnectionRegistry implements BatchConnectionReg
 
     @Override
     public ConnectionSyncResult reconcileRoutes(
-            GatewayId gatewayId, RouteRevision routeRevision, Instant updateExpiresAt, List<UserId> userIds) {
-        return connectionRegistry.reconcileRoutes(gatewayId, routeRevision, updateExpiresAt, userIds);
+            GatewayId gatewayId, RouteRevision routeRevision, Instant updateExpireAt, List<UserId> userIds) {
+        return connectionRegistry.reconcileRoutes(gatewayId, routeRevision, updateExpireAt, userIds);
     }
 
     @Override
@@ -190,8 +190,8 @@ public final class InMemoryBatchConnectionRegistry implements BatchConnectionReg
     }
 
     @Override
-    public ConnectionSyncResult purgeRoutes(GatewayId gatewayId, RouteRevision confirmedRouteRevision, Instant oldEventDeadline) {
-        return connectionRegistry.purgeRoutes(gatewayId, confirmedRouteRevision, oldEventDeadline);
+    public ConnectionSyncResult purgeRoutes(GatewayId gatewayId, RouteRevision confirmedRouteRevision, Instant oldEventExpireAt) {
+        return connectionRegistry.purgeRoutes(gatewayId, confirmedRouteRevision, oldEventExpireAt);
     }
 
 }

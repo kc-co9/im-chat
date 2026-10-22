@@ -60,8 +60,8 @@ im:
     cluster:
       seed-addresses: []
       gossip-fanout: 2
-      gossip-timeout-millis: 3000
-      gossip-removed-ttl-millis: 300000
+      gossip-timeout-ms: 3000
+      gossip-removed-ttl-ms: 300000
     raft:
       cluster-id: ${IM_BROKER_CLUSTER_ID:local-broker-cluster}
       group-id: broker-cluster-state
@@ -71,9 +71,9 @@ im:
       initial-voters:
         - ${IM_BROKER_RAFT_ENDPOINT:127.0.0.1:18120}
       initial-learners: []
-      election-timeout-millis: 1000
-      snapshot-interval-seconds: 300
-      command-timeout-millis: 5000
+      election-timeout-ms: 1000
+      snapshot-interval: 300s
+      command-timeout-ms: 5000
       minimum-voter-count: 1
       operation-history-capacity: 1000
       bootstrap-brokers:
@@ -115,6 +115,6 @@ im:
       gateway-ttl: 60s
     gateway-push:
       bolt:
-        timeout-millis: 3000
+        timeout-ms: 3000
     peer-call:
-      timeout-millis: 3000
+      timeout-ms: 3000

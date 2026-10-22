@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.interfaces.handler.connection;
 
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
@@ -36,7 +36,7 @@ public class ConnectionRegisterHandler extends
     protected Object process(ConnectionRegisterParams params) {
         ConnectionRegistration registration = ConnectionRegistration.active(
                 new ConnectionRouteId(new UserId(params.userId()), new GatewayId(params.gatewayId())),
-                new RouteRevision(params.routeRevision()), Instant.ofEpochMilli(params.routeContext().deadlineEpochMillis()));
+                new RouteRevision(params.routeRevision()), Instant.ofEpochMilli(params.routeContext().expireAtMs()));
         boolean accepted = connectionRegistry.register(registration);
         if (accepted) {
             brokerEventPublisher.publish(

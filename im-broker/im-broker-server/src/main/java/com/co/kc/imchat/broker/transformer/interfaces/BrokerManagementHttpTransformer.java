@@ -37,11 +37,15 @@ import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.DrainProgress;
 import com.co.kc.imchat.broker.domain.cluster.model.RouteRecoveryEvidence;
 import com.co.kc.imchat.broker.support.context.BrokerWriteAccessContext;
+import com.co.kc.imchat.broker.model.cqrs.dto.BrokerInstanceDTO;
+import com.co.kc.imchat.broker.model.io.BrokerInstanceResponse;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
 import com.co.kc.imchat.common.utils.AssertUtils;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -59,7 +63,7 @@ public interface BrokerManagementHttpTransformer {
                 operation.id().value(), operation.type().name(), operation.targetBrokerId().value(),
                 operation.phase().name(), operation.acceptedEpoch().value(), operation.resultEpoch().value(),
                 operation.error() == null ? null : operation.error().value(),
-                operation.createdAt(), operation.completedAt(),
+                epochMilliFrom(operation.createdAt()), epochMilliFrom(operation.completedAt()),
                 progress == null ? null : progress.gateways().size(),
                 progress == null ? null : (int) progress.gateways().stream().filter(gateway -> gateway.confirmed()).count(),
                 evidence == null ? null : evidence.rebuiltRouteCount().value(),
@@ -126,6 +130,9 @@ public interface BrokerManagementHttpTransformer {
 
     BrokerOverviewResponse brokerOverviewResponseFrom(BrokerOverviewDTO source);
 
+    @Mapping(target = "lastSuccessAtMs", source = "lastSuccessAt")
+    @Mapping(target = "lastFailureAtMs", source = "lastFailureAt")
+    @Mapping(target = "lastExecutedAtMs", source = "lastExecutedAt")
     DiagnosticSummaryResponse diagnosticSummaryResponseFrom(DiagnosticSummaryDTO source);
 
     List<BrokerNodeResponse> brokerNodeResponseFrom(List<BrokerNodeDTO> source);
@@ -156,5 +163,32 @@ public interface BrokerManagementHttpTransformer {
     BrokerManagementOperationResponse demoteVoterResponseFrom(DemoteVoterResult source);
 
     BrokerManagementOperationResponse removeBrokerResponseFrom(RemoveBrokerResult source);
+
+    @Mapping(target = "startedAtMs", source = "startedAt")
+    @Mapping(target = "uptimeMs", source = "uptime")
+    BrokerInstanceResponse brokerInstanceFrom(BrokerInstanceDTO source);
+
+    @Mapping(target = "registeredAtMs", source = "registeredAt")
+    @Mapping(target = "lastSeenAtMs", source = "lastSeenAt")
+    BrokerNodeResponse brokerNodeFrom(BrokerNodeDTO source);
+
+    @Mapping(target = "registeredAtMs", source = "registeredAt")
+    @Mapping(target = "lastSeenAtMs", source = "lastSeenAt")
+    GatewayNodeResponse gatewayNodeFrom(GatewayNodeDTO source);
+
+    @Mapping(target = "registeredAtMs", source = "registeredAt")
+    @Mapping(target = "lastSeenAtMs", source = "lastSeenAt")
+    ConnectionRouteResponse connectionRouteFrom(ConnectionRouteDTO source);
+
+    @Mapping(target = "executedAtMs", source = "executedAt")
+    @Mapping(target = "durationMs", source = "duration")
+    GossipRecordResponse gossipRecordFrom(GossipRecordDTO source);
+
+    default Long durationMsFrom(Duration value) {
+        return value == null ? null : value.toMillis();
+    }
+    default Long epochMilliFrom(Instant value) {
+        return value == null ? null : value.toEpochMilli();
+    }
 
 }

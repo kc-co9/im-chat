@@ -9,6 +9,8 @@ import lombok.Getter;
 import lombok.ToString;
 import lombok.experimental.Accessors;
 
+import java.time.Instant;
+
 /** 单调推进已有集群 operation 的共识命令，Builder 和 JSON 重建均校验必填事实。 */
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
 @Getter
@@ -26,8 +28,8 @@ public final class AdvanceClusterOperationCommand implements BrokerClusterConsen
     private BrokerClusterOperationPhase nextPhase;
     /** 失败或降级原因，正常推进时为空。 */
     private String error;
-    /** 事实发生时间，毫秒时间戳；零是合法值。 */
-    private Long changedAtEpochMilli;
+    /** 事实发生时刻，归一到毫秒精度；epoch 零是合法值。 */
+    private Instant changedAt;
 
     private AdvanceClusterOperationCommand() {
     }
@@ -38,13 +40,13 @@ public final class AdvanceClusterOperationCommand implements BrokerClusterConsen
                                            BrokerClusterOperationPhase expectedPhase,
                                            BrokerClusterOperationPhase nextPhase,
                                            String error,
-                                           Long changedAtEpochMilli) {
+                                           Instant changedAt) {
         this.operationId = operationId;
         this.commandDigest = commandDigest;
         this.expectedPhase = expectedPhase;
         this.nextPhase = nextPhase;
         this.error = error;
-        this.changedAtEpochMilli = changedAtEpochMilli;
+        this.changedAt = changedAt;
         validate();
     }
 
@@ -54,10 +56,11 @@ public final class AdvanceClusterOperationCommand implements BrokerClusterConsen
 
     private void validate() {
         if (operationId == null || commandDigest == null || commandDigest.isBlank()
-                || expectedPhase == null || nextPhase == null || changedAtEpochMilli == null
-                || changedAtEpochMilli < 0L) {
+                || expectedPhase == null || nextPhase == null || changedAt == null
+                || changedAt.isBefore(Instant.EPOCH)) {
             throw new IllegalArgumentException("operation advance is invalid");
         }
+        changedAt = Instant.ofEpochMilli(changedAt.toEpochMilli());
     }
 
     public static final class Builder {
@@ -88,8 +91,8 @@ public final class AdvanceClusterOperationCommand implements BrokerClusterConsen
             return this;
         }
 
-        public Builder changedAtEpochMilli(Long value) {
-            command.changedAtEpochMilli = value;
+        public Builder changedAt(Instant value) {
+            command.changedAt = value;
             return this;
         }
 

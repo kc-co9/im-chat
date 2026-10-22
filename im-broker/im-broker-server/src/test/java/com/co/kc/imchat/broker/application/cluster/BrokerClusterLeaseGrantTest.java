@@ -1,48 +1,50 @@
 package com.co.kc.imchat.broker.application.cluster;
 
-import java.time.Duration;
-
-
-
-
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
+import com.co.kc.imchat.broker.domain.authority.model.FenceAck;
+import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantRequest;
+import com.co.kc.imchat.broker.domain.authority.model.LeaseNonce;
+import com.co.kc.imchat.broker.domain.authority.model.QuorumRead;
 import com.co.kc.imchat.broker.domain.authority.model.QuorumReadNonce;
-
+import com.co.kc.imchat.broker.domain.authority.model.RoutingLease;
+import com.co.kc.imchat.broker.domain.authority.service.RoutingLeaseGrantService;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
-import com.co.kc.imchat.broker.model.cqrs.command.ActivateBrokerCommand;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpochFence;
+import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
+import com.co.kc.imchat.broker.model.cqrs.command.ActivateBrokerCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.ActivateRoutingLeaseCommand;
-import com.co.kc.imchat.broker.domain.authority.model.RoutingLease;
-import com.co.kc.imchat.broker.domain.authority.model.LeaseNonce;
-import com.co.kc.imchat.broker.domain.authority.model.QuorumRead;
-import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantRequest;
-import com.co.kc.imchat.broker.domain.authority.service.RoutingLeaseGrantService;
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.any;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-
+import com.co.kc.imchat.broker.support.BrokerDomainValues;
+import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterStateTransformer;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.readIndex;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.term;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class BrokerClusterLeaseGrantTest {
     private InMemoryFenceStore currentFences;
+    private BrokerPeerAdapter peerAdapter;
     private final AtomicReference<RoutingLease> installedLease = new AtomicReference<>();
 
     @Test
@@ -63,11 +65,11 @@ class BrokerClusterLeaseGrantTest {
         assertThat(closing.join().epoch()).isEqualTo(new RoutingEpoch(7L));
         assertThat(fences.findRoutingFence()).contains(closing.join());
     }
-    private BrokerClusterAppService service(BrokerClusterAdapter adapter) {
-        return new BrokerClusterAppService(adapter,
-                mock(com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry.class),
+    private BrokerClusterAppService service(BrokerRaftAdapter adapter) {
+        return new BrokerClusterAppService(adapter, peerAdapter,
+                mock(GatewayRegistry.class),
                 Duration.ofMillis(1), Duration.ofSeconds(1),
-                mock(java.util.concurrent.ScheduledExecutorService.class), java.time.Duration.ofSeconds(10));
+                mock(ScheduledExecutorService.class), Duration.ofSeconds(10), null, null, Duration.ofSeconds(60));
     }
 
 
@@ -176,10 +178,10 @@ class BrokerClusterLeaseGrantTest {
 
         assertThat(first.leaderTerm()).isEqualTo(term(3L));
         assertThat(first.leaseSequence()).isEqualTo(
-                com.co.kc.imchat.broker.support.BrokerDomainValues.leaseSequence(1L));
+                BrokerDomainValues.leaseSequence(1L));
         assertThat(first.quorumReadIndex()).isEqualTo(readIndex(42L));
         assertThat(second.leaseSequence()).isEqualTo(
-                com.co.kc.imchat.broker.support.BrokerDomainValues.leaseSequence(2L));
+                BrokerDomainValues.leaseSequence(2L));
 
         consensus.succeed(2L, 44L);
         assertThat(coordinator.activateLease(request("broker-a", 7L, "nonce-4"))
@@ -252,53 +254,55 @@ class BrokerClusterLeaseGrantTest {
                 });
     }
 
-    private BrokerClusterAdapter adapter(StubConsensus consensus, InMemoryFenceStore fences) {
+    private BrokerRaftAdapter adapter(StubConsensus consensus, InMemoryFenceStore fences) {
         currentFences = fences;
-        BrokerClusterAdapter adapter = mock(BrokerClusterAdapter.class);
-        RoutingLeaseGrantService grantService = new RoutingLeaseGrantService(java.time.Duration.ofNanos(100));
+        BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
+        peerAdapter = mock(BrokerPeerAdapter.class);
+        RoutingLeaseGrantService grantService = new RoutingLeaseGrantService(Duration.ofNanos(100));
         when(adapter.grantLease(any(), any())).thenAnswer(invocation -> {
             LeaseGrantRequest request = invocation.getArgument(0);
-            return adapter.getCluster().checkLeaseGrant(request.brokerId(), request.routingEpoch())
+            return adapter.getClusterSnapshot().checkLeaseGrant(request.brokerId(), request.routingEpoch())
                     .orElseGet(() -> grantService.grant(request, invocation.getArgument(1)));
         });
-        when(adapter.prepareLease(any(), any(), any())).thenAnswer(invocation ->
+        when(peerAdapter.prepareLease(any(), any(), any())).thenAnswer(invocation ->
                 CompletableFuture.completedFuture(new LeaseNonce(
                         ((ClusterOperationId) invocation.getArgument(2)).value())));
-        when(adapter.installLease(any(), any())).thenAnswer(invocation -> {
+        when(peerAdapter.installLease(any(), any())).thenAnswer(invocation -> {
             installedLease.set(invocation.getArgument(1));
             return CompletableFuture.completedFuture(true);
         });
-        when(adapter.getCluster()).thenAnswer(ignored -> {
+        when(adapter.getClusterSnapshot()).thenAnswer(ignored -> {
             BrokerClusterState state = consensus.currentState();
-            java.util.ArrayList<BrokerNode> nodes = new java.util.ArrayList<>(state.brokers());
+            ArrayList<BrokerNode> nodes = new ArrayList<>(state.brokers());
             nodes.add(new BrokerNode("broker-ready", "ready:18020",
                     BrokerMembershipRole.LEARNER, BrokerRoutingState.READY));
-            return com.co.kc.imchat.broker.transformer.domain.BrokerClusterDomainTransformer.INSTANCE.restoreAggregate(
+            return BrokerClusterStateTransformer.INSTANCE.brokerClusterFrom(
                     new BrokerClusterState(state.revision(), state.epoch(), state.algorithm(), nodes),
                     List.of(), fences.findRoutingFence().orElse(null), 10);
         });
-        when(adapter.registerOperation(any())).thenAnswer(invocation ->
+        when(adapter.beginOperation(any())).thenAnswer(invocation ->
                 CompletableFuture.completedFuture(
-                        com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.applied(
+                        BrokerClusterConsensusResult.applied(
                                 invocation.getArgument(0))));
-        when(adapter.commitOperation(any(), any())).thenReturn(CompletableFuture.completedFuture(
-                com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.notLeader(
+        when(adapter.commitOperation(any())).thenReturn(CompletableFuture.completedFuture(
+                BrokerClusterConsensusResult.notLeader(
                         null, "stop after fence")));
-        when(adapter.fenceBroker(any(), any())).thenAnswer(invocation -> {
-            BrokerId brokerId = invocation.getArgument(0);
+        when(peerAdapter.fence(any(), any())).thenAnswer(invocation -> {
+            BrokerId brokerId = ((com.co.kc.imchat.broker.domain.cluster.model.BrokerNode)
+                    invocation.getArgument(0)).id();
             RoutingEpochFence fence = invocation.getArgument(1);
             return CompletableFuture.completedFuture(
-                    com.co.kc.imchat.broker.domain.authority.model.FenceAck.builder()
+                    FenceAck.builder()
                             .brokerId(brokerId).routingEpoch(fence.epoch()).leaderTerm(fence.leaderTerm())
                             .operationId(fence.operationId())
-                            .fencedLeaseSequence(com.co.kc.imchat.broker.support.BrokerDomainValues.leaseSequence(1L))
+                            .fencedLeaseSequence(BrokerDomainValues.leaseSequence(1L))
                             .build());
         });
-        when(adapter.committedState()).thenAnswer(ignored -> consensus.currentState());
+        when(adapter.getCommittedState()).thenAnswer(ignored -> consensus.currentState());
         when(adapter.confirmLeadership(any())).thenAnswer(invocation ->
                 consensus.confirmLeadership(invocation.getArgument(0)));
         when(adapter.findRoutingFence()).thenAnswer(ignored -> fences.findRoutingFence());
-        when(adapter.persist(any())).thenAnswer(invocation -> fences.persist(invocation.getArgument(0)));
+        when(adapter.commitRoutingFence(any())).thenAnswer(invocation -> fences.persist(invocation.getArgument(0)));
         return adapter;
     }
 

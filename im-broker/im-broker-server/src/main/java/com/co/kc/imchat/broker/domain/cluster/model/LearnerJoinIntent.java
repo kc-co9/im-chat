@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.cluster.model;
 
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 import lombok.Getter;
 import lombok.experimental.Accessors;

@@ -47,3 +47,28 @@ harness_worktree_fingerprint() {
     printf 'unavailable\n'
   fi
 }
+
+# mkdir 是唯一抢锁操作；仅本进程持有的目录可在 EXIT 时释放，陈旧锁需人工核对。
+harness_execution_lock() {
+  local directory="$ROOT_DIR" part
+  for part in .harness verifications; do
+    directory="$directory/$part"
+    [[ ! -L "$directory" ]] || return 2
+    mkdir -p "$directory" || return $?
+  done
+  EXECUTION_LOCK="$ROOT_DIR/.harness/verifications/execution.lock"
+  if ! mkdir "$EXECUTION_LOCK" 2>/dev/null; then
+    printf 'Harness repository execution lock exists (possibly interrupted); inspect owner before manual removal: %s\n' "$EXECUTION_LOCK" >&2
+    return 2
+  fi
+  printf '%s\n' "$$" > "$EXECUTION_LOCK/owner-pid"
+  trap 'harness_release_locks' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
+harness_release_locks() {
+  if [[ -n "${EXECUTION_LOCK:-}" && -f "$EXECUTION_LOCK/owner-pid" && "$(cat "$EXECUTION_LOCK/owner-pid")" == "$$" ]]; then
+    rm -f "$EXECUTION_LOCK/owner-pid"; rmdir "$EXECUTION_LOCK"
+  fi
+}

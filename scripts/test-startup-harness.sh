@@ -11,7 +11,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURE_ROOT="$(mktemp -d)"
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 
-mkdir -p "$FIXTURE_ROOT/scripts" "$FIXTURE_ROOT/bin"
+mkdir -p "$FIXTURE_ROOT/scripts/lib" "$FIXTURE_ROOT/bin"
+cp "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" "$FIXTURE_ROOT/scripts/lib/"
 cp "$ROOT_DIR/scripts/harness-startup.sh" "$FIXTURE_ROOT/scripts/harness-startup.sh"
 chmod +x "$FIXTURE_ROOT/scripts/harness-startup.sh"
 
@@ -53,7 +54,7 @@ if [[ " $* " == *" -Dgroups=startup-smoke "* && "${STARTUP_FIXTURE_ZERO_TESTS:-0
     [[ "$module" == "module-b" ]] && application="BetaApplication"
     mkdir -p "$STARTUP_FIXTURE_ROOT/$module/target/surefire-reports"
     cat > "$STARTUP_FIXTURE_ROOT/$module/target/surefire-reports/TEST-example.${application}Test.xml" <<XML
-<testsuite name="example.${application}Test" tests="1" failures="0" errors="0" skipped="0"/>
+<testsuite name="example.${application}Test" tests="1" failures="0" errors="0" skipped="0"><testcase classname="example.${application}Test" name="contextLoads" time="0.01"/></testsuite>
 XML
   done
 fi
@@ -72,6 +73,56 @@ if [[ "$(<"$trace")" != *'-Dgroups=startup-smoke test'* ]]; then
   printf 'Startup fixture did not execute the dedicated JUnit group.\n' >&2
   exit 1
 fi
+
+# 同轮只读入口复用刚产生的报告，Maven 调用计数不变；非法 epoch 必须失败。
+trace_before="$(wc -l < "$trace")"
+epoch="$(ruby -e 'puts Time.now.to_f - 60')"
+HARNESS_ROOT_DIR="$FIXTURE_ROOT" STARTUP_FIXTURE_TRACE="$trace" PATH="$FIXTURE_ROOT/bin:$PATH" \
+  "$FIXTURE_ROOT/scripts/harness-startup.sh" --reports-since "$epoch"
+[[ "$(wc -l < "$trace")" == "$trace_before" ]]
+for epoch in 0 -1 NaN 999999999999; do
+  if HARNESS_ROOT_DIR="$FIXTURE_ROOT" "$FIXTURE_ROOT/scripts/harness-startup.sh" --reports-since "$epoch" >/dev/null 2>&1; then
+    printf 'Invalid epoch accepted: %s\n' "$epoch" >&2
+    exit 1
+  fi
+done
+
+# target 符号链接必须在删除报告或调用 Maven 前拒绝，外部文件保持原样。
+mkdir -p "$FIXTURE_ROOT/external/surefire-reports"
+external_report="$FIXTURE_ROOT/external/surefire-reports/TEST-example.AlphaApplicationTest.xml"
+printf 'external sentinel\n' > "$external_report"
+mv "$FIXTURE_ROOT/module-a/target" "$FIXTURE_ROOT/module-a/target.saved"
+ln -s "$FIXTURE_ROOT/external" "$FIXTURE_ROOT/module-a/target"
+trace_before="$(wc -l < "$trace")"
+if HARNESS_ROOT_DIR="$FIXTURE_ROOT" STARTUP_FIXTURE_ROOT="$FIXTURE_ROOT" \
+    STARTUP_FIXTURE_TRACE="$trace" PATH="$FIXTURE_ROOT/bin:$PATH" \
+    "$FIXTURE_ROOT/scripts/harness-startup.sh" >/dev/null 2>&1; then
+  printf 'Symlink target must fail before Maven.\n' >&2
+  exit 1
+fi
+if [[ "$(cat "$external_report")" != 'external sentinel' || "$(wc -l < "$trace")" != "$trace_before" ]]; then
+  printf 'Unsafe startup cleanup changed external report or invoked Maven.\n' >&2
+  exit 1
+fi
+rm "$FIXTURE_ROOT/module-a/target"
+mv "$FIXTURE_ROOT/module-a/target.saved" "$FIXTURE_ROOT/module-a/target"
+
+# IAM 使用同模块唯一 protocol test 回退，不依赖 ApplicationTest 命名。
+beta_test="$FIXTURE_ROOT/module-b/src/test/java/example/BetaApplicationTest.java"
+cp "$beta_test" "$FIXTURE_ROOT/beta.saved"
+sed 's/classes = BetaApplication.class, //; s/BetaApplicationTest/IamAuthorizationServerProtocolTest/g' \
+  "$beta_test" > "$FIXTURE_ROOT/module-b/src/test/java/example/IamAuthorizationServerProtocolTest.java"
+rm "$beta_test"
+ruby "$FIXTURE_ROOT/scripts/lib/harness-reactor-evidence.rb" startup-manifest "$FIXTURE_ROOT" "$FIXTURE_ROOT/fallback.json"
+ruby -rjson -e 'abort "IAM fallback missing" unless JSON.parse(File.read(ARGV[0]))["applications"].any? { |e| e["testClass"] == "example.IamAuthorizationServerProtocolTest" }' "$FIXTURE_ROOT/fallback.json"
+sed 's/IamAuthorizationServerProtocolTest/OtherProtocolTest/g' \
+  "$FIXTURE_ROOT/module-b/src/test/java/example/IamAuthorizationServerProtocolTest.java" > "$FIXTURE_ROOT/module-b/src/test/java/example/OtherProtocolTest.java"
+if ruby "$FIXTURE_ROOT/scripts/lib/harness-reactor-evidence.rb" startup-manifest "$FIXTURE_ROOT" "$FIXTURE_ROOT/fallback.json" >/dev/null 2>&1; then
+  printf 'Ambiguous same-module fallback must fail.\n' >&2
+  exit 1
+fi
+rm "$FIXTURE_ROOT/module-b/src/test/java/example/"*ProtocolTest.java
+mv "$FIXTURE_ROOT/beta.saved" "$beta_test"
 
 # 移除一个 Tag 后，枚举检查必须在 Maven 前失败并指出缺失映射。
 sed -i.bak '/startup-smoke/d' \

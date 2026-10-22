@@ -25,10 +25,10 @@ import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.domain.cluster.model.CommandDigest;
 import com.co.kc.imchat.broker.domain.cluster.model.MinimumVoterCount;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
-import com.co.kc.imchat.broker.domain.cluster.model.MembershipEndpoint;
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
 import com.co.kc.imchat.broker.model.cqrs.command.AddLearnerCommand;
-import com.co.kc.imchat.broker.model.cqrs.command.AdvanceClusterOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.DemoteVoterCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.ConfirmLearnerCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.PromoteLearnerCommand;
@@ -51,25 +51,28 @@ import java.util.concurrent.CompletionStage;
  * <p>本服务负责把接口层的基础类型命令转换为领域值对象，读取已提交的
  * {@link BrokerCluster} 聚合，并按 Begin、外部成员变更、Commit 的顺序推进成员操作。
  * 它不直接修改聚合内部状态，也不实现 Raft 成员配置；共识提交和成员配置由
- * {@link BrokerClusterAdapter} 执行。</p>
+ * {@link BrokerRaftAdapter} 执行。</p>
  *
  * <p>成员变更通过 {@link ClusterOperationId} 保证幂等。新请求先校验当前 epoch，已登记操作
  * 则根据操作摘要和阶段恢复；对于可能发生外部部分提交的变更，未知结果保留为待恢复状态。</p>
  */
 public final class BrokerMembershipAppService {
-    private final BrokerClusterAdapter brokerClusterAdapter;
+    private final BrokerRaftAdapter brokerRaftAdapter;
+    private final BrokerPeerAdapter brokerPeerAdapter;
     private final MinimumVoterCount minimumVoterCount;
 
     /**
      * 创建成员关系用例编排器。
      *
-     * @param brokerClusterAdapter 集群共识、成员配置和已提交状态适配器
+     * @param brokerRaftAdapter 集群共识、成员配置和已提交状态适配器
      * @param minimumVoterCount    成员变更必须保留的最少 voter 数
      */
     public BrokerMembershipAppService(
-            BrokerClusterAdapter brokerClusterAdapter,
+            BrokerRaftAdapter brokerRaftAdapter,
+            BrokerPeerAdapter brokerPeerAdapter,
             MinimumVoterCount minimumVoterCount) {
-        this.brokerClusterAdapter = brokerClusterAdapter;
+        this.brokerRaftAdapter = brokerRaftAdapter;
+        this.brokerPeerAdapter = brokerPeerAdapter;
         this.minimumVoterCount = minimumVoterCount;
     }
 
@@ -91,7 +94,7 @@ public final class BrokerMembershipAppService {
         CommandDigest commandDigest = command.digest();
 
         // 2. 读取已提交聚合；新请求校验 epoch，已有操作由聚合核对幂等身份。
-        BrokerCluster cluster = brokerClusterAdapter.getCluster();
+        BrokerCluster cluster = brokerRaftAdapter.getClusterSnapshot();
         if (!cluster.exists(operationId) && !cluster.epoch().equals(expectedEpoch)) {
             return CompletableFuture.completedFuture(AddLearnerResult.conflict(operationId));
         }
@@ -111,14 +114,14 @@ public final class BrokerMembershipAppService {
         }
 
         // 4. 先持久化操作意图，只有仍处于 PENDING 的操作才能执行成员变更。
-        return brokerClusterAdapter.registerOperation(decision.operation())
+        return brokerRaftAdapter.beginOperation(decision.operation())
                 .thenCompose(consensusResult -> {
                     if (!consensusResult.hasPendingOperation()) {
                         return CompletableFuture.completedFuture(consensusResult);
                     }
 
                     // 5. 添加 learner，再根据成员提交结果提交拓扑或记录失败。
-                    return brokerClusterAdapter.addLearner(membershipEndpoint)
+                    return brokerRaftAdapter.addLearner(membershipEndpoint)
                             .thenCompose(membershipResult ->
                                     handleMembershipResult(consensusResult.operation(), membershipResult));
                 })
@@ -146,7 +149,7 @@ public final class BrokerMembershipAppService {
         CommandDigest commandDigest = command.digest();
 
         // 2. 读取已提交聚合，拒绝基于过期 epoch 的新操作。
-        BrokerCluster cluster = brokerClusterAdapter.getCluster();
+        BrokerCluster cluster = brokerRaftAdapter.getClusterSnapshot();
         if (!cluster.exists(operationId)) {
             if (!cluster.epoch().equals(expectedEpoch)) {
                 return CompletableFuture.completedFuture(CompleteLearnerSyncResult.conflict(operationId, cluster.epoch()));
@@ -173,7 +176,7 @@ public final class BrokerMembershipAppService {
         return CompletableFuture.completedFuture(decision)
                 .thenCompose(acceptedDecision -> {
                     if (acceptedDecision.duplicate()) {
-                        return brokerClusterAdapter.registerOperation(acceptedDecision.operation());
+                        return brokerRaftAdapter.beginOperation(acceptedDecision.operation());
                     }
                     // 新操作取得同步证据后才能提交 Begin。
                     return checkLearnerProgress(cluster.findNode(brokerId).orElseThrow(), membershipEndpoint)
@@ -181,14 +184,14 @@ public final class BrokerMembershipAppService {
                                 if (!progress.accepted()) {
                                     return CompletableFuture.completedFuture(progress);
                                 }
-                                return brokerClusterAdapter.registerOperation(acceptedDecision.operation());
+                                return brokerRaftAdapter.beginOperation(acceptedDecision.operation());
                             });
                 })
                 .thenCompose(begin -> {
                     if (!begin.hasPendingOperation()) {
                         return CompletableFuture.completedFuture(begin);
                     }
-                    return brokerClusterAdapter.commitOperation(begin.operation(), Instant.now());
+                    return brokerRaftAdapter.commitOperation(begin.operation());
                 })
                 // 5. 提交节点状态后推进操作终态，并返回同步完成结果。
                 .thenCompose(this::completeMembershipOperation)
@@ -215,7 +218,7 @@ public final class BrokerMembershipAppService {
         CommandDigest commandDigest = command.digest();
 
         // 2. 读取已提交聚合，已有操作允许按原请求恢复，新操作必须匹配 epoch。
-        BrokerCluster cluster = brokerClusterAdapter.getCluster();
+        BrokerCluster cluster = brokerRaftAdapter.getClusterSnapshot();
         if (!cluster.exists(operationId)) {
             if (!cluster.epoch().equals(expectedEpoch)) {
                 return CompletableFuture.completedFuture(PromoteLearnerResult.conflict(
@@ -240,14 +243,14 @@ public final class BrokerMembershipAppService {
             return CompletableFuture.completedFuture(PromoteLearnerResult.failure(operationId, cluster.epoch(), decision));
         }
 
-        return brokerClusterAdapter.registerOperation(decision.operation())
+        return brokerRaftAdapter.beginOperation(decision.operation())
                 .thenCompose(begin -> {
                     if (!begin.hasPendingOperation()) {
                         return CompletableFuture.completedFuture(begin);
                     }
 
                     // 4. 晋升包含两步配置变更，拒绝时可能部分提交，保留操作等待核对。
-                    return brokerClusterAdapter.promoteLearner(membershipEndpoint)
+                    return brokerRaftAdapter.promoteLearner(membershipEndpoint)
                             .thenCompose(membership ->
                                     handleMembershipResult(begin.operation(), membership));
                 })
@@ -275,7 +278,7 @@ public final class BrokerMembershipAppService {
         CommandDigest commandDigest = command.digest();
 
         // 2. 读取已提交聚合，只对新操作检查当前 epoch。
-        BrokerCluster cluster = brokerClusterAdapter.getCluster();
+        BrokerCluster cluster = brokerRaftAdapter.getClusterSnapshot();
         if (!cluster.exists(operationId)) {
             if (!cluster.epoch().equals(expectedEpoch)) {
                 return CompletableFuture.completedFuture(DemoteVoterResult.conflict(operationId, cluster.epoch()));
@@ -299,14 +302,14 @@ public final class BrokerMembershipAppService {
             return CompletableFuture.completedFuture(DemoteVoterResult.failure(operationId, cluster.epoch(), decision));
         }
 
-        return brokerClusterAdapter.registerOperation(decision.operation())
+        return brokerRaftAdapter.beginOperation(decision.operation())
                 .thenCompose(begin -> {
                     if (!begin.hasPendingOperation()) {
                         return CompletableFuture.completedFuture(begin);
                     }
 
                     // 4. 执行两步降级；不确定或部分提交时保留 PENDING 供恢复。
-                    return brokerClusterAdapter.demoteVoter(membershipEndpoint)
+                    return brokerRaftAdapter.demoteVoter(membershipEndpoint)
                             .thenCompose(membership -> handleMembershipResult(begin.operation(), membership));
                 })
                 // 5. 拓扑提交后记录成功终态，再返回降级结果。
@@ -333,7 +336,7 @@ public final class BrokerMembershipAppService {
         RoutingEpoch expectedEpoch = new RoutingEpoch(command.expectedEpoch());
 
         // 2. 读取已提交聚合；重试允许目标已移除，新请求仍须匹配 epoch。
-        BrokerCluster cluster = brokerClusterAdapter.getCluster();
+        BrokerCluster cluster = brokerRaftAdapter.getClusterSnapshot();
         if (!cluster.exists(operationId)) {
             if (!cluster.epoch().equals(expectedEpoch)) {
                 return CompletableFuture.completedFuture(RemoveBrokerResult.conflict(
@@ -359,14 +362,14 @@ public final class BrokerMembershipAppService {
             return CompletableFuture.completedFuture(RemoveBrokerResult.failure(operationId, cluster.epoch(), decision));
         }
 
-        return brokerClusterAdapter.registerOperation(decision.operation())
+        return brokerRaftAdapter.beginOperation(decision.operation())
                 .thenCompose(begin -> {
                     if (!begin.hasPendingOperation()) {
                         return CompletableFuture.completedFuture(begin);
                     }
 
                     // 4. 从共识配置移除成员，再提交已登记操作以修改内部 Broker 节点。
-                    return brokerClusterAdapter.removeMember(membershipEndpoint)
+                    return brokerRaftAdapter.removeMember(membershipEndpoint)
                             .thenCompose(membership -> handleMembershipResult(begin.operation(), membership));
                 })
                 // 5. 收口成功操作，转换为移除结果。
@@ -385,7 +388,7 @@ public final class BrokerMembershipAppService {
      * @return 对应成员用例的异步结果，或恢复失败信息
      */
     public CompletionStage<?> resume(ClusterOperationId operationId) {
-        BrokerCluster cluster = brokerClusterAdapter.getCluster();
+        BrokerCluster cluster = brokerRaftAdapter.getClusterSnapshot();
         BrokerClusterOperation operation = cluster.findOperation(operationId)
                 .orElseThrow(() -> new IllegalArgumentException("operation does not exist"));
         if (operation.phase() == BrokerClusterOperationPhase.RAFT_COMMITTED) {
@@ -429,15 +432,15 @@ public final class BrokerMembershipAppService {
     private CompletionStage<BrokerClusterConsensusResult> checkLearnerProgress(
             BrokerNode learner, MembershipEndpoint membershipEndpoint) {
         // 1. 本机 Raft 节点不是集群 Leader，返回检查失败及已知 Leader 地址。
-        if (!brokerClusterAdapter.getLocalBroker().isLeader()) {
-            return CompletableFuture.completedFuture(BrokerClusterConsensusResult.notLeader(brokerClusterAdapter.getLocalBroker().leaderEndpoint(), "learner progress check requires the cluster leader"));
+        if (!brokerRaftAdapter.getLocalBroker().isLeader()) {
+            return CompletableFuture.completedFuture(BrokerClusterConsensusResult.notLeader(brokerRaftAdapter.getLeaderEndpoint(), "learner progress check requires the cluster leader"));
         }
         // 2. 确认 learner 已进入共识配置，再比较 quorum ReadIndex 与节点应用位置。
-        if (!brokerClusterAdapter.consensusMembership().learners().contains(membershipEndpoint.value())) {
+        if (!brokerRaftAdapter.getConsensusMembership().learners().contains(membershipEndpoint)) {
             return CompletableFuture.completedFuture(BrokerClusterConsensusResult.rejected("learner has not joined the committed consensus membership"));
         }
-        return brokerClusterAdapter.confirmLeadership(new QuorumReadNonce(GeneratorUtils.nextUUID()))
-                .thenCompose(read -> brokerClusterAdapter.fetchQuorumReadIndex(learner)
+        return brokerRaftAdapter.confirmLeadership(new QuorumReadNonce(GeneratorUtils.nextUUID()))
+                .thenCompose(read -> brokerPeerAdapter.fetchQuorumReadIndex(learner)
                         .thenApply(index -> {
                             if (index >= read.readIndex().value()) {
                                 return BrokerClusterConsensusResult.applied();
@@ -450,10 +453,10 @@ public final class BrokerMembershipAppService {
                             if (failure instanceof CompletionException && failure.getCause() != null) {
                                 failure = failure.getCause();
                             }
-                            if (brokerClusterAdapter.getLocalBroker().isLeader()) {
-                                return BrokerClusterConsensusResult.unavailable(brokerClusterAdapter.getLocalBroker().leaderEndpoint(), failure.getMessage());
+                            if (brokerRaftAdapter.getLocalBroker().isLeader()) {
+                                return BrokerClusterConsensusResult.unavailable(brokerRaftAdapter.getLeaderEndpoint(), failure.getMessage());
                             } else {
-                                return BrokerClusterConsensusResult.notLeader(brokerClusterAdapter.getLocalBroker().leaderEndpoint(), failure.getMessage());
+                                return BrokerClusterConsensusResult.notLeader(brokerRaftAdapter.getLeaderEndpoint(), failure.getMessage());
                             }
                         })
                 );
@@ -473,7 +476,7 @@ public final class BrokerMembershipAppService {
             BrokerClusterOperation operation, BrokerConsensusMembershipResult membershipResult) {
         // 1. 成员配置已确认提交，继续提交同一操作以修改聚合内部节点。
         if (membershipResult.accepted()) {
-            return brokerClusterAdapter.commitOperation(operation, Instant.now());
+            return brokerRaftAdapter.commitOperation(operation);
         }
         // 2. 保留成员拒绝/未知结果；两步变更不能假设没有外部部分提交。
         BrokerClusterConsensusResult failure =
@@ -482,14 +485,13 @@ public final class BrokerMembershipAppService {
             return CompletableFuture.completedFuture(failure);
         }
         // 3. 单步明确拒绝才写 FAILED；记录失败阶段未成功时返回共识失败。
-        AdvanceClusterOperationCommand failureCommand =
-                BrokerClusterAppTransformer.INSTANCE.membershipFailureCommandFrom(operation, membershipResult, Instant.now());
-        return brokerClusterAdapter.submitChange(failureCommand).thenApply(consensusResult -> {
-            if (!consensusResult.accepted()) {
-                return consensusResult;
-            }
-            return failure;
-        });
+        return brokerRaftAdapter.failMembershipOperation(operation, membershipResult)
+                .thenApply(consensusResult -> {
+                    if (!consensusResult.accepted()) {
+                        return consensusResult;
+                    }
+                    return failure;
+                });
     }
 
     /**
@@ -508,8 +510,7 @@ public final class BrokerMembershipAppService {
             return CompletableFuture.completedFuture(result);
         } else {
             // 2. 持久化成功终态，创建与完成时间统一为毫秒精度，允许同毫秒完成。
-            return brokerClusterAdapter.submitChange(
-                    BrokerClusterAppTransformer.INSTANCE.membershipCompletionCommandFrom(result.operation(), Instant.now()));
+            return brokerRaftAdapter.completeMembershipOperation(result.operation());
         }
     }
 }

@@ -1,0 +1,2 @@
+# Unified-diff context lines use a single space for an empty source line.
+third-party/jraft-applied-membership/applied-membership.patch whitespace=-blank-at-eol

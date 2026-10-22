@@ -17,7 +17,7 @@ public record GatewayRouteSnapshotParams(
         int chunkIndex,
         int chunkCount,
         String contentChecksum,
-        long eventDeadline,
+        long updateExpireAtMs,
         List<Long> userIds) implements Serializable, GatewayRouteRequest {
 
     public GatewayRouteSnapshotParams {
@@ -39,8 +39,8 @@ public record GatewayRouteSnapshotParams(
         if (contentChecksum == null || contentChecksum.isBlank()) {
             throw new IllegalArgumentException("contentChecksum must not be blank");
         }
-        if (eventDeadline <= 0L) {
-            throw new IllegalArgumentException("eventDeadline must be positive");
+        if (updateExpireAtMs <= 0L) {
+            throw new IllegalArgumentException("updateExpireAtMs must be positive");
         }
         if (userIds == null || userIds.stream().anyMatch(java.util.Objects::isNull)) {
             throw new IllegalArgumentException("userIds must not contain null");

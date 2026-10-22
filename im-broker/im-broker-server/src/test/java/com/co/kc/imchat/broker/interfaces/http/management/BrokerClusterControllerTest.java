@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.interfaces.http.management;
 
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationType;
@@ -35,7 +35,7 @@ class BrokerClusterControllerTest {
                 .phase(BrokerClusterOperationPhase.FENCING_OLD_EPOCH)
                 .createdAt(Instant.parse("2026-10-09T00:00:00Z"))
                 .build();
-        BrokerClusterConsensus repository = mock(BrokerClusterConsensus.class);
+        BrokerRaftAdapter repository = mock(BrokerRaftAdapter.class);
         when(repository.findOperation(new ClusterOperationId("operation-1")))
                 .thenReturn(Optional.of(operation));
 
@@ -43,6 +43,9 @@ class BrokerClusterControllerTest {
                 .operation("operation-1");
 
         assertThat(response.operationId()).isEqualTo("operation-1");
+        assertThat(response.createdAtMs()).isEqualTo(1791504000000L);
+        assertThat(response.completedAtMs()).isNull();
+        assertThat(JsonUtils.toJson(response)).doesNotContain("\"createdAt\"", "\"completedAt\"");
         assertThat(response.phase()).isEqualTo("FENCING_OLD_EPOCH");
         assertThat(response.resultEpoch()).isEqualTo(4L);
         assertThat(JsonUtils.toJson(response)).doesNotContain("internal-digest", "commandDigest", "membershipEndpoint");

@@ -211,7 +211,11 @@ ruby -rjson -e '
   evidence = JSON.parse(File.read(ARGV.fetch(0)))
   abort unless evidence["mode"] == "routing-capacity" && evidence["status"] == "passed"
   abort unless evidence["workloadCount"] == 30 && evidence["evidenceKind"] == "routing-capacity"
-' "$repository/.harness/verifications/routing-capacity.json"
+  detail = JSON.parse(File.read(ARGV.fetch(1)))
+  %w[configDigest loadTestScopeFingerprint loadTestScopeStable ordinaryDataUnchanged phaseCount repetitionCount qualificationStatus statusCounts resultsPath].each do |key|
+    abort "lost business field #{key}" unless evidence[key] == detail.fetch(key)
+  end
+' "$repository/.harness/verifications/routing-capacity.json" "$FIXTURE_ROOT/verify/state/evidence/three-voter/evidence.json"
 
 run_fixture zero zero 1
 run_fixture missing-stage missing-stage 1

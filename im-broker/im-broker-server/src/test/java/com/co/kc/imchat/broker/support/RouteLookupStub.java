@@ -1,7 +1,7 @@
 package com.co.kc.imchat.broker.support;
 
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import java.time.Instant;
 import com.alicp.jetcache.Cache;
@@ -9,15 +9,7 @@ import java.util.Map;
 import java.util.LinkedHashMap;
 import static org.mockito.Mockito.doAnswer;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
-import com.co.kc.imchat.broker.model.cqrs.query.BrokerRouteLookupParams;
 import com.co.kc.imchat.broker.model.cqrs.result.RouteLocation;
-import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
-import com.co.kc.imchat.broker.domain.connection.model.GatewayRegistration;
-import com.co.kc.imchat.broker.model.cqrs.command.FrameDispatchCommand;
-import com.co.kc.imchat.gateway.ws.sdk.model.params.GatewayFrameWriteParams;
-import com.co.kc.imchat.broker.sdk.model.dto.BrokerFrameWriteDTO;
-import com.co.kc.imchat.broker.sdk.enums.BrokerFrameWriteStatus;
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
 
 import java.time.Duration;
 import java.util.List;
@@ -50,12 +42,12 @@ public interface RouteLookupStub {
     CompletionStage<List<RouteLocation>> lookup(BrokerNode broker,
             UserId userId, RoutingEpoch routingEpoch);
 
-    default BrokerClusterAdapter adapter() {
-        BrokerClusterAdapter adapter = mock(BrokerClusterAdapter.class);
-        when(adapter.lookupRoutes(any(BrokerRouteLookupParams.class))).thenAnswer(invocation -> {
+    default BrokerPeerAdapter peerAdapter() {
+        BrokerPeerAdapter adapter = mock(BrokerPeerAdapter.class);
+        when(adapter.lookupRoutes(any(BrokerNode.class), any(UserId.class), any(RoutingEpoch.class)))
+                .thenAnswer(invocation -> {
             try {
-                BrokerRouteLookupParams params = invocation.getArgument(0);
-                return lookup(params.broker(), params.userId(), params.routingEpoch());
+                return lookup(invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2));
             } catch (RuntimeException failure) {
                 return java.util.concurrent.CompletableFuture.failedFuture(failure);
             }
@@ -63,22 +55,4 @@ public interface RouteLookupStub {
         return adapter;
     }
 
-    /** 保留测试中的 Gateway 请求记录，生产映射与指标另由真实 Adapter 回归验证。 */
-    default BrokerClusterAdapter adapter(GatewayClient gatewayClient) {
-        return adapter(gatewayClient, Runnable::run);
-    }
-
-    default BrokerClusterAdapter adapter(GatewayClient gatewayClient, java.util.concurrent.Executor executor) {
-        BrokerClusterAdapter adapter = adapter();
-        when(adapter.dispatchFrame(any(), any())).thenAnswer(invocation -> {
-            GatewayRegistration gateway = invocation.getArgument(0);
-            FrameDispatchCommand command = invocation.getArgument(1);
-            return java.util.concurrent.CompletableFuture.supplyAsync(() ->
-                    gatewayClient.writeFrame(RegistryTransformer.INSTANCE.gatewayEndpointFrom(gateway),
-                            new GatewayFrameWriteParams(command.userId(), command.deliveryId(), "test-attempt", command.frame()))
-                            .writeList().stream().map(write -> new BrokerFrameWriteDTO(
-                                    write.connectionId(), BrokerFrameWriteStatus.valueOf(write.status().name()))).toList(), executor);
-        });
-        return adapter;
-    }
 }

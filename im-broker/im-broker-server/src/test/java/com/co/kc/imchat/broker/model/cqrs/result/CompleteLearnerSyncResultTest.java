@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.model.cqrs.result;
 
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusStatus;
+import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterDecision;
 import com.co.kc.imchat.broker.domain.cluster.model.DecisionReason;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
@@ -18,7 +18,7 @@ class CompleteLearnerSyncResultTest {
         CompleteLearnerSyncResult result = CompleteLearnerSyncResult.conflict(
                 new ClusterOperationId("sync"), new RoutingEpoch(7L));
         assertThat(result.operationId()).isEqualTo("sync");
-        assertThat(result.status()).isEqualTo(BrokerClusterConsensusStatus.CONFLICT);
+        assertThat(result.status()).isEqualTo(Status.CONFLICT);
         assertThat(result.acceptedEpoch()).isEqualTo(7L);
         assertThat(result.message()).isEqualTo("expected epoch does not match committed state");
         assertThat(result.targetEpoch()).isNull();
@@ -29,7 +29,7 @@ class CompleteLearnerSyncResultTest {
     void rejectionPreservesReasonAndObservedEpoch() {
         CompleteLearnerSyncResult result = CompleteLearnerSyncResult.rejected(
                 new ClusterOperationId("sync"), new RoutingEpoch(7L));
-        assertThat(result.status()).isEqualTo(BrokerClusterConsensusStatus.REJECTED);
+        assertThat(result.status()).isEqualTo(Status.REJECTED);
         assertThat(result.acceptedEpoch()).isEqualTo(7L);
         assertThat(result.message()).isEqualTo("broker membership endpoint does not match committed binding");
         assertThat(result.targetEpoch()).isNull();
@@ -43,7 +43,7 @@ class CompleteLearnerSyncResultTest {
         CompleteLearnerSyncResult result = CompleteLearnerSyncResult.failure(
                 new ClusterOperationId("sync"), new RoutingEpoch(7L), decision);
         assertThat(result.operationId()).isEqualTo("sync");
-        assertThat(result.status()).isEqualTo(BrokerClusterConsensusStatus.valueOf(status.name()));
+        assertThat(result.status()).isEqualTo(Status.valueOf(status.name()));
         assertThat(result.acceptedEpoch()).isEqualTo(7L);
         assertThat(result.message()).isEqualTo("not admitted");
         assertThat(result.targetEpoch()).isNull();

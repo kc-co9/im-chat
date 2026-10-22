@@ -11,8 +11,9 @@
     <artifactId>im-raft</artifactId>
     <dependencies>
         <dependency>
-            <groupId>com.co.kc.im</groupId>
-            <artifactId>im-bolt</artifactId>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.co.kc.im</groupId>
@@ -20,7 +21,7 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.alipay.sofa</groupId>
+            <groupId>com.co.kc.thirdparty.sofa</groupId>
             <artifactId>jraft-core</artifactId>
         </dependency>
         <dependency>

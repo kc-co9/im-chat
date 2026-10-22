@@ -4,6 +4,7 @@ import com.co.kc.imchat.management.ops.domain.model.BrokerManagementEndpoint;
 import com.co.kc.imchat.management.ops.model.cqrs.command.BrokerClusterOperationCommand;
 import com.co.kc.imchat.management.ops.infrastructure.config.properties.OpsBrokerProperties;
 import org.junit.jupiter.api.Test;
+import com.co.kc.imchat.management.ops.transformer.infrastructure.BrokerClientTransformer;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -46,13 +47,22 @@ class HttpBrokerManagementClientTest {
         server.expect(requestTo("http://127.0.0.1:12201/management/broker/overview"))
                 .andRespond(withSuccess("""
                         {"code":0,"msg":"success","data":{"broker":{"id":"broker-1","address":"127.0.0.1:12200",
-                        "startedAt":"2026-08-23T01:00:00Z","uptimeSeconds":30},
+                        "startedAtMs":"1787446800123","uptimeMs":"30001"},
                         "statistics":{"brokerCount":1,"gatewayCount":2,"connectionCount":3},
-                        "gossip":{"successCount":1,"failureCount":0},
+                        "gossip":{"successCount":1,"failureCount":0,"lastSuccessAtMs":"1787446800123","lastFailureAtMs":null,"lastExecutedAtMs":"1787446801123"},
                         "migration":{"successCount":0,"failureCount":0}}}
                         """, MediaType.APPLICATION_JSON));
 
-        assertThat(client.overview(endpoint).broker().id()).isEqualTo("broker-1");
+        com.co.kc.imchat.management.ops.infrastructure.client.model.BrokerOverviewPayload payload = client.overview(endpoint);
+        assertThat(payload.broker().startedAtMs()).isEqualTo(1787446800123L);
+        assertThat(payload.broker().uptimeMs()).isEqualTo(30001L);
+        com.co.kc.imchat.management.ops.model.cqrs.dto.BrokerOverviewDTO overview =
+                BrokerClientTransformer.INSTANCE.brokerOverviewDataFrom(payload);
+        assertThat(overview.broker().id()).isEqualTo("broker-1");
+        assertThat(overview.broker().startedAt()).isEqualTo(java.time.Instant.ofEpochMilli(1787446800123L));
+        assertThat(overview.broker().uptime()).isEqualTo(java.time.Duration.ofMillis(30001));
+        assertThat(overview.gossip().lastSuccessAt()).isEqualTo(java.time.Instant.ofEpochMilli(1787446800123L));
+        assertThat(overview.gossip().lastFailureAt()).isNull();
         server.verify();
     }
 
@@ -64,25 +74,31 @@ class HttpBrokerManagementClientTest {
         BrokerManagementEndpoint endpoint = endpoint();
         expect(server, "/management/brokers", """
                 [{"brokerId":"broker-1","host":"127.0.0.1","port":12200,
-                "registeredAt":"2026-08-23T01:00:00Z","lastSeenAt":"2026-08-23T01:00:01Z"}]
+                "registeredAtMs":"1787446800123","lastSeenAtMs":"1787446801123"}]
                 """);
         expect(server, "/management/gateways", """
                 [{"gatewayId":"gateway-1","host":"127.0.0.1","port":12300,
-                "registeredAt":"2026-08-23T01:00:00Z","lastSeenAt":"2026-08-23T01:00:01Z"}]
+                "registeredAtMs":"1787446800123","lastSeenAtMs":"1787446801123"}]
                 """);
         expect(server, "/management/connections?userId=7", """
-                [{"userId":7,"gatewayId":"gateway-1","registeredAt":"2026-08-23T01:00:00Z",
-                "lastSeenAt":"2026-08-23T01:00:01Z"}]
+                [{"userId":7,"gatewayId":"gateway-1","registeredAtMs":"1787446800123",
+                "lastSeenAtMs":"1787446801123"}]
                 """);
         expect(server, "/management/gossip/records?limit=5", """
-                [{"executedAt":"2026-08-23T01:00:00Z","target":"broker-2","status":"SUCCESS",
-                "processedCount":1,"durationMillis":2,"errorSummary":null}]
+                [{"executedAtMs":"1787446800123","target":"broker-2","status":"SUCCESS",
+                "processedCount":1,"durationMs":"1001","errorSummary":null}]
                 """);
 
-        assertThat(client.brokers(endpoint)).hasSize(1);
+        java.util.List<com.co.kc.imchat.management.ops.infrastructure.client.model.BrokerNodePayload> brokers = client.brokers(endpoint);
+        assertThat(brokers.getFirst().registeredAtMs()).isEqualTo(1787446800123L);
+        assertThat(BrokerClientTransformer.INSTANCE.brokerNodeDataFrom(brokers).getFirst().registeredAt())
+                .isEqualTo(java.time.Instant.ofEpochMilli(1787446800123L));
         assertThat(client.gateways(endpoint)).hasSize(1);
         assertThat(client.connections(endpoint, 7L)).hasSize(1);
-        assertThat(client.gossipRecords(endpoint, 5)).hasSize(1);
+        java.util.List<com.co.kc.imchat.management.ops.infrastructure.client.model.GossipRecordPayload> records = client.gossipRecords(endpoint, 5);
+        assertThat(records.getFirst().durationMs()).isEqualTo(1001L);
+        assertThat(BrokerClientTransformer.INSTANCE.gossipRecordDataFrom(records).getFirst().duration())
+                .isEqualTo(java.time.Duration.ofMillis(1001));
         server.verify();
     }
 

@@ -14,8 +14,8 @@ import java.util.Objects;
 /**
  * 路由纪元隔离确认领域结果。
  *
- * <p>表示 Broker 已针对指定操作完成旧路由纪元的 fence，并携带生成确认时看到的
- * 权威任期、被 fence 的租约序列和操作标识。该结果用于权威侧判断旧纪元是否已经停止继续
+ * <p>表示 Broker 已针对指定操作完成旧路由纪元的 fence，并回传本次隔离请求携带的
+ * Leader 任期、fence 开始前本机当前租约的序列和操作标识。该结果用于权威侧判断旧纪元是否已经停止继续
  * 提供路由写入能力。</p>
  */
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
@@ -24,9 +24,9 @@ public final class FenceAck {
     private BrokerId brokerId;
     /* 被确认隔离的路由纪元。 */
     private RoutingEpoch routingEpoch;
-    /* Broker 看到的权威 Leader 任期。 */
+    /* 本次隔离请求携带并由 ACK 回传的 Leader 任期。 */
     private LeaderTerm leaderTerm;
-    /* Broker 本次 fence 清理的租约序列。 */
+    /* 本次 fence 开始前本机当前租约的序列；无当前租约时为零。 */
     private LeaseSequence fencedLeaseSequence;
     /* 触发本次 fence 的集群操作。 */
     private ClusterOperationId operationId;
@@ -67,8 +67,8 @@ public final class FenceAck {
     }
 
     /**
-     * 判断这份 ACK 是否确认目标 Broker 的本次持久化隔离事实。
-     * 节点身份、epoch、任期和操作标识必须全部匹配，才可作为本次切换的停止证明。
+     * 核对 ACK 的 epoch、任期和操作标识是否匹配本次隔离事实。
+     * 响应节点身份由调用方对照请求目标校验。
      */
     public boolean confirmsFence(RoutingEpochFence fence) {
         return fence.epoch().equals(routingEpoch) && fence.leaderTerm().equals(leaderTerm) && fence.operationId().equals(operationId);

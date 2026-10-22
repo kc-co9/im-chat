@@ -1,15 +1,16 @@
 package com.co.kc.imchat.broker.application.local;
 
+import java.util.Map;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
 import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
 
-import com.co.kc.imchat.broker.domain.connection.model.UserId;
+import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
 
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryBatchConnectionRegistry;
 import com.co.kc.imchat.broker.support.RouteCacheStub;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
 
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
@@ -23,7 +24,7 @@ import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
 import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
 import com.co.kc.imchat.broker.domain.cluster.model.DrainProgress;
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryConnectionRegistry;
-import com.co.kc.imchat.broker.adapter.cluster.raft.RaftBrokerClusterStateMachine;
+import com.co.kc.imchat.broker.support.raft.statemachine.RaftBrokerClusterStateMachine;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
@@ -57,7 +58,7 @@ import static com.co.kc.imchat.broker.support.BrokerDomainValues.snapshotDigest;
 
 class LocalRouteAppServiceCleanupTest {
     private LocalRouteAppService createService(
-            String brokerId, BrokerClusterConsensus consensus, LocalRoutingLeaseService lease,
+            String brokerId, BrokerRaftAdapter consensus, LocalRoutingLeaseService lease,
             ConnectionRegistry connections, DomainEventPublisher publisher, BrokerRoutingProperties properties) {
         return new LocalRouteAppService(brokerId, consensus, lease,
                 new InMemoryBatchConnectionRegistry(connections, properties,
@@ -74,7 +75,7 @@ class LocalRouteAppServiceCleanupTest {
         connections.register(ConnectionRegistration.active(new ConnectionRouteId(new UserId(1L), new GatewayId("gateway-a")), new RouteRevision(5L), Instant.ofEpochMilli(Long.MAX_VALUE)));
         connections.register(ConnectionRegistration.active(new ConnectionRouteId(new UserId(2L), new GatewayId("gateway-a")), new RouteRevision(8L), Instant.ofEpochMilli(Long.MAX_VALUE)));
         LocalRouteAppService service = createService(
-                "broker-b", repository, mock(LocalRoutingLeaseService.class), connections, mock(DomainEventPublisher.class), routingProperties(1, 1024L, Duration.ofSeconds(1), 10));
+                "broker-b", repository.asAdapter(), mock(LocalRoutingLeaseService.class), connections, mock(DomainEventPublisher.class), routingProperties(1, 1024L, Duration.ofSeconds(1), 10));
 
         DrainRouteCleanupHandler handler = new DrainRouteCleanupHandler(
                 service);
@@ -95,10 +96,10 @@ class LocalRouteAppServiceCleanupTest {
         TestRepository repository = repository();
         InMemoryConnectionRegistry connections = new InMemoryConnectionRegistry();
         LocalRouteAppService service = createService(
-                "broker-b", repository, mock(LocalRoutingLeaseService.class), connections, mock(DomainEventPublisher.class), routingProperties(1, 1024L, Duration.ofSeconds(1), 10));
+                "broker-b", repository.asAdapter(), mock(LocalRoutingLeaseService.class), connections, mock(DomainEventPublisher.class), routingProperties(1, 1024L, Duration.ofSeconds(1), 10));
 
         DrainRouteCleanupResult result = service.cleanupRoutes(new CleanupDrainRoutesCommand(
-                "broker-a", "drain-1", 4L, 5L, 1_500L,
+                "broker-a", "drain-1", 4L, 5L, Instant.ofEpochMilli(1_500L),
                 List.of(new GatewayRouteWatermark(
                         "gateway-a", 6L, 1L, snapshotDigest("changed").value()))));
 
@@ -109,10 +110,10 @@ class LocalRouteAppServiceCleanupTest {
     void rejectsCleanupWithDeadlineDifferentFromCommittedOperation() {
         InMemoryConnectionRegistry connections = new InMemoryConnectionRegistry();
         connections.register(ConnectionRegistration.active(new ConnectionRouteId(new UserId(1L), new GatewayId("gateway-a")), new RouteRevision(5L), Instant.ofEpochMilli(Long.MAX_VALUE)));
-        LocalRouteAppService service = createService("broker-b", repository(), mock(LocalRoutingLeaseService.class), connections, mock(DomainEventPublisher.class), routingProperties(1, 1024L, Duration.ofSeconds(1), 10));
+        LocalRouteAppService service = createService("broker-b", repository().asAdapter(), mock(LocalRoutingLeaseService.class), connections, mock(DomainEventPublisher.class), routingProperties(1, 1024L, Duration.ofSeconds(1), 10));
 
         DrainRouteCleanupResult result = service.cleanupRoutes(new CleanupDrainRoutesCommand(
-                "broker-a", "drain-1", 4L, 5L, 1L,
+                "broker-a", "drain-1", 4L, 5L, Instant.ofEpochMilli(1L),
                 List.of(new GatewayRouteWatermark("gateway-a", 7L, 1L, snapshotDigest("checksum-a").value()))));
 
         assertThat(result.status()).isEqualTo(DrainRouteCleanupResult.Status.REJECTED);
@@ -123,14 +124,14 @@ class LocalRouteAppServiceCleanupTest {
     void rejectsDuplicateGatewayProofWithoutRemovingRoutes() {
         InMemoryConnectionRegistry connections = new InMemoryConnectionRegistry();
         connections.register(ConnectionRegistration.active(new ConnectionRouteId(new UserId(1L), new GatewayId("gateway-a")), new RouteRevision(5L), Instant.ofEpochMilli(Long.MAX_VALUE)));
-        LocalRouteAppService service = createService("broker-b", repository(),
+        LocalRouteAppService service = createService("broker-b", repository().asAdapter(),
                 mock(LocalRoutingLeaseService.class), connections, mock(DomainEventPublisher.class),
                 routingProperties(1, 1024L, Duration.ofSeconds(1), 10));
         GatewayRouteWatermark watermark = new GatewayRouteWatermark(
                 "gateway-a", 7L, 1L, snapshotDigest("checksum-a").value());
 
         DrainRouteCleanupResult result = service.cleanupRoutes(new CleanupDrainRoutesCommand(
-                "broker-a", "drain-1", 4L, 5L, 1_500L, List.of(watermark, watermark)));
+                "broker-a", "drain-1", 4L, 5L, Instant.ofEpochMilli(1_500L), List.of(watermark, watermark)));
 
         assertThat(result.status()).isEqualTo(DrainRouteCleanupResult.Status.REJECTED);
         assertThat(connections.find(new UserId(1L))).hasSize(1);
@@ -164,7 +165,7 @@ class LocalRouteAppServiceCleanupTest {
     }
 
     private void apply(TestRepository repository, BrokerClusterConsensusCommand command) {
-        assertThat(repository.submitChange(command).toCompletableFuture().join().accepted()).isTrue();
+        assertThat(repository.submitCommand(command).toCompletableFuture().join().accepted()).isTrue();
     }
 
     private BrokerNode node(String brokerId, BrokerRoutingState state) {
@@ -176,11 +177,11 @@ class LocalRouteAppServiceCleanupTest {
         private final RaftBrokerClusterStateMachine stateMachine;
 
         private TestRepository(BrokerClusterState state) {
-            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", state);
+            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", state, 1000, Map.of());
         }
 
         @Override
-        public BrokerClusterState committedState() {
+        public BrokerClusterState getCommittedState() {
             return stateMachine.committedState();
         }
 
@@ -190,7 +191,7 @@ class LocalRouteAppServiceCleanupTest {
         }
 
         @Override
-        public CompletionStage<BrokerClusterConsensusResult> submitChange(BrokerClusterConsensusCommand command) {
+        public CompletionStage<BrokerClusterConsensusResult> submitCommand(BrokerClusterConsensusCommand command) {
             return CompletableFuture.completedFuture(stateMachine.apply(command));
         }
     }

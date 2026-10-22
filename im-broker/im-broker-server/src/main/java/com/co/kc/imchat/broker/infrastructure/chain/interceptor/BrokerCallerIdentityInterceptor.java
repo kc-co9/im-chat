@@ -2,12 +2,12 @@ package com.co.kc.imchat.broker.infrastructure.chain.interceptor;
 
 import com.co.kc.imchat.broker.infrastructure.chain.BrokerRequestChain;
 import com.co.kc.imchat.broker.infrastructure.chain.invocation.BrokerRequestInvocation;
-import com.co.kc.imchat.broker.support.security.BrokerCallerPrincipal;
 import com.co.kc.imchat.broker.sdk.access.BrokerAdmissionType;
 import com.co.kc.imchat.broker.sdk.access.BrokerCallerRole;
+import com.co.kc.imchat.broker.support.security.BrokerCallerPrincipal;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
-
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -45,6 +45,18 @@ public final class BrokerCallerIdentityInterceptor implements BrokerRequestInter
         if (context == null) {
             throw new SecurityException("Broker request transport identity is required");
         }
+        if (admissionType == BrokerAdmissionType.BROKER_OBSERVATION) {
+            String prefix = identityPrefixes.get(BrokerCallerRole.BROKER);
+            if (!context.tlsVerified() || prefix == null) {
+                throw new SecurityException("Broker observation requires verified TLS URI identity");
+            }
+            List<String> identities = context.peerUriIdentities().stream()
+                    .filter(uri -> uri.startsWith(prefix)).toList();
+            if (identities.size() != 1 || identities.getFirst().substring(prefix.length()).isBlank()) {
+                throw new SecurityException("Broker observation requires unique Broker URI identity");
+            }
+            return new BrokerCallerPrincipal(identities.getFirst(), BrokerCallerRole.BROKER);
+        }
         String identity = context.peerIdentity();
         if (identity != null && !identity.isBlank()) {
             return identityPrefixes.entrySet().stream()
@@ -67,7 +79,7 @@ public final class BrokerCallerIdentityInterceptor implements BrokerRequestInter
             case CLUSTER_READ -> EnumSet.of(BrokerCallerRole.GATEWAY,
                     BrokerCallerRole.MESSAGE, BrokerCallerRole.ACCOUNT,
                     BrokerCallerRole.BROKER, BrokerCallerRole.OPS);
-            case BROKER_PEER, BROKER_CONTROL, BROKER_DATA_PLANE -> EnumSet.of(BrokerCallerRole.BROKER);
+            case BROKER_PEER, BROKER_CONTROL, BROKER_DATA_PLANE, BROKER_OBSERVATION -> EnumSet.of(BrokerCallerRole.BROKER);
             case GATEWAY_BOOTSTRAP, GATEWAY_ROUTE -> EnumSet.of(BrokerCallerRole.GATEWAY);
             case SERVICE_DATA_PLANE -> EnumSet.of(BrokerCallerRole.GATEWAY,
                     BrokerCallerRole.MESSAGE, BrokerCallerRole.ACCOUNT);

@@ -33,6 +33,47 @@ im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
 
 GitHub Actions 的 Verify 与 Harness GC job 在调用 `readiness`、`clean`、`report` 或 `harness-gc.sh` 前必须安装 `ripgrep`。缺少 `rg` 属于工具环境失败，不能把随后缺失的计划匹配误报为 `PROGRESS.md` 状态错误；报告入口在工具缺失时直接失败并说明安装方式。
 
+## 有界验证与收尾窗口
+
+Routing HA 在构建前执行有界 Engine `docker info` 前检（默认8秒），关键命令写入本次 `diagnostics/steps.jsonl` 的 started/finished 边界。主执行仍为900秒；到期后最多45秒仅终止和清理，不继续场景或计成功。logs默认5秒，失败也尝试down（默认30秒），down成功才清资源账本；原timeout124、INT130或TERM143优先于清理失败码。独立命令组以本次随机会话登记，原子发布、撤销竞态区分正常退出，未知存活/权限或历史未决登记失败关闭，不凭数字PGID取得旧进程终止权。`scripts/test-routing-ha-process.sh` 保护Engine阻塞不调用Maven、忽略TERM/孙进程/重复信号、有界回收与登记竞态；真实HA仍须另行证明。设计见[HA有界runner](../design-docs/2026-10-21-routing-ha-bounded-runner-design.md)。
+
+旧 chain、attempt、archive-audit 与 journal 仅保留为历史证据；当前入口不消费这些记录来恢复、发布或晋级成功，不删除原失败和中断事实。
+
+验证应减少定位成本，不以反复运行完整门禁代替排查。最终 `clean`、`full` 及风险适用证明仍按根 AGENTS 和所属计划执行；quick 仅用于迭代，本节不减少验收条件，也不改变现有 fingerprint/freshness 算法。
+
+1. **先汇总范围，再扩大验证。** 同一 Review 轮次内的局部命名、注释和等价整理先用聚焦测试、编译或 token 等价检查反馈；范围内修改与文档定稿后，统一进入集成及最终门禁，不对每次小编辑反复启动全套。测试先行要求保持，不能将真实行为变化混成“纯整理”跳过回归。
+2. **先安排独占窗口，再冻结输入。** 大门禁前确认没有其他写入者或针对同一构建输出的并发构建；明确本次变更、非目标及证据缺口，完成源码、稳定规范和说明文档编辑。运行期间不回填 tracked 状态文件；命令结束后集中记录结果。若工作树变化，证据按原规则判为无效，先协调写入者，不立刻循环重跑。
+3. **失败先回到最窄层定位。** 保留首个失败命令、日志、具体测试/阶段和工作树信息，区分源码缺陷、构建产物、外部环境、验证工具及并发输入变化。先执行能验证假设的单测试、模块或只读诊断，不用另一次 `full` 同时重做所有前置阶段。构建产物问题须先核对源码与 class/报告路径；清理仅限已确认的可重建输出，不直接修改无关业务或删除其他会话资源。
+4. **重跑要有新的依据。** 修复、环境恢复、独占窗口建立或最小失败层复核成功后，才恢复所属较宽门禁；记录重跑原因及预期消除的失败。同一原因再次出现且没有新证据或前提变化时停止，不能以反复执行碰到一次绿色作为解决，也不能用单独复跑成功覆盖原失败的稳定性风险。
+5. **范围扩展与环境操作单独决策。** 新暴露的无关模块问题先归因并列为阻塞；超出当前任务权限时请求批准，不为收尾无限扩散变更。Docker 重启、全机代理等操作先记录运行资源、自动删除策略、挂载及恢复办法；不能只记录容器名就假定能够恢复。任务实现、后续设计和环境修复在计划中分开，不混成一份无法审查的提交范围。
+6. **没有可执行下一步就停止并交接。** 长门禁启动前说明目的与预计覆盖范围；中途遇到新阻塞及时说明，不等多轮全套结束才反馈。若缺少权限、网络、稳定输入或失败定位证据，保留 blocked/Revise 与最小下一步，不标完成、不无限后台轮询。未通过的必要门禁仍阻止正式归档。
+
+一次最终门禁窗口可以包含多个规定命令；“一次”是冻结输入后的一个验证批次，不代表失败后永不重跑，也不承诺每次只执行一个脚本。状态回填和归档之后需要刷新哪些证据，按 [计划生命周期](../PLANS.md#生命周期)及实际 review scope 判断；不能因为只改文档就把原工具认定 stale 的结果手工改成 fresh，也不能仅为状态措辞反复编辑、再全量重跑。
+
+本流程目前采用 **Review-only**：现有记录能证明退出码、耗时和开始/结束指纹，尚不能机械判断某次重跑是否具有有效的新假设。只有具备结构化失败签名、原因分类、输入变化及恢复前提，并有必要重试、无效重复、纯状态更新和真正代码变化的正反 fixture 后，才考虑增加调度或提示工具；不设置未经依据的统一重试次数，也不新增绕过失败的自动降级。
+
+## 完整验收与状态归档
+
+### full 的同轮证明
+
+`./scripts/verify.sh full` 当前顺序为 readiness/clean（含 drift）→父 Harness 自测一次→`mvn -q verify` 一次→同轮报告校验→真实 HA 一次。任一前置失败停止下游，保留原退出码；后处理失败不算 overall 成功。quick 不是最终 full 的必需前置；同一成功 full 不再附加重复 architecture/startup/behavior/e2e。独立入口保留，用于开发及失败窄层诊断。
+
+`scripts/lib/harness-reactor-evidence.rb` 与 startup 共享同轮校验责任：Maven 前清除必需旧 XML 和两个应用 exec JAR，之后按当前源码/应用映射和 HA manifest 定位完整测试类及 selector，拒绝缺失、旧时间、零执行、失败、错误或必需 testcase 跳过；保留 startup 唯一映射/Nacos 隔离及 behavior/E2E tag 证明。校验成功为 architecture/startup/behavior/e2e 生成正常 verification 记录，明确 `evidenceSource=full-reactor`、报告/日志路径与摘要、实际执行窗口，而不伪称独立命令另跑过。
+
+Architecture 中显式类级 `@EnabledIfSystemProperty` 条件测试单列为 `conditionalArchitecture`，仍要求本轮有效报告及摘要。整类跳过必须无失败/错误、计数一致且每项有原因，记录 `conditional-skipped`，不冒称已执行；激活后必须全部实际执行。类体还带条件、方法级或未知条件不自动获得整类跳过资格；其他必需组始终拒绝 skipped，不按类名加例外。
+
+HA 内部同轮模式消费本次 manifest、XML/JAR 摘要及固定清单身份，消费前和最终发布前核对；不再重复 package 或聚焦 Maven。真实 Compose 拓扑、故障恢复、25 场景与空资源账本仍须实际证明。standalone HA 保留自行构建/聚焦测试能力。缺失或变化的同轮证明失败关闭，不启动容器冒充通过。
+
+full 全程使用同一 HEAD/完整 Git 指纹冻结，源代码、依赖、共享检查器、稳定文档、设计及状态文件变化均不可忽略。报告清单和测试汇总是本次运行临时证明，不是 phase snapshot、chain 或跨运行缓存；没有恢复跳阶段、实现输入指纹例外或 archive 发布能力。保留原证据时间和 freshness。S1/S2 已完成聚焦验证，真实新流程 full 尚未验收，不把预计减少重复当作实测性能收益。
+
+### 两时点状态关闭
+
+先在冻结实现上取得真实完整验收和独立 `Accept`，才能标记全部任务 passing；首次验收及风险证明不减免。随后只允许 `PROGRESS.md`、active/completed 计划及这两个目录索引的状态内容迁移。独立 Reviewer 对照原验收/Review 记录和精确前后 diff，不仅检查路径；允许路径内改需求、范围、命令或实现事实也须重新验收。其他索引、README、设计、history 和规范在冻结前完成。
+
+迁移后执行廉价 drift/clean、quality scope 校验、cleanup/handoff，不为纯状态归档重跑昂贵 full。旧 full 的时间、完整指纹、stale 和失败均保留，不改为 fresh、不生成假的新 full passed。既有 quality scope 排除保持；原独立 Accept 与 scope 必须适用。未解决失败、验收不成立或非状态差异须重新打开受影响任务，不得擦除错误来关闭。这不是当前外部环境健康证明。
+
+本规则的内容范围与原验收归属为 **Review-only**；现有 drift 只检查路径/任务结构。自动化升级需可靠低成本的状态内容差异正反 fixture，且不重新引入 chain、journal、基线复制或发布状态机。详见[生命周期](../PLANS.md#生命周期)和[精简实施设计](../design-docs/2026-10-22-closeout-process-simplification-implementation-design.md)。
+
 ## 当前传感器
 
 | 入口 | 责任 | 典型输出 |
@@ -83,6 +124,41 @@ Broker 代码/集成验收与生产候选容量验收分属不同执行计划。
 | 范围控制 | State | 变更扩散到非目标文件或夹带无关清理 | 重新确认 Sprint Contract、所有权和非目标；范围或优先级变化先取得决定 |
 | 架构边界 | Instruction / Tools | 依赖方向、数据所有权或公共契约与 Architecture 冲突 | 修复实现以恢复边界；若边界确需改变，先升级审批，再更新批准设计、Architecture 和对应传感器 |
 
+## Broker 类型化 Raft 边界
+
+`support.raft` 仅批准 codec/model/statemachine 三个精确包，不允许任意后代、Runtime/生命周期、具体网络 client、应用或入口依赖，domain 不能反向依赖。`LayerBoundaryTest` 共用规则检查生产类与正反 fixture；不按类名豁免。通过 Transformer 间接渗入业务编排为 Review-only，待可靠调用数据流分析后自动化。规范所有者为 Broker Architecture、MODULE_STRUCTURE_GUIDE 与 CODING_GUIDE，登记见规则矩阵。持久化版本有意重置 v1，不以“格式不变”归因；旧 v5 日志/v6 快照拒绝是预期，程序不删除数据目录。
+
+业务 Peer 读取证明 RPC 的传输归属已按用户批准纠正为 BrokerPeerAdapter 直接复用通用 BoltInvoker，
+原生选举/复制/快照仍归 RaftRuntime/JRaft；不为纯转发保留 Raft Peer Client。最窄传感器为
+BrokerPeerAdapterTest 的协议/预算/身份/失败断言与 LayerBoundaryTest 的真实 BoltInvoker 负 fixture，
+继续禁止 support.raft 网络依赖，不新增类名例外。职责的数据流判断仍为 Review-only，自动化条件见规则矩阵。
+
+## Broker 自动观察反馈边界
+
+观察来源必须是实际TLS连接派生且namespace内唯一URI，不能用payload、Subject/首URI或可信网络回退补票；窗口先选最新事实再判资格，内部Duration只在SDK边界按年龄ceil/失败floor保守舍入。规范所有者为Broker自动故障设计、Architecture、Security/Reliability；最窄传感器为BoltAuthenticatedTlsTest/FailureTest、BrokerObservationAdmission/IdentityTest、BrokerFailureObservationServiceTest及BrokerHealthObservationPrecisionTest。单调acceptance budget与实际完成闸门由BrokerAutomaticFailureObservationTest/FlowTest保护；真实TLS HA证据单独由routing-ha拥有，不能以恢复单测或plaintext容器可重启冒充自动触发。
+
+实际完成闸门的最窄传感器补充为 `BrokerFailureObservationRoundTest.roundRemainsOccupiedUntilCrossThreadFailureAndCanThenRestart`、`BrokerAutomaticFailureObservationTest.aProbeStillRunningKeepsTargetGateAcrossContextReset`、`schedulerAndObservationShareRecoveryUntilUnderlyingQuorumActuallyCompletes`，分别证明跨线程失败后再入、Context 切换不释放底层在途探测、恢复入口共享实际完成边界。不能仅按出现 `whenComplete`、`finally` 或锁类名判定正确。
+
+失败原因与时序副作用证据采用 **聚焦测试 + Review-only**，规范所有者为 UNIT_TEST_GUIDE「Assertions」「Determinism」。`BoltConnectionAuthenticationSpikeTest` 的无 gate 负对照证明 Handler 零次但请求已提前放行；暂停握手用例分别观察 attempted/forwarded，身份拒绝检查受控 cause 链与稳定原因。该证据只属于测试原型，不表示当前生产连接层认证已实施。只有结构化分析能够关联测试声称、异常包装和实际副作用位置，并具备必要拒绝、无关超时、提前发送及合法异步缓冲的正反 fixture 后，才升级通用自动检查；不按异常类名或测试类名增设白名单。
+
+防御边界守卫采用 **聚焦测试 + Review-only**，规范正文由 CODING_GUIDE「校验与防御边界」拥有。合法聚合 Begin/Commit 的 revision 与状态迁移不变量由聚合测试固定；异步报告等待期间任期/Context 变化由观察 Round/State 测试保护，不把已通过入口校验等同于后续事实不变。只有能够关联构造/迁移契约和异步数据流、区分冗余守卫与必要重验，并有正反 fixture 后才自动化。
+
+通用来源/时间数据流仍为Review-only：需要可靠关联传输握手、来源注入、报告构建、准入判定及在途Future实际完成，才能升级低误报通用checker；不新增类名白名单。技术观察窗口是具体 Tracker（support.health），不伪装领域Repository或建立无替换需求的port/实现对。闭合装配、SDK/Domain隔离继续由现有架构与启动测试验证，不放宽层规则。
+
+## Broker 健康观察安全输入边界
+
+Broker 自动健康观察另行批准精确 `support.health`（不允许后代包），当前具体实现为 `BrokerHealthObservationTracker`，允许 Tracker 后缀，不建 Repository、port/实现对或兼容壳。它只维护按当前目标裁剪的有界采样、结构化上下文、freshness 与快照；观察非权威，但属于安全决策输入，不是可选诊断。成员一致性由聚合 `BrokerCluster.findConsistentVoters` 判定，最新事实、多数与稳定窗口由领域服务 `BrokerFailureObservationService.evaluate` 判定，应用层编排。允许依赖领域 model、common 和 JDK 时间/集合；禁止 application、interfaces、infrastructure、config/configuration、lifecycle、Adapter、领域 service/repository、Spring、client/network、plugin 及运行资源拥有，domain 不得反向依赖 support。装配归配置、入口归 Handler/Application；此例外不放宽 Gossip、Monitoring 或其他 support。精确包和稳定依赖由生产/fixture 共用架构规则保护；有界性、无决策及实际完成回调语义由聚焦测试和 Review 保护，待可靠资源/决策数据流分析后自动化。
+
+`LayerBoundaryTest.brokerHealthSupportIsAnExactSafetyInputBoundary` 与 `healthSupportRulesAcceptSamplesAndRejectOwnershipLeaks` 共用 `brokerSupportPackages`/`brokerHealthSupportDependencies`/领域反向规则：生产精确包、合法 model/common/time/集合采样、14 个逐名依赖负例、后代包、领域反向依赖。Config、Configuration 与 Lifecycle 负例位于各自独立顶层路径，不依靠 infrastructure 重叠命中。有界性、旧上下文/断档/回退及不可变快照由 BrokerHealthObservationTrackerTest 保护；实际完成闸门由观察 App 用例测试保护，不将安全输入误当可丢弃诊断。规范所有者为 CODING_GUIDE、MODULE_STRUCTURE_GUIDE 与 Broker Architecture，登记见规则矩阵。
+
+成员容器与采样上下文语义采用 **聚焦行为测试 + Review-only**：Broker `ConsensusMembership` 的不可变 Set 归一化同角色重复，构造时拒绝跨角色交叠；Raft 原始快照保留 List<String>，聚合只检查自身角色/绑定一致性。Context 结构化保存 revision、BrokerClusterTopology、targets，使用值相等判断，不再依赖 generation/toString；Topology 的节点副本隔离、Map/Set内容相等和冷却不含revision保持。ConsensusMembershipTest、BrokerHealthObservationContextTest、Tracker/Transformer及观察用例覆盖独立字段变化、集合排列不变、迟到读写拒绝、采样与冷却区别。异常读取/异步重验仍须失败关闭并释放闸门。规范所有者为 Broker Architecture 与共识成员边界设计；不新增按类名静态豁免，通用集合/状态身份数据流判断仍为 Review-only，待可关联契约语义、相等性与状态消费并具备正反 fixture 后再自动化。
+
+## 有界非权威诊断辅助边界
+
+有界、非权威且可选的跨层诊断记录辅助类型可进入明确批准的 `support.<capability>` 精确能力包；允许有界内存记录和累计计数，不参与业务决策，不拥有网络、运行资源或生命周期，不依赖 application、interfaces、infrastructure、配置、生命周期、Adapter 或具体网络 client。不得扩展为任意子包许可或按类名豁免，领域仍不得依赖 support。Broker 当前仅批准 `support.gossip` 精确包承担此职责；运行态 Gossip store/Adapter 仍归 `adapter.gossip`，不因此移入 support。 `LayerBoundaryTest` 已实施精确包许可、Gossip 辅助类型依赖禁令与 Domain 反向依赖禁令；`gossipSupportRulesAcceptOnlyApprovedPackagesAndRejectOwnershipLeaks` 以合法记录、11 个逐项依赖负例、后代包和 Domain 反向依赖 fixture 验证边界。有界性、非权威性及可选诊断语义暂为 Review-only；自动化条件为可靠识别业务决策/资源所有权的数据流，容量与诊断查询由 GossipSyncTrackerTest 保护。规范所有者为 CODING_GUIDE、MODULE_STRUCTURE_GUIDE 与 Broker Architecture，登记见规则矩阵。
+
+Broker 的 `support.monitoring` 是另行批准的精确技术观察例外：保留 Spring `@Component`、Micrometer `MeterBinder` 和只读 Domain/Registry/Adapter 查询；不允许后代包，不依赖 application/interfaces/infrastructure/config/lifecycle，不直接拥有网络、RaftRuntime 或执行器，不进行业务决策或写入，domain 不反向依赖 support。不要将纯 support.gossip 的 Adapter/Spring 禁令套到 Monitoring，也不要因此放宽 Gossip 或其他 support。`LayerBoundaryTest` 共用参数化规则检查生产及正负 fixture，逐名验证十个依赖负例、后代包和 domain 反向依赖；合法 fixture 保留真实 Spring/Micrometer 与只读 Registry/Adapter 调用。MeterBinder 必须位于精确包，Transformer 只允许 application/interfaces/adapter/registry 四个能力包。BrokerMetricsTest、RoutingAuthorityMetricsTest 与各 Transformer 测试保护采样及映射不变。只读调用、业务决策/写入语义为 Review-only；自动化条件为低误报的明确写 API 清单或语义 checker。规范所有者为 MODULE_STRUCTURE_GUIDE 与 Broker Architecture，登记见规则矩阵。
+
 ## 规则矩阵
 
 规则登记、规范所有者、自动检查与 Review 边界见[规则矩阵](HARNESS_RULE_MATRIX.md)。本文件只维护 Harness 运行流程和规则生命周期，不复制规则正文。
@@ -119,13 +195,21 @@ Broker 已确认的 cluster、authority、connection 能力目录使用显式白
 
 同名领域概念隔离采用 **聚焦 Schema/行为测试 + Review-only**：Review 检查面向不同授权对象、生命周期或可信来源的角色、权限、会话等概念是否各自拥有领域模型、Repository 和持久化关系，并通过 `Iam*`、`Application*`、`OAuthSession*` 等稳定所有权前缀同步区分其直接 Repository、领域服务和边界模型；不能仅依赖类型枚举、固定业务 ID 或调用方约定隔离。IAM 的 Schema 测试明确证明内部角色与外部应用角色使用独立表，认证与角色管理测试证明 IAM 管理权限只读取内部角色链路，Session 转换测试证明 OAuth2 持久化字段不会替代领域会话身份。通用静态扫描无法仅凭 `Role`、`Permission`、`Session` 等类名判断两个概念是否属于同一边界，只有建立可声明的领域所有权元数据并能关联 Entity/TableName、Repository 与调用链后，才升级为自动门禁。
 
+Transformer 方法命名采用 **Review-only**：规范由 CODING_GUIDE「Transformer 与 JSON」拥有，转换方法按目标模型 + From，跨边界同名类型用必要的 Sdk 标识区分；不增加兼容转发或为统一命名扩大无关清理。当前存量仍有 to/restore 命名，按触碰范围收敛；只有结构化分析可识别 Transformer 的转换方法、返回目标/集合元素和合法非映射辅助方法，并具备同名跨边界、生成映射及显式转换正反 fixture 后，才升级检查，不能仅匹配方法名前缀。
+
 MapStruct 规则当前为 **Review-only**：Review 检查 `@Mapper` 是否至少保留一个由 MapStruct 生成的声明式映射，并优先让框架处理同名属性和枚举。只有检查器能够可靠解析接口方法、排除继承方法、注解辅助方法及含业务逻辑的显式转换，并具备生成映射、纯 `default` 接口和合法混合接口 fixture 后，才升级为自动检查。
 
 HTTP 聚合查询请求规则当前为 **Review-only**：Review 检查参数较多且共同表达一个查询意图的接口是否使用 `*Request + @ModelAttribute`，并由接口 Transformer 一次性构造应用层 Query，而不是在 Controller 中逐字段转换枚举和值。固定参数数量无法证明对象是否形成稳定语义，少量技术参数也不应被强制包装。只有结构化检查能够识别 Controller 参数、Request 绑定和对应 Transformer 调用，并具备简单接口、多参数查询和合法特殊绑定的正反 fixture 后，才升级为自动检查。
 
 时间与时区规则采用 **聚焦行为测试 + Review-only** 边界：`TimeRange` 单测证明闭区间不变量和持续时间，Audit 的应用 Transformer 与 Repository 测试证明领域查询条件使用该值对象；接口 Transformer 测试证明 epoch milliseconds 与 `Instant` 的双向转换，持久化测试证明 `TIMESTAMP(3)` 对应 Entity `Instant`，UI 和导出测试分别证明浏览器 IANA 时区展示与服务端显式时区格式化。全仓中两个时间字段可能表示区间，也可能是创建、失效等独立事实，`LocalDateTime` 也可合法表达本地日历语义和框架技术时间，因此不按字段数量、名称或类型增加全仓正则禁令。Review 检查新增或触碰的领域查询区间是否使用 `TimeRange`、绝对时间是否跨层保持 `Instant`、浏览器边界是否使用时间戳，以及人可读输出是否显式选择时区。只有能够结合契约所有权和字段语义稳定区分区间、独立时间事实、本地日历值及持久化技术字段，并具备跨模块正反 fixture 后，才升级为结构化检查。
 
-单调时间规则采用 **聚焦行为测试 + Review-only** 边界：Broker authority 的领域测试证明租约过期、fence 后准入拒绝和重启后的 fence 水位生效；Review 检查新增领域服务是否通过 `MonotonicTimestamp` 等值对象表达单调时间，而不是在领域服务构造器中暴露 `LongSupplier` 或混用 `Instant`/`Clock` 判断租约边界。应用服务为 pending 请求、重试窗口等用例保留可控时间源时，应在进入领域前转换为明确的时间值对象。只有结构化检查能稳定区分领域服务、应用服务可控时间源和普通墙上时间展示后，才升级为自动门禁。
+时间字段类型与命名规则登记为 **Review-only**，规范正文由 `CODING_GUIDE.md`「时间与时区」拥有。Review 区分绝对时刻、持续时长及单调计时：内部绝对时刻为 `Instant xxxAt`，数字时间戳边界为 `xxxAtMs`；内部时长为 `Duration`，泛指有效时长优先 `validDuration`，具体 `leaseDuration` 等业务语义保留；数字时长明确 `Ms` 等单位；单调计时保留值对象和真实单位。接口转换测试应验证数值与 `Instant` 双向映射、毫秒精度和过期边界。现阶段不增加全仓正则禁令：仅凭后缀无法识别业务语义、第三方约定、已发布字段或合法 `Instant` 服务契约。自动化条件是结构化检查可关联字段语义、契约所有者、单位及 Transformer，并具备绝对时刻/时长/单调值/外部协议正反 fixture。首批迁移限定 Broker 及必要的直接协议调用方，不授权全仓批量改名。
+
+流程梳理与方法提取顺序登记为 **Review-only**，规范正文由 `CODING_GUIDE.md`「Java 与可读性」拥有。重复反馈表明：提前拆成具名私有方法会隐藏执行顺序、状态变化和错误边界，制造流程已经清晰的错觉。Review 先展开调用链核对完整流程，再评价封装是否表达稳定职责或真实复用；不能以方法长度、命名或私有方法数量代替质量判断。当前 Broker 观察流程按用户指定范围内联，不据此禁止所有私有方法，也不授权全仓机械内联。只有结构化分析能够展示状态与副作用数据流、异常传播、异步实际完成和资源释放，并具备合理提取与过早封装的正反 fixture 后，才评估自动化；单纯行数或调用方计数不足以作为传感器。
+
+时源注入必要性登记为 **Review-only**，规范正文由 `CODING_GUIDE.md`「应用服务与 CQRS」拥有。重复反馈来自应用服务仅为控制测试时间而持有 `Clock` 和 `Supplier<MonotonicTimestamp>`，且旧规范曾将时间分支等同于必须注入 `Clock`；本轮修正该冲突，不新增全仓类型禁令。Review 核对每个时源的生产用途、实际装配和调用方，区分生产替换/框架契约与测试专用 seam；时间来源简化不能删除准确阈值、时钟回拨、单调 freshness 和异步实际完成的行为断言。当前存量按触碰范围收敛，不授权全仓清理。只有结构化分析能够识别生产替换需求、框架时钟契约和测试专用依赖，并覆盖直接采样、同轮传值、命令冻结时间、合法注入及冗余注入的正反 fixture 后，才升级自动检查；若框架契约或所属规范改变，重新评估规则范围而非增加类名例外。登记见规则矩阵。
+
+单调时间规则采用 **聚焦行为测试 + Review-only** 边界：Broker authority 的领域测试证明租约过期、fence 后准入拒绝和重启后的 fence 水位生效；Review 检查新增领域服务是否通过 `MonotonicTimestamp` 等值对象表达单调时间，而不是在领域服务构造器中暴露 `LongSupplier` 或混用 `Instant`/`Clock` 判断租约边界。应用服务确有生产用途而保留可控时间源时，应在进入领域前转换为明确的时间值对象；pending 请求、重试窗口或测试需要本身不构成注入理由。只有结构化检查能稳定区分领域服务、合法生产时源和普通墙上时间展示后，才升级为自动门禁。
 
 数据库 JSON 格式规则当前为 **Review-only**：Review 检查数据库 JSON 列是否由 MyBatis TypeHandler 等持久化机制编解码，Entity 是否使用持久化原生属性承接数据，以及领域 Transformer 是否只做对象映射。`JsonUtils` 在 Bolt、Gossip、缓存和第三方协议适配中仍是合法用法，无法按包名可靠判断某次 JSON 转换是否对应数据库列。只有结构化分析能够关联 Entity 字段、TypeHandler、Transformer 映射并排除非持久化 JSON 场景，且具备正反 fixture 后，才升级为自动检查。
 

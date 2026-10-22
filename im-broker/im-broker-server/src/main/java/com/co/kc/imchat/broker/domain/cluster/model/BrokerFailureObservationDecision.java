@@ -1,38 +1,38 @@
 package com.co.kc.imchat.broker.domain.cluster.model;
 
 import com.co.kc.imchat.common.utils.AssertUtils;
-
+import java.util.Comparator;
 import java.util.List;
 
 /**
- * 自动故障摘流进入 fencing 前的领域决策结果。
+ * Broker 故障报告证据资格的领域决策结果。
  *
- * <p>该结果汇总当前拓扑所需的独立 voter 报告数、实际计入的报告者和稳定原因。只有
- * 观察新鲜、持续时间满足要求、报告者独立且数量达标时才标记为 eligible；eligible
- * 只授权进入后续集群操作流程，不直接修改 BrokerCluster。</p>
+ * <p>该结果汇总当前拓扑所需的独立 voter 报告数、实际计票的观察者和证据不足原因。只有
+ * 观察新鲜、持续时间满足要求、观察者独立且数量达标时才标记为 eligible；eligible
+ * 只表示报告证据充分，不包含冷却或自动摘流授权，不直接修改 BrokerCluster。</p>
  */
 public record BrokerFailureObservationDecision(
-        /* 当前 observation 是否足以进入自动摘流。 */
+        /* 当前 observation 的报告证据是否充分。 */
         BrokerFailureObservationEligibility eligibility,
-        /* 当前拓扑要求的独立 voter 报告数量。 */
-        RequiredObservationReports requiredReports,
-        /* 被计入本次决定的 voter。 */
-        List<BrokerId> reportingVoters,
-        /* 允许或拒绝自动摘流的稳定原因。 */
+        /* 当前完整 voter 集合要求的观察多数门槛。 */
+        ObservationQuorum quorum,
+        /* 通过身份、新鲜度和稳定窗口检查后，实际计票的观察者 ID，按 ID 排序。 */
+        List<BrokerId> observerIds,
+        /* 报告证据不足的稳定原因；证据充分时为空。 */
         DecisionReason reason) {
 
     public BrokerFailureObservationDecision {
         AssertUtils.domainPropNotNull("observation eligibility is required", eligibility);
         AssertUtils.domainPropNotNull("required observation reports are required",
-                requiredReports);
+                quorum);
         AssertUtils.domainPropNotNull("observation decision voters are required",
-                reportingVoters);
+                observerIds);
         AssertUtils.domainPropTrue("ineligible observation decision requires a reason",
                 eligibility == BrokerFailureObservationEligibility.ELIGIBLE || reason != null);
         AssertUtils.domainPropTrue("eligible observation decision cannot have a reason",
                 eligibility != BrokerFailureObservationEligibility.ELIGIBLE || reason == null);
-        reportingVoters = reportingVoters.stream()
-                .sorted(java.util.Comparator.comparing(BrokerId::value)).toList();
+        observerIds = observerIds.stream()
+                .sorted(Comparator.comparing(BrokerId::value)).toList();
     }
 
     public boolean eligible() {

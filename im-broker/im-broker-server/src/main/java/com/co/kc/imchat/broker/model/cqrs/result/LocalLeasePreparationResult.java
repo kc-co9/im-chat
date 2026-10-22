@@ -1,6 +1,6 @@
 package com.co.kc.imchat.broker.model.cqrs.result;
 
-/** holder 本机为一次 Lease 安装准备的一次性 nonce。 */
+/** 目标 Broker 为一次 Lease 安装准备的一次性 nonce。 */
 public record LocalLeasePreparationResult(String requestNonce) {
     public LocalLeasePreparationResult {
         if (requestNonce == null || requestNonce.isBlank()) {

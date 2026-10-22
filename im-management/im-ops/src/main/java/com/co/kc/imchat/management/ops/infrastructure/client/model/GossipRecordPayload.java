@@ -1,5 +1,4 @@
 package com.co.kc.imchat.management.ops.infrastructure.client.model;
-import java.time.Instant;
 /** Gossip 诊断协议载荷。 */
-public record GossipRecordPayload(Instant executedAt, String target, String status,
-                                  Integer processedCount, Long durationMillis, String errorSummary) { }
+public record GossipRecordPayload(Long executedAtMs, String target, String status,
+                                  Integer processedCount, Long durationMs, String errorSummary) { }

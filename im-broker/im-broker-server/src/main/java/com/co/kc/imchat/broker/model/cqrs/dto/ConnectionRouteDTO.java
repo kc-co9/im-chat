@@ -12,7 +12,7 @@ public record ConnectionRouteDTO(
         String gatewayId,
         /* 注册时间。 */
         Instant registeredAt,
-        /* 最后心跳时间。 */
+        /* 最近一次接受的路由更新时间。 */
         Instant lastSeenAt
 ) {
 }

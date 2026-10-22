@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.cluster.model;
 
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantResult;
 import com.co.kc.imchat.broker.domain.authority.model.LeaseRejectionReason;
@@ -7,6 +9,7 @@ import lombok.Getter;
 import lombok.experimental.Accessors;
 
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -69,12 +72,69 @@ public final class BrokerCluster {
         return new Builder();
     }
 
+    /**
+     * 解析角色与成员地址绑定一致的 voter；成员过渡或未知地址均不产生资格。
+     */
+    public Set<BrokerId> findConsistentVoters(ConsensusMembership membership) {
+        if (operations.values().stream().anyMatch(BrokerClusterOperation::isUnfinishedMembershipChange)) {
+            return Set.of();
+        }
+        boolean consistent = true;
+        Set<BrokerId> voterIds = new HashSet<>();
+        Set<MembershipEndpoint> expectedVoters = new HashSet<>();
+        Set<MembershipEndpoint> expectedLearners = new HashSet<>();
+        for (BrokerNode brokerNode : brokers) {
+            switch (brokerNode.membershipRole()) {
+                case DISCOVERED -> consistent &= !membershipEndpoints.containsKey(brokerNode.id());
+                case LEARNER_SYNCING -> consistent = false;
+                case VOTER, LEARNER -> {
+                    MembershipEndpoint endpoint = membershipEndpoints.get(brokerNode.id());
+                    consistent &= endpoint != null;
+                    if (consistent) {
+                        if (brokerNode.membershipRole() == BrokerMembershipRole.VOTER) {
+                            voterIds.add(brokerNode.id());
+                            expectedVoters.add(endpoint);
+                        } else {
+                            expectedLearners.add(endpoint);
+                        }
+                    }
+                }
+            }
+        }
+        consistent &= expectedVoters.equals(membership.voters());
+        consistent &= expectedLearners.equals(membership.learners());
+        return consistent ? Set.copyOf(voterIds) : Set.of();
+    }
+
+    /**
+     * 返回不含操作 revision 的已提交拓扑与实际共识成员快照。
+     */
+    public BrokerClusterTopology topology(ConsensusMembership membership) {
+        return new BrokerClusterTopology(epoch, brokers, membershipEndpoints, membership);
+    }
+
     public boolean exists(ClusterOperationId operationId) {
         return operations.containsKey(operationId);
     }
 
     public Optional<BrokerClusterOperation> findOperation(ClusterOperationId operationId) {
         return Optional.ofNullable(operations.get(operationId));
+    }
+
+    /**
+     * 查找唯一未完成的故障摘流操作，供调用方继续恢复。
+     *
+     * @return 尚未进入终态的 FAIL_BROKER 操作；不存在时返回空
+     * @throws IllegalStateException 存在多个未完成故障操作，无法唯一确定恢复目标
+     */
+    public Optional<BrokerClusterOperation> findUnfinishedFailureOperation() {
+        List<BrokerClusterOperation> unfinished = operations.values().stream()
+                .filter(operation -> operation.type() == BrokerClusterOperationType.FAIL_BROKER && !operation.phase().terminal())
+                .toList();
+        if (unfinished.size() > 1) {
+            throw new IllegalStateException("multiple unfinished failure operations");
+        }
+        return unfinished.stream().findFirst();
     }
 
     /**
@@ -94,7 +154,9 @@ public final class BrokerCluster {
         return brokers.stream().map(BrokerNode::copy).toList();
     }
 
-    /** 返回当前参与路由的 ACTIVE 节点副本，供 Lease 授权和路由隔离确定目标集合。 */
+    /**
+     * 返回当前参与路由的 ACTIVE 节点副本，供 Lease 授权和路由隔离确定目标集合。
+     */
     public List<BrokerNode> activeBrokers() {
         return brokers.stream()
                 .filter(BrokerNode::participatesInRouting)
@@ -106,7 +168,14 @@ public final class BrokerCluster {
         return List.copyOf(operations.values());
     }
 
-    /** 查询已提交的路由隔离事实；尚未登记隔离事实时返回空。 */
+    /** 当前是否存在仍独占集群变更、阻塞新操作的已登记操作。 */
+    public boolean hasBlockingOperation() {
+        return operations.values().stream().anyMatch(BrokerClusterOperation::blocksNewOperation);
+    }
+
+    /**
+     * 查询已提交的路由隔离事实；尚未登记隔离事实时返回空。
+     */
     public Optional<RoutingEpochFence> findRoutingFence() {
         return Optional.ofNullable(routingFence);
     }
@@ -330,7 +399,7 @@ public final class BrokerCluster {
     }
 
     /**
-     * 摘除 Broker 新流量，并冻结 Gateway 路由排空证据。
+     * 校验并登记排空意图及 Gateway 路由证据，Commit 才将节点置为 DRAINING。
      */
     public BrokerClusterDecision drain(BrokerDrainIntent intent) {
         return submitOperation(BrokerClusterOperationProposal.builder()
@@ -345,7 +414,7 @@ public final class BrokerCluster {
     }
 
     /**
-     * 故障摘除 Broker 路由能力，并保留故障恢复所需的 drain 证据。
+     * 校验并登记故障摘流意图及恢复证据，Commit 才将节点置为 INACTIVE。
      */
     public BrokerClusterDecision removeFailedBroker(BrokerFailureRemovalIntent intent) {
         return submitOperation(BrokerClusterOperationProposal.builder()
@@ -360,7 +429,7 @@ public final class BrokerCluster {
     }
 
     /**
-     * 将 DISCOVERED Broker 登记为 learner syncing，实际成员变更由应用层 Adapter 执行。
+     * 登记 DISCOVERED Broker 加入 learner 的意图；应用层执行成员配置变更，Commit 才修改节点角色。
      */
     public BrokerClusterDecision addLearner(LearnerJoinIntent intent) {
         return submitOperation(BrokerClusterOperationProposal.builder()
@@ -487,7 +556,7 @@ public final class BrokerCluster {
         }
 
         // 3. 共识中的操作生命周期决定互斥，不依赖 Leader 进程内标记。
-        if (operations.values().stream().anyMatch(BrokerClusterOperation::blocksNewOperation)) {
+        if (hasBlockingOperation()) {
             return Optional.of(BrokerClusterDecision.conflict(null,
                     new DecisionReason("another cluster change is awaiting topology commit or authorization")));
         }
@@ -626,7 +695,9 @@ public final class BrokerCluster {
         }
     }
 
-    /** 在日志应用边界核验当前恢复证据、ACK 和期限，登记正常或降级完成意图。 */
+    /**
+     * 在日志应用边界核验当前恢复证据、ACK 和期限，登记正常或降级完成意图。
+     */
     public BrokerClusterDecision verifyRouteRecovery(ClusterOperationId operationId, CommandDigest commandDigest,
                                                      Duration recoveryTimeout, Instant changedAt) {
         BrokerClusterOperation operation = operations.get(operationId);
@@ -645,9 +716,10 @@ public final class BrokerCluster {
         }
     }
 
-    /** 依据聚合当前持有的恢复意图选择终态，重复完成不修改已提交事实。 */
-    public BrokerClusterDecision completeRouteRecovery(ClusterOperationId operationId, CommandDigest commandDigest,
-                                                       Instant changedAt) {
+    /**
+     * 依据聚合当前持有的恢复意图选择终态，重复完成不修改已提交事实。
+     */
+    public BrokerClusterDecision completeRouteRecovery(ClusterOperationId operationId, CommandDigest commandDigest, Instant changedAt) {
         BrokerClusterOperation operation = operations.get(operationId);
         BrokerClusterDecision invalid = validateOperationIdentity(operation, commandDigest);
         if (invalid != null) {

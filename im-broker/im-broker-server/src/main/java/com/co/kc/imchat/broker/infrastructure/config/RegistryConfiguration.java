@@ -4,7 +4,7 @@ import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
 import com.co.kc.imchat.broker.interfaces.lifecycle.BrokerRegistrationLifecycle;
 import com.co.kc.imchat.broker.interfaces.scheduler.GatewayCleanupScheduler;
 import com.co.kc.imchat.broker.application.local.LocalGatewayCleanupAppService;
-import com.co.kc.imchat.broker.adapter.gossip.BrokerStateStore;
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRoutingProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.RegistryProperties;
@@ -39,7 +39,7 @@ public class RegistryConfiguration {
     @Bean
     public LocalGatewayCleanupAppService localGatewayCleanupAppService(
             GatewayRegistry gatewayRegistry, ConnectionRegistry connectionRegistry,
-            BrokerStateStore stateStore, RegistryProperties registryProperties,
+            BrokerGossipAdapter stateStore, RegistryProperties registryProperties,
             BrokerRoutingProperties routingProperties) {
         return new LocalGatewayCleanupAppService(gatewayRegistry, connectionRegistry, stateStore,
                 registryProperties.getGatewayTtl(), routingProperties.getRouteTombstoneGracePeriod());

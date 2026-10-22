@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 ACTION="${1:-}"
 STATE_DIR="${ROUTING_HA_STATE_DIR:-$ROOT_DIR/.harness/routing-ha}"
 DETAIL_PATH="${ROUTING_HA_DETAIL_PATH:-$ROOT_DIR/.harness/verifications/routing-ha-detail.json}"
@@ -27,40 +27,42 @@ if [[ ! -x "$SCENARIO_COMMAND" ]]; then
   exit 2
 fi
 
+started_head="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+source "$ROOT_DIR/scripts/lib/harness-evidence.sh"
+started_fingerprint="$(harness_worktree_fingerprint "$ROOT_DIR")"
+[[ "$started_fingerprint" != unavailable ]] || exit 1
+if [[ -n "${ROUTING_HA_REACTOR_EVIDENCE:-}" ]]; then
+  manifest_sha256="$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV[0]).hexdigest' "$ROUTING_HA_REACTOR_EVIDENCE")"
+  expected_sha256="${ROUTING_HA_REACTOR_SHA256:-$manifest_sha256}"
+  [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ && "$manifest_sha256" == "$expected_sha256" ]] || exit 1
+  ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" check "$ROOT_DIR" "$ROUTING_HA_REACTOR_EVIDENCE"
+fi
 mkdir -p "$STATE_DIR" "$(dirname "$DETAIL_PATH")"
 rm -f "$STATE_DIR/scenarios.jsonl" "$STATE_DIR/resources.jsonl" "$DETAIL_PATH"
 
 set +e
-ROUTING_HA_STATE_DIR="$STATE_DIR" ruby -e '
-  command = ARGV.fetch(0)
-  timeout = Integer(ARGV.fetch(1))
-  pid = Process.spawn({"ROUTING_HA_STATE_DIR" => ENV.fetch("ROUTING_HA_STATE_DIR")},
-    command, pgroup: true)
-  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-  loop do
-    waited = Process.waitpid(pid, Process::WNOHANG)
-    exit($?.exitstatus || 1) if waited
-    if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-      begin
-        Process.kill("TERM", -pid)
-      rescue Errno::ESRCH
-      rescue Errno::EPERM
-        Process.kill("TERM", pid) rescue nil
-      end
-      sleep 0.2
-      begin
-        Process.kill("KILL", -pid)
-      rescue Errno::ESRCH
-      rescue Errno::EPERM
-        Process.kill("KILL", pid) rescue nil
-      end
-      Process.waitpid(pid) rescue nil
-      exit 124
-    end
-    sleep 0.05
-  end
-' "$SCENARIO_COMMAND" "$TIMEOUT_SECONDS"
-scenario_status=$?
+# shell 只转发首次取消并继续 wait；Ruby 持有场景组及整个清理宽限。
+forwarded=0
+supervisor_pid=''
+forward_signal() {
+  if (( forwarded == 0 )) && [[ -n "$supervisor_pid" ]]; then
+    forwarded=1
+    kill -s "$1" "$supervisor_pid" 2>/dev/null || true
+  fi
+}
+trap 'forward_signal TERM' TERM
+trap 'forward_signal INT' INT
+ROUTING_HA_STATE_DIR="$STATE_DIR" ruby "$ROOT_DIR/scripts/lib/routing-ha-process.rb" \
+  supervise "$TIMEOUT_SECONDS" "$SCENARIO_COMMAND" &
+supervisor_pid=$!
+while true; do
+  wait "$supervisor_pid"
+  scenario_status=$?
+  if ! kill -0 "$supervisor_pid" 2>/dev/null; then
+    break
+  fi
+done
+trap - INT TERM
 set -e
 if (( scenario_status != 0 )); then
   printf 'routing-ha scenario command failed with exit code %d.\n' "$scenario_status" >&2
@@ -89,6 +91,11 @@ scenario_count="$(ruby -rjson -e '
   puts records.size
 ' "$scenario_file")" || exit 1
 
+# 缺失 ledger 不是清空证明；只接受当前场景生成的普通文件。
+if [[ ! -f "$resource_file" || -L "$resource_file" ]]; then
+  printf 'routing-ha did not produce a regular resources.jsonl cleanup ledger.\n' >&2
+  exit 1
+fi
 if [[ -s "$resource_file" ]]; then
   printf 'routing-ha left Harness-owned resources in %s.\n' "$resource_file" >&2
   exit 1
@@ -98,6 +105,11 @@ if find "$STATE_DIR" -maxdepth 1 -type f -name '*.pid' -size +0c -print -quit | 
   exit 1
 fi
 
+[[ "$(harness_head_revision "$ROOT_DIR")" == "$started_head" && "$(harness_worktree_fingerprint "$ROOT_DIR")" == "$started_fingerprint" ]] || exit 1
+if [[ -n "${ROUTING_HA_REACTOR_EVIDENCE:-}" ]]; then
+  [[ "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV[0]).hexdigest' "$ROUTING_HA_REACTOR_EVIDENCE")" == "$expected_sha256" ]] || exit 1
+  ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" check "$ROOT_DIR" "$ROUTING_HA_REACTOR_EVIDENCE"
+fi
 ruby -rjson -rtime -e '
   output, scenarios, state_dir = ARGV
   File.write(output, JSON.generate({

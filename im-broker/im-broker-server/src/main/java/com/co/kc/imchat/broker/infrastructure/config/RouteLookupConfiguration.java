@@ -2,7 +2,7 @@ package com.co.kc.imchat.broker.infrastructure.config;
 
 import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.infrastructure.config.properties.RegistryProperties;
 import com.co.kc.imchat.broker.interfaces.handler.routing.RouteLookupHandler;
 import org.springframework.context.annotation.Bean;
@@ -27,10 +27,10 @@ public class RouteLookupConfiguration {
     public RouteLookupHandler routeLookupHandler(
             ConnectionRegistry connectionRegistry,
             GatewayRegistry gatewayRegistry,
-            BrokerClusterConsensus repository,
+            BrokerRaftAdapter repository,
             RegistryProperties registryProperties) {
         return new RouteLookupHandler(connectionRegistry, gatewayRegistry,
-                repository, registryProperties.getGatewayTtl().toMillis(),
+                repository, registryProperties.getGatewayTtl(),
                 Clock.systemUTC());
     }
 }

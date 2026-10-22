@@ -1,8 +1,17 @@
 package com.co.kc.imchat.plugin.bolt.model;
 
+import java.util.Set;
+
 /**
- * Bolt 服务端从真实连接提取的受信传输上下文。
- * peerIdentity 只来自 TLS session，不能由 BoltRequest payload 设置。
+ * 真实连接来源事实。peerIdentity 保留旧操作的首 URI/Subject 语义；
+ * 严格准入使用 tlsVerified 与完整 peerUriIdentities，不从请求负载补充。
  */
-public record BoltRequestContext(String remoteAddress, String remoteHost, String peerIdentity) {
+public record BoltRequestContext(String remoteAddress,
+                                 String remoteHost,
+                                 String peerIdentity,
+                                 boolean tlsVerified,
+                                 Set<String> peerUriIdentities) {
+    public BoltRequestContext {
+        peerUriIdentities = Set.copyOf(peerUriIdentities);
+    }
 }

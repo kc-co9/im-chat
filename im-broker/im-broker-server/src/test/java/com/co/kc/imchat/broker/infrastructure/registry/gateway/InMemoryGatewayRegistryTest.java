@@ -6,7 +6,7 @@ import com.co.kc.imchat.broker.domain.connection.model.GatewayPrincipalId;
 
 import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
 import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry;
-import com.co.kc.imchat.broker.transformer.infrastructure.RegistryTransformer;
+import com.co.kc.imchat.broker.transformer.registry.RegistryTransformer;
 
 import com.co.kc.imchat.broker.domain.connection.model.GatewayRegistration;
 import org.junit.jupiter.api.Tag;

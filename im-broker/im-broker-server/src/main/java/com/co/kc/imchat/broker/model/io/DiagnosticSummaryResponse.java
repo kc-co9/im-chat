@@ -1,6 +1,5 @@
 package com.co.kc.imchat.broker.model.io;
 
-import java.time.Instant;
 
 /** 诊断动作累计摘要响应。 */
 public record DiagnosticSummaryResponse(
@@ -9,10 +8,10 @@ public record DiagnosticSummaryResponse(
         /* 失败次数。 */
         Long failureCount,
         /* 最后成功时间。 */
-        Instant lastSuccessAt,
+        Long lastSuccessAtMs,
         /* 最后失败时间。 */
-        Instant lastFailureAt,
+        Long lastFailureAtMs,
         /* 最后执行时间。 */
-        Instant lastExecutedAt
+        Long lastExecutedAtMs
 ) {
 }

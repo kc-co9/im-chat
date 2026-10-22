@@ -9,6 +9,7 @@ import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -33,7 +34,7 @@ class GatewayBrokerAuthorizationTest {
     }
 
     private BoltRequestContext context(String identity) {
-        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", identity);
+        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", identity, false, Set.of());
     }
 
     private static BrokerClusterState state() {

@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.connection.model;
 
+import com.co.kc.imchat.common.domain.user.model.UserId;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.common.utils.HashUtils;
@@ -59,10 +61,10 @@ public final class GatewayRouteTable {
         AssertUtils.domainPropTrue("registration must be active", registration.active());
         UserId userId = registration.userId();
         RouteRevision revision = registration.revision();
-        Instant updateExpiresAt = registration.updateExpiresAt();
+        Instant updateExpireAt = registration.updateExpireAt();
         Instant now = Instant.now();
-        AssertUtils.allDomainPropNotNull("route update is incomplete", userId, revision, updateExpiresAt);
-        AssertUtils.domainPropTrue("route update has expired", updateExpiresAt.isAfter(now));
+        AssertUtils.allDomainPropNotNull("route update is incomplete", userId, revision, updateExpireAt);
+        AssertUtils.domainPropTrue("route update has expired", updateExpireAt.isAfter(now));
 
         ConnectionRegistration connectionRoute = routes.get(userId);
         if (connectionRoute != null && connectionRoute.hasRevisionAtLeast(revision)) {
@@ -74,7 +76,7 @@ public final class GatewayRouteTable {
         if (connectionRoute == null) {
             updated = registration;
         } else {
-            updated = connectionRoute.acceptActiveUpdate(revision, updateExpiresAt);
+            updated = connectionRoute.acceptActiveUpdate(revision, updateExpireAt);
         }
         routes.put(userId, updated);
 
@@ -85,10 +87,10 @@ public final class GatewayRouteTable {
         }
     }
 
-    public ConnectionRouteChangeSet unregister(UserId userId, RouteRevision revision, Instant updateExpiresAt) {
+    public ConnectionRouteChangeSet unregister(UserId userId, RouteRevision revision, Instant updateExpireAt) {
         Instant now = Instant.now();
-        AssertUtils.allDomainPropNotNull("route update is incomplete", userId, revision, updateExpiresAt);
-        AssertUtils.domainPropTrue("route update has expired", updateExpiresAt.isAfter(now));
+        AssertUtils.allDomainPropNotNull("route update is incomplete", userId, revision, updateExpireAt);
+        AssertUtils.domainPropTrue("route update has expired", updateExpireAt.isAfter(now));
 
         ConnectionRegistration connectionRoute = routes.get(userId);
         if (connectionRoute != null && connectionRoute.hasRevisionAtLeast(revision)) {
@@ -98,9 +100,9 @@ public final class GatewayRouteTable {
         ConnectionRouteId id = new ConnectionRouteId(userId, gatewayId);
         ConnectionRegistration updated;
         if (connectionRoute == null) {
-            updated = ConnectionRegistration.tombstone(id, revision, updateExpiresAt, now);
+            updated = ConnectionRegistration.tombstone(id, revision, updateExpireAt, now);
         } else {
-            updated = connectionRoute.acceptRemovalUpdate(revision, updateExpiresAt, now);
+            updated = connectionRoute.acceptRemovalUpdate(revision, updateExpireAt, now);
         }
         routes.put(userId, updated);
 
@@ -126,16 +128,16 @@ public final class GatewayRouteTable {
      *
      * @param userIds         快照声明的完整用户集合；为空表示该 Gateway 当前没有用户路由
      * @param revision        快照覆盖到的 Gateway 路由修订号
-     * @param updateExpiresAt 本次快照更新的有效截止时刻
+     * @param updateExpireAt 本次快照更新的有效截止时刻
      * @return 快照是否被接受，以及外部连接投影需要新增或移除的路由
      */
     public ConnectionRouteChangeSet reconcile(List<UserId> userIds,
                                               RouteRevision revision,
-                                              Instant updateExpiresAt) {
+                                              Instant updateExpireAt) {
         // 1. 校验快照元数据和有效期。
         Instant now = Instant.now();
-        AssertUtils.allDomainPropNotNull("route snapshot is incomplete", revision, updateExpiresAt);
-        AssertUtils.domainPropTrue("route snapshot has expired", updateExpiresAt.isAfter(now));
+        AssertUtils.allDomainPropNotNull("route snapshot is incomplete", revision, updateExpireAt);
+        AssertUtils.domainPropTrue("route snapshot has expired", updateExpireAt.isAfter(now));
 
         // 2. 规范化用户集合，并为快照内容生成稳定摘要。
         List<UserId> snapshotUsers = CollectionUtils.emptyIfNull(userIds)
@@ -172,9 +174,9 @@ public final class GatewayRouteTable {
             }
             ConnectionRegistration updated;
             if (connectionRoute == null) {
-                updated = ConnectionRegistration.active(id, revision, updateExpiresAt);
+                updated = ConnectionRegistration.active(id, revision, updateExpireAt);
             } else {
-                updated = connectionRoute.acceptActiveUpdate(revision, updateExpiresAt);
+                updated = connectionRoute.acceptActiveUpdate(revision, updateExpireAt);
             }
             routes.put(userId, updated);
         }
@@ -193,7 +195,7 @@ public final class GatewayRouteTable {
                 removed.add(id);
             }
             routes.put(userId, connectionRoute.acceptSnapshotRemoval(
-                    revision, updateExpiresAt, now));
+                    revision, updateExpireAt, now));
         }
 
         // 6. 保存新检查点，并返回外部连接投影的增删结果。
@@ -203,8 +205,8 @@ public final class GatewayRouteTable {
     }
 
     public ConnectionRouteChangeSet purge(RouteRevision routeRevision,
-                                          Instant updateExpiresAt) {
-        AssertUtils.domainPropNotNull("drain cleanup deadline is required", updateExpiresAt);
+                                          Instant updateExpireAt) {
+        AssertUtils.domainPropNotNull("drain cleanup deadline is required", updateExpireAt);
         AssertUtils.domainPropNotNull("drain cleanup watermark is required", routeRevision);
         Instant now = Instant.now();
         List<ConnectionRouteId> removed = new ArrayList<>();
@@ -214,7 +216,7 @@ public final class GatewayRouteTable {
                 continue;
             }
             removed.add(connectionRoute.id());
-            entry.setValue(connectionRoute.purgeAt(routeRevision, updateExpiresAt, now));
+            entry.setValue(connectionRoute.purgeAt(routeRevision, updateExpireAt, now));
         }
         return new ConnectionRouteChangeSet(true, List.of(), removed);
     }

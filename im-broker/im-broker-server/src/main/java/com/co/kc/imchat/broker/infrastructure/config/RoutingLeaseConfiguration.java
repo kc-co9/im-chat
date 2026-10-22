@@ -2,8 +2,7 @@ package com.co.kc.imchat.broker.infrastructure.config;
 
 import com.co.kc.imchat.plugin.cache.core.JetCacheFactory;
 
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensus;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.application.cluster.BrokerClusterAppService;
 import com.co.kc.imchat.broker.application.local.LocalLeaseAppService;
 import com.co.kc.imchat.broker.domain.authority.service.LocalRoutingLeaseService;
@@ -35,12 +34,12 @@ public class RoutingLeaseConfiguration {
 
     @Bean
     public LocalRoutingLeaseService localRoutingLeaseManager(
-            BrokerClusterAdapter repository,
+            BrokerRaftAdapter repository,
             BrokerRaftProperties properties,
             FileFenceWatermarkRepository watermarkRepository) {
         return new LocalRoutingLeaseService(
                 new BrokerId(properties.getNodeId()),
-                () -> new RoutingEpoch(repository.committedState().epoch()), watermarkRepository);
+                () -> new RoutingEpoch(repository.getCommittedState().epoch()), watermarkRepository);
     }
 
     @Bean
@@ -60,7 +59,7 @@ public class RoutingLeaseConfiguration {
 
     @Bean
     public RoutingLeaseScheduler routingLeaseLifecycle(
-            BrokerClusterConsensus repository,
+            BrokerRaftAdapter repository,
             BrokerClusterAppService leaseActivator) {
         return new RoutingLeaseScheduler(repository, leaseActivator);
     }

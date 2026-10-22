@@ -2,7 +2,7 @@ package com.co.kc.imchat.broker.interfaces.http.management;
 
 import com.co.kc.imchat.broker.model.cqrs.result.ActivateBrokerResult;
 import com.co.kc.imchat.broker.model.cqrs.result.AddLearnerResult;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusStatus;
+import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
 import com.co.kc.imchat.broker.model.cqrs.result.ForceDeactivateBrokerResult;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerManagementProperties;
 import com.co.kc.imchat.broker.application.cluster.BrokerClusterAppService;
@@ -89,7 +89,7 @@ class BrokerManagementAccessTest {
     @Test
     void requiresDedicatedScopesForRaftAndForceOperations() throws Exception {
         when(membershipService.addLearner(any())).thenReturn(CompletableFuture.completedFuture(
-                new AddLearnerResult("operation-1", BrokerClusterConsensusStatus.APPLIED, null, null)));
+                new AddLearnerResult("operation-1", Status.APPLIED, null, null)));
         when(operationService.forceDeactivate(any())).thenReturn(
                 CompletableFuture.completedFuture(
                         new ForceDeactivateBrokerResult("operation-1", "ACCEPTED",

@@ -1,56 +1,55 @@
 package com.co.kc.imchat.broker.application.cluster;
 
-
-
-import com.co.kc.imchat.broker.domain.authority.model.QuorumReadNonce;
-
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
-import java.util.function.LongFunction;
-import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
+import com.co.kc.imchat.broker.domain.authority.model.FenceAck;
+import com.co.kc.imchat.broker.domain.authority.model.QuorumRead;
+import com.co.kc.imchat.broker.domain.authority.model.QuorumReadNonce;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.domain.cluster.model.LeaderTerm;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
-import com.co.kc.imchat.broker.domain.authority.model.FenceAck;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpochFence;
-import org.junit.jupiter.api.Test;
-import static org.mockito.Mockito.spy;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ScheduledExecutorService;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
+import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
 import com.co.kc.imchat.broker.model.cqrs.command.ActivateBrokerCommand;
-import com.co.kc.imchat.broker.model.cqrs.command.CommitRoutingEpochFenceCommand;
 import com.co.kc.imchat.broker.model.cqrs.result.ActivateBrokerResult;
-import com.co.kc.imchat.broker.support.StatefulClusterAdapterFixture;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
-import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
+import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
-
-import java.util.List;
-import java.util.function.BiFunction;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.any;
+import com.co.kc.imchat.broker.support.StatefulClusterAdapterFixture;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
+import java.util.function.LongFunction;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.leaseSequence;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.readIndex;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.term;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 
 class BrokerClusterAppServiceFenceTest {
     private StatefulClusterAdapterFixture cluster;
+    private BrokerPeerAdapter peerAdapter;
     @Test
     void completesEarlyOnlyAfterEveryFrozenHolderReturnsBoundAck() {
         RoutingEpochFence operation = operation();
@@ -78,8 +77,8 @@ class BrokerClusterAppServiceFenceTest {
         CompletableFuture<Void> quarantine = new CompletableFuture<>();
         StubGrantFence grantFence = new StubGrantFence(operation);
         AtomicInteger quarantineCalls = new AtomicInteger();
-        java.util.concurrent.atomic.AtomicLong waitedNanos =
-                new java.util.concurrent.atomic.AtomicLong();
+        AtomicLong waitedNanos =
+                new AtomicLong();
         BrokerClusterAppService service = service(grantFence,
                 (brokerId, persistedOperation) -> {
                     if (brokerId.equals("broker-a")) {
@@ -177,15 +176,15 @@ class BrokerClusterAppServiceFenceTest {
                 (brokerId, fence) -> { throw new AssertionError("must not dispatch fence RPC"); },
                 duration -> { throw new AssertionError("must not schedule quarantine"); });
         IllegalStateException failure = new IllegalStateException("cannot persist conflicting fence");
-        org.mockito.Mockito.doReturn(CompletableFuture.failedFuture(failure))
-                .when(cluster.adapter).persist(any());
+        Mockito.doReturn(CompletableFuture.failedFuture(failure))
+                .when(cluster.adapter).commitRoutingFence(any());
 
         CompletableFuture<ActivateBrokerResult> activation = service.activate(
                 new ActivateBrokerCommand("operation-1", "broker-c", 7L)).toCompletableFuture();
 
         assertThatThrownBy(activation::join).hasCause(failure);
-        org.mockito.Mockito.verify(cluster.adapter, org.mockito.Mockito.never()).fenceBroker(any(), any());
-        org.mockito.Mockito.verify(cluster.adapter, org.mockito.Mockito.never()).commitOperation(any(), any());
+        Mockito.verify(peerAdapter, Mockito.never()).fence(any(), any());
+        Mockito.verify(cluster.adapter, Mockito.never()).commitOperation(any());
         assertThat(cluster.stateMachine.committedState().epoch()).isEqualTo(7L);
     }
 
@@ -194,16 +193,16 @@ class BrokerClusterAppServiceFenceTest {
         BrokerClusterAppService service = service(new StubGrantFence(operation()),
                 (brokerId, fence) -> CompletableFuture.completedFuture(ack(brokerId, fence, fence.leaderTerm())),
                 duration -> { throw new AssertionError("must not schedule quarantine"); });
-        org.mockito.Mockito.doReturn(CompletableFuture.completedFuture(
+        Mockito.doReturn(CompletableFuture.completedFuture(
                 BrokerClusterConsensusResult.rejected("topology changed")))
-                .when(cluster.adapter).commitOperation(any(), any());
+                .when(cluster.adapter).commitOperation(any());
 
         CompletableFuture<ActivateBrokerResult> activation = service.activate(
                 new ActivateBrokerCommand("operation-1", "broker-c", 7L)).toCompletableFuture();
 
         assertThatThrownBy(activation::join).hasCauseInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("failed to commit epoch topology: REJECTED: topology changed");
-        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).activateLease(any());
+        Mockito.verify(service, Mockito.never()).activateLease(any());
         assertThat(cluster.stateMachine.committedState().epoch()).isEqualTo(7L);
     }
 
@@ -223,15 +222,18 @@ class BrokerClusterAppServiceFenceTest {
                 new BrokerNode("broker-a", "127.0.0.1:18020", BrokerMembershipRole.VOTER, BrokerRoutingState.ACTIVE),
                 new BrokerNode("broker-b", "127.0.0.1:18021", BrokerMembershipRole.VOTER, BrokerRoutingState.ACTIVE),
                 new BrokerNode("broker-c", "127.0.0.1:18022", BrokerMembershipRole.LEARNER, BrokerRoutingState.READY))));
-        doAnswer(invocation -> fenceRequests.apply(((BrokerId) invocation.getArgument(0)).value(),
-                invocation.getArgument(1))).when(cluster.adapter).fenceBroker(any(), any());
+        peerAdapter = mock(BrokerPeerAdapter.class);
+        doAnswer(invocation -> fenceRequests.apply(
+                ((com.co.kc.imchat.broker.domain.cluster.model.BrokerNode) invocation.getArgument(0)).id().value(),
+                invocation.getArgument(1))).when(peerAdapter).fence(any(), any());
         BrokerClusterAppService service = spy(new BrokerClusterAppService(cluster.adapter,
-                mock(GatewayRegistry.class), Duration.ofNanos(1_000L), Duration.ofSeconds(1), scheduler, java.time.Duration.ofSeconds(10)));
-        org.mockito.Mockito.doReturn(CompletableFuture.completedFuture(
-                new com.co.kc.imchat.broker.domain.authority.model.QuorumRead(
+                peerAdapter,
+                mock(GatewayRegistry.class), Duration.ofNanos(1_000L), Duration.ofSeconds(1), scheduler, Duration.ofSeconds(10), null, null, Duration.ofSeconds(60)));
+        Mockito.doReturn(CompletableFuture.completedFuture(
+                new QuorumRead(
                         grantFence.operation.leaderTerm(), grantFence.operation.quorumReadIndex())))
                 .when(cluster.adapter).confirmLeadership(any(QuorumReadNonce.class));
-        org.mockito.Mockito.doReturn(CompletableFuture.completedFuture(true))
+        Mockito.doReturn(CompletableFuture.completedFuture(true))
                 .when(service).activateLease(any());
         return service;
     }

@@ -103,7 +103,15 @@ Repository 只用于聚合生命周期。远端 HTTP client、运行态目录、
 
 小型库不需要机械建立所有层。例如纯 codec 可以直接使用 `codec`、`model`、`spi`；一个只有单一职责的 adapter 也不需要添加空 application 层。
 
-不要用 `support` 接纳暂时不知道放哪里的代码。若一个目录内部已经出现 `service/model/io/tracker`，它就是一个需要命名和划定依赖方向的能力，而不是辅助代码。`support` 只允许极少量无状态、无领域规则且需要跨层共享的模块内部辅助类型，例如 `support.exception` 中的协议无关模块异常、`support.security` 中的安全上下文或受信传输身份解析器，以及 `support.util` 中的协议无关纯函数工具；安全辅助类型可以适配传输上下文，但不能执行授权策略、生成协议响应或依赖 application 实现，异常名称仍须表达所属模块或能力，不能成为通用 `BusinessException` 的替代品。一旦形成独立生命周期、状态、外部集成或对外模型，应立即归入 application、interfaces、infrastructure 或明确的技术 capability。
+Broker 专属例外：`support.raft.codec`、`support.raft.model`、`support.raft.statemachine` 三个精确职责包承载命令协议、快照载体和类型化状态回调，不允许任意后代包。它们不能依赖 application、interfaces、运行配置/生命周期、Runtime 或具体网络 client；领域不得反向依赖。Runtime/close 仍唯一归 BrokerRaftAdapter，consensus/membership 不移动。本例外不放宽其他 support 规则，间接 Transformer 编排由 Review 检查。
+
+有界、非权威且可选的跨层诊断记录辅助类型可进入明确批准的 `support.<capability>` 精确能力包；允许有界内存记录和累计计数，不参与业务决策，不拥有网络、运行资源或生命周期，不依赖 application、interfaces、infrastructure、配置、生命周期、Adapter 或具体网络 client。不得扩展为任意子包许可或按类名豁免，领域仍不得依赖 support。Broker 当前仅批准 `support.gossip` 精确包承担此职责；运行态 Gossip store/Adapter 仍归 `adapter.gossip`，不因此移入 support。
+
+Broker 指标观察器单独批准进入精确 `support.monitoring`，不允许后代包。允许 Spring `@Component`、Micrometer `MeterBinder` 集成，以及只读 Domain、Registry、Adapter 查询；禁止依赖 application、interfaces、infrastructure、config、lifecycle，禁止直接网络 client、RaftRuntime、执行器拥有、业务决策或写入，domain 不得依赖 support。此技术观察例外不继承纯 `support.gossip` 的禁止 Adapter/Spring 规则，也不放宽其他 support 包。精确包和稳定依赖由 Architecture Test 保护；只读调用与业务写入语义为 Review-only，待有低误报的写 API 清单或语义 checker 后自动化。
+
+Broker 自动健康观察另行批准精确 `support.health`（不允许后代包），当前具体实现为 `BrokerHealthObservationTracker`，允许 Tracker 后缀，不建 Repository、port/实现对或兼容壳。它只维护按当前目标裁剪的有界采样、结构化上下文、freshness 与快照；观察非权威，但属于安全决策输入，不是可选诊断。成员一致性由聚合 `BrokerCluster.findConsistentVoters` 判定，最新事实、多数与稳定窗口由领域服务 `BrokerFailureObservationService.evaluate` 判定，应用层编排。允许依赖领域 model、common 和 JDK 时间/集合；禁止 application、interfaces、infrastructure、config/configuration、lifecycle、Adapter、领域 service/repository、Spring、client/network、plugin 及运行资源拥有，domain 不得反向依赖 support。装配归配置、入口归 Handler/Application；此例外不放宽 Gossip、Monitoring 或其他 support。精确包和稳定依赖由生产/fixture 共用架构规则保护；有界性、无决策及实际完成回调语义由聚焦测试和 Review 保护，待可靠资源/决策数据流分析后自动化。
+
+不要用 `support` 接纳暂时不知道放哪里的代码。若一个目录内部已经出现 `service/model/io/tracker`，它就是一个需要命名和划定依赖方向的能力，而不是辅助代码。除上述明确批准的技术接入、健康观察与有界诊断辅助职责外，`support` 只允许极少量无状态、无领域规则且需要跨层共享的模块内部辅助类型，例如 `support.exception` 中的协议无关模块异常、`support.security` 中的安全上下文或受信传输身份解析器，以及 `support.util` 中的协议无关纯函数工具；安全辅助类型可以适配传输上下文，但不能执行授权策略、生成协议响应或依赖 application 实现，异常名称仍须表达所属模块或能力，不能成为通用 `BusinessException` 的替代品。一旦形成独立生命周期、权威业务状态、外部集成或对外模型，应立即归入 application、interfaces、infrastructure 或明确的技术 capability。
 
 技术模块仍必须有清晰 seam：协议入口不应同时承担算法、持久状态修改和远端调用；并发、超时、背压、幂等和资源上界必须由对应技术 module 封装并测试。
 
@@ -132,12 +140,17 @@ broker-server/
   support/
     exception/                 # 少量跨层可识别的模块异常
     security/                  # 认证后的请求 Principal 与受信身份解析辅助类型
+    monitoring/                # 精确包：Spring/Micrometer 只读技术观察例外
+  transformer/
+    application/               # 应用输出映射
+    interfaces/                # 入口映射
+    adapter/                   # Broker 状态、Raft、Drain、Fence、Lease 边界映射
+    registry/                  # Registry 边界映射
   infrastructure/
-    raft/                      # Raft adapter
+    raft/                      # Broker 窄例外：codec/model/statemachine 精确职责包
     registry/                  # 运行态目录 adapter
     gossip/                    # observation/sync、Spring publisher/listener adapter
     diagnostic/                # Registry 聚合查询与有界 Tracker
-    monitoring/                # Micrometer 指标
     authority/                 # 本机 fence 水位文件持久化实现
     config/                    # 按稳定能力拆分的 Bean 与 ConfigurationProperties 装配
 ```
@@ -173,6 +186,8 @@ application 和 infrastructure 共同引用的用例输入输出按类型职责�
 可以直接共置，并由类型名与 Javadoc 表明 DDD 角色。`change`、`result` 是类型形态，不是 DDD 层，不能仅为
 收纳同类后缀建立目录；只有形成可独立理解和演进的领域概念时才增加业务语义子包。类型数量增长到明显影响
 导航时，可以按 `model|service|repository` 分组，但不能为单个类型建立空洞层级。
+
+Broker Transformer 按边界能力归属：`transformer.application`、`transformer.interfaces` 保留应用输出与入口映射；`transformer.adapter` 承担集群状态与 Raft/Drain/Fence/Lease 映射，状态转换器命名 `BrokerClusterStateTransformer`，不增加 projection 目录；`transformer.registry.RegistryTransformer` 承担 Registry 映射。该能力分组不改变 MapStruct 生成映射规则，也不授权在转换器内加入业务决策。
 
 ## Interface 与命名
 

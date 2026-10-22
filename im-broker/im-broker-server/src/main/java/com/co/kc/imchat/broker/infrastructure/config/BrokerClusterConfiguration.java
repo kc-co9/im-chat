@@ -1,28 +1,29 @@
 package com.co.kc.imchat.broker.infrastructure.config;
 
-import com.co.kc.imchat.broker.domain.cluster.model.MinimumVoterCount;
-
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
+import com.co.kc.imchat.broker.support.health.BrokerHealthObservationTracker;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.application.cluster.BrokerClusterAppService;
 import com.co.kc.imchat.broker.application.cluster.BrokerMembershipAppService;
-import com.co.kc.imchat.broker.interfaces.scheduler.BrokerMembershipScheduler;
 import com.co.kc.imchat.broker.application.cluster.BrokerQuorumAppService;
 import com.co.kc.imchat.broker.domain.authority.service.RoutingLeaseGrantService;
+import com.co.kc.imchat.broker.domain.cluster.model.MinimumVoterCount;
+import com.co.kc.imchat.broker.domain.cluster.service.BrokerFailureObservationService;
+import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
+import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerFailureObservationProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRaftProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRoutingProperties;
+import com.co.kc.imchat.broker.interfaces.scheduler.BrokerMembershipScheduler;
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ExecutorService;
-import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
-import com.co.kc.imchat.plugin.metrics.support.MetricsCollector;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -54,55 +55,68 @@ public class BrokerClusterConfiguration {
     }
 
     @Bean
-    public BrokerQuorumAppService brokerQuorumAppService(BrokerClusterAdapter clusterAdapter) {
-        return new BrokerQuorumAppService(clusterAdapter);
+    public BrokerQuorumAppService brokerQuorumAppService(BrokerRaftAdapter raftAdapter) {
+        return new BrokerQuorumAppService(raftAdapter);
     }
 
     /** 装配成员恢复定时入口，等待窗口沿用 Raft 命令超时的四倍。 */
     @Bean
     public BrokerMembershipScheduler brokerMembershipScheduler(
-            BrokerClusterAdapter adapter, BrokerMembershipAppService service, BrokerRaftProperties properties) {
+            BrokerRaftAdapter adapter, BrokerMembershipAppService service, BrokerRaftProperties properties) {
         return new BrokerMembershipScheduler(adapter, service,
-                Duration.ofMillis(properties.getCommandTimeoutMillis()).multipliedBy(4));
+                Duration.ofMillis(properties.getCommandTimeoutMs()).multipliedBy(4));
     }
 
     @Bean(destroyMethod = "close")
-    public BrokerClusterAdapter brokerClusterAdapter(
+    public BrokerRaftAdapter brokerRaftAdapter(
             BrokerRaftProperties properties,
             BrokerRoutingProperties routingProperties,
-            BoltInvoker invoker, BrokerProperties brokerProperties,
-            RoutingLeaseGrantService leaseGrantService,
-            @Qualifier("brokerRouteLookupExecutor") ExecutorService routeLookupExecutor,
-            @Qualifier("brokerFrameDispatchExecutor") ExecutorService frameDispatchExecutor,
-            GatewayClient gatewayClient, MetricsCollector metricsCollector,
-            @Qualifier("brokerPeerExecutor") ThreadPoolExecutor peerExecutor) throws IOException {
+            RoutingLeaseGrantService leaseGrantService) throws IOException {
         routingProperties.validate();
-        return new BrokerClusterAdapter(properties,
-                properties.initialClusterState(routingProperties.getAlgorithm()), invoker, brokerProperties, peerExecutor,
-                leaseGrantService, routingProperties, routeLookupExecutor, frameDispatchExecutor,
-                gatewayClient, metricsCollector);
+        return new BrokerRaftAdapter(properties,
+                properties.initialClusterState(routingProperties.getAlgorithm()), leaseGrantService);
     }
 
     @Bean
     public BrokerClusterAppService brokerClusterAppService(
-            BrokerClusterAdapter brokerClusterAdapter,
-            BrokerRaftProperties properties,
+            BrokerRaftAdapter brokerClusterAdapter,
+            BrokerPeerAdapter brokerPeerAdapter,
             BrokerRoutingProperties routingProperties,
             GatewayRegistry gatewayRegistry,
+            BrokerHealthObservationTracker observationStore,
+            BrokerFailureObservationService failureObservationService,
+            BrokerFailureObservationProperties observationProperties,
             @Qualifier("brokerQuarantineScheduler") ScheduledThreadPoolExecutor quarantineScheduler) {
-        return new BrokerClusterAppService(brokerClusterAdapter,
+        return new BrokerClusterAppService(brokerClusterAdapter, brokerPeerAdapter,
                 gatewayRegistry,
                 routingProperties.quarantineDuration(), routingProperties.getMaxRouteEventTtl(), quarantineScheduler,
-                routingProperties.getDrainOperationTimeout());
+                routingProperties.getDrainOperationTimeout(),
+                observationStore,
+                failureObservationService,
+                observationProperties.getCooldown());
     }
 
     @Bean
     public BrokerMembershipAppService brokerMembershipAppService(
-            BrokerClusterAdapter brokerClusterAdapter,
+            BrokerRaftAdapter brokerClusterAdapter,
+            BrokerPeerAdapter brokerPeerAdapter,
             BrokerRaftProperties properties,
             BrokerRoutingProperties routingProperties) {
-        return new BrokerMembershipAppService(brokerClusterAdapter,
+        return new BrokerMembershipAppService(brokerClusterAdapter, brokerPeerAdapter,
                 new MinimumVoterCount(properties.getMinimumVoterCount()));
+    }
+
+    @Bean
+    public BrokerPeerAdapter brokerPeerAdapter(
+            BoltInvoker invoker, BrokerProperties properties,
+            @Qualifier("brokerPeerExecutor") ThreadPoolExecutor peerExecutor,
+            @Qualifier("brokerRouteLookupExecutor") ExecutorService routeLookupExecutor,
+            BrokerRoutingProperties routingProperties, BrokerFailureObservationProperties observationProperties,
+            BrokerRaftProperties raftProperties,
+            @Qualifier("brokerObservationExecutor") ExecutorService observationExecutor) {
+        return new BrokerPeerAdapter(invoker, properties, peerExecutor,
+                routeLookupExecutor, routingProperties, observationProperties, raftProperties.getNodeId(), observationExecutor,
+                routingProperties.getBrokerWorkloadIdentityPrefix());
     }
 
 }

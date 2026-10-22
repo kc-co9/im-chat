@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.domain.connection.model;
 
+import com.co.kc.imchat.common.domain.user.model.UserId;
+
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,6 +21,21 @@ class ConnectionRouteValueObjectTest {
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> new RouteRevision(-1L))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void routeIdentityUsesSharedUserIdAndRejectsMissingComponents() {
+        UserId userId = new UserId(101L);
+        ConnectionRouteId routeId = new ConnectionRouteId(userId, new GatewayId("gateway-1"));
+
+        assertThat(routeId.userId()).isSameAs(userId);
+        assertThat(routeId.userId().stringValue()).isEqualTo("101");
+        assertThatThrownBy(() -> new UserId(null))
+                .isInstanceOf(IllegalStateException.class).hasMessage("用户ID不能为空");
+        assertThatThrownBy(() -> new ConnectionRouteId(null, new GatewayId("gateway-1")))
+                .isInstanceOf(IllegalStateException.class).hasMessage("connection route id is incomplete");
+        assertThatThrownBy(() -> new ConnectionRouteId(userId, null))
+                .isInstanceOf(IllegalStateException.class).hasMessage("connection route id is incomplete");
     }
 
     @Test

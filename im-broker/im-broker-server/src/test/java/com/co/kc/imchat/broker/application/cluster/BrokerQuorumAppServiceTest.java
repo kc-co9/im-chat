@@ -1,7 +1,7 @@
 package com.co.kc.imchat.broker.application.cluster;
 
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-import com.co.kc.imchat.broker.adapter.cluster.LocalBroker;
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.sdk.model.result.QuorumReadIndexResult;
 import org.junit.jupiter.api.Test;
@@ -16,13 +16,11 @@ import static org.mockito.Mockito.when;
 class BrokerQuorumAppServiceTest {
     @Test
     void waitsForAppliedIndexAndReturnsConfiguredIdentity() {
-        BrokerClusterAdapter adapter = mock(BrokerClusterAdapter.class);
-        LocalBroker localBroker = mock(LocalBroker.class);
-        when(adapter.getLocalBroker()).thenReturn(localBroker);
-        when(localBroker.nodeId()).thenReturn("broker-b");
+        BrokerRaftAdapter raftAdapter = mock(BrokerRaftAdapter.class);
+        when(BrokerRaftTestBindings.bindLocalBroker(raftAdapter).getId()).thenReturn(new BrokerId("broker-b"));
         CompletableFuture<Long> applied = new CompletableFuture<>();
-        when(localBroker.fetchQuorumReadIndex()).thenReturn(applied);
-        BrokerQuorumAppService service = new BrokerQuorumAppService(adapter);
+        when(raftAdapter.fetchQuorumReadIndex()).thenReturn(applied);
+        BrokerQuorumAppService service = new BrokerQuorumAppService(raftAdapter);
 
         CompletableFuture<QuorumReadIndexResult> response = service.fetchQuorumReadIndex().toCompletableFuture();
         assertThat(response).isNotDone();
@@ -32,12 +30,10 @@ class BrokerQuorumAppServiceTest {
 
     @Test
     void consensusFailureIsNotReplacedByFakeProgress() {
-        BrokerClusterAdapter adapter = mock(BrokerClusterAdapter.class);
-        LocalBroker localBroker = mock(LocalBroker.class);
-        when(adapter.getLocalBroker()).thenReturn(localBroker);
+        BrokerRaftAdapter raftAdapter = mock(BrokerRaftAdapter.class);
         IllegalStateException failure = new IllegalStateException("quorum unavailable");
-        when(localBroker.fetchQuorumReadIndex()).thenReturn(CompletableFuture.failedFuture(failure));
-        BrokerQuorumAppService service = new BrokerQuorumAppService(adapter);
+        when(raftAdapter.fetchQuorumReadIndex()).thenReturn(CompletableFuture.failedFuture(failure));
+        BrokerQuorumAppService service = new BrokerQuorumAppService(raftAdapter);
 
         assertThatThrownBy(() -> service.fetchQuorumReadIndex().toCompletableFuture().join()).hasCause(failure);
     }

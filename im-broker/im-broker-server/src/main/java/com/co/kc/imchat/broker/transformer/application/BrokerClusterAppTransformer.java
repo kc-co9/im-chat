@@ -1,7 +1,7 @@
 package com.co.kc.imchat.broker.transformer.application;
 
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
-import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusStatus;
+import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
 import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerConsensusMembershipResult;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterDecision;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
@@ -29,7 +29,7 @@ import com.co.kc.imchat.broker.model.cqrs.command.PromoteLearnerCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.RemoveBrokerCommand;
 
 import java.time.Instant;
-import com.co.kc.imchat.broker.domain.cluster.model.MembershipEndpoint;
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
 
 /**
  * Broker 集群应用结果之间的边界转换。
@@ -207,46 +207,12 @@ public final class BrokerClusterAppTransformer {
                 operation == null ? null : operation.resultEpoch().value(), result.leaderEndpoint(), result.message());
     }
 
-    /**
-     * 映射成员拒绝的失败命令，原样转换调用方提供的毫秒时间，不修正异常时间。
-     */
-    public AdvanceClusterOperationCommand membershipFailureCommandFrom(
-            BrokerClusterOperation operation, BrokerConsensusMembershipResult membership,
-            Instant changedAt) {
-        String reason = membership.message();
-        if (reason == null || reason.isBlank()) {
-            reason = "membership rejected";
-        }
-        return AdvanceClusterOperationCommand.builder()
-                .operationId(operation.id())
-                .commandDigest(operation.commandDigest().value())
-                .expectedPhase(BrokerClusterOperationPhase.PENDING)
-                .nextPhase(BrokerClusterOperationPhase.FAILED)
-                .error(reason)
-                .changedAtEpochMilli(changedAt.toEpochMilli())
-                .build();
-    }
-
-    /**
-     * 映射已提交成员操作的成功命令，不执行阶段判断或共识提交。
-     */
-    public AdvanceClusterOperationCommand membershipCompletionCommandFrom(
-            BrokerClusterOperation operation, Instant changedAt) {
-        return AdvanceClusterOperationCommand.builder()
-                .operationId(operation.id())
-                .commandDigest(operation.commandDigest().value())
-                .expectedPhase(BrokerClusterOperationPhase.RAFT_COMMITTED)
-                .nextPhase(BrokerClusterOperationPhase.SUCCEEDED)
-                .changedAtEpochMilli(changedAt.toEpochMilli())
-                .build();
-    }
-
     public BrokerClusterConsensusResult consensusResultFrom(
             BrokerConsensusMembershipResult source) {
-        BrokerClusterConsensusStatus status = switch (source.status()) {
-            case NOT_LEADER -> BrokerClusterConsensusStatus.NOT_LEADER;
-            case REJECTED -> BrokerClusterConsensusStatus.REJECTED;
-            case UNAVAILABLE -> BrokerClusterConsensusStatus.UNAVAILABLE;
+        Status status = switch (source.status()) {
+            case NOT_LEADER -> Status.NOT_LEADER;
+            case REJECTED -> Status.REJECTED;
+            case UNAVAILABLE -> Status.UNAVAILABLE;
             case APPLIED, DUPLICATE -> throw new IllegalArgumentException(
                     "accepted membership result must continue state submission");
         };
@@ -258,6 +224,6 @@ public final class BrokerClusterAppTransformer {
      */
     public BrokerClusterConsensusResult consensusResultFrom(
             BrokerClusterDecision source) {
-        return new BrokerClusterConsensusResult(BrokerClusterConsensusStatus.valueOf(source.status().name()), source.operation(), null, source.reason() == null ? null : source.reason().value());
+        return new BrokerClusterConsensusResult(Status.valueOf(source.status().name()), source.operation(), null, source.reason() == null ? null : source.reason().value());
     }
 }

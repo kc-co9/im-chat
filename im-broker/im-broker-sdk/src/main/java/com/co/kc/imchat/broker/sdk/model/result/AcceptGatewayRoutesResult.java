@@ -8,7 +8,7 @@ import java.io.Serializable;
 public record AcceptGatewayRoutesResult(
         Status status,
         long routingEpoch,
-        long retryAfterMillis) implements Serializable {
+        long retryAfterMs) implements Serializable {
 
     public enum Status {
         CHUNK_ACCEPTED,
@@ -20,7 +20,7 @@ public record AcceptGatewayRoutesResult(
     }
 
     public AcceptGatewayRoutesResult {
-        if (status == null || routingEpoch < 0L || retryAfterMillis < 0L) {
+        if (status == null || routingEpoch < 0L || retryAfterMs < 0L) {
             throw new IllegalArgumentException("invalid Gateway route snapshot result");
         }
     }
@@ -44,7 +44,7 @@ public record AcceptGatewayRoutesResult(
     }
 
     /** 暂无容量或执行许可，调用方在给定间隔后重试。 */
-    public static AcceptGatewayRoutesResult retryAfter(long routingEpoch, long retryAfterMillis) {
-        return new AcceptGatewayRoutesResult(Status.RETRY_AFTER, routingEpoch, retryAfterMillis);
+    public static AcceptGatewayRoutesResult retryAfter(long routingEpoch, long retryAfterMs) {
+        return new AcceptGatewayRoutesResult(Status.RETRY_AFTER, routingEpoch, retryAfterMs);
     }
 }

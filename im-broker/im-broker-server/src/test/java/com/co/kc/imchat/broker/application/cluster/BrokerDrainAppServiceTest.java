@@ -1,69 +1,84 @@
 package com.co.kc.imchat.broker.application.cluster;
 
-import static org.mockito.ArgumentMatchers.any;
-
-import static org.mockito.Mockito.*;
-
-import java.util.concurrent.ScheduledExecutorService;
-
-import java.time.Duration;
-
-
-import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-
-import com.co.kc.imchat.broker.adapter.cluster.BrokerClusterAdapter;
-
-import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
-
-import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
-
-import com.co.kc.imchat.broker.model.cqrs.command.BrokerOperationReconcileCommand;
-import com.co.kc.imchat.broker.model.cqrs.command.ForceBrokerDrainCommand;
-import com.co.kc.imchat.broker.support.BrokerClusterCommandFixture;
-
-import com.co.kc.imchat.broker.model.cqrs.result.BrokerDrainResult;
-import com.co.kc.imchat.broker.domain.cluster.model.RouteCleanupResult;
-import com.co.kc.imchat.broker.domain.cluster.model.RouteCount;
-import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
-import com.co.kc.imchat.broker.model.cqrs.command.UpdateBrokerDrainProgressCommand;
-import com.co.kc.imchat.broker.model.cqrs.command.CompleteBrokerDrainCommand;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
-import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
+import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
+import com.co.kc.imchat.broker.domain.cluster.model.ClusterRevision;
 import com.co.kc.imchat.broker.domain.cluster.model.DrainProgress;
-import com.co.kc.imchat.broker.adapter.cluster.raft.RaftBrokerClusterStateMachine;
+import com.co.kc.imchat.broker.domain.cluster.model.OperationFailureReason;
+import com.co.kc.imchat.broker.domain.cluster.model.RouteCleanupResult;
+import com.co.kc.imchat.broker.domain.cluster.model.RouteCount;
+import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
+import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
+import com.co.kc.imchat.broker.model.cqrs.command.AdvanceClusterOperationCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.BrokerOperationReconcileCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.CompleteBrokerDrainCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.ForceBrokerDrainCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.UpdateBrokerDrainProgressCommand;
+import com.co.kc.imchat.broker.model.cqrs.result.BrokerDrainResult;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.AfterEach;
-import org.mockito.MockedStatic;
+import com.co.kc.imchat.broker.support.BrokerClusterCommandFixture;
+import com.co.kc.imchat.broker.support.BrokerClusterConsensusStub;
+import com.co.kc.imchat.broker.support.BrokerRaftTestBindings;
 import com.co.kc.imchat.broker.support.TestClock;
-import java.util.concurrent.atomic.AtomicLong;
-
+import com.co.kc.imchat.broker.support.raft.statemachine.RaftBrokerClusterStateMachine;
+import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterRaftTransformer;
+import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterStateTransformer;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.checkpoint;
 import static com.co.kc.imchat.broker.support.BrokerDomainValues.summary;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 /** Broker drain 应用服务行为测试。 */
 class BrokerDrainAppServiceTest {
     private final AtomicLong clock = new AtomicLong(2_100L);
     private MockedStatic<Instant> wallClock;
+
+    @Test
+    void drainCommandsUseExplicitRevisionWithoutReadingAdapterState() {
+        BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
+        BrokerClusterOperation operation = repository(true)
+                .findOperation(new ClusterOperationId("drain-1")).orElseThrow();
+        ClusterRevision revision =
+                new ClusterRevision(42L);
+        BrokerClusterRaftTransformer mapper =
+                BrokerClusterRaftTransformer.INSTANCE;
+        assertThat(mapper.drainCompletionCommandFrom(operation, revision,
+                Instant.ofEpochMilli(2_100L)).expectedRevision()).isEqualTo(revision);
+        assertThat(mapper.forcedDrainCommandFrom(operation, revision,
+                new OperationFailureReason("accepted risk"),
+                Instant.ofEpochMilli(2_100L)).expectedRevision()).isEqualTo(revision);
+        verify(adapter, never()).getCommittedState();
+    }
 
     @BeforeEach
     void controlWallClock() {
@@ -96,7 +111,7 @@ class BrokerDrainAppServiceTest {
         assertThat(cleanupCalls).hasValue(1);
         assertThat(repository.findOperation(new ClusterOperationId("drain-1")).orElseThrow().phase())
                 .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED);
-        assertThat(repository.committedState().brokers()).filteredOn(
+        assertThat(repository.getCommittedState().brokers()).filteredOn(
                         broker -> broker.brokerId().equals("broker-b"))
                 .extracting(BrokerNode::routingState)
                 .containsExactly(BrokerRoutingState.INACTIVE);
@@ -148,7 +163,7 @@ class BrokerDrainAppServiceTest {
             assertThat(operation.phase()).isEqualTo(BrokerClusterOperationPhase.FORCED);
             assertThat(operation.error().value()).contains("missing Gateway evidence");
         });
-        assertThat(repository.committedState().brokers()).filteredOn(
+        assertThat(repository.getCommittedState().brokers()).filteredOn(
                         broker -> broker.brokerId().equals("broker-b"))
                 .extracting(BrokerNode::routingState)
                 .containsExactly(BrokerRoutingState.INACTIVE);
@@ -168,10 +183,10 @@ class BrokerDrainAppServiceTest {
 
         assertThat(service.advanceDrain(command).toCompletableFuture().join().status())
                 .isEqualTo(BrokerDrainResult.Status.SUCCEEDED);
-        long completedRevision = repository.committedState().revision();
+        long completedRevision = repository.getCommittedState().revision();
         assertThat(service.advanceDrain(command).toCompletableFuture().join().status())
                 .isEqualTo(BrokerDrainResult.Status.SUCCEEDED);
-        assertThat(repository.committedState().revision()).isEqualTo(completedRevision);
+        assertThat(repository.getCommittedState().revision()).isEqualTo(completedRevision);
     }
 
     @Test
@@ -197,7 +212,7 @@ class BrokerDrainAppServiceTest {
     void stopsWhenEvidenceSubmissionIsRejected() {
         TestRepository repository = spy(repository(true));
         doReturn(CompletableFuture.completedFuture(BrokerClusterConsensusResult.rejected("evidence rejected")))
-                .when(repository).submitChange(isA(UpdateBrokerDrainProgressCommand.class));
+                .when(repository).submitCommand(isA(UpdateBrokerDrainProgressCommand.class));
         BrokerClusterAppService service = service(repository,
                 (target, operation) -> CompletableFuture.completedFuture(
                         new RouteCleanupResult(new RouteCount(2L), RouteCount.ZERO, true)),
@@ -207,7 +222,7 @@ class BrokerDrainAppServiceTest {
                 .toCompletableFuture().join();
 
         assertThat(result).isEqualTo(BrokerDrainResult.waitingForCleanup("evidence rejected"));
-        verify(repository, never()).submitChange(isA(CompleteBrokerDrainCommand.class));
+        verify(repository, never()).submitCommand(isA(CompleteBrokerDrainCommand.class));
         assertThat(repository.findOperation(new ClusterOperationId("drain-1")).orElseThrow().phase())
                 .isEqualTo(BrokerClusterOperationPhase.REBUILDING_ROUTES);
     }
@@ -228,16 +243,39 @@ class BrokerDrainAppServiceTest {
     }
 
     @Test
+    void gatewayTimeoutSubmitsTheSameTimeUsedForTheDecision() {
+        TestRepository repository = spy(repository(false));
+        BrokerClusterAppService service = service(repository,
+                (target, operation) -> CompletableFuture.failedFuture(new AssertionError("cleanup must not run")),
+                Duration.ofSeconds(10));
+        clock.set(12_000L);
+        wallClock.close();
+        wallClock = TestClock.interceptNow(() -> clock.getAndAdd(1_000L));
+        assertThat(service.advanceDrain(new BrokerOperationReconcileCommand("drain-1"))
+                .toCompletableFuture().join().status()).isEqualTo(BrokerDrainResult.Status.FAILED);
+        ArgumentCaptor<AdvanceClusterOperationCommand> failure =
+                ArgumentCaptor.forClass(AdvanceClusterOperationCommand.class);
+        verify(repository).submitCommand(failure.capture());
+        assertThat(failure.getValue().changedAt()).isEqualTo(Instant.ofEpochMilli(12_000L));
+    }
+
+    @Test
     void recordsCleanupFailureWhenRpcFailsAfterOperationTimeout() {
         clock.set(12_000L);
-        TestRepository repository = repository(true);
+        TestRepository repository = spy(repository(true));
         BrokerClusterAppService service = service(repository,
                 (target, operation) -> CompletableFuture.failedFuture(new IllegalStateException("cleanup unavailable")),
                 Duration.ofSeconds(10));
 
+        wallClock.close();
+        wallClock = TestClock.interceptNow(() -> clock.getAndAdd(1_000L));
         BrokerDrainResult result = service.advanceDrain(new BrokerOperationReconcileCommand("drain-1"))
                 .toCompletableFuture().join();
 
+        ArgumentCaptor<AdvanceClusterOperationCommand> failure =
+                ArgumentCaptor.forClass(AdvanceClusterOperationCommand.class);
+        verify(repository).submitCommand(failure.capture());
+        assertThat(failure.getValue().changedAt()).isEqualTo(Instant.ofEpochMilli(13_000L));
         assertThat(result).isEqualTo(BrokerDrainResult.failed("drain cleanup timeout: cleanup unavailable"));
         assertThat(repository.findOperation(new ClusterOperationId("drain-1")).orElseThrow()).satisfies(operation -> {
             assertThat(operation.phase()).isEqualTo(BrokerClusterOperationPhase.FAILED);
@@ -252,10 +290,10 @@ class BrokerDrainAppServiceTest {
         TestRepository repository = spy(repository(true));
         if (synchronousFailure) {
             doThrow(new IllegalStateException("evidence storage unavailable"))
-                    .when(repository).submitChange(isA(UpdateBrokerDrainProgressCommand.class));
+                    .when(repository).submitCommand(isA(UpdateBrokerDrainProgressCommand.class));
         } else {
             doReturn(CompletableFuture.failedFuture(new IllegalStateException("evidence storage unavailable")))
-                    .when(repository).submitChange(isA(UpdateBrokerDrainProgressCommand.class));
+                    .when(repository).submitCommand(isA(UpdateBrokerDrainProgressCommand.class));
         }
         BrokerClusterAppService service = service(repository,
                 (target, operation) -> CompletableFuture.completedFuture(
@@ -275,10 +313,10 @@ class BrokerDrainAppServiceTest {
         TestRepository repository = spy(repository(true));
         if (synchronousFailure) {
             doThrow(new IllegalStateException("completion storage unavailable"))
-                    .when(repository).submitChange(isA(CompleteBrokerDrainCommand.class));
+                    .when(repository).submitCommand(isA(CompleteBrokerDrainCommand.class));
         } else {
             doReturn(CompletableFuture.failedFuture(new IllegalStateException("completion storage unavailable")))
-                    .when(repository).submitChange(isA(CompleteBrokerDrainCommand.class));
+                    .when(repository).submitCommand(isA(CompleteBrokerDrainCommand.class));
         }
         BrokerClusterAppService service = service(repository,
                 (target, operation) -> CompletableFuture.completedFuture(
@@ -291,34 +329,148 @@ class BrokerDrainAppServiceTest {
                 .isEqualTo(BrokerClusterOperationPhase.VERIFYING);
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void waitsWhenTimeoutFailureSubmissionIsRejected(boolean cleanupTimeout) {
+        clock.set(12_000L);
+        TestRepository repository = spy(repository(cleanupTimeout));
+        BrokerClusterOperation original = repository.findOperation(new ClusterOperationId("drain-1")).orElseThrow();
+        BrokerClusterState originalState = repository.getCommittedState();
+        doReturn(CompletableFuture.completedFuture(BrokerClusterConsensusResult.rejected("failure commit rejected")))
+                .when(repository).submitCommand(isA(AdvanceClusterOperationCommand.class));
+        AtomicInteger cleanupCalls = new AtomicInteger();
+        BrokerClusterAppService service = service(repository, (target, operation) -> {
+            cleanupCalls.incrementAndGet();
+            return CompletableFuture.failedFuture(new IllegalStateException("cleanup unavailable"));
+        }, Duration.ofSeconds(10));
+
+        BrokerDrainResult result = service.advanceDrain(new BrokerOperationReconcileCommand("drain-1"))
+                .toCompletableFuture().join();
+
+        assertThat(result).isEqualTo(cleanupTimeout
+                ? BrokerDrainResult.waitingForCleanup("failure commit rejected")
+                : BrokerDrainResult.waitingForGateways("failure commit rejected"));
+        assertThat(cleanupCalls).hasValue(cleanupTimeout ? 1 : 0);
+        assertThat(repository.findOperation(original.id()).orElseThrow()).isEqualTo(original);
+        assertThat(repository.getCommittedState()).isEqualTo(originalState);
+        verify(repository).submitCommand(isA(AdvanceClusterOperationCommand.class));
+        verify(repository, never()).submitCommand(isA(UpdateBrokerDrainProgressCommand.class));
+        verify(repository, never()).submitCommand(isA(CompleteBrokerDrainCommand.class));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false, false", "false, true", "true, false", "true, true"})
+    void propagatesTimeoutFailureSubmissionException(boolean cleanupTimeout, boolean synchronousFailure) {
+        clock.set(12_000L);
+        TestRepository repository = spy(repository(cleanupTimeout));
+        BrokerClusterOperation original = repository.findOperation(new ClusterOperationId("drain-1")).orElseThrow();
+        IllegalStateException failure = new IllegalStateException("failure storage unavailable");
+        if (synchronousFailure) {
+            doThrow(failure).when(repository).submitCommand(isA(AdvanceClusterOperationCommand.class));
+        } else {
+            doReturn(CompletableFuture.failedFuture(failure))
+                    .when(repository).submitCommand(isA(AdvanceClusterOperationCommand.class));
+        }
+        BrokerClusterAppService service = service(repository,
+                (target, operation) -> CompletableFuture.failedFuture(new IllegalStateException("cleanup unavailable")),
+                Duration.ofSeconds(10));
+
+        assertThatThrownBy(() -> service.advanceDrain(new BrokerOperationReconcileCommand("drain-1"))
+                .toCompletableFuture().join()).satisfies(thrown -> {
+                    if (synchronousFailure && !cleanupTimeout) {
+                        assertThat(thrown).isSameAs(failure);
+                    } else {
+                        assertThat(thrown).hasCause(failure);
+                    }
+                });
+        assertThat(repository.findOperation(original.id()).orElseThrow()).isEqualTo(original);
+        verify(repository).submitCommand(isA(AdvanceClusterOperationCommand.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void preservesConcurrentProgressWhenStaleTimeoutFailureIsRejected(boolean cleanupTimeout) {
+        clock.set(12_000L);
+        TestRepository repository = spy(repository(cleanupTimeout));
+        CompletableFuture<BrokerClusterConsensusResult> failureSubmission = new CompletableFuture<>();
+        doReturn(failureSubmission).when(repository).submitCommand(isA(AdvanceClusterOperationCommand.class));
+        BrokerClusterAppService service = service(repository,
+                (target, operation) -> CompletableFuture.failedFuture(new IllegalStateException("cleanup unavailable")),
+                Duration.ofSeconds(10));
+
+        CompletableFuture<BrokerDrainResult> pending = service.advanceDrain(
+                new BrokerOperationReconcileCommand("drain-1")).toCompletableFuture();
+        assertThat(pending).isNotDone();
+        ArgumentCaptor<AdvanceClusterOperationCommand> staleFailure =
+                ArgumentCaptor.forClass(AdvanceClusterOperationCommand.class);
+        verify(repository).submitCommand(staleFailure.capture());
+        if (!cleanupTimeout) {
+            apply(repository, BrokerClusterCommandFixture.confirmDrainGateway(
+                    "drain-1", "digest-1", "gateway-a", 12L, 3L, "checksum-a", 12_000L));
+        }
+        apply(repository, BrokerClusterCommandFixture.summarizeDrain(
+                "drain-1", "digest-1", summary(3L, 2L, 0L, true), 12_000L));
+        BrokerClusterOperation progressed = repository.findOperation(new ClusterOperationId("drain-1")).orElseThrow();
+        BrokerClusterState progressedState = repository.getCommittedState();
+        assertThat(progressed.phase()).isEqualTo(BrokerClusterOperationPhase.VERIFYING);
+        BrokerClusterConsensusResult rejected = repository.stateMachine.apply(staleFailure.getValue());
+        assertThat(rejected.accepted()).isFalse();
+        assertThat(rejected.message()).isNotBlank();
+        failureSubmission.complete(rejected);
+
+        assertThat(pending.join()).isEqualTo(cleanupTimeout
+                ? BrokerDrainResult.waitingForCleanup(rejected.message())
+                : BrokerDrainResult.waitingForGateways(rejected.message()));
+        assertThat(repository.findOperation(progressed.id()).orElseThrow()).isEqualTo(progressed);
+        assertThat(repository.getCommittedState()).isEqualTo(progressedState);
+        assertThat(service.advanceDrain(new BrokerOperationReconcileCommand("drain-1"))
+                .toCompletableFuture().join().status()).isEqualTo(BrokerDrainResult.Status.SUCCEEDED);
+        assertThat(repository.findOperation(progressed.id()).orElseThrow().phase())
+                .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED);
+    }
+
+    @Test
+    void returnsPersistedFailureWithoutSubmittingOrRepeatingCleanup() {
+        TestRepository repository = spy(repository(false));
+        apply(repository, BrokerClusterCommandFixture.advanceOperation(
+                "drain-1", "digest-1", BrokerClusterOperationPhase.REBUILDING_ROUTES,
+                BrokerClusterOperationPhase.FAILED, "persisted failure", 12_000L));
+        BrokerClusterOperation failed = repository.findOperation(new ClusterOperationId("drain-1")).orElseThrow();
+        BrokerClusterAppService service = service(repository,
+                (target, operation) -> CompletableFuture.failedFuture(new AssertionError("cleanup must not run")),
+                Duration.ofSeconds(10));
+        clearInvocations(repository);
+
+        assertThat(service.advanceDrain(new BrokerOperationReconcileCommand("drain-1"))
+                .toCompletableFuture().join()).isEqualTo(BrokerDrainResult.failed("persisted failure"));
+        assertThat(repository.findOperation(failed.id()).orElseThrow()).isEqualTo(failed);
+        verify(repository, never()).submitCommand(any());
+    }
+
     private BrokerClusterAppService service(TestRepository repository,
             BiFunction<BrokerNode, BrokerClusterOperation, CompletionStage<RouteCleanupResult>> cleanup,
             Duration drainOperationTimeout) {
-        BrokerClusterAdapter adapter = mock(BrokerClusterAdapter.class);
-        org.mockito.Mockito.doCallRealMethod().when(adapter).saveRecoveryEvidence(any(), any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).completeDrain(any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).forceDrain(any(), any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).startEpochAuthorization(any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).completeEpochAuthorization(any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).verifyRouteRecovery(any(), any(), any());
-        org.mockito.Mockito.doCallRealMethod().when(adapter).completeRouteRecovery(any(), any());
-        doCallRealMethod().when(adapter).failDrain(any(), any(), any());
+        BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
         when(adapter.findOperation(any())).thenAnswer(
                 invocation -> repository.findOperation(invocation.getArgument(0)));
-        when(adapter.committedState()).thenAnswer(ignored -> repository.committedState());
-        when(adapter.submitChange(any())).thenAnswer(
-                invocation -> repository.submitChange(invocation.getArgument(0)));
-        when(adapter.cleanupRoutes(any())).thenAnswer(invocation -> {
-            BrokerClusterOperation operation = invocation.getArgument(0);
-            BrokerNode target = repository.committedState().brokers().stream()
+        when(adapter.getCommittedState()).thenAnswer(ignored -> repository.getCommittedState());
+        when(adapter.getClusterSnapshot()).thenAnswer(ignored ->
+                BrokerClusterStateTransformer.INSTANCE
+                        .brokerClusterFrom(repository.getCommittedState(), List.of(), null, 1000));
+        BrokerRaftTestBindings.bindOperations(adapter, repository::submitCommand);
+        BrokerPeerAdapter peerAdapter =
+                mock(BrokerPeerAdapter.class);
+        doAnswer(invocation -> {
+            BrokerClusterOperation operation = invocation.getArgument(1);
+            BrokerNode target = repository.getCommittedState().brokers().stream()
                     .filter(broker -> broker.brokerId().equals(operation.targetBrokerId().value()))
                     .findFirst().orElseThrow();
             return cleanup.apply(target, operation);
-        });
-        return new BrokerClusterAppService(adapter, mock(GatewayRegistry.class),
+        }).when(peerAdapter).cleanupRoutes(any(), any());
+        return new BrokerClusterAppService(adapter, peerAdapter, mock(GatewayRegistry.class),
                 Duration.ofMillis(1), Duration.ofSeconds(10),
                 mock(ScheduledExecutorService.class),
-                drainOperationTimeout);
+                drainOperationTimeout, null, null, Duration.ofSeconds(60));
     }
 
     private TestRepository repository(boolean confirmGateway) {
@@ -351,7 +503,7 @@ class BrokerDrainAppServiceTest {
     }
 
     private void apply(TestRepository repository, BrokerClusterConsensusCommand command) {
-        assertThat(repository.submitChange(command).toCompletableFuture().join().accepted()).isTrue();
+        assertThat(repository.submitCommand(command).toCompletableFuture().join().accepted()).isTrue();
     }
 
     private BrokerNode node(String brokerId, BrokerRoutingState state) {
@@ -363,11 +515,11 @@ class BrokerDrainAppServiceTest {
         private final RaftBrokerClusterStateMachine stateMachine;
 
         private TestRepository(BrokerClusterState state) {
-            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", state);
+            stateMachine = new RaftBrokerClusterStateMachine("cluster-a", state, 1000, Map.of());
         }
 
         @Override
-        public BrokerClusterState committedState() {
+        public BrokerClusterState getCommittedState() {
             return stateMachine.committedState();
         }
 
@@ -382,7 +534,7 @@ class BrokerDrainAppServiceTest {
         }
 
         @Override
-        public CompletionStage<BrokerClusterConsensusResult> submitChange(BrokerClusterConsensusCommand command) {
+        public CompletionStage<BrokerClusterConsensusResult> submitCommand(BrokerClusterConsensusCommand command) {
             return CompletableFuture.completedFuture(stateMachine.apply(command));
         }
     }

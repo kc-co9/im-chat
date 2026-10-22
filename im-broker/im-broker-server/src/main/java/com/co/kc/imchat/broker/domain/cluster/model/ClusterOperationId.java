@@ -14,4 +14,14 @@ public record ClusterOperationId(/* 一次集群变更的稳定幂等标识值 *
     public ClusterOperationId {
         AssertUtils.domainPropNotBlank("cluster operation id must not be blank", value);
     }
+
+    /**
+     * 为同一集群、Broker 和路由 epoch 的自动故障摘流生成稳定身份。
+     * 不包含时间、随机数或观察者集合，确保观察轮次重试沿用同一操作。
+     */
+    public static ClusterOperationId forAutomaticFailure(
+            BrokerClusterId clusterId, BrokerId brokerId, RoutingEpoch epoch) {
+        return new ClusterOperationId("auto-failure:" + clusterId.value()
+                + ":" + brokerId.value() + ":" + epoch.value());
+    }
 }

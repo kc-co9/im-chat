@@ -2,7 +2,9 @@ package com.co.kc.imchat.broker.cluster.raft;
 
 import com.alipay.sofa.jraft.Closure;
 import com.alipay.sofa.jraft.Iterator;
+import com.alipay.sofa.jraft.JRaftUtils;
 import com.alipay.sofa.jraft.Node;
+import com.alipay.sofa.jraft.NodeManager;
 import com.alipay.sofa.jraft.RaftGroupService;
 import com.alipay.sofa.jraft.Status;
 import com.alipay.sofa.jraft.closure.ReadIndexClosure;
@@ -11,13 +13,22 @@ import com.alipay.sofa.jraft.core.StateMachineAdapter;
 import com.alipay.sofa.jraft.entity.PeerId;
 import com.alipay.sofa.jraft.entity.Task;
 import com.alipay.sofa.jraft.error.RaftError;
+import com.alipay.sofa.jraft.error.RaftException;
 import com.alipay.sofa.jraft.option.NodeOptions;
+import com.alipay.sofa.jraft.rpc.Connection;
+import com.alipay.sofa.jraft.rpc.RaftRpcServerFactory;
+import com.alipay.sofa.jraft.rpc.RpcContext;
+import com.alipay.sofa.jraft.rpc.RpcProcessor;
+import com.alipay.sofa.jraft.rpc.RpcServer;
+import com.alipay.sofa.jraft.rpc.impl.ConnectionClosedEventListener;
 import com.alipay.sofa.jraft.storage.snapshot.SnapshotReader;
 import com.alipay.sofa.jraft.storage.snapshot.SnapshotWriter;
 import com.alipay.sofa.jraft.util.Endpoint;
+import com.alipay.sofa.jraft.util.RpcFactoryHelper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.rocksdb.RocksDB;
+import org.mockito.ArgumentCaptor;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -31,12 +42,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class RaftLibrarySpikeTest {
 
@@ -91,6 +108,76 @@ class RaftLibrarySpikeTest {
     }
 
     @Test
+    void diagnosticsPreserveStateWhenRaftMetricsAreUnavailable() {
+        RaftGroupService service = mock(RaftGroupService.class);
+        Node raftNode = mock(Node.class);
+        when(service.getRaftNode()).thenReturn(raftNode);
+        when(raftNode.getLastLogIndex()).thenThrow(new IllegalStateException("node inactive"));
+        CounterStateMachine stateMachine = new CounterStateMachine();
+        TestNode node = new TestNode(new PeerId(new Endpoint("127.0.0.1", 18030), 0),
+                temporaryDirectory, service, stateMachine);
+        assertThat(node.diagnostics()).contains("value=0", "fsmError=null",
+                "raftMetrics=unavailable (node inactive)");
+        TestNode stopped = new TestNode(node.peerId(), temporaryDirectory, null, stateMachine);
+        assertThat(stopped.diagnostics()).contains("running=false", "value=0",
+                "raftMetrics=unavailable (stopped)");
+    }
+
+    @Test
+    void rpcDiagnosticsDelegateWithoutClaimingNetworkCompletion() {
+        RpcServer rawServer = mock(RpcServer.class);
+        RpcDiagnostics diagnostics = new RpcDiagnostics();
+        DiagnosticRpcServer server = new DiagnosticRpcServer(rawServer, diagnostics);
+        RpcProcessor<String> processor = mock(RpcProcessor.class);
+        Executor executor = mock(Executor.class);
+        RpcProcessor.ExecutorSelector selector = mock(RpcProcessor.ExecutorSelector.class);
+        when(processor.interest()).thenReturn(String.class.getName());
+        when(processor.executor()).thenReturn(executor);
+        when(processor.executorSelector()).thenReturn(selector);
+        server.registerProcessor(processor);
+        ArgumentCaptor<RpcProcessor<String>> registered = ArgumentCaptor.forClass(RpcProcessor.class);
+        verify(rawServer).registerProcessor(registered.capture());
+        RpcProcessor<String> wrapped = registered.getValue();
+        assertThat(wrapped.interest()).isEqualTo(String.class.getName());
+        assertThat(wrapped.executor()).isSameAs(executor);
+        assertThat(wrapped.executorSelector()).isSameAs(selector);
+
+        RpcContext context = mock(RpcContext.class);
+        Connection connection = mock(Connection.class);
+        when(context.getConnection()).thenReturn(connection);
+        when(context.getRemoteAddress()).thenReturn("test-remote");
+        IllegalStateException failure = new IllegalStateException("delegate failed");
+        doAnswer(invocation -> {
+            RpcContext countingContext = invocation.getArgument(0);
+            assertThat(countingContext.getConnection()).isSameAs(connection);
+            assertThat(countingContext.getRemoteAddress()).isEqualTo("test-remote");
+            countingContext.sendResponse("response");
+            return null;
+        }).when(processor).handleRequest(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("request"));
+        org.mockito.Mockito.doThrow(failure).when(context).sendResponse("response");
+        assertThatThrownBy(() -> wrapped.handleRequest(context, "request")).isSameAs(failure);
+        verify(context).sendResponse("response");
+        assertThat(diagnostics.toString()).contains("received=1", "responseSubmitted=1", "handlerFailure=1",
+                "lastRequestType=java.lang.String", "delegate failed");
+
+        ConnectionClosedEventListener listener = mock(ConnectionClosedEventListener.class);
+        server.registerConnectionClosedEventListener(listener);
+        ArgumentCaptor<ConnectionClosedEventListener> closed = ArgumentCaptor.forClass(ConnectionClosedEventListener.class);
+        verify(rawServer).registerConnectionClosedEventListener(closed.capture());
+        closed.getValue().onClosed("test-remote", connection);
+        verify(listener).onClosed("test-remote", connection);
+        assertThat(diagnostics.connectionClosed.get()).isEqualTo(1);
+        when(rawServer.init(null)).thenReturn(true);
+        when(rawServer.boundPort()).thenReturn(18030);
+        when(rawServer.isStarted()).thenReturn(true);
+        assertThat(server.init(null)).isTrue();
+        assertThat(server.boundPort()).isEqualTo(18030);
+        assertThat(server.isStarted()).isTrue();
+        server.shutdown();
+        verify(rawServer).shutdown();
+    }
+
+    @Test
     void electsNewLeaderAndRecoversFailedVoter() throws Exception {
         List<PeerId> peers = peerIds(3);
         Configuration configuration = new Configuration(peers);
@@ -110,7 +197,10 @@ class RaftLibrarySpikeTest {
 
             firstLeader.restart(configuration);
             await().atMost(Duration.ofSeconds(10))
-                    .untilAsserted(() -> assertThat(firstLeader.stateMachine().value()).isEqualTo(20L));
+                    .untilAsserted(() -> assertThat(firstLeader.stateMachine().value())
+                            .as(() -> "Recovered voter; nodes: "
+                                    + nodes.stream().map(TestNode::diagnostics).toList())
+                            .isEqualTo(20L));
         } finally {
             stopAll(nodes);
         }
@@ -183,9 +273,38 @@ class RaftLibrarySpikeTest {
         options.setSnapshotIntervalSecs(0);
         options.setEnableMetrics(true);
 
-        RaftGroupService service = new RaftGroupService("broker-routing-spike", peerId, options);
-        service.start();
-        return service;
+        DiagnosticRpcServer rpcServer = new DiagnosticRpcServer(
+                RpcFactoryHelper.rpcFactory().createRpcServer(peerId.getEndpoint()), stateMachine.rpc);
+        RaftGroupService service = new RaftGroupService("broker-routing-spike", peerId, options, rpcServer);
+        try {
+            // 与三参数构造器使用相同的 executor 名称、大小和默认 ping executor。
+            RaftRpcServerFactory.addRaftRequestProcessors(rpcServer,
+                    JRaftUtils.createExecutor("RAFT-RPC-executor-", options.getRaftRpcThreadPoolSize()),
+                    JRaftUtils.createExecutor("CLI-RPC-executor-", options.getCliRpcThreadPoolSize()));
+            service.start();
+            return service;
+        } catch (RuntimeException | Error failure) {
+            // start 未完成时 service.shutdown() 不清理；清理失败不得替换原异常。
+            try {
+                rpcServer.shutdown();
+            } catch (RuntimeException | Error cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            try {
+                if (service.getRaftNode() != null) {
+                    service.getRaftNode().shutdown();
+                    service.join();
+                }
+            } catch (InterruptedException cleanupFailure) {
+                Thread.currentThread().interrupt();
+                failure.addSuppressed(cleanupFailure);
+            } catch (RuntimeException | Error cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            } finally {
+                NodeManager.getInstance().removeAddress(peerId.getEndpoint());
+            }
+            throw failure;
+        }
     }
 
     private List<PeerId> peerIds(int count) throws IOException {
@@ -232,7 +351,10 @@ class RaftLibrarySpikeTest {
     private void awaitValues(List<TestNode> nodes, long expected) {
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> nodes.stream()
                 .filter(TestNode::running)
-                .forEach(node -> assertThat(node.stateMachine().value()).isEqualTo(expected)));
+                .forEach(node -> assertThat(node.stateMachine().value())
+                        .as(() -> "Expected replicated value " + expected + "; nodes: "
+                                + nodes.stream().map(TestNode::diagnostics).toList())
+                        .isEqualTo(expected)));
     }
 
     private void changeMembership(MembershipChange change) throws InterruptedException {
@@ -343,9 +465,125 @@ class RaftLibrarySpikeTest {
         return port;
     }
 
+    private static final class RpcDiagnostics {
+        private final AtomicLong received = new AtomicLong();
+        private final AtomicLong responseSubmitted = new AtomicLong();
+        private final AtomicLong handlerFailure = new AtomicLong();
+        private final AtomicLong connectionClosed = new AtomicLong();
+        private final AtomicReference<String> lastRequestType = new AtomicReference<>();
+        private final AtomicReference<String> lastFailure = new AtomicReference<>();
+
+        @Override
+        public String toString() {
+            return "received=" + received.get() + ", responseSubmitted=" + responseSubmitted.get()
+                    + ", handlerFailure=" + handlerFailure.get() + ", connectionClosed=" + connectionClosed.get()
+                    + ", lastRequestType=" + lastRequestType.get() + ", lastFailure=" + lastFailure.get();
+        }
+    }
+
+    private static final class DiagnosticRpcServer implements RpcServer {
+        private final RpcServer delegate;
+        private final RpcDiagnostics diagnostics;
+
+        private DiagnosticRpcServer(RpcServer delegate, RpcDiagnostics diagnostics) {
+            this.delegate = delegate;
+            this.diagnostics = diagnostics;
+        }
+
+        @Override
+        public boolean init(Void options) {
+            return delegate.init(options);
+        }
+
+        @Override
+        public void shutdown() {
+            delegate.shutdown();
+        }
+
+        @Override
+        public int boundPort() {
+            return delegate.boundPort();
+        }
+
+        @Override
+        public boolean isStarted() {
+            return delegate.isStarted();
+        }
+
+        @Override
+        public void registerConnectionClosedEventListener(ConnectionClosedEventListener listener) {
+            delegate.registerConnectionClosedEventListener((remoteAddress, connection) -> {
+                diagnostics.connectionClosed.incrementAndGet();
+                listener.onClosed(remoteAddress, connection);
+            });
+        }
+
+        @Override
+        public void registerProcessor(RpcProcessor<?> processor) {
+            registerCountingProcessor(processor);
+        }
+
+        private <T> void registerCountingProcessor(RpcProcessor<T> processor) {
+            delegate.registerProcessor(new RpcProcessor<T>() {
+                @Override
+                public void handleRequest(RpcContext context, T request) {
+                    diagnostics.received.incrementAndGet();
+                    diagnostics.lastRequestType.set(request == null ? "null" : request.getClass().getName());
+                    try {
+                        processor.handleRequest(new RpcContext() {
+                            @Override
+                            public void sendResponse(Object response) {
+                                // 仅计入提交给 delegate 的调用，不表示网络发送完成或远端收到。
+                                diagnostics.responseSubmitted.incrementAndGet();
+                                context.sendResponse(response);
+                            }
+
+                            @Override
+                            public Connection getConnection() {
+                                return context.getConnection();
+                            }
+
+                            @Override
+                            public String getRemoteAddress() {
+                                return context.getRemoteAddress();
+                            }
+                        }, request);
+                    } catch (RuntimeException | Error failure) {
+                        diagnostics.handlerFailure.incrementAndGet();
+                        diagnostics.lastFailure.set(failure.getClass().getName() + ": " + failure.getMessage());
+                        throw failure;
+                    }
+                }
+
+                @Override
+                public String interest() {
+                    return processor.interest();
+                }
+
+                @Override
+                public Executor executor() {
+                    return processor.executor();
+                }
+
+                @Override
+                public ExecutorSelector executorSelector() {
+                    return processor.executorSelector();
+                }
+            });
+        }
+    }
+
     private static final class CounterStateMachine extends StateMachineAdapter {
 
+        private final RpcDiagnostics rpc = new RpcDiagnostics();
         private final AtomicLong counter = new AtomicLong();
+        private final AtomicReference<RaftException> error = new AtomicReference<>();
+
+        @Override
+        public void onError(RaftException failure) {
+            error.set(failure);
+            super.onError(failure);
+        }
 
         @Override
         public void onApply(Iterator iterator) {
@@ -417,6 +655,28 @@ class RaftLibrarySpikeTest {
 
         Node node() {
             return service.getRaftNode();
+        }
+
+        // 只用于断言失败诊断；各项为独立读取，不代表原子 Raft 快照。
+        String diagnostics() {
+            String details = "id=" + peerId + ", running=" + running()
+                    + ", value=" + stateMachine.value()
+                    + ", fsmError=" + stateMachine.error.get()
+                    + ", rpc={" + stateMachine.rpc + "}";
+            if (!running()) {
+                return details + ", raftMetrics=unavailable (stopped)";
+            }
+            try {
+                Node raftNode = node();
+                details += ", state=" + raftNode.getNodeState()
+                        + ", leader=" + raftNode.getLeaderId();
+                return details + ", lastLog=" + raftNode.getLastLogIndex()
+                        + ", committed=" + raftNode.getLastCommittedIndex()
+                        + ", applied=" + raftNode.getLastAppliedLogIndex();
+            } catch (RuntimeException unavailable) {
+                // 诊断读取不能覆盖值不匹配断言；错误节点可能已不允许查询日志指标。
+                return details + ", raftMetrics=unavailable (" + unavailable.getMessage() + ")";
+            }
         }
 
         CounterStateMachine stateMachine() {

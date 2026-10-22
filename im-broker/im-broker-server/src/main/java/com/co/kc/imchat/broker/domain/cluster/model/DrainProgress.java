@@ -25,15 +25,15 @@ import java.util.List;
 public record DrainProgress(
         /* operation 开始时冻结的 Gateway 集合及确认状态。 */
         List<DrainGatewayCheckpoint> gateways,
-        /* 早于该时刻产生的路由事件必须全部失效。 */
-        Instant oldEventDeadline,
+        /* 本轮冻结的旧路由事件最迟失效时刻。 */
+        Instant oldEventExpireAt,
         /* 路由重建与旧路由清理的汇总证据，用于判断恢复是否满足完成条件。 */
         RouteRecoveryEvidence recoveryEvidence) implements Serializable {
 
     public DrainProgress {
         AssertUtils.domainPropNotNull("drain progress gateways are required", gateways);
         AssertUtils.domainPropNotNull("drain progress event deadline is required",
-                oldEventDeadline);
+                oldEventExpireAt);
         List<DrainGatewayCheckpoint> sorted = gateways.stream()
                 .sorted(Comparator.comparing(gateway -> gateway.gatewayId().value()))
                 .toList();
@@ -64,7 +64,7 @@ public record DrainProgress(
         if (recoveryEvidence != null && !updated.equals(gateways)) {
             throw new IllegalStateException("Gateway checkpoints are frozen by recovery evidence");
         }
-        return new DrainProgress(updated, oldEventDeadline, recoveryEvidence);
+        return new DrainProgress(updated, oldEventExpireAt, recoveryEvidence);
     }
 
     public DrainProgress summarize(RouteRecoveryEvidence evidence) {
@@ -75,7 +75,7 @@ public record DrainProgress(
             throw new IllegalArgumentException("route recovery evidence cannot change");
         }
         return recoveryEvidence == null
-                ? new DrainProgress(gateways, oldEventDeadline, evidence)
+                ? new DrainProgress(gateways, oldEventExpireAt, evidence)
                 : this;
     }
 
@@ -134,7 +134,7 @@ public record DrainProgress(
 
     public boolean readyToComplete(Instant now) {
         AssertUtils.domainPropNotNull("drain progress current time is required", now);
-        if (now.isBefore(oldEventDeadline) || recoveryEvidence == null
+        if (now.isBefore(oldEventExpireAt) || recoveryEvidence == null
                 || !allGatewaysConfirmed()) {
             return false;
         }

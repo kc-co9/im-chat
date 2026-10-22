@@ -8,16 +8,16 @@ import java.util.List;
 /**
  * 旧路由 epoch 完成隔离后的领域结果。
  *
- * <p>结果明确区分“所有 holder 都确认”和“部分 holder 未确认但 quarantine 已完成”两种
+ * <p>结果明确区分“全部隔离目标 Broker 都确认”和“部分隔离目标 Broker 未确认但 quarantine 已完成”两种
  * 安全收口方式，并分别保留确认与未确认的 Broker 集合。调用方据此决定是否可以继续
  * 授权新 epoch 或记录降级风险。</p>
  */
 public record FenceResult(
         /* 本轮旧 epoch 关闭方式。 */
         Status status,
-        /* 已返回有效持久化确认的 holder。 */
+        /* 已返回有效持久化确认的目标 Broker。 */
         List<BrokerId> acknowledgedBrokerIds,
-        /* 未能返回有效确认、必须由 quarantine 覆盖的 holder。 */
+        /* 未能返回有效确认、必须由 quarantine 覆盖的目标 Broker。 */
         List<BrokerId> unconfirmedBrokerIds) {
     /** 所有目标节点均已确认隔离，无需等待 quarantine。 */
     public static FenceResult allAcknowledged(List<BrokerId> acknowledgedBrokerIds) {
@@ -31,7 +31,7 @@ public record FenceResult(
     }
 
     public enum Status {
-        /** 旧 epoch 持有者全部确认停止写入和执行。 */
+        /** 全部隔离目标 Broker 已关闭旧 epoch 准入、等待已登记执行结束并持久化 fence 水位。 */
         ALL_ACKNOWLEDGED,
         /** 未全部确认，但安全隔离期已经结束。 */
         QUARANTINE_COMPLETED

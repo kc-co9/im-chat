@@ -3,7 +3,7 @@ package com.co.kc.imchat.broker.sdk.model.params;
 import java.io.Serializable;
 
 /**
- * Leader 返回给原申请 holder 的 quorum-backed Lease grant。
+ * Leader 向已生成准备记录的目标 Broker 下发 Lease，携带多数派读取证明、nonce 和有效时长。
  */
 public record RouteLeaseInstallParams(
         String brokerId,

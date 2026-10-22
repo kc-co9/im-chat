@@ -2,13 +2,13 @@ package com.co.kc.imchat.broker.infrastructure.config;
 
 import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-import com.co.kc.imchat.broker.application.gossip.RegistryGossipAppService;
-import com.co.kc.imchat.broker.adapter.gossip.BrokerStateStore;
+import com.co.kc.imchat.broker.application.gossip.BrokerGossipAppService;
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import com.co.kc.imchat.broker.interfaces.scheduler.BrokerGossipScheduler;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.ClusterProperties;
 import com.co.kc.imchat.broker.interfaces.scheduler.BrokerGossipProperties;
-import com.co.kc.imchat.broker.adapter.diagnostic.GossipSyncTracker;
+import com.co.kc.imchat.broker.support.gossip.GossipSyncTracker;
 import com.co.kc.imchat.plugin.gossip.sync.GossipSynchronizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,12 +25,12 @@ public class RegistryGossipConfiguration {
         return new BrokerGossipScheduler(brokerRegistry, gossipSynchronizer,
                 new BrokerGossipProperties(instance.getId(), instance.getAddress(),
                         clusterProperties.getSeedAddresses(), clusterProperties.getGossipFanout(),
-                        clusterProperties.getGossipTimeoutMillis()), gossipSyncTracker);
+                        java.time.Duration.ofMillis(clusterProperties.getGossipTimeoutMs())), gossipSyncTracker);
     }
 
     @Bean
-    public RegistryGossipAppService registryGossipAppService(
-            BrokerRegistry brokerRegistry, GatewayRegistry gatewayRegistry, BrokerStateStore stateStore) {
-        return new RegistryGossipAppService(brokerRegistry, gatewayRegistry, stateStore);
+    public BrokerGossipAppService brokerGossipAppService(
+            BrokerRegistry brokerRegistry, GatewayRegistry gatewayRegistry, BrokerGossipAdapter stateStore) {
+        return new BrokerGossipAppService(brokerRegistry, gatewayRegistry, stateStore);
     }
 }

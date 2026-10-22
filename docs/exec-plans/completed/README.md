@@ -4,6 +4,10 @@ Completed plans are retained as implementation history. Move a plan here only af
 
 Completed plans:
 
+- [收尾流程精简](2026-10-22-closeout-simplification.md)：撤下阶段链和复杂归档平台，保留战术修复，完成一次reactor与真实HA去重验收；关闭审计按状态内容Review与廉价治理执行。
+- [Broker Adapter 职责重划](2026-10-11-broker-adapter-boundaries.md)：实施及最终完整验收、独立quality已完成；私有制品发布、未来连接认证与历史稳定性边界保留。
+
+- [Broker 本地路由 HA 模拟](2026-10-10-broker-routing-capacity.md)：本地 Docker 3-voter/2-Gateway 上下线、故障恢复和状态收敛验证完成；正式生产容量不在本次范围内。
 - [Harness 规则导航与 CI 工具修复](2026-10-10-harness-reference-navigation.md)：规则矩阵迁移与本机验证完成；GitHub runner 安装待下一次 Actions run 确认。
 - [Broker 权威路由与 DDD Review 收口](2026-09-20-broker-routing-consensus.md)：代码/集成范围已验收；生产候选容量由独立活跃计划承接。
 - [IM 核心链路容量压测](2026-09-14-im-load-test.md)
