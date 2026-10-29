@@ -1,7 +1,6 @@
 package com.co.kc.imchat.gateway.ws.server.handler;
 
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
 import com.co.kc.imchat.common.constant.HttpHeaderConstants;
 import com.co.kc.imchat.broker.sdk.BrokerClient;
 import com.co.kc.imchat.gateway.ws.server.context.ContextAttributes;
@@ -109,7 +108,7 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
             brokerClient.registerConnection(new ConnectionRegisterParams(
                     principal.userId(), gatewayId, routeRevision));
         } catch (RuntimeException ex) {
-            rollbackConnectionRegistration(principal, connectionId);
+            rollbackConnectionRegistration(connectionId);
             reject(context, request, HttpResponseStatus.SERVICE_UNAVAILABLE);
             return;
         }
@@ -128,43 +127,17 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
         context.channel().attr(ContextAttributes.CONNECTION_ID).set(connectionId);
     }
 
-    private void rollbackConnectionRegistration(WsPrincipal principal, String connectionId) {
-        ConnectionRegistry.RouteMutation rollback = connectionRegistry.unregister(connectionId);
-        if (!rollback.routeAbsent()) {
-            return;
-        }
-        try {
-            brokerClient.unregisterConnection(new ConnectionUnregisterParams(
-                    principal.userId(), gatewayId, rollback.routeRevision()));
-        } catch (RuntimeException exception) {
-            log.warn("failed to roll back broker connection route, gatewayId:{}, connectionId:{}, error:{}",
-                    gatewayId, connectionId, exception.toString());
-        }
+    private void rollbackConnectionRegistration(String connectionId) {
+        connectionRegistry.unregister(connectionId);
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext context) throws Exception {
-        WsPrincipal principal = context.channel().attr(ContextAttributes.PRINCIPAL).get();
         String connectionId = context.channel().attr(ContextAttributes.CONNECTION_ID).get();
-        if (principal != null && connectionId != null) {
-            unregisterConnection(principal, connectionId);
+        if (connectionId != null) {
+            connectionRegistry.unregister(connectionId);
         }
         super.channelInactive(context);
-    }
-
-    private void unregisterConnection(WsPrincipal principal, String connectionId) {
-        ConnectionRegistry.RouteMutation mutation = connectionRegistry.unregister(connectionId);
-        if (!mutation.routeAbsent()) {
-            return;
-        }
-        try {
-            brokerClient.unregisterConnection(
-                    new ConnectionUnregisterParams(
-                            principal.userId(), gatewayId, mutation.routeRevision()));
-        } catch (RuntimeException exception) {
-            log.warn("failed to unregister ws connection from broker, gatewayId:{}, connectionId:{}, error:{}",
-                    gatewayId, connectionId, exception.toString());
-        }
     }
 
     /**

@@ -1,6 +1,5 @@
 package com.co.kc.imchat.broker.sdk.client;
 
-import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
 import com.co.kc.imchat.broker.sdk.model.dto.GatewayEndpointDTO;
 import com.co.kc.imchat.broker.sdk.model.params.DrainRouteCleanupParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRouteSnapshotAckParams;
@@ -65,11 +64,9 @@ class BrokerTimeContractTest {
     void existingServiceObservationContractsRetainInstantPrecisionAndKeys() {
         Instant registeredAt = Instant.parse("2020-01-02T03:04:05.123456Z");
         Instant lastSeenAt = registeredAt.plusMillis(1L);
-        BrokerEndpointDTO broker = new BrokerEndpointDTO("broker", "host", 18020,
-                registeredAt, lastSeenAt);
         GatewayEndpointDTO gateway = new GatewayEndpointDTO("gateway", "host", 18021,
                 "identity", registeredAt, lastSeenAt);
-        for (Object dto : List.of(broker, gateway)) {
+        for (Object dto : List.of(gateway)) {
             ObjectNode payload = JsonUtils.getMapper().valueToTree(dto);
             assertThat(payload.has("registeredAt")).isTrue();
             assertThat(payload.has("lastSeenAt")).isTrue();

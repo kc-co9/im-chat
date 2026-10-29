@@ -27,8 +27,17 @@ im:
   bolt:
     client:
       enabled: true
+      mode: MTLS
+      tls:
+        enabled: true
+      allowed-peer-uri-prefixes:
+        - spiffe://im-chat/broker/
     server:
       enabled: true
+      mode: MTLS
+      tls:
+        enabled: true
+        need-client-auth: true
       port: 18012
   gateway:
     ws:
@@ -42,8 +51,8 @@ im:
       bolt:
         host: ${im.gateway.ws.host}
       broker:
-        workload-identity-prefix: spiffe://im-chat/broker/
-        allow-trusted-network-identity: ${IM_GATEWAY_ALLOW_TRUSTED_NETWORK_BROKER_IDENTITY:true}
+        bootstrap-targets: [] # 部署显式填写address与expected-peer-identity；空列表拒绝启动
+        allow-trusted-network-identity: ${IM_GATEWAY_ALLOW_TRUSTED_NETWORK_BROKER_IDENTITY:false}
         bolt:
           load-balance: HASH
           timeout-millis: 3000

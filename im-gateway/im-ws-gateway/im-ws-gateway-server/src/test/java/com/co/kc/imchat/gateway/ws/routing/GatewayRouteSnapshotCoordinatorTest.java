@@ -58,7 +58,7 @@ class GatewayRouteSnapshotCoordinatorTest {
     @Test
     void sendsOneEmptyShardOnlyToBrokerThatHeldPreviousUsers() {
         BrokerClusterState state = state(3L, "broker-a", "broker-b", "broker-c");
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         long userId = userFor("broker-b", state);
         registry.register(userId, "session", "connection", new EmbeddedChannel());
         CapturingClient client = new CapturingClient(state);
@@ -81,7 +81,7 @@ class GatewayRouteSnapshotCoordinatorTest {
     void refreshesClusterStateAndResendsAtNewEpochAfterRouteMoved() {
         BrokerClusterState first = state(3L, "broker-a", "broker-b");
         BrokerClusterState second = state(4L, "broker-b", "broker-c");
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         registry.register(101L, "session", "connection", new EmbeddedChannel());
         CapturingClient client = new CapturingClient(first);
         client.refreshedState = second;
@@ -170,7 +170,7 @@ class GatewayRouteSnapshotCoordinatorTest {
     }
 
     private ConnectionRegistry registryWithOneUserPerBroker(BrokerClusterState state) {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         for (BrokerNode broker : state.activeBrokers()) {
             long userId = userFor(broker.brokerId(), state);
             registry.register(userId, "session-" + broker.brokerId(),

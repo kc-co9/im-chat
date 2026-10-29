@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.adapter.cluster;
 
+import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
 import com.co.kc.imchat.broker.domain.authority.model.FenceAck;
 import com.co.kc.imchat.broker.domain.authority.model.LeaseNonce;
 import com.co.kc.imchat.broker.domain.authority.model.LeaseSequence;
@@ -49,6 +50,9 @@ import com.co.kc.imchat.broker.sdk.model.result.RoutingFenceAckResult;
 import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.common.utils.GeneratorUtils;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
+import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
+import com.co.kc.imchat.plugin.bolt.client.BoltControlledClient;
 import com.co.kc.imchat.plugin.bolt.exception.BoltInvocationException;
 import java.time.Duration;
 import java.time.Instant;
@@ -83,11 +87,43 @@ import static org.mockito.Mockito.when;
 
 class BrokerPeerAdapterTest {
     @Test
+    void observationPermissionUsesActualImmutableMtlsModeNotMutablePolicy() {
+        ImBoltProperties.Client options = new ImBoltProperties.Client();
+        options.setAllowedPeerUriPrefixes(List.of("spiffe://im-chat/broker/"));
+        options.getTls().setEnabled(true);
+        options.getTls().setKeyStore("unit-transport-construction-only.p12");
+        options.getTls().setKeyStorePassword("test-only");
+        // 仅核对构造时策略快照，不声称建立TLS连接或实际运行受控装配。
+        BoltControlledClient transport = new BoltControlledClient(options);
+        options.setMode(BoltTransportMode.DEVELOPMENT_PLAINTEXT);
+        BoltInvoker invoker = mock(BoltInvoker.class);
+        BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, new BrokerProperties(), Runnable::run,
+                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(),
+                "a", Runnable::run, transport);
+
+        assertThat(transport.configuredMode()).isEqualTo(BoltTransportMode.MTLS);
+        assertThat(peer.observationsAllowed()).isTrue();
+        verifyNoInteractions(invoker);
+    }
+
+    @Test
+    void developmentPeerCannotEmitProbeOrReportEvenViaDirectApi() {
+        BoltInvoker invoker = mock(BoltInvoker.class);
+        BrokerFailureObservationProperties observation = new BrokerFailureObservationProperties();
+        BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, new BrokerProperties(), Runnable::run, Runnable::run,
+                new BrokerRoutingProperties(), observation, "a", Runnable::run, actualTransport(true));
+        assertThatThrownBy(() -> peer.probe(null, null, null, null).toCompletableFuture().join())
+                .hasCauseInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> peer.fetchHealthReport(null, null, null, null, Set.of()).toCompletableFuture().join())
+                .hasCauseInstanceOf(SecurityException.class);
+        verifyNoInteractions(invoker);
+    }
+
+    @Test
     void authenticatedProbeTrustsSuccessfulResponseWithoutRecheckingEchoFields() {
         ProbeFixture fixture = new ProbeFixture(Runnable::run);
-        when(fixture.invoker.invokeAuthenticated(eq("b:18020"), any(), any(), any(),
-                eq(BrokerProbeResult.class), eq(500), eq("spiffe://im-chat/broker/b"),
-                eq("spiffe://im-chat/broker/")))
+        when(fixture.invoker.invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), any(), any(), any(),
+                eq(BrokerProbeResult.class), eq(500)))
                 .thenReturn(new BrokerProbeResult("different-cluster", "different-broker", 9L, 8L, "different-nonce"));
         assertThat(fixture.probe()).isEqualTo(BrokerHealthStatus.HEALTHY);
     }
@@ -96,9 +132,8 @@ class BrokerPeerAdapterTest {
     @EnumSource(BoltInvocationException.Failure.class)
     void probeMapsOnlyExplicitTransportFailureToUnhealthy(BoltInvocationException.Failure failure) {
         ProbeFixture fixture = new ProbeFixture(Runnable::run);
-        when(fixture.invoker.invokeAuthenticated(eq("b:18020"), any(), any(), any(),
-                eq(BrokerProbeResult.class), eq(500), eq("spiffe://im-chat/broker/b"),
-                eq("spiffe://im-chat/broker/")))
+        when(fixture.invoker.invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), any(), any(), any(),
+                eq(BrokerProbeResult.class), eq(500)))
                 .thenThrow(new CompletionException(new CompletionException(
                         new BoltInvocationException(failure, "controlled", null))));
         assertThat(fixture.probe()).isEqualTo(failure == BoltInvocationException.Failure.TRANSPORT_UNAVAILABLE
@@ -108,9 +143,8 @@ class BrokerPeerAdapterTest {
     @Test
     void probeAcceptsValidatedResponse() {
         ProbeFixture fixture = new ProbeFixture(Runnable::run);
-        when(fixture.invoker.invokeAuthenticated(eq("b:18020"), any(), any(), any(),
-                eq(BrokerProbeResult.class), eq(500), eq("spiffe://im-chat/broker/b"),
-                eq("spiffe://im-chat/broker/")))
+        when(fixture.invoker.invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), any(), any(), any(),
+                eq(BrokerProbeResult.class), eq(500)))
                 .thenReturn(new BrokerProbeResult("cluster-a", "b", 1L, 2L, "expected"));
         assertThat(fixture.probe()).isEqualTo(BrokerHealthStatus.HEALTHY);
     }
@@ -118,34 +152,30 @@ class BrokerPeerAdapterTest {
     @Test
     void probeAndHealthReportUseConfiguredObservationRpcTimeout() {
         ProbeFixture fixture = new ProbeFixture(Runnable::run, Duration.ofMillis(123));
-        when(fixture.invoker.invokeAuthenticated(eq("b:18020"), any(), any(), any(),
-                eq(BrokerProbeResult.class), eq(123), eq("spiffe://im-chat/broker/b"),
-                eq("spiffe://im-chat/broker/")))
+        when(fixture.invoker.invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), any(), any(), any(),
+                eq(BrokerProbeResult.class), eq(123)))
                 .thenReturn(new BrokerProbeResult("cluster-a", "b", 1L, 2L, "expected"));
-        when(fixture.invoker.invokeAuthenticated(eq("b:18020"), any(), any(), any(),
-                eq(BrokerHealthReportResult.class), eq(123), eq("spiffe://im-chat/broker/b"),
-                eq("spiffe://im-chat/broker/")))
+        when(fixture.invoker.invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), any(), any(), any(),
+                eq(BrokerHealthReportResult.class), eq(123)))
                 .thenReturn(new BrokerHealthReportResult("cluster-a", "b", 1L, 2L, "expected", List.of()));
 
         assertThat(fixture.probe()).isEqualTo(BrokerHealthStatus.HEALTHY);
         assertThat(fixture.peer.fetchHealthReport(fixture.target, new BrokerClusterId("cluster-a"), new ClusterRevision(1L), new RoutingEpoch(2L), Set.of(new BrokerId("b")))
                 .toCompletableFuture().join()).isEmpty();
-        verify(fixture.invoker).invokeAuthenticated(eq("b:18020"), any(), any(), any(),
-                eq(BrokerProbeResult.class), eq(123), eq("spiffe://im-chat/broker/b"),
-                eq("spiffe://im-chat/broker/"));
-        verify(fixture.invoker).invokeAuthenticated(eq("b:18020"), any(), any(), any(),
-                eq(BrokerHealthReportResult.class), eq(123), eq("spiffe://im-chat/broker/b"),
-                eq("spiffe://im-chat/broker/"));
+        verify(fixture.invoker).invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), any(), any(), any(),
+                eq(BrokerProbeResult.class), eq(123));
+        verify(fixture.invoker).invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), any(), any(), any(),
+                eq(BrokerHealthReportResult.class), eq(123));
     }
 
     @Test
     void authenticatedProbeAndReportAcceptRequestsWithoutWallClockDeadline() {
         ProbeFixture fixture = new ProbeFixture(Runnable::run, Duration.ofMillis(500));
-        when(fixture.invoker.invokeAuthenticated(any(), any(), any(), any(),
-                eq(BrokerProbeResult.class), eq(500), any(), any()))
+        when(fixture.invoker.invoke(any(BoltTarget.class), any(), any(), any(),
+                eq(BrokerProbeResult.class), eq(500)))
                 .thenReturn(new BrokerProbeResult("cluster-a", "b", 1L, 2L, "expected"));
-        when(fixture.invoker.invokeAuthenticated(any(), any(), any(), any(),
-                eq(BrokerHealthReportResult.class), eq(500), any(), any()))
+        when(fixture.invoker.invoke(any(BoltTarget.class), any(), any(), any(),
+                eq(BrokerHealthReportResult.class), eq(500)))
                 .thenReturn(new BrokerHealthReportResult("cluster-a", "b", 1L, 2L, "expected", List.of()));
 
         assertThat(fixture.probe()).isEqualTo(BrokerHealthStatus.HEALTHY);
@@ -156,8 +186,8 @@ class BrokerPeerAdapterTest {
     @Test
     void healthReportUsesAuthenticatedTargetRatherThanEchoFields() {
         ProbeFixture fixture = new ProbeFixture(Runnable::run);
-        when(fixture.invoker.invokeAuthenticated(any(), any(), any(), any(),
-                eq(BrokerHealthReportResult.class), eq(500), any(), any()))
+        when(fixture.invoker.invoke(any(BoltTarget.class), any(), any(), any(),
+                eq(BrokerHealthReportResult.class), eq(500)))
                 .thenReturn(new BrokerHealthReportResult("other-cluster", "other-reporter", 9L, 8L, "wrong",
                         List.of(new BrokerHealthReportRow("b",
                                 com.co.kc.imchat.broker.sdk.enums.BrokerHealthStatus.UNHEALTHY, 10L, 30L))));
@@ -174,9 +204,8 @@ class BrokerPeerAdapterTest {
                     });
         }
         ArgumentCaptor<BrokerHealthReportParams> request = ArgumentCaptor.forClass(BrokerHealthReportParams.class);
-        verify(fixture.invoker).invokeAuthenticated(eq("b:18020"), eq("broker.broker"), eq("fetchBrokerHealthReport"),
-                request.capture(), eq(BrokerHealthReportResult.class), eq(500),
-                eq("spiffe://im-chat/broker/b"), eq("spiffe://im-chat/broker/"));
+        verify(fixture.invoker).invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), eq("broker.broker"), eq("fetchBrokerHealthReport"),
+                request.capture(), eq(BrokerHealthReportResult.class), eq(500));
         assertThat(request.getValue()).satisfies(params -> {
             assertThat(params.clusterId()).isEqualTo("cluster-a");
             assertThat(params.callerBrokerId()).isEqualTo("a");
@@ -207,8 +236,8 @@ class BrokerPeerAdapterTest {
             AtomicReference<Instant> currentWall = new AtomicReference<>(requestAt);
             wall.when(Instant::now).thenAnswer(ignored -> currentWall.get());
             wall.clearInvocations();
-            when(fixture.invoker.invokeAuthenticated(any(), any(), any(), any(),
-                    eq(BrokerHealthReportResult.class), eq(500), any(), any())).thenAnswer(call -> {
+            when(fixture.invoker.invoke(any(BoltTarget.class), any(), any(), any(),
+                    eq(BrokerHealthReportResult.class), eq(500))).thenAnswer(call -> {
                 generator.verify(GeneratorUtils::nextUUID);
                 wall.verify(Instant::now, Mockito.times(1));
                 BrokerHealthReportParams params = call.getArgument(3);
@@ -233,9 +262,8 @@ class BrokerPeerAdapterTest {
             generator.verifyNoInteractions();
             wall.verify(Instant::now, Mockito.never());
             tasks.removeFirst().run();
-            verify(fixture.invoker).invokeAuthenticated(eq("b:18020"), eq("broker.broker"), eq("fetchBrokerHealthReport"),
-                    any(BrokerHealthReportParams.class), eq(BrokerHealthReportResult.class), eq(500),
-                    eq("spiffe://im-chat/broker/b"), eq("spiffe://im-chat/broker/"));
+            verify(fixture.invoker).invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), eq("broker.broker"), eq("fetchBrokerHealthReport"),
+                    any(BrokerHealthReportParams.class), eq(BrokerHealthReportResult.class), eq(500));
             assertThat(report.join()).hasSize(2);
             for (int index = 0; index < 2; index++) {
                 BrokerHealthObservation row = report.join().get(index);
@@ -259,8 +287,8 @@ class BrokerPeerAdapterTest {
         BrokerHealthReportRow c = new BrokerHealthReportRow("c",
                 com.co.kc.imchat.broker.sdk.enums.BrokerHealthStatus.UNKNOWN, 0L, 0L);
         for (List<BrokerHealthReportRow> rows : List.of(List.of(b, c), List.of(c))) {
-            when(fixture.invoker.invokeAuthenticated(any(), any(), any(), any(),
-                    eq(BrokerHealthReportResult.class), eq(500), any(), any()))
+            when(fixture.invoker.invoke(any(BoltTarget.class), any(), any(), any(),
+                    eq(BrokerHealthReportResult.class), eq(500)))
                     .thenReturn(new BrokerHealthReportResult("cluster-a", "b", 1L, 2L, "expected", rows));
             Set<BrokerId> targets = Set.of(new BrokerId("b"));
             assertThatThrownBy(() -> fixture.peer.fetchHealthReport(fixture.target, new BrokerClusterId("cluster-a"), new ClusterRevision(1L), new RoutingEpoch(2L),
@@ -274,8 +302,8 @@ class BrokerPeerAdapterTest {
         ProbeFixture fixture = new ProbeFixture(Runnable::run);
         BoltInvocationException failure = new BoltInvocationException(
                 BoltInvocationException.Failure.TRANSPORT_UNAVAILABLE, "unavailable", null);
-        when(fixture.invoker.invokeAuthenticated(any(), any(), any(), any(),
-                eq(BrokerHealthReportResult.class), eq(500), any(), any())).thenThrow(failure);
+        when(fixture.invoker.invoke(any(BoltTarget.class), any(), any(), any(),
+                eq(BrokerHealthReportResult.class), eq(500))).thenThrow(failure);
         assertThatThrownBy(() -> fixture.peer.fetchHealthReport(fixture.target, new BrokerClusterId("cluster-a"), new ClusterRevision(1L), new RoutingEpoch(2L),
                 Set.of(new BrokerId("b"))).toCompletableFuture().join()).hasCause(failure);
     }
@@ -285,9 +313,8 @@ class BrokerPeerAdapterTest {
         List<Runnable> tasks = new ArrayList<>();
         Duration timeout = Duration.ofMillis(123);
         ProbeFixture fixture = new ProbeFixture(tasks::add, timeout);
-        when(fixture.invoker.invokeAuthenticated(eq("b:18020"), eq("broker.broker"), eq("probeBroker"),
-                any(BrokerProbeParams.class), eq(BrokerProbeResult.class), eq(123),
-                eq("spiffe://im-chat/broker/b"), eq("spiffe://im-chat/broker/")))
+        when(fixture.invoker.invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), eq("broker.broker"), eq("probeBroker"),
+                any(BrokerProbeParams.class), eq(BrokerProbeResult.class), eq(123)))
                 .thenAnswer(call -> {
                     BrokerProbeParams params = call.getArgument(3);
                     return new BrokerProbeResult(params.clusterId(), params.receiverBrokerId(), params.revision(),
@@ -305,9 +332,8 @@ class BrokerPeerAdapterTest {
 
         assertThat(result.join()).isEqualTo(BrokerHealthStatus.HEALTHY);
         ArgumentCaptor<BrokerProbeParams> request = ArgumentCaptor.forClass(BrokerProbeParams.class);
-        verify(fixture.invoker).invokeAuthenticated(eq("b:18020"), eq("broker.broker"), eq("probeBroker"),
-                request.capture(), eq(BrokerProbeResult.class), eq(123),
-                eq("spiffe://im-chat/broker/b"), eq("spiffe://im-chat/broker/"));
+        verify(fixture.invoker).invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), eq("broker.broker"), eq("probeBroker"),
+                request.capture(), eq(BrokerProbeResult.class), eq(123));
         BrokerProbeParams params = request.getValue();
         assertThat(params.clusterId()).isEqualTo("cluster-a");
         assertThat(params.revision()).isEqualTo(7L);
@@ -327,9 +353,8 @@ class BrokerPeerAdapterTest {
     @Test
     void probeDoesNotInferTransportFromUnknownExceptionOrCause() {
         ProbeFixture fixture = new ProbeFixture(Runnable::run);
-        when(fixture.invoker.invokeAuthenticated(eq("b:18020"), any(), any(), any(),
-                eq(BrokerProbeResult.class), eq(500), eq("spiffe://im-chat/broker/b"),
-                eq("spiffe://im-chat/broker/")))
+        when(fixture.invoker.invoke(eq(new BoltTarget("b:18020", "spiffe://im-chat/broker/b")), any(), any(), any(),
+                eq(BrokerProbeResult.class), eq(500)))
                 .thenThrow(new IllegalStateException("timeout", new BoltInvocationException(
                         BoltInvocationException.Failure.TRANSPORT_UNAVAILABLE, "nested", null)));
         assertThat(fixture.probe()).isEqualTo(BrokerHealthStatus.UNKNOWN);
@@ -350,7 +375,7 @@ class BrokerPeerAdapterTest {
             BrokerFailureObservationProperties observation = new BrokerFailureObservationProperties();
             observation.setRpcTimeout(timeout);
             peer = new BrokerPeerAdapter(invoker, new BrokerProperties(), Runnable::run, Runnable::run,
-                    new BrokerRoutingProperties(), observation, "a", executor, "spiffe://im-chat/broker/");
+                    new BrokerRoutingProperties(), observation, "a", executor, actualTransport(false));
         }
 
         private BrokerHealthStatus probe() {
@@ -362,20 +387,20 @@ class BrokerPeerAdapterTest {
     @Test
     void installLeasePreservesGrantedPayload() {
         BoltInvoker invoker = mock(BoltInvoker.class);
-        when(invoker.invoke(eq("broker-b.example:19000"), eq("broker.broker"),
+        when(invoker.invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.broker"),
                 eq("installRouteLease"), eq(new RouteLeaseInstallParams(
                         "broker-b", 7L, 3L, 1L, "nonce-1", 100L, 42L)),
                 eq(RouteLeaseInstallResult.class), eq(3000)))
                 .thenReturn(new RouteLeaseInstallResult(true));
         BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, new BrokerProperties(),
-                Runnable::run, Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                Runnable::run, Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
         RoutingLease lease = RoutingLease.builder().brokerId(new BrokerId("broker-b"))
                 .routingEpoch(new RoutingEpoch(7L)).leaderTerm(new LeaderTerm(3L))
                 .leaseSequence(new LeaseSequence(1L)).leaseNonce(new LeaseNonce("nonce-1"))
                 .leaseDuration(Duration.ofNanos(100L)).quorumReadIndex(new QuorumReadIndex(42L)).build();
 
         assertThat(peer.installLease(target(), lease).toCompletableFuture().join()).isTrue();
-        verify(invoker).invoke(eq("broker-b.example:19000"), eq("broker.broker"),
+        verify(invoker).invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.broker"),
                 eq("installRouteLease"), eq(new RouteLeaseInstallParams(
                         "broker-b", 7L, 3L, 1L, "nonce-1", 100L, 42L)),
                 eq(RouteLeaseInstallResult.class), eq(3000));
@@ -386,7 +411,7 @@ class BrokerPeerAdapterTest {
         BrokerRoutingProperties routing = new BrokerRoutingProperties();
         routing.setRouteLookupTimeout(Duration.ofMillis(20));
         BrokerPeerAdapter peer = new BrokerPeerAdapter(mock(BoltInvoker.class), new BrokerProperties(),
-                Runnable::run, ignored -> { }, routing, new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                Runnable::run, ignored -> { }, routing, new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
         com.co.kc.imchat.broker.sdk.cluster.BrokerNode broker =
                 new com.co.kc.imchat.broker.sdk.cluster.BrokerNode("broker-b", "broker-b.example:19000",
                         com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole.VOTER,
@@ -407,7 +432,7 @@ class BrokerPeerAdapterTest {
         CountDownLatch entered = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
         BoltInvoker invoker = mock(BoltInvoker.class);
-        when(invoker.invoke(any(String.class), eq("broker.broker"), eq("fenceRoutingEpoch"),
+        when(invoker.invoke(any(BoltTarget.class), eq("broker.broker"), eq("fenceRoutingEpoch"),
                 any(RoutingFenceParams.class), eq(RoutingFenceAckResult.class), eq(3000)))
                 .thenAnswer(invocation -> {
                     entered.countDown();
@@ -415,7 +440,8 @@ class BrokerPeerAdapterTest {
                         throw new IllegalStateException("test fence RPC was not released");
                     }
                     RoutingFenceParams params = invocation.getArgument(3);
-                    String address = invocation.getArgument(0);
+                    BoltTarget target = invocation.getArgument(0);
+                    String address = target.address();
                     String id = address.equals("broker-a.example:19000") ? "broker-a" : "broker-b";
                     return new RoutingFenceAckResult(id, params.routingEpoch(),
                             params.leaderTerm(), 9L, params.operationId());
@@ -427,7 +453,7 @@ class BrokerPeerAdapterTest {
                 .quorumReadIndex(new QuorumReadIndex(1L))
                 .fencedBrokerIds(List.of(new BrokerId("broker-a"), new BrokerId("broker-b"))).build();
         BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, properties, executor,
-                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
         try {
             CompletableFuture<FenceAck> first = peer.fence(BrokerNode.discovered(new BrokerId("broker-a"),
                     new BrokerRouteEndpoint("broker-a.example:19000")), fence).toCompletableFuture();
@@ -448,7 +474,7 @@ class BrokerPeerAdapterTest {
     @Test
     void routeLookupRunsOnDedicatedExecutorAndPreservesDeadlineAndHop() {
         BoltInvoker invoker = mock(BoltInvoker.class);
-        when(invoker.invoke(eq("broker-b.example:19000"), eq("broker.connection"),
+        when(invoker.invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.connection"),
                 eq("lookupConnectionRoutes"), any(RouteLookupParams.class),
                 eq(RouteLookupResult.class), eq(123)))
                 .thenReturn(new RouteLookupResult(List.of(
@@ -457,7 +483,7 @@ class BrokerPeerAdapterTest {
         BrokerRoutingProperties routing = new BrokerRoutingProperties();
         routing.setRouteLookupTimeout(Duration.ofMillis(123));
         BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, new BrokerProperties(), Runnable::run,
-                lookupTasks::add, routing, new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                lookupTasks::add, routing, new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
         com.co.kc.imchat.broker.sdk.cluster.BrokerNode broker =
                 new com.co.kc.imchat.broker.sdk.cluster.BrokerNode("broker-b", "broker-b.example:19000",
                         com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole.VOTER,
@@ -474,7 +500,7 @@ class BrokerPeerAdapterTest {
                 new RouteLocation("gateway-a", "gateway.example", 18012, 9L, 7L));
         ArgumentCaptor<RouteLookupParams> request =
                 ArgumentCaptor.forClass(RouteLookupParams.class);
-        Mockito.verify(invoker).invoke(eq("broker-b.example:19000"), eq("broker.connection"),
+        Mockito.verify(invoker).invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.connection"),
                 eq("lookupConnectionRoutes"), request.capture(), eq(RouteLookupResult.class), eq(123));
         assertThat(request.getValue().requesterBrokerId()).isEqualTo("broker-a");
         assertThat(request.getValue().targetUserId()).isEqualTo(42L);
@@ -490,7 +516,7 @@ class BrokerPeerAdapterTest {
         routing.setDrainCleanupRpcTimeout(Duration.ofMillis(1234));
         DrainRouteCleanupParams params = new DrainRouteCleanupParams(
                 "broker-a", "drain-1", 7L, 8L, 10_000L, List.of());
-        when(invoker.invoke(eq("broker-b.example:19000"), eq("broker.connection"),
+        when(invoker.invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.connection"),
                 eq("cleanupDrainRoutes"), eq(params), eq(DrainRouteCleanupResult.class), eq(1234)))
                 .thenReturn(new DrainRouteCleanupResult(DrainRouteCleanupResult.Status.CLEANED,
                         12L, 0L, true, null),
@@ -498,7 +524,7 @@ class BrokerPeerAdapterTest {
                                 0L, 0L, false, "wrong watermark"));
         List<Runnable> tasks = new ArrayList<>();
         BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, new BrokerProperties(), tasks::add,
-                Runnable::run, routing, new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                Runnable::run, routing, new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
         BrokerClusterOperation operation = mock(BrokerClusterOperation.class);
         when(operation.id()).thenReturn(new ClusterOperationId("drain-1"));
         when(operation.targetBrokerId()).thenReturn(new BrokerId("broker-b"));
@@ -527,14 +553,14 @@ class BrokerPeerAdapterTest {
                 .leaderTerm(new LeaderTerm(1L))
                 .quorumReadIndex(new QuorumReadIndex(1L))
                 .fencedBrokerIds(List.of(new BrokerId("broker-b"))).build();
-        when(invoker.invoke(eq("broker-b.example:19000"), eq("broker.broker"),
+        when(invoker.invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.broker"),
                 eq("fenceRoutingEpoch"), eq(new RoutingFenceParams("fence-1", 7L, 1L, 1L)),
                 eq(RoutingFenceAckResult.class), eq(3000)))
                 .thenReturn(new RoutingFenceAckResult("broker-b", 7L, 1L, 9L, "fence-1"),
                         new RoutingFenceAckResult("broker-a", 7L, 1L, 9L, "fence-1"));
         ArrayDeque<Runnable> tasks = new ArrayDeque<>();
         BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, new BrokerProperties(), tasks::add,
-                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
         CompletableFuture<FenceAck> accepted = peer.fence(target(), fence).toCompletableFuture();
         assertThat(accepted).isNotDone();
         tasks.removeFirst().run();
@@ -545,7 +571,7 @@ class BrokerPeerAdapterTest {
 
         Executor saturated = task -> { throw new RejectedExecutionException("peer queue full"); };
         BrokerPeerAdapter unavailable = new BrokerPeerAdapter(invoker, new BrokerProperties(), saturated,
-                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
         assertThatThrownBy(() -> unavailable.fence(target(), fence).toCompletableFuture().join())
                 .hasCauseInstanceOf(RejectedExecutionException.class);
     }
@@ -558,13 +584,13 @@ class BrokerPeerAdapterTest {
     @Test
     void prepareLeaseRejectsAnotherBrokerIdentity() {
         BoltInvoker invoker = mock(BoltInvoker.class);
-        when(invoker.invoke(eq("broker-b.example:19000"), eq("broker.broker"),
+        when(invoker.invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.broker"),
                 eq("prepareRouteLease"), eq(new RouteLeasePrepareParams("lease-1", 7L)),
                 eq(RouteLeasePrepareResult.class), eq(3000)))
                 .thenReturn(new RouteLeasePrepareResult("broker-b", "nonce-1"),
                         new RouteLeasePrepareResult("broker-other", "nonce-2"));
         BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, new BrokerProperties(),
-                Runnable::run, Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                Runnable::run, Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
         BrokerNode target = BrokerNode.discovered(new BrokerId("broker-b"),
                 new BrokerRouteEndpoint("broker-b.example:19000"));
 
@@ -582,18 +608,18 @@ class BrokerPeerAdapterTest {
         BrokerProperties properties = new BrokerProperties();
         properties.getPeerCall().setTimeoutMs(1234);
         IllegalStateException failure = new IllegalStateException("peer unavailable");
-        when(invoker.invoke(eq("broker-b.example:19000"), eq("broker.broker"),
+        when(invoker.invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.broker"),
                 eq("fetchQuorumReadIndex"), eq(new QuorumReadIndexParams()),
                 eq(QuorumReadIndexResult.class), eq(1234))).thenThrow(failure);
         BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, properties,
                 ignored -> { throw new AssertionError("quorum read must remain synchronous"); },
-                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
 
         CompletableFuture<Long> result = peer.fetchQuorumReadIndex(target()).toCompletableFuture();
 
         assertThat(result).isCompletedExceptionally();
         assertThatThrownBy(result::join).isInstanceOf(CompletionException.class).hasCause(failure);
-        verify(invoker).invoke(eq("broker-b.example:19000"), eq("broker.broker"),
+        verify(invoker).invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.broker"),
                 eq("fetchQuorumReadIndex"), eq(new QuorumReadIndexParams()),
                 eq(QuorumReadIndexResult.class), eq(1234));
     }
@@ -601,14 +627,14 @@ class BrokerPeerAdapterTest {
     @Test
     void remoteAppliedIndexRequiresTargetIdentityAndNonnegativeIndex() {
         BoltInvoker invoker = mock(BoltInvoker.class);
-        when(invoker.invoke(eq("broker-b.example:19000"), eq("broker.broker"),
+        when(invoker.invoke(eq(new BoltTarget("broker-b.example:19000", "spiffe://im-chat/broker/broker-b")), eq("broker.broker"),
                 eq("fetchQuorumReadIndex"), eq(new QuorumReadIndexParams()),
                 eq(QuorumReadIndexResult.class), eq(3000)))
                 .thenReturn(new QuorumReadIndexResult("broker-b", 12L),
                         new QuorumReadIndexResult("broker-c", 20L),
                         new QuorumReadIndexResult("broker-b", -1L));
         BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, new BrokerProperties(),
-                Runnable::run, Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, "spiffe://im-chat/broker/");
+                Runnable::run, Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(), "broker-a", Runnable::run, actualTransport(false));
         BrokerNode target = BrokerNode.discovered(new BrokerId("broker-b"),
                 new BrokerRouteEndpoint("broker-b.example:19000"));
 
@@ -619,4 +645,16 @@ class BrokerPeerAdapterTest {
                     .hasMessageContaining("does not match target node");
         }
     }
+    private static BoltControlledClient actualTransport(boolean development) {
+        ImBoltProperties.Client policy = new ImBoltProperties.Client();
+        policy.setAllowedPeerUriPrefixes(List.of("spiffe://im-chat/broker/"));
+        policy.setMode(development ? BoltTransportMode.DEVELOPMENT_PLAINTEXT
+                : BoltTransportMode.MTLS);
+        policy.getDevelopment().setSyntheticData(true);
+        policy.getTls().setEnabled(!development);
+        policy.getTls().setKeyStore("unit-transport-construction-only.p12");
+        policy.getTls().setKeyStorePassword("test-only");
+        return new BoltControlledClient(policy);
+    }
+
 }

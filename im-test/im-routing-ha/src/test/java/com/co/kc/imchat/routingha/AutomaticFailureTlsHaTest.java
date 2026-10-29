@@ -50,7 +50,6 @@ import com.co.kc.imchat.broker.model.cqrs.command.ActivateRoutingLeaseCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.ConfirmGatewayRoutesCommand;
 import com.co.kc.imchat.broker.model.cqrs.dto.BrokerHealthReportDTO;
 import com.co.kc.imchat.broker.model.cqrs.query.BrokerHealthReportQuery;
-import com.co.kc.imchat.broker.sdk.access.BrokerCallerRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
@@ -59,8 +58,10 @@ import com.co.kc.imchat.broker.sdk.model.result.BrokerHealthReportResult;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerHealthReportRow;
 import com.co.kc.imchat.broker.sdk.model.result.GatewayRouteSnapshotAckResult;
 import com.co.kc.imchat.common.utils.HashUtils;
-import com.co.kc.imchat.plugin.bolt.core.BoltClientInvoker;
-import com.co.kc.imchat.plugin.bolt.core.BoltRequestProcessor;
+import com.co.kc.imchat.plugin.bolt.invocation.BoltClientInvoker;
+import com.co.kc.imchat.plugin.bolt.client.BoltControlledClient;
+import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
+import com.co.kc.imchat.plugin.bolt.server.BoltRequestProcessor;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 import com.co.kc.imchat.plugin.bolt.spi.BoltRequestHandler;
 import io.netty.channel.Channel;
@@ -366,7 +367,8 @@ class AutomaticFailureTlsHaTest {
         private final String id;
         private RpcServer server;
         private final List<Channel> acceptedChannels = new CopyOnWriteArrayList<>();
-        private final RpcClient client = new RpcClient();
+        private BoltControlledClient client;
+        private ImBoltProperties.Client clientPolicy;
         private BrokerRaftAdapter raft;
         private final FileFenceWatermarkRepository watermark;
         private final LocalRoutingLeaseService leases;
@@ -400,14 +402,14 @@ class AutomaticFailureTlsHaTest {
                         .expireAfterWrite(10, TimeUnit.SECONDS).buildCache();
                 LocalLeaseAppService local = new LocalLeaseAppService(leases, pending);
                 configureClient(stores.get(index));
-                client.init();
+                client.startup();
                 BrokerProperties brokerProperties = new BrokerProperties();
                 brokerProperties.getPeerCall().setTimeoutMs(500);
                 BrokerRoutingProperties routing = new BrokerRoutingProperties();
                 BrokerFailureObservationProperties observation = new BrokerFailureObservationProperties();
                 observation.setRpcTimeout(RPC_TIMEOUT);
-                BrokerPeerAdapter peer = new BrokerPeerAdapter(new BoltClientInvoker(client, System::nanoTime), brokerProperties,
-                        peers, peers, routing, observation, id, observations, RoutingHaCertificates.PREFIX);
+                BrokerPeerAdapter peer = new BrokerPeerAdapter(new BoltClientInvoker(client, System::nanoTime, clientPolicy), brokerProperties,
+                        peers, peers, routing, observation, id, observations, client);
                 InMemoryGatewayRegistry gateways = new InMemoryGatewayRegistry();
                 gateways.register(new GatewayRegistration(new GatewayId("gateway-fixture"), new GatewayHost("127.0.0.1"),
                         new GatewayPort(19001), new GatewayPrincipalId("spiffe://im-chat/gateway/fixture"),
@@ -419,7 +421,7 @@ class AutomaticFailureTlsHaTest {
                         (remoteAddress, connection) -> acceptedChannels.add(connection.getChannel()));
                 List<BoltRequestHandler> handlers = requestHandlers(local).stream()
                         .map(this::authenticatedChain).map(this::recordTransportEvidence).toList();
-                server.registerUserProcessor(new BoltRequestProcessor(handlers));
+                server.registerUserProcessor(new BoltRequestProcessor(handlers, new ImBoltProperties.Server()));
                 assertThat(server.start()).isTrue();
             } catch (Exception | AssertionError failure) {
                 try {
@@ -439,10 +441,10 @@ class AutomaticFailureTlsHaTest {
         }
 
         private BoltRequestHandler authenticatedChain(AbstractBrokerRpcHandler<?, ?> handler) {
-            BrokerCallerIdentityInterceptor identity = new BrokerCallerIdentityInterceptor(
-                    Map.of(BrokerCallerRole.BROKER, RoutingHaCertificates.PREFIX), Set.of());
-            BrokerPeerAdmissionInterceptor admission = new BrokerPeerAdmissionInterceptor(id, raft,
-                    RoutingHaCertificates.PREFIX, CLUSTER);
+            BrokerCallerIdentityInterceptor identity = new BrokerCallerIdentityInterceptor(Set.of());
+            BrokerPeerAdmissionInterceptor admission = new BrokerPeerAdmissionInterceptor(id, raft, CLUSTER,
+                    new com.co.kc.imchat.broker.model.properties.BrokerGossipSettings(id, "local:18020",
+                            List.of(), List.of(), 1, Duration.ofSeconds(3)));
             return new BrokerRequestInterceptorChain(List.of(identity, admission, new BrokerHandlerInterceptor(handler)));
         }
 
@@ -513,10 +515,12 @@ class AutomaticFailureTlsHaTest {
         }
 
         private void configureClient(Path store) {
-            client.option(BoltClientOption.CLI_SSL_ENABLE, true);
-            client.option(BoltClientOption.CLI_SSL_KEYSTORE_TYPE, "PKCS12");
-            client.option(BoltClientOption.CLI_SSL_KEYSTORE, store.toString());
-            client.option(BoltClientOption.CLI_SSL_KEYSTORE_PASS, RoutingHaCertificates.PASSWORD);
+            clientPolicy = new ImBoltProperties.Client();
+            clientPolicy.setAllowedPeerUriPrefixes(List.of(RoutingHaCertificates.PREFIX));
+            clientPolicy.getTls().setEnabled(true);
+            clientPolicy.getTls().setKeyStore(store.toString());
+            clientPolicy.getTls().setKeyStorePassword(RoutingHaCertificates.PASSWORD);
+            client = new BoltControlledClient(clientPolicy);
         }
 
         private void configureServer(Path store) {
@@ -593,7 +597,7 @@ class AutomaticFailureTlsHaTest {
             if (!stopped) {
                 stoppedAt = Instant.now();
                 stopped = true;
-                assertAll("stop Broker " + id, this::stopRpcAndAssertClosed, client::shutdown, this::stopRaft);
+                assertAll("stop Broker " + id, this::stopRpcAndAssertClosed, () -> { if (client != null) { client.shutdown(); } }, this::stopRaft);
             }
         }
 
@@ -602,7 +606,7 @@ class AutomaticFailureTlsHaTest {
             stopped = true;
             assertAll("close Broker " + id,
                     () -> { if (server != null && server.isStarted()) { server.stop(); } },
-                    () -> { if (client.isStarted()) { client.shutdown(); } },
+                    () -> { if (client != null && client.isStarted()) { client.shutdown(); } },
                     this::stopRaft,
                     () -> {
                         peers.shutdownNow();

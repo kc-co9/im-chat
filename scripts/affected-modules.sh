@@ -40,11 +40,23 @@ add_module() {
   [[ " ${modules[*]-} " == *" $module "* ]] || modules+=("$module")
 }
 
+# 按路径保守并集，不解析配置内容；认证工厂变化同时带入四个真实消费方 startup、
+# Broker/Gateway behavior 与 E2E 所属模块，Gossip 同理带入 Broker。已有 affected -am test
+# 执行这些模块的测试，不创建新 mode，也不代表独立风险入口或 full 已经通过。
 while IFS= read -r file; do
   case "$file" in
     im-plugin/im-mq/*) add_module "im-plugin/im-mq-kafka" ;;
     im-plugin/im-bolt/*)
       add_module "im-plugin/im-bolt"
+      add_module "im-broker/im-broker-server"
+      add_module "im-gateway/im-ws-gateway/im-ws-gateway-server"
+      add_module "im-service/im-account/im-account-server"
+      add_module "im-service/im-message/im-message-server"
+      add_module "im-test/im-e2e-test"
+      ;;
+    im-plugin/im-gossip/*)
+      add_module "im-plugin/im-gossip"
+      add_module "im-broker/im-broker-server"
       add_module "im-test/im-e2e-test"
       ;;
     im-plugin/*/*) add_module "$(cut -d/ -f1-2 <<< "$file")" ;;
@@ -102,6 +114,10 @@ while IFS= read -r file; do
       service="$(cut -d/ -f1-2 <<< "$file")"
       add_module "$service/$(basename "$service")-facade"
       add_module "$service/$(basename "$service")-server"
+      ;;
+    im-service/im-account/im-account-server/*|im-service/im-message/im-message-server/*)
+      add_module "$(cut -d/ -f1-3 <<< "$file")"
+      add_module "im-test/im-e2e-test"
       ;;
     im-service/*/*-server/*) add_module "$(cut -d/ -f1-3 <<< "$file")" ;;
     im-test/im-architecture-test/*) add_module "im-test/im-architecture-test" ;;

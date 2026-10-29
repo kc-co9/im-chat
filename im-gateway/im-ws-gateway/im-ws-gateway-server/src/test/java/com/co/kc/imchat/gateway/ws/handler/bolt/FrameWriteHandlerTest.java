@@ -29,7 +29,7 @@ class FrameWriteHandlerTest {
 
     @Test
     void rejectsFrameWithoutTransportContext() {
-        FrameWriteHandler handler = new FrameWriteHandler(new ConnectionRegistry(),
+        FrameWriteHandler handler = new FrameWriteHandler(new ConnectionRegistry(removal -> {}),
                 new FrameDeliveryDeduplicator(
                         10, Duration.ofMinutes(1), System::currentTimeMillis),
                 trustedNetworkAuthorizer());
@@ -40,7 +40,7 @@ class FrameWriteHandlerTest {
 
     @Test
     void relaysFrameToRegisteredConnection() throws Exception {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         EmbeddedChannel channel = new EmbeddedChannel();
         registry.register(1L, "session-1", "conn-1", channel);
         FrameWriteHandler handler = new FrameWriteHandler(registry,
@@ -74,10 +74,10 @@ class FrameWriteHandlerTest {
     private GatewayBrokerAuthorizer trustedNetworkAuthorizer() {
         return new GatewayBrokerAuthorizer(() -> {
             throw new AssertionError("trusted network fallback must not load cluster state");
-        }, "spiffe://im-chat/broker/", true);
+        }, true);
     }
 
     private BoltRequestContext requestContext() {
-        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", null, false, Set.of());
+        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", null, false, Set.of(), true);
     }
 }

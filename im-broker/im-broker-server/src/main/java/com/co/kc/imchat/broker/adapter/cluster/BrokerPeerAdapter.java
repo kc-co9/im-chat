@@ -1,5 +1,8 @@
 package com.co.kc.imchat.broker.adapter.cluster;
 
+import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
+import static com.co.kc.imchat.common.constant.PeerIdentityConstants.BROKER_URI_PREFIX;
+
 import com.co.kc.imchat.broker.domain.authority.model.FenceAck;
 import com.co.kc.imchat.broker.domain.authority.model.LeaseNonce;
 import com.co.kc.imchat.broker.domain.authority.model.RoutingLease;
@@ -39,6 +42,7 @@ import com.co.kc.imchat.broker.transformer.adapter.BrokerHealthObservationAdapte
 import com.co.kc.imchat.broker.transformer.adapter.BrokerLeaseTransformer;
 import com.co.kc.imchat.common.domain.user.model.UserId;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.plugin.bolt.exception.BoltInvocationException;
 import com.co.kc.imchat.common.utils.GeneratorUtils;
 
@@ -54,7 +58,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
-import lombok.RequiredArgsConstructor;
+import com.co.kc.imchat.plugin.bolt.client.BoltControlledClient;
 
 /**
  * Broker 对端通信入口，将领域参数转换为 Bolt 请求并校验可用的响应身份。
@@ -65,7 +69,6 @@ import lombok.RequiredArgsConstructor;
  * <p>异步调用失败或执行器拒绝通过失败阶段传播；fetchQuorumReadIndex 仍是同步 IO，
  * 其 CompletionStage 只统一返回形式，不表示调用已卸载到执行器。</p>
  */
-@RequiredArgsConstructor
 public final class BrokerPeerAdapter {
     private final BoltInvoker invoker;
     private final BrokerProperties brokerProperties;
@@ -75,13 +78,31 @@ public final class BrokerPeerAdapter {
     private final BrokerFailureObservationProperties observationProperties;
     private final String localBrokerId;
     private final Executor observationExecutor;
-    private final String identityPrefix;
+    /* 是否允许参与故障观察与自动摘流；仅受控 MTLS 模式具备资格，具体调用仍须认证。 */
+    private final boolean observationsAllowed;
+
+    public BrokerPeerAdapter(BoltInvoker invoker, BrokerProperties brokerProperties, Executor peerExecutor,
+                             Executor routeLookupExecutor, BrokerRoutingProperties routingProperties,
+                             BrokerFailureObservationProperties observationProperties, String localBrokerId,
+                             Executor observationExecutor, BoltControlledClient transport) {
+        this.invoker = invoker;
+        this.brokerProperties = brokerProperties;
+        this.peerExecutor = peerExecutor;
+        this.routeLookupExecutor = routeLookupExecutor;
+        this.routingProperties = routingProperties;
+        this.observationProperties = observationProperties;
+        this.localBrokerId = localBrokerId;
+        this.observationExecutor = observationExecutor;
+        this.observationsAllowed = transport.configuredMode() == BoltTransportMode.MTLS;
+    }
+
 
     /**
      * 单次认证探测并归一化传输结果；不判稳定资格，实际调用结束后才完成 Future。
      */
     public CompletionStage<BrokerHealthStatus> probe(
             BrokerNode brokerNode, BrokerClusterId clusterId, ClusterRevision revision, RoutingEpoch epoch) {
+        if (!observationsAllowed()) { return CompletableFuture.failedFuture(new SecurityException("Development transport cannot produce Broker failure observations")); }
         Duration timeout = observationProperties.getRpcTimeout();
         try {
             return CompletableFuture.supplyAsync(() -> {
@@ -92,13 +113,12 @@ public final class BrokerPeerAdapter {
                         revision.value(),
                         epoch.value(),
                         GeneratorUtils.nextUUID());
-                invoker.invokeAuthenticated(
-                        brokerNode.routeEndpoint().value(),
+                invoker.invoke(
+                        new BoltTarget(brokerNode.routeEndpoint().value(), BROKER_URI_PREFIX + brokerNode.id().value()),
                         BrokerBoltOperation.PROBE_BROKER.service().service(),
                         BrokerBoltOperation.PROBE_BROKER.operation(),
                         params,
-                        BrokerProbeResult.class, Math.toIntExact(timeout.toMillis()),
-                        identityPrefix + brokerNode.id().value(), identityPrefix);
+                        BrokerProbeResult.class, Math.toIntExact(timeout.toMillis()));
                 return BrokerHealthStatus.HEALTHY;
             }, observationExecutor).handle((status, failure) -> {
                 if (failure == null) {
@@ -125,6 +145,7 @@ public final class BrokerPeerAdapter {
     public CompletionStage<List<BrokerHealthObservation>> fetchHealthReport(
             BrokerNode brokerNode, BrokerClusterId clusterId, ClusterRevision revision, RoutingEpoch epoch,
             Set<BrokerId> brokerIds) {
+        if (!observationsAllowed()) { return CompletableFuture.failedFuture(new SecurityException("Development transport cannot produce Broker failure observations")); }
         Duration timeout = observationProperties.getRpcTimeout();
         try {
             return CompletableFuture.supplyAsync(() -> {
@@ -132,12 +153,11 @@ public final class BrokerPeerAdapter {
                         clusterId.value(), localBrokerId, brokerNode.id().value(), revision.value(), epoch.value(),
                         GeneratorUtils.nextUUID(), brokerIds.stream().map(BrokerId::value).toList());
                 Instant requestAt = Instant.now();
-                BrokerHealthReportResult response = invoker.invokeAuthenticated(
-                        brokerNode.routeEndpoint().value(), BrokerBoltOperation.FETCH_BROKER_HEALTH_REPORT.service().service(),
+                BrokerHealthReportResult response = invoker.invoke(
+                        new BoltTarget(brokerNode.routeEndpoint().value(), BROKER_URI_PREFIX + brokerNode.id().value()), BrokerBoltOperation.FETCH_BROKER_HEALTH_REPORT.service().service(),
                         BrokerBoltOperation.FETCH_BROKER_HEALTH_REPORT.operation(),
                         params,
-                        BrokerHealthReportResult.class, Math.toIntExact(timeout.toMillis()),
-                        identityPrefix + brokerNode.id().value(), identityPrefix);
+                        BrokerHealthReportResult.class, Math.toIntExact(timeout.toMillis()));
                 if (response.observations().size() > brokerIds.size()
                         || response.observations().stream().map(BrokerHealthReportRow::brokerId)
                         .distinct().count() != response.observations().size()) {
@@ -166,7 +186,7 @@ public final class BrokerPeerAdapter {
         Duration timeout = routingProperties.getRouteLookupTimeout();
         try {
             return CompletableFuture.supplyAsync(() -> {
-                RouteLookupResult result = invoker.invoke(broker.routeEndpoint(),
+                RouteLookupResult result = invoker.invoke(new BoltTarget(broker.routeEndpoint(), BROKER_URI_PREFIX + broker.brokerId()),
                         BrokerBoltOperation.LOOKUP_CONNECTION_ROUTES.service().service(),
                         BrokerBoltOperation.LOOKUP_CONNECTION_ROUTES.operation(),
                         new RouteLookupParams(localBrokerId, epoch.value(),
@@ -187,7 +207,7 @@ public final class BrokerPeerAdapter {
     public CompletionStage<RouteCleanupResult> cleanupRoutes(BrokerNode brokerNode, BrokerClusterOperation operation) {
         try {
             return CompletableFuture.supplyAsync(() -> {
-                DrainRouteCleanupResult result = invoker.invoke(brokerNode.routeEndpoint().value(),
+                DrainRouteCleanupResult result = invoker.invoke(new BoltTarget(brokerNode.routeEndpoint().value(), BROKER_URI_PREFIX + brokerNode.id().value()),
                         BrokerBoltOperation.CLEANUP_DRAIN_ROUTES.service().service(),
                         BrokerBoltOperation.CLEANUP_DRAIN_ROUTES.operation(),
                         BrokerDrainTransformer.INSTANCE.cleanupParamsFrom(new BrokerId(localBrokerId), operation),
@@ -210,7 +230,7 @@ public final class BrokerPeerAdapter {
     public CompletionStage<Long> fetchQuorumReadIndex(BrokerNode brokerNode) {
         try {
             QuorumReadIndexResult result = invoker.invoke(
-                    brokerNode.routeEndpoint().value(),
+                    new BoltTarget(brokerNode.routeEndpoint().value(), BROKER_URI_PREFIX + brokerNode.id().value()),
                     BrokerBoltOperation.FETCH_QUORUM_READ_INDEX.service().service(),
                     BrokerBoltOperation.FETCH_QUORUM_READ_INDEX.operation(),
                     new QuorumReadIndexParams(),
@@ -232,7 +252,7 @@ public final class BrokerPeerAdapter {
             BrokerNode brokerNode, RoutingEpoch epoch, ClusterOperationId operationId) {
         try {
             return CompletableFuture.supplyAsync(() -> {
-                RouteLeasePrepareResult response = invoker.invoke(brokerNode.routeEndpoint().value(),
+                RouteLeasePrepareResult response = invoker.invoke(new BoltTarget(brokerNode.routeEndpoint().value(), BROKER_URI_PREFIX + brokerNode.id().value()),
                         BrokerBoltOperation.PREPARE_ROUTE_LEASE.service().service(),
                         BrokerBoltOperation.PREPARE_ROUTE_LEASE.operation(),
                         new RouteLeasePrepareParams(operationId.value(), epoch.value()),
@@ -252,7 +272,7 @@ public final class BrokerPeerAdapter {
      */
     public CompletionStage<Boolean> installLease(BrokerNode brokerNode, RoutingLease lease) {
         try {
-            return CompletableFuture.supplyAsync(() -> invoker.invoke(brokerNode.routeEndpoint().value(),
+            return CompletableFuture.supplyAsync(() -> invoker.invoke(new BoltTarget(brokerNode.routeEndpoint().value(), BROKER_URI_PREFIX + brokerNode.id().value()),
                     BrokerBoltOperation.INSTALL_ROUTE_LEASE.service().service(),
                     BrokerBoltOperation.INSTALL_ROUTE_LEASE.operation(),
                     BrokerLeaseTransformer.INSTANCE.routeLeaseInstallParamsFrom(lease),
@@ -269,7 +289,7 @@ public final class BrokerPeerAdapter {
         try {
             return CompletableFuture.supplyAsync(() -> {
                 RoutingFenceAckResult response = invoker.invoke(
-                        brokerNode.routeEndpoint().value(),
+                        new BoltTarget(brokerNode.routeEndpoint().value(), BROKER_URI_PREFIX + brokerNode.id().value()),
                         BrokerBoltOperation.FENCE_ROUTING_EPOCH.service().service(),
                         BrokerBoltOperation.FENCE_ROUTING_EPOCH.operation(),
                         BrokerFenceTransformer.INSTANCE.routingFenceParamsFrom(fence),
@@ -284,5 +304,7 @@ public final class BrokerPeerAdapter {
             return CompletableFuture.failedFuture(failure);
         }
     }
+
+    public boolean observationsAllowed() { return observationsAllowed; }
 
 }

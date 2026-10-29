@@ -557,6 +557,29 @@ class EffectivePhaseTest(unittest.TestCase):
                    "<artifactId>a</artifactId></dependency></dependencies>")
         self.assertIn(b"<version>1</version>", self.validate("", managed))
 
+    def test_known_profile_coordinate_objects_require_versions(self):
+        paths = ("dependencyManagement/dependencies/dependency", "build/extensions/extension",
+                 "reporting/plugins/plugin", "build/plugins/plugin",
+                 "build/pluginManagement/plugins/plugin", "build/plugins/plugin/dependencies/dependency",
+                 "build/pluginManagement/plugins/plugin/dependencies/dependency",
+                 "reporting/plugins/plugin/dependencies/dependency")
+        for profile in ("java9-plus", "deploy"):
+            for path in paths:
+                body = "<groupId>x</groupId><artifactId>a</artifactId>"
+                for element in reversed(path.split("/")):
+                    body = "<" + element + ">" + body + "</" + element + ">"
+                # 父插件固定版本，确保拒绝针对缺版本的依赖对象。
+                if "/dependencies/" in path and "plugin" in path:
+                    body = body.replace("<plugin>", "<plugin><version>1</version>")
+                payload = "<profiles><profile><id>" + profile + "</id>" + body + "</profile></profiles>"
+                with self.subTest(profile=profile, path=path):
+                    with self.assertRaisesRegex(self.build.Rejected, "DYNAMIC_OR_UNRESOLVED_VERSION"):
+                        self.validate("", payload)
+                    fixed = body.replace("<artifactId>a</artifactId>", "<artifactId>a</artifactId><version>1</version>")
+                    self.assertIn(b"jraft-core", self.validate("", "<profiles><profile><id>" + profile
+                                                              + "</id>" + fixed + "</profile></profiles>"))
+        self.assertIn(b"jraft-core", self.validate("", "<profiles><profile><id>java9-plus</id></profile></profiles>"))
+
     def test_effective_profile_constraints_and_skip_checks_are_retained(self):
         for extra, error in (("<profiles><profile><id>external</id></profile></profiles>", "UNSUPPORTED_EFFECTIVE_PROFILE"),
                              ("<properties><skipTests>true</skipTests></properties>", "TEST_SKIP_OR_IGNORE_FORBIDDEN"),

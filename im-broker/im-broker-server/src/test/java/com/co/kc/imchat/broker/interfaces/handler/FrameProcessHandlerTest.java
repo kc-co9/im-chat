@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.interfaces.handler;
 
+import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
 import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.adapter.gateway.GatewayDispatchAdapter;
 import com.co.kc.imchat.broker.application.frame.FrameDispatchAppService;
@@ -41,6 +42,7 @@ import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
 import com.co.kc.imchat.gateway.ws.sdk.model.params.GatewayFrameWriteParams;
 import com.co.kc.imchat.gateway.ws.sdk.model.result.GatewayFrameWriteResult;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.plugin.metrics.support.MetricsCollector;
 import com.co.kc.imchat.service.message.facade.MessageService;
 import com.co.kc.imchat.service.message.facade.params.GroupMessageReadParams;
@@ -291,7 +293,8 @@ class FrameProcessHandlerTest {
     }
 
     private GatewayClient gatewayFrameClient(FrameWriteStub frameWriteStub) {
-        return new GatewayClient(unusedBoltInvoker(), 1) {
+        return new GatewayClient(unusedBoltInvoker(), 1,
+                BoltTransportMode.MTLS, java.util.List.of()) {
             @Override
             public GatewayFrameWriteResult writeFrame(GatewayEndpointDTO connection, GatewayFrameWriteParams request) {
                 return frameWriteStub.writeFrame(connection, request);
@@ -327,18 +330,18 @@ class FrameProcessHandlerTest {
 
     private BoltInvoker unusedBoltInvoker() {
         return new BoltInvoker() {
-            @Override
-            public <T, R> R invokeAuthenticated(String address, String service, String operation,
-                                               T request, Class<R> responseType, int timeoutMillis,
-                                               String expectedPeerIdentity, String identityPrefix) {
-                throw new AssertionError("ordinary data plane must not request authenticated observation RPC");
-            }
+        private BoltTarget typedTarget;
 
-            @Override
-            public <T, R> R invoke(String address, String service, String operation, T request,
-                                   Class<R> responseType, int timeoutMillis) {
+        @Override
+        public <T, R> R invoke(BoltTarget target, String service, String operation,
+                               T request, Class<R> responseType, int timeoutMillis) {
+            this.typedTarget = target;
+
+            String address = target.address();
+
                 throw new UnsupportedOperationException("unused bolt invoker");
             }
+
         };
     }
 

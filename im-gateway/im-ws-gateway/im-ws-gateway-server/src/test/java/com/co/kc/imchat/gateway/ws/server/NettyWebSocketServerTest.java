@@ -26,7 +26,7 @@ class NettyWebSocketServerTest {
     @Test
     void stopUnregistersGatewayFromBroker() {
         CapturingConnectionCleanupClient brokerClient = new CapturingConnectionCleanupClient();
-        ConnectionRegistry connectionRegistry = new ConnectionRegistry();
+        ConnectionRegistry connectionRegistry = new ConnectionRegistry(removal -> {});
         connectionRegistry.register(1L, "session-1", "conn-1", new EmbeddedChannel());
         NettyWebSocketServer server = new NettyWebSocketServer(
                 "127.0.0.1", 0, "gw-1", "/ws", brokerClient, connectionRegistry, null, 60, 65536);
@@ -42,7 +42,7 @@ class NettyWebSocketServerTest {
     void startReleasesEventLoopGroupsWhenBindFails() throws Exception {
         NettyWebSocketServer server = new NettyWebSocketServer(
                 "127.0.0.1", -1, "gw-1", "/ws", new CapturingConnectionCleanupClient(),
-                new ConnectionRegistry(), null, 60, 65536);
+                new ConnectionRegistry(removal -> {}), null, 60, 65536);
 
         assertThatThrownBy(server::start).isInstanceOf(IllegalArgumentException.class);
 
@@ -54,7 +54,7 @@ class NettyWebSocketServerTest {
     void stopWaitsUntilServerChannelAndEventLoopsTerminate() throws Exception {
         NettyWebSocketServer server = new NettyWebSocketServer(
                 "127.0.0.1", 0, "gw-1", "/ws", new CapturingConnectionCleanupClient(),
-                new ConnectionRegistry(), null, 60, 65536);
+                new ConnectionRegistry(removal -> {}), null, 60, 65536);
         server.start();
         Channel serverChannel = serverChannel(server);
         EventLoopGroup bossGroup = eventLoopGroup(server, "bossGroup");
@@ -86,7 +86,7 @@ class NettyWebSocketServerTest {
 
         private CapturingConnectionCleanupClient() {
             super(BrokerClientTestSupport.invoker(), BrokerClientTestSupport.discovery(),
-                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000);
+                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000, BrokerClientTestSupport.identities());
         }
 
         @Override

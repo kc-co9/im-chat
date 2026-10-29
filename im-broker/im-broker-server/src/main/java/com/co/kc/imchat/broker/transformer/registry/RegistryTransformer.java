@@ -7,7 +7,6 @@ import com.co.kc.imchat.broker.domain.connection.model.GatewayHost;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayPort;
 import com.co.kc.imchat.broker.domain.connection.model.GatewayPrincipalId;
 import com.co.kc.imchat.broker.sdk.model.dto.GatewayEndpointDTO;
-import com.co.kc.imchat.broker.sdk.model.dto.BrokerEndpointDTO;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
@@ -27,9 +26,6 @@ public interface RegistryTransformer {
     @Mapping(target = "port", source = "port.value")
     @Mapping(target = "workloadIdentity", source = "principalId.value")
     GatewayEndpointDTO gatewayEndpointFrom(GatewayRegistration registration);
-
-    /** Broker 列表 RPC 响应的传输模型。 */
-    BrokerEndpointDTO brokerEndpointFrom(BrokerRegistration registration);
 
     default GatewayRegistration gatewayEndpointFrom(
             String gatewayId, String host, int port, String workloadIdentity) {

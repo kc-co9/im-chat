@@ -11,7 +11,7 @@
 3. 业务请求提供稳定操作标识和原始期限。SDK 只在明确的副作用前路由拒绝后刷新状态并定向重试一次；timeout 不自动换节点重放，调用方按自己的幂等协议处理不确定结果。
 4. 解释下行结果时区分 Gateway 接受写入与客户端 ACK。SDK 不负责 Message 重投、会话有效性裁决或 Broker 成员治理。
 
-基础术语和完整消息路径见 [Broker 入口](../README.md#阅读路线)；服务启动与 TLS 配置见 [Server README](../im-broker-server/README.md)。当前普通 SDK 调用仍使用 `BoltInvoker.invoke`，Broker 健康观察由服务端 Adapter 使用 `invokeAuthenticated`；[连接层统一 invoke 设计](../../docs/design-docs/2026-10-20-bolt-unified-invoke-design.md)尚未接入当前生产调用链。
+基础术语和完整消息路径见 [Broker 入口](../README.md#阅读路线)；服务启动与 TLS 配置见 [Server README](../im-broker-server/README.md)。当前全部 SDK 调用使用不可变 `BoltTarget` 与统一 `BoltInvoker.invoke`，认证和资源策略归 [im-bolt](../../im-plugin/im-bolt/README.md)；不提供地址调用兼容入口。当前源码契约不表示生产部署完成。
 
 ## 目录
 
@@ -32,7 +32,9 @@ broker/sdk/
 
 ## 地址发现
 
-`BrokerClient` 构造时通过 Spring `DiscoveryClient` 查询 `ServiceName.IM_BROKER`，把发现到的 `host:port` 列表作为首次调用的 bootstrap 地址。没有可用实例时直接启动失败，不使用写死的 seed address。
+`BrokerClient` 构造时通过 Spring `DiscoveryClient` 查询 `ServiceName.IM_BROKER`，将发现的 `host:port` 与构造参数 `List<BoltTarget> bootstrapTargets` 中的部署可信配对取交集。客户端先校验并复制完整配对，再查询发现地址；原 `BrokerIdentityConfiguration` 包装类型已删除，外部 Java 消费者须同步构造参数并重编译，不提供兼容构造器。每个 BoltTarget 包含 address 与 expectedPeerIdentity；空配对、冲突或无交集失败关闭，不信任 Nacos identity metadata 或首响应自报身份。目标列表会防御性复制，bootstrap 身份必须属于 `PeerIdentityConstants.BROKER_URI_PREFIX` 固定命名空间；后续 committed BrokerNode 以该固定前缀 + brokerId 生成完整目标；观察 ID 不是 brokerId。
+
+`listBrokers` 列表 RPC 及其专用端点类型已移除；仓库内没有生产调用者，仓库外调用者未知，此删除不提供源码、二进制或旧 RPC 兼容。发现刷新统一使用 `refreshClusterState()`，不使用 Gossip 注册观察列表作为权威拓扑。
 
 首次建立调用能力后，`BrokerRefresher` 在应用就绪时及之后每 30 秒调用 `GET_CLUSTER_STATE`，从任意 bootstrap/ACTIVE Broker 获取 Raft 已提交的完整 `BrokerClusterState`。SDK 只原子安装 revision 更高的完整状态；低 revision 被忽略，同 revision 异内容或算法漂移会 fail closed。刷新失败只记录警告并保留最近一次有效状态。
 
@@ -154,3 +156,9 @@ mvn -q -pl im-broker/im-broker-sdk -am test
 只使用本轮成功取得的报告。调用失败、单次认证预算耗尽、年龄过期或 Context 变化均不沿用旧票；不支持的协议为 UNKNOWN，不是不可达证明。只有可归因的传输失败形成 UNHEALTHY，本机预算、认证、协议和队列错误不能计票。多数按完整当前 voter 集合计算，目标自报排除但分母不变。
 
 不传输跨节点 nanoTime。服务端 Adapter 在实际任务 RPC 前采样本机墙钟，以年龄还原观察时刻；不增加报告的连续失败时长。样本累计和单次调用预算用单调时间，最终 freshness 评估仍接受墙钟跳变的误差风险。应用不设整轮耗时上限，单次预算也不保证同步 DNS 或共享连接等待的硬返回期限。冷却、最终同任期 quorum 与 fencing 的分离见 [Architecture](../ARCHITECTURE.md#自动处置的资格与授权顺序)。
+
+### 固定项目角色身份命名空间
+
+项目五角色前缀由 `im-common` 的 `PeerIdentityConstants` 固定：Broker 为 `spiffe://im-chat/broker/`、Gateway 为 `spiffe://im-chat/gateway/`、Message 为 `spiffe://im-chat/message/`、Account 为 `spiffe://im-chat/account/`、Ops 为 `spiffe://im-chat/im-ops/`，不再提供部署覆盖。通用 Plugin 的 `im.bolt.client.allowed-peer-uri-prefixes` 仍可配置，但不能改变 SDK 目标校验或接收方角色授权。
+
+旧项目前缀键及环境占位符不再生效，无兼容别名；Spring 未知属性可能被忽略，不保证启动失败。默认值部署的 wire 身份不变；自定义前缀部署须协调二进制、证书身份、Nacos、环境变量及部署配置迁移，发布或回滚不能只切换键名或二进制，不支持无前提混合版本。各环境必须隔离 CA 与信任材料，生产不得信任测试 CA；固定 URI 不替代认证、成员或业务授权。完整边界见[安全规范](../../docs/SECURITY.md#固定项目角色身份命名空间)与[已批准设计](../../docs/design-docs/2026-10-28-fixed-peer-identity-prefixes-design.md)。

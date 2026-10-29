@@ -7,7 +7,6 @@ import com.co.kc.imchat.broker.sdk.access.BrokerCallerRole;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.support.security.BrokerCallerPrincipal;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
@@ -15,26 +14,25 @@ import static org.assertj.core.api.Assertions.*;
 
 class BrokerObservationIdentityTest {
     private static final String PREFIX = "spiffe://im-chat/broker/";
-    private final BrokerCallerIdentityInterceptor interceptor = new BrokerCallerIdentityInterceptor(
-            Map.of(BrokerCallerRole.BROKER, PREFIX), Set.of(BrokerAdmissionType.BROKER_OBSERVATION));
+    private final BrokerCallerIdentityInterceptor interceptor = new BrokerCallerIdentityInterceptor(Set.of(BrokerAdmissionType.BROKER_OBSERVATION));
 
     @Test
     void trustedNetworkCannotSupplyObservationIdentityEvenWhenExplicitlyAllowlisted() {
-        rejects(new BoltRequestContext("remote", "host", null, false, Set.of()));
+        rejects(new BoltRequestContext("remote", "host", null, false, Set.of(), false));
     }
     @Test
     void legacySubjectAndUnverifiedUriCannotSupplyObservationIdentity() {
-        rejects(new BoltRequestContext("remote", "host", PREFIX + "a", true, Set.of()));
-        rejects(new BoltRequestContext("remote", "host", PREFIX + "a", false, Set.of(PREFIX + "a")));
+        rejects(new BoltRequestContext("remote", "host", PREFIX + "a", true, Set.of(), false));
+        rejects(new BoltRequestContext("remote", "host", PREFIX + "a", false, Set.of(PREFIX + "a"), false));
     }
     @Test
     void multipleBrokerUriIdentitiesRejectBeforeDelegation() {
-        rejects(new BoltRequestContext("remote", "host", PREFIX + "a", true, Set.of(PREFIX + "a", PREFIX + "b")));
+        rejects(new BoltRequestContext("remote", "host", PREFIX + "a", true, Set.of(PREFIX + "a", PREFIX + "b"), false));
     }
     @Test
     void uniqueVerifiedBrokerUriUsesCanonicalSourceRatherThanLegacyIdentity() throws Exception {
         BoltRequestContext context = new BoltRequestContext("remote", "host", "CN=legacy", true,
-                Set.of(PREFIX + "a", "spiffe://other/service"));
+                Set.of(PREFIX + "a", "spiffe://other/service"), false);
         Object principal = interceptor.intercept(BrokerRequestInvocation.initial(
                 BrokerBoltOperation.PROBE_BROKER, new Object(), context), invocation -> invocation.principal());
         assertThat(principal).isEqualTo(new BrokerCallerPrincipal(PREFIX + "a", BrokerCallerRole.BROKER));

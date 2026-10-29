@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.application.frame;
 
+import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
 import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.adapter.gateway.GatewayDispatchAdapter;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
@@ -29,6 +30,7 @@ import com.co.kc.imchat.gateway.ws.sdk.GatewayClient;
 import com.co.kc.imchat.gateway.ws.sdk.model.params.GatewayFrameWriteParams;
 import com.co.kc.imchat.gateway.ws.sdk.model.result.GatewayFrameWriteResult;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.plugin.metrics.support.MetricsCollector;
 import java.time.Duration;
 import java.time.Instant;
@@ -233,7 +235,8 @@ class FrameDispatchAppServiceTest {
         private final List<GatewayFrameWriteParams> requests = new ArrayList<>();
 
         private RecordingGatewayClient() {
-            super(unusedInvoker(), 100);
+            super(unusedInvoker(), 100,
+                    BoltTransportMode.MTLS, java.util.List.of());
         }
 
         @Override
@@ -246,18 +249,18 @@ class FrameDispatchAppServiceTest {
 
         private static BoltInvoker unusedInvoker() {
             return new BoltInvoker() {
-            @Override
-            public <T, R> R invokeAuthenticated(String address, String service, String operation,
-                                               T request, Class<R> responseType, int timeoutMillis,
-                                               String expectedPeerIdentity, String identityPrefix) {
-                throw new AssertionError("ordinary data plane must not request authenticated observation RPC");
-            }
+        private BoltTarget typedTarget;
 
-                @Override
-                public <T, R> R invoke(String address, String service, String operation,
-                                       T request, Class<R> responseType, int timeoutMillis) {
+        @Override
+        public <T, R> R invoke(BoltTarget target, String service, String operation,
+                               T request, Class<R> responseType, int timeoutMillis) {
+            this.typedTarget = target;
+
+            String address = target.address();
+
                     throw new UnsupportedOperationException();
                 }
+
             };
         }
     }

@@ -158,7 +158,8 @@ InMemoryGossipEntryStore entries = new InMemoryGossipEntryStore(
 然后创建同步客户端和同步器：
 
 ```java
-GossipPeerClient peerClient = new GossipPeerClient(boltInvoker);
+BoltRpcClient rpcClient = new BoltRpcClient(boltInvoker, clientPolicy);
+GossipPeerClient peerClient = new GossipPeerClient(rpcClient);
 GossipSynchronizer synchronizer = new GossipSynchronizer(syncStore, peerClient);
 ```
 
@@ -262,3 +263,9 @@ Gossip listener 只应把合法增量交给 Store/应用服务。它不能直接
 ```bash
 mvn -q -pl im-plugin/im-gossip -am test
 ```
+
+## 受控同步目标
+
+`syncPeer(localNodeId, peerTarget, operations, timeoutMillis)` 的 peerTarget 为不可变 `BoltTarget`；digest 与 delta 使用同一地址/完整预期身份，不再接受裸地址。`BoltRpcClient` 复制客户端策略，前缀/模式不由单次请求覆盖；示例的 clientPolicy 来自启用的 im-bolt typed 配置，生命周期由装配方拥有。
+
+成员发现和部署配对仍归接入模块。Broker 将观察 ID、seed 地址与可信配对核对，不能从 Gossip 载荷学习授权身份；入站成员与角色校验不因出站 TLS 成功取消。策略、失败分类与资源限制见 [im-bolt](../im-bolt/README.md)。

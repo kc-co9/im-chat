@@ -24,7 +24,7 @@ class ConnectionCloseHandlerTest {
 
     @Test
     void rejectsCloseWithoutTransportContext() {
-        ConnectionCloseHandler handler = new ConnectionCloseHandler(new ConnectionRegistry(),
+        ConnectionCloseHandler handler = new ConnectionCloseHandler(new ConnectionRegistry(removal -> {}),
                 new ConnectionCloseDeduplicator(
                         10, Duration.ofMinutes(1), System::currentTimeMillis),
                 trustedNetworkAuthorizer());
@@ -35,7 +35,7 @@ class ConnectionCloseHandlerTest {
 
     @Test
     void closesOnlyMatchingVersionConnections() {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         EmbeddedChannel oldConnection = new EmbeddedChannel();
         EmbeddedChannel newConnection = new EmbeddedChannel();
         registry.register(1L, "session-old", "conn-old", oldConnection);
@@ -54,6 +54,72 @@ class ConnectionCloseHandlerTest {
         assertThat(handler.operation()).isEqualTo(GatewayBoltOperation.CLOSE_CONNECTIONS.operation());
         assertThat(oldConnection.isOpen()).isFalse();
         assertThat(newConnection.isOpen()).isTrue();
+    }
+
+    @Test
+    void actualRemovalNotifiesOnceBeforeInactiveAndPreservesSynchronousState() {
+        java.util.List<ConnectionRegistry.Removal> notices = new java.util.ArrayList<>();
+        ConnectionRegistry registry = new ConnectionRegistry(notices::add);
+        EmbeddedChannel channel = new EmbeddedChannel(new io.netty.channel.ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelInactive(io.netty.channel.ChannelHandlerContext context) throws Exception {
+                registry.unregister("conn");
+                super.channelInactive(context);
+            }
+        });
+        try {
+            registry.register(1L, "session", "conn", channel);
+            registry.closeConnections(1L, "session");
+            registry.closeConnections(1L, "session");
+            registry.unregister("conn");
+            assertThat(notices).hasSize(1);
+            assertThat(notices.getFirst().userId()).isEqualTo(1L);
+            assertThat(notices.getFirst().mutation().routeAbsent()).isTrue();
+            assertThat(notices.getFirst().mutation().routeRevision()).isEqualTo(2L);
+            assertThat(registry.activeConnectionIds()).isEmpty();
+            assertThat(registry.activeConnections()).isEmpty();
+        } finally { channel.finishAndReleaseAll(); }
+    }
+
+    @Test
+    void callbackFailureCannotPreventNativeChannelClose() {
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> { throw new IllegalStateException("notification failed"); });
+        EmbeddedChannel channel = new EmbeddedChannel();
+        try {
+            registry.register(1L, "session", "conn", channel);
+            assertThatThrownBy(() -> registry.closeConnections(1L, "session")).hasMessage("notification failed");
+            assertThat(channel.isOpen()).isFalse();
+            assertThat(registry.activeConnectionIds()).isEmpty();
+        } finally { channel.finishAndReleaseAll(); }
+    }
+
+    @Test
+    void survivingSessionPreventsRouteDeleteAndFailedWriteNotifiesOnlyOnce() {
+        java.util.List<ConnectionRegistry.Removal> notices = new java.util.ArrayList<>();
+        ConnectionRegistry registry = new ConnectionRegistry(notices::add);
+        EmbeddedChannel oldSession = new EmbeddedChannel();
+        EmbeddedChannel survivingSession = new EmbeddedChannel(new io.netty.channel.ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(io.netty.channel.ChannelHandlerContext context, Object message, io.netty.channel.ChannelPromise promise) {
+                io.netty.util.ReferenceCountUtil.release(message);
+                promise.setFailure(new java.io.IOException("write failed"));
+            }
+        });
+        try {
+            registry.register(1L, "old", "old", oldSession);
+            registry.register(1L, "new", "new", survivingSession);
+            registry.closeConnections(1L, "old");
+            assertThat(notices).hasSize(1);
+            assertThat(notices.getFirst().mutation().routeAbsent()).isFalse();
+            assertThat(registry.activeConnectionIds()).containsExactly("new");
+            registry.writeFrame(1L, "new", new com.co.kc.imchat.common.model.io.FrameResponse("1",
+                    com.co.kc.imchat.common.model.enums.FrameType.PUSH, "push", "seq", "trace", 0, "OK", java.util.Map.of()));
+            registry.unregister("new");
+            assertThat(notices).hasSize(2);
+            assertThat(notices.getLast().mutation().routeAbsent()).isTrue();
+            assertThat(notices.getLast().mutation().routeRevision()).isEqualTo(4L);
+            assertThat(survivingSession.isOpen()).isFalse();
+        } finally { oldSession.finishAndReleaseAll(); survivingSession.finishAndReleaseAll(); }
     }
 
     @Test
@@ -96,10 +162,10 @@ class ConnectionCloseHandlerTest {
     private GatewayBrokerAuthorizer trustedNetworkAuthorizer() {
         return new GatewayBrokerAuthorizer(() -> {
             throw new AssertionError("trusted network fallback must not load cluster state");
-        }, "spiffe://im-chat/broker/", true);
+        }, true);
     }
 
     private BoltRequestContext requestContext() {
-        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", null, false, Set.of());
+        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", null, false, Set.of(), true);
     }
 }

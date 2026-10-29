@@ -26,7 +26,6 @@ import com.co.kc.imchat.broker.infrastructure.chain.interceptor.GatewayRegistrat
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.GatewayRouteAuthorizationInterceptor;
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.BrokerCallerIdentityInterceptor;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
-import com.co.kc.imchat.broker.sdk.access.BrokerCallerRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
@@ -38,7 +37,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.time.Duration;
-import java.util.Map;
 import java.util.Set;
 
 /** Handler 聚焦测试使用的完整责任链；准入规则本身由各 Interceptor 测试覆盖。 */
@@ -73,8 +71,7 @@ public final class BrokerRequestChainTestSupport {
     public static BoltRequestHandler gatewayChain(GatewayRegistry gatewayRegistry,
                                                               AbstractBrokerRpcHandler<?, ?> handler) {
         List<BrokerRequestInterceptor> interceptors = new ArrayList<>();
-        interceptors.add(new BrokerCallerIdentityInterceptor(Map.of(
-                BrokerCallerRole.GATEWAY, "spiffe://im-chat/gateway/"), Set.of()));
+        interceptors.add(new BrokerCallerIdentityInterceptor(Set.of()));
         interceptors.add(new GatewayRegistrationInterceptor());
         interceptors.add(new GatewayRouteAuthorizationInterceptor(
                 gatewayRegistry, Duration.ofMinutes(1)));

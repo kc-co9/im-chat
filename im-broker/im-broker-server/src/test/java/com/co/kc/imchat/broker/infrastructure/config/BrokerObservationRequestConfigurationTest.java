@@ -13,7 +13,7 @@ import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerHealthReportParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerProbeParams;
 import com.co.kc.imchat.common.utils.JsonUtils;
-import com.co.kc.imchat.plugin.bolt.core.BoltRequestProcessor;
+import com.co.kc.imchat.plugin.bolt.server.BoltRequestProcessor;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequest;
 import com.co.kc.imchat.plugin.bolt.model.BoltResponse;
 import java.util.List;
@@ -23,10 +23,10 @@ import static org.mockito.Mockito.*;
 
 class BrokerObservationRequestConfigurationTest {
     @Test
-    void plaintextStartupWiresBothOperationsButCannotReachApplicationEvenWithFallbackEnabled() {
+    void mtlsProcessorRejectsMissingTransportBeforeObservationApplication() {
         BrokerClusterAppService app = mock(BrokerClusterAppService.class);
         BrokerRoutingProperties routing = new BrokerRoutingProperties();
-        routing.setAllowTrustedNetworkBrokerIdentity(true);
+        routing.setAllowTrustedNetworkBrokerIdentity(false);
         BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
         BrokerRaftProperties raft = new BrokerRaftProperties();
         raft.setNodeId("b");
@@ -34,7 +34,10 @@ class BrokerObservationRequestConfigurationTest {
         BoltRequestProcessor processor = new BrokerRequestConfiguration().brokerBoltRequestProcessor(
                 raft, routing, new RegistryProperties(), adapter, adapter,
                 mock(LocalRoutingLeaseService.class),
-                mock(GatewayRegistry.class), List.of(new BrokerProbeHandler(app), new BrokerHealthReportHandler(app)));
+                mock(GatewayRegistry.class), List.of(new BrokerProbeHandler(app), new BrokerHealthReportHandler(app)),
+                new com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties(),
+                new RegistryGossipConfiguration().brokerGossipSettings(new com.co.kc.imchat.broker.infrastructure.config.properties.ClusterProperties(),
+                        new com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties()));
         for (BrokerBoltOperation operation : List.of(BrokerBoltOperation.PROBE_BROKER, BrokerBoltOperation.FETCH_BROKER_HEALTH_REPORT)) {
             Object params = operation == BrokerBoltOperation.PROBE_BROKER
                     ? new BrokerProbeParams("cluster", "a", "b", 1L, 7L, "nonce")
@@ -43,7 +46,7 @@ class BrokerObservationRequestConfigurationTest {
             BoltResponse response = (BoltResponse) processor.handleRequest(null, new BoltRequest(
                     operation.service().service(), operation.operation(), JsonUtils.toJson(params)));
             assertThat(response.getCode()).isEqualTo("BOLT_HANDLER_ERROR");
-            assertThat(response.getMessage()).contains("verified TLS URI identity");
+            assertThat(response.getMessage()).contains("inbound connection");
         }
         verifyNoInteractions(app);
     }

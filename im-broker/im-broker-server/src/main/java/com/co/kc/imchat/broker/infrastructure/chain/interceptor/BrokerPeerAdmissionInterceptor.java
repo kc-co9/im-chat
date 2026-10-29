@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.infrastructure.chain.interceptor;
 
+import static com.co.kc.imchat.common.constant.PeerIdentityConstants.BROKER_URI_PREFIX;
+
 import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerCluster;
@@ -20,32 +22,35 @@ import com.co.kc.imchat.broker.sdk.model.params.RoutingFenceParams;
 import com.co.kc.imchat.broker.support.security.BrokerCallerPrincipal;
 import com.co.kc.imchat.plugin.gossip.model.param.GossipPeerRequest;
 import java.util.Set;
+import com.co.kc.imchat.broker.model.properties.BrokerGossipSettings;
 import java.util.stream.Collectors;
 
 /** Broker membership、Gossip 与 Lease/Fence 控制入口的 peer 身份边界。 */
 public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterceptor {
     private final String localBrokerId;
-    private final BrokerRaftAdapter stateRepository;
-    private final String identityPrefix;
+    private final BrokerRaftAdapter brokerRaftAdapter;
     private final String clusterId;
+    private final BrokerGossipSettings gossipProperties;
 
-    public BrokerPeerAdmissionInterceptor(String localBrokerId,
-                                       BrokerRaftAdapter stateRepository,
-                                       String identityPrefix, String clusterId) {
+    public BrokerPeerAdmissionInterceptor(
+            String localBrokerId,
+            BrokerRaftAdapter stateRepository,
+            String clusterId,
+            BrokerGossipSettings gossipProperties) {
         if (localBrokerId == null || localBrokerId.isBlank()
-                || stateRepository == null || identityPrefix == null || identityPrefix.isBlank()
-                || clusterId == null || clusterId.isBlank()) {
+                || stateRepository == null
+                || clusterId == null || clusterId.isBlank() || gossipProperties == null) {
             throw new IllegalArgumentException("invalid Broker peer access configuration");
         }
         this.localBrokerId = localBrokerId;
-        this.stateRepository = stateRepository;
-        this.identityPrefix = identityPrefix;
+        this.brokerRaftAdapter = stateRepository;
         this.clusterId = clusterId;
+        this.gossipProperties = gossipProperties;
     }
 
     @Override
     public Object intercept(BrokerRequestInvocation<?> invocation,
-                            BrokerRequestChain chain) throws Exception {
+            BrokerRequestChain chain) throws Exception {
         BrokerAdmissionType profile = invocation.operation().admissionType();
         if (profile == BrokerAdmissionType.BROKER_OBSERVATION) {
             validateObservation(invocation);
@@ -58,7 +63,7 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
         BrokerCallerPrincipal principal = invocation.principal();
         if (principal == null
                 || (principal.callerRole() != BrokerCallerRole.BROKER
-                && principal.callerRole() != BrokerCallerRole.TRUSTED_NETWORK)) {
+                        && principal.callerRole() != BrokerCallerRole.TRUSTED_NETWORK)) {
             throw new SecurityException("Broker peer identity is missing");
         }
         String callerBrokerId = callerBrokerId(principal);
@@ -91,13 +96,14 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
         if (!clusterId.equals(request.clusterId())) {
             throw new SecurityException("Broker observation cluster does not match");
         }
-        BrokerCluster cluster = stateRepository.getClusterSnapshot();
-        if (!request.revision().equals(cluster.revision().value()) || !request.epoch().equals(cluster.epoch().value())) {
+        BrokerCluster cluster = brokerRaftAdapter.getClusterSnapshot();
+        if (!request.revision().equals(cluster.revision().value())
+                || !request.epoch().equals(cluster.epoch().value())) {
             throw new SecurityException("Broker observation context does not match");
         }
-        ConsensusMembership membership = stateRepository.getConsensusMembership();
-        Set<BrokerId> currentVoters = stateRepository.getClusterSnapshot().findConsistentVoters(membership);
-        BrokerCluster currentCluster = stateRepository.getClusterSnapshot();
+        ConsensusMembership membership = brokerRaftAdapter.getConsensusMembership();
+        Set<BrokerId> currentVoters = brokerRaftAdapter.getClusterSnapshot().findConsistentVoters(membership);
+        BrokerCluster currentCluster = brokerRaftAdapter.getClusterSnapshot();
         if (!cluster.revision().equals(currentCluster.revision()) || !cluster.epoch().equals(currentCluster.epoch())) {
             throw new SecurityException("Broker observation context changed during admission");
         }
@@ -117,11 +123,15 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
     }
 
     private void validatePeer(BrokerRequestInvocation<?> invocation, String callerBrokerId) {
+        boolean gossip = invocation.operation() == BrokerBoltOperation.GOSSIP_DIGEST
+                || invocation.operation() == BrokerBoltOperation.GOSSIP_DELTA;
+        if (gossip) {
+            validateGossip(invocation, callerBrokerId);
+            return;
+        }
         String claimedBrokerId;
         if (invocation.request() instanceof BrokerPeerRequest request) {
             claimedBrokerId = request.brokerId();
-        } else if (invocation.request() instanceof GossipPeerRequest request) {
-            claimedBrokerId = request.nodeId();
         } else {
             throw new SecurityException("Broker peer request capability is missing");
         }
@@ -130,6 +140,28 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
         }
         if (invocation.operation() != BrokerBoltOperation.REGISTER_BROKER
                 && !isCommitted(callerBrokerId)) {
+            throw new SecurityException("Broker peer is not a committed member");
+        }
+    }
+
+    private void validateGossip(BrokerRequestInvocation<?> invocation, String callerBrokerId) {
+        if (!(invocation.request() instanceof GossipPeerRequest request)) {
+            throw new SecurityException("Broker Gossip request capability is missing");
+        }
+        BrokerCallerPrincipal principal = invocation.principal();
+        // DEV 只沿已显式准入的 marker/context 放行普通 Gossip，不生成稳定身份或观察票。
+        if (principal.callerRole() == BrokerCallerRole.TRUSTED_NETWORK
+                && invocation.context() != null && invocation.context().developmentPlaintext()
+                && !invocation.context().tlsVerified()) {
+            return;
+        }
+        boolean bound = gossipProperties.trustedPeers().stream()
+                .anyMatch(peer -> peer.observationId().equals(request.nodeId())
+                        && peer.target().expectedPeerIdentity().equals(principal.callerIdentity()));
+        if (!bound) {
+            throw new SecurityException("Broker Gossip observation does not match trusted full identity pair");
+        }
+        if (!isCommitted(callerBrokerId)) {
             throw new SecurityException("Broker peer is not a committed member");
         }
     }
@@ -160,10 +192,10 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
         if (principal.callerRole() == BrokerCallerRole.TRUSTED_NETWORK) {
             return localBrokerId;
         }
-        if (!principal.callerIdentity().startsWith(identityPrefix)) {
+        if (!principal.callerIdentity().startsWith(BROKER_URI_PREFIX)) {
             throw new SecurityException("Broker peer identity prefix does not match");
         }
-        String brokerId = principal.callerIdentity().substring(identityPrefix.length());
+        String brokerId = principal.callerIdentity().substring(BROKER_URI_PREFIX.length());
         if (brokerId.isBlank()) {
             throw new SecurityException("Broker peer identity is incomplete");
         }
@@ -171,7 +203,7 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
     }
 
     private boolean isCommitted(String brokerId) {
-        return stateRepository.getCommittedState().brokers().stream()
+        return brokerRaftAdapter.getCommittedState().brokers().stream()
                 .anyMatch(node -> node.brokerId().equals(brokerId));
     }
 }

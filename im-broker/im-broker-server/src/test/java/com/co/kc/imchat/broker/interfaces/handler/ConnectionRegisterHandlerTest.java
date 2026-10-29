@@ -29,7 +29,7 @@ class ConnectionRegisterHandlerTest {
                         "register-1", System.currentTimeMillis() + 10_000L));
 
         BrokerRequestChainTestSupport.acceptingChain(handler).handle(new BoltRequestContext(
-                "127.0.0.1:12345", "127.0.0.1", "spiffe://im/gateway/gw-1", false, Set.of()),
+                "127.0.0.1:12345", "127.0.0.1", "spiffe://im/gateway/gw-1", false, Set.of(), false),
                 JsonUtils.toJson(params));
 
         assertThat(registry.find(new UserId(1L))).hasSize(1);

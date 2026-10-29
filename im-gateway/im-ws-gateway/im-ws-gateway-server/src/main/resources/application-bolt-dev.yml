@@ -1,0 +1,24 @@
+im:
+  bolt:
+    client:
+      mode: DEVELOPMENT_PLAINTEXT
+      tls:
+        enabled: false
+      development:
+        synthetic-data: ${IM_BOLT_SYNTHETIC_DATA:false}
+        isolated-container-network: ${IM_BOLT_ISOLATED_CONTAINER_NETWORK:false}
+    server:
+      mode: DEVELOPMENT_PLAINTEXT
+      host: ${IM_BOLT_SERVER_HOST:127.0.0.1}
+      tls:
+        enabled: false
+      development:
+        synthetic-data: ${IM_BOLT_SYNTHETIC_DATA:false}
+        isolated-container-network: ${IM_BOLT_ISOLATED_CONTAINER_NETWORK:false}
+  gateway:
+    ws:
+      broker:
+        allow-trusted-network-identity: true
+        bootstrap-targets:
+          - address: ${IM_BROKER_ROUTE_ENDPOINT:127.0.0.1:18020}
+            expected-peer-identity: spiffe://im-chat/broker/${IM_BROKER_NODE_ID:broker-local-1}

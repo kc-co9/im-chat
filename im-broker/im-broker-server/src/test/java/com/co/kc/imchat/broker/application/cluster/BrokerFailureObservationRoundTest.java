@@ -71,7 +71,8 @@ class BrokerFailureObservationRoundTest {
         fixture.nanos.set(Duration.ofSeconds(120).toNanos());
         fixture.app.reconcileFailures().toCompletableFuture().join();
         verify(fixture.adapter, never()).confirmLeadership(any());
-        verifyNoInteractions(fixture.peer);
+        verify(fixture.peer, atLeastOnce()).observationsAllowed();
+        verifyNoMoreInteractions(fixture.peer);
     }
 
     @Test
@@ -84,7 +85,8 @@ class BrokerFailureObservationRoundTest {
         fixture.nanos.set(Duration.ofSeconds(60).toNanos());
         fixture.app.reconcileFailures().toCompletableFuture().join();
         verify(fixture.adapter, never()).confirmLeadership(any());
-        verifyNoInteractions(fixture.peer);
+        verify(fixture.peer, atLeastOnce()).observationsAllowed();
+        verifyNoMoreInteractions(fixture.peer);
     }
 
     @Test
@@ -106,7 +108,8 @@ class BrokerFailureObservationRoundTest {
         fixture.app.reconcileFailures().toCompletableFuture().join();
         fixture.nanos.set(Duration.ofSeconds(121).toNanos() - 1L);
         fixture.app.reconcileFailures().toCompletableFuture().join();
-        verifyNoInteractions(fixture.peer);
+        verify(fixture.peer, atLeastOnce()).observationsAllowed();
+        verifyNoMoreInteractions(fixture.peer);
         verify(fixture.adapter, never()).confirmLeadership(any());
         verify(fixture.policy, never()).evaluate(any(), any(), any(), any());
         fixture.nanos.incrementAndGet();
@@ -122,7 +125,8 @@ class BrokerFailureObservationRoundTest {
         fixture.nanos.set(Duration.ofSeconds(60).toNanos() - 1L);
         fixture.app.reconcileFailures().toCompletableFuture().join();
         verify(fixture.adapter, never()).confirmLeadership(any());
-        verifyNoInteractions(fixture.peer);
+        verify(fixture.peer, atLeastOnce()).observationsAllowed();
+        verifyNoMoreInteractions(fixture.peer);
         verify(fixture.policy, never()).evaluate(any(), any(), any(), any());
     }
 
@@ -183,7 +187,8 @@ class BrokerFailureObservationRoundTest {
                 Set.of(new MembershipEndpoint("a:18120")), Set.of(new MembershipEndpoint("a:18120"))));
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> fixture.app.reconcileFailures().toCompletableFuture().join())
                 .hasCauseInstanceOf(IllegalStateException.class);
-        verifyNoInteractions(fixture.peer);
+        verify(fixture.peer, atLeastOnce()).observationsAllowed();
+        verifyNoMoreInteractions(fixture.peer);
         doReturn(fixture.membership).when(fixture.adapter).getConsensusMembership();
         fixture.app.reconcileFailures().toCompletableFuture().join();
         fixture.nanos.set(Duration.ofSeconds(60).toNanos());
@@ -457,6 +462,8 @@ class BrokerFailureObservationRoundTest {
             when(adapter.confirmLeadership(any())).thenReturn(CompletableFuture.completedFuture(
                     new QuorumRead(new LeaderTerm(1L), new QuorumReadIndex(1L))));
             when(adapter.beginOperation(any())).thenReturn(CompletableFuture.completedFuture(BrokerClusterConsensusResult.rejected("test must not submit")));
+            // 直接依赖仅建模MTLS授权前提；实际mode的正反例见BrokerPeerAdapterTest。
+            when(peer.observationsAllowed()).thenReturn(true);
             when(peer.fetchHealthReport(any(), any(), any(), any(), any())).thenReturn(CompletableFuture.completedFuture(List.of()));
             app = new BrokerClusterAppService(adapter, peer, mock(GatewayRegistry.class), Duration.ofMillis(1), Duration.ofMillis(1),
                     null, Duration.ofSeconds(10), store,

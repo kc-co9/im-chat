@@ -6,13 +6,13 @@
 com.co.kc.thirdparty.sofa:jraft-core:1.4.1-imchat.1
 ```
 
-当前状态是 **新 POM/recipe 待独立代码 Review，未完成当前候选的双构建验收**。历史 capture 已运行，但不是当前候选的重跑证据。固定完整源码归档、checkout-relative 候选补丁及法律文件 SHA 已登记在 `provenance.yml`。归档与 commit 的对应关系来自本地恢复记录，不冒称独立 tag/签名验证。缓存 sources JAR 不作为正式源码输入。
+当前状态是 **已在隔离仓库完成验证，生产采用仍 blocked**。2026-10-29 新 recipe 的 `verify-lock` 双轮实际 exit0：两轮各 99 suite/473 tests、零失败/错误、1 项 reviewed skip，791 项输入及 binary/sources/POM payload 完全一致；build-1 payload 仅安装到隔离仓库 `/tmp/jraft-artifact-m2`，未写默认 Maven 仓库、未发布。`im-plugin/im-raft -am test` 51 项及全仓 full（2422 tests、routing-ha 25 场景）均使用该隔离仓库通过。recipe 整体实现 Review、既有 leader 不稳定回归评估及 Artifact Registry 所有权/发布授权仍未完成。固定完整源码归档、checkout-relative 候选补丁及法律文件 SHA 已登记在 `provenance.yml`。归档来自官方固定 commit 的 HTTPS 下载，全部 951 文件 SHA 与既有清单精确匹配；不冒称独立 tag/签名验证。缓存 sources JAR 不作为正式源码输入。
 
 ## 输入
 
 调用方通过 `JRAFT_SOURCE_ARCHIVE` 提供固定完整上游 tar 归档，通过 `JRAFT_BUILD_OUTPUT` 指定新建或空的绝对路径输出目录。脚本不下载源码、不修改输入归档；使用空 Maven settings，不读取 Registry 凭据，允许 Maven 正常解析依赖。
 
-候选 `applied-membership.patch` 相对于固定 checkout 根目录生成，包含访问器、三个 focused suite、批准的 `NodeTest#testSnapshotSync` 确定性修复及已 Review 的五项 lifecycle 测试补充。它不是 Spike 的 sources-JAR 路径补丁。
+候选 `applied-membership.patch` 相对于固定 checkout 根目录生成，包含访问器、三个 focused suite、批准的 `NodeTest#testSnapshotSync` 确定性修复、`NodeTest#testRemovingLeaderTriggerTimeoutNow` 有界观测修订及已 Review 的五项 lifecycle 测试补充。它不是 Spike 的 sources-JAR 路径补丁。
 
 `LICENSE` 保留上游原文；上游不存在 `NOTICE`，本目录 `NOTICE` 是说明私有修改的本地声明，不冒充上游文件。两者分别进入 binary JAR 和 sources JAR 的 `META-INF/LICENSE`、`META-INF/NOTICE`；既有归档条目若内容不同则拒绝，不能静默覆盖。
 
@@ -25,9 +25,9 @@ JRAFT_BUILD_OUTPUT=/absolute/path/to/new-output \
   ./third-party/jraft-applied-membership/build.sh
 ```
 
-`build.sh` 委托标准库 `build.py`，实现来源准入、串行完整 `verify`、报告检查、归档元数据规范化及两轮输入/payload 比较；历史实际 Maven capture 已运行至输入清单检查；当前修订仅有 fixture 证据，未重跑 capture。默认 `capture-input` 输出保守的隔离仓库 jar/POM 文件清单和比较结果，不生成 accepted manifest。`verify-lock` 还需已 Review 的 `input-lock.json`、固定 SHA 和 `inputInventoryReview=accepted`，必须精确匹配两轮清单，包括不能出现未登记条目；当前无输入锁，故不能通过此模式。清单不是逐项执行追踪，也不证明未来依赖永久固定。
+`build.sh` 委托标准库 `build.py`，实现来源准入、串行完整 `verify`、报告检查、归档元数据规范化及两轮输入/payload 比较；原 capture 绑定修正前 recipe；当前 recipe 已实际完成 verify-lock 双轮。默认 `capture-input` 输出保守的隔离仓库 jar/POM 文件清单和比较结果，不生成 accepted manifest。`verify-lock` 还需已 Review 的 `input-lock.json`、固定 SHA 和 `inputInventoryReview=accepted`，必须精确匹配两轮清单，包括不能出现未登记条目；当前已落地独立 Review 接受的 `input-lock.json` 及固定 SHA，该模式已于 2026-10-29 实际双轮通过；不以 capture 或锁存在冒称通过。清单不是逐项执行追踪，也不证明未来依赖永久固定。
 
-脚本没有 install 或发布命令。消费者编译、实际 dependency tree/单实现检查、项目 integration 和真实 HA 尚未执行；生产发布/解析还需确认 Artifact Registry 所有权和权限。固定 GAV 不变。
+脚本没有 install 或发布命令；隔离安装由验收者从 verify-lock payload 手动完成。消费者编译、项目 integration 和真实 HA 已在隔离仓库下通过，不代表生产可解析；生产发布/解析还需确认 Artifact Registry 所有权和权限。固定 GAV 不变。
 
 ## 允许的源码范围
 
@@ -41,7 +41,7 @@ JRAFT_BUILD_OUTPUT=/absolute/path/to/new-output \
 - `jraft-core/src/main/java/com/alipay/sofa/jraft/storage/impl/LogManagerImpl.java`
 - `jraft-core/src/main/java/com/alipay/sofa/jraft/conf/AppliedConfiguration.java`
 
-也允许经过 Review 的根/module POM、归档可复现配置、法律文件打包配置和以下测试树：`jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationLifecycleTest.java`、`jraft-core/src/test/java/com/alipay/sofa/jraft/storage/impl/AppliedConfigurationSnapshotTest.java`、`jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationClusterTest.java`。不得把补丁类放入 `im-raft`、Broker 或测试 fixture。
+也允许经过 Review 的根/module POM、归档可复现配置、法律文件打包配置和以下测试树：`jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationLifecycleTest.java`、`jraft-core/src/test/java/com/alipay/sofa/jraft/storage/impl/AppliedConfigurationSnapshotTest.java`、`jraft-core/src/test/java/com/alipay/sofa/jraft/core/AppliedConfigurationClusterTest.java`。`NodeTest.java` 仅授权修改 `testSnapshotSync` 与 `testRemovingLeaderTriggerTimeoutNow`，文件路径 allowlist 不授权其他方法；`TestCluster` 和相邻 shutdown 测试保持不变。不得把补丁类放入 `im-raft`、Broker 或测试 fixture。
 
 完整上游测试、真实 FSM queue/lifecycle、joint voters/learners、learner 变化、snapshot save/load/install、lagging follower、失败应用、超时/中断、队列满、重入和有界 stress 都是构建验收的一部分。缺少任何来源或补丁证明时保持失败关闭。
 
@@ -138,4 +138,22 @@ POM 的 `Built-By=${user.name}` 由 recipe 所有 Maven 调用共用的固定参
 
 只读 v4 复查 `/tmp/jraft-raw-audit-v4.log` 完成 771 项输入（247 JAR、524 POM），独立审计 6166 条原始坐标声明；两处 m2e `0.9.9-SNAPSHOT` 均保留。输出仅写入 `/tmp/jraft-input-inventory-v4.json` 与 `/tmp/jraft-raw-model-audit-v4.json`，不是 accepted manifest。前后整个 capture 根目录 4174 个文件原始 SHA 相同，其中 `build-1` 原有全部 4173 个文件不变，另一个是根目录 `toolchain.json`。历史 effective POM 与当前 manifest 的 jar plugin pin 不同，静态复查仍明确拒绝 `PLUGIN_VERSION_MISMATCH: maven-jar-plugin`，不把旧模型当作当前候选证明。patch SHA 保持 `f83c0943a31b2c8e3dd38114c4c388dacec7436b818247e3aa77ba723a5a3b3c`。未运行真实 Maven、capture、install、消费者/运行时构建或提交；当前独立实现 Review、真实双 verify、reviewed lock 及外部模型证据缺口仍未关闭。
 
-独立 reviewer `d74b7d73` 指出仅枚举 `<version>` 节点会漏过缺少该节点的有效模型坐标。最小修订仅对合并模型枚举实际坐标对象：dependencyManagement、build plugin/pluginManagement 及依赖、extensions、reporting plugin 及依赖；对象存在却无版本时由 `fixed_version` 拒绝。直接消费依赖继续使用原有 dependencyManagement 补全规则；可选模型区段不存在不拒绝。原始 POM 审计策略与 profile 移除前的坐标/skip 检查不变，不增加外部 resolver。新增缺版本回归先 RED（43 项、6 failures）再 GREEN（43 项通过），日志为 `/tmp/jraft-raw-audit-missing-red.log`、`/tmp/jraft-raw-audit-missing-green.log`。完整 diff 为 `/tmp/jraft-raw-audit-final.diff`，本次修订 diff 为 `/tmp/jraft-effective-missing.diff`。本轮未再次运行 inventory 或真实 Maven，既有只读清单不是新双构建证明；外部传递有效模型证据和采用阻塞门槛保留，等待同一 reviewer 复核。
+独立 reviewer `d74b7d73` 指出仅枚举 `<version>` 节点会漏过缺少该节点的有效模型坐标。最小修订仅对合并模型枚举实际坐标对象：dependencyManagement、build plugin/pluginManagement 及依赖、extensions、reporting plugin 及依赖；对象存在却无版本时由 `fixed_version` 拒绝；此对象枚举同样覆盖已知保留的 `java9-plus`、`deploy` profile，在移除 profile 之前执行。直接消费依赖继续使用原有 dependencyManagement 补全规则；可选模型区段不存在不拒绝。原始 POM 审计策略与 profile 移除前的坐标/skip 检查不变，不增加外部 resolver。新增缺版本回归先 RED（43 项、6 failures）再 GREEN（43 项通过），日志为 `/tmp/jraft-raw-audit-missing-red.log`、`/tmp/jraft-raw-audit-missing-green.log`。完整 diff 为 `/tmp/jraft-raw-audit-final.diff`，本次修订 diff 为 `/tmp/jraft-effective-missing.diff`。本轮未再次运行 inventory 或真实 Maven，既有只读清单不是新双构建证明；外部传递有效模型证据和采用阻塞门槛保留，等待同一 reviewer 复核。
+
+## 输入证据的四层边界
+
+输入审核区分原始 POM 声明、descriptor 有效模型、物化文件版本/SHA 和实际解析/执行上下文。固定物化路径及双轮字节相等不能证明参与解析的外部模型没有动态版本；外部库自己的 build/reporting 声明也不随 dependency 边自动执行。按 parent、dependency、dependencyManagement、plugin dependency 的角色判断传播边界；无法建立上下文等价的项保持未决，不实现通用 resolver、不增加坐标豁免。
+
+外部模型参与边界保持独立 Review-only，自动化条件是有可靠的原生 Maven descriptor/profile/管理覆盖正反 fixture。`test_known_profile_coordinate_objects_require_versions` 只机械保护已知保留 profile 八类对象的缺版本拒绝与固定版本/空区段允许，不证明外部模型审核完成。取证时注意：当前 `maven-help-plugin:3.5.1` 的 `effective-pom -Dartifact` 会主动解析依赖，不能当纯模型展开；如需原生模型证据，先用隔离缓存 POM 副本及受控环境的 `-f`，明确与原 descriptor 上下文的差异，不能仅凭输出判定原执行行为。
+
+## 2026-10-28 源码恢复与收口过程（历史）
+
+以下为恢复与 capture 过程记录；其中“仍未完成”的双 verify、reviewed lock、verify-lock 及消费者/真实 HA 已由 2026-10-29 实际结果取代，当前状态以本文开头及 `provenance.yml` 为准。
+
+原临时源码和私有制品已不可用。用户要求先保存未来治理简化草案，当前实现仍按既有私有依赖验收；草案在用户提交后再推进，不在本轮切换官方依赖。
+
+本轮从 provenance 的官方固定 commit HTTPS URL 下载，下载 SHA 为 `cb2e047d4fab46312a5dc08dcf28bdb2bb871c81fe033e8a6d2c3aa8f8d99c6b`。去除 codeload 根目录前缀，按文件路径排序，仅写普通文件，uid/gid/mtime 归零，保留文件原字节和 executable flag，生成新 tar SHA `6c43b6b09f480f1371b7ec42800fa22bc18ace419ef21ffbbc9c3a382e594a05`。全部 951 文件清单 SHA 精确匹配既有 `b56c1249ec555869997a72b9d476b02f42dac49d62155fb878dbe77ffcee8feb`，LICENSE 匹配、无上游 NOTICE，原补丁 apply-check 通过。
+
+独立 Reviewer `a51c4707223cdc2aa` 对当前 recipe 给予 capture-input 前 Scoped Accept，对恢复映射给予 Scoped Approved；只授权精确来源更新，不是采用批准。旧 tar SHA `63a95b4cbc7a3384ca22abaa245cb3fd0fb713d5809381ecdac168656e0d6d0d` 作为历史保留，不声称新旧归档字节相同或完成独立签名/tag 验证。恢复证据在本次 job 的 `tmp/jraft-rebuild/download-20261028/`；运行时仍必须显式提供归档和新输出目录，路径不是永久来源保证。
+
+此前 43 项 recipe fixture 已实际通过，不作为当前修订的验证证据。新 `capture-20261029` 第一轮实际 exit1：99 suite/473 项，1 failure、0 errors、2 skipped；唯一失败是 `NodeTest#testRemovingLeaderTriggerTimeoutNow` 在 removePeer 成功闭包后固定等待 100ms，单次 getLeader 返回 null。第二轮未启动，4135 个失败现场文件保持冻结。独立设计 Reviewer `af2108f5c64ed7d60` Approved、必须修改项 none 后，仅将该方法改为在 3 秒 monotonic deadline 内采样非 null 且不同于 oldLeader 的 Node，并保留该次采样对象用于断言；finally 覆盖节点启动及后续流程的 stopAll。本次未运行构建、测试或 fixture，未证明原 100ms SLA 或 TimeoutNow RPC 机制。新源码及精确增量证据位于本次 job 的 `tmp/jraft-rebuild/leader-fix-source-20261029/`，失败 capture 不复用、不改写。仅更新补丁 SHA，固定源码 commit/archive/文件清单、法律 SHA、测试计数和 reviewed skips 不变；新的双 verify、外部模型证据、reviewed lock、verify-lock 及消费者/真实 HA 仍未完成，采用保持 blocked，不自动 install/publish。

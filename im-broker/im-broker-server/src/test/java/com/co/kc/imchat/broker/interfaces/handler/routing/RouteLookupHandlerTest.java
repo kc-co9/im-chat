@@ -76,7 +76,7 @@ class RouteLookupHandlerTest {
     }
 
     private BoltRequestContext requestContext() {
-        return new BoltRequestContext("127.0.0.1:12345", "127.0.0.1", "spiffe://im-chat/broker/broker-a", false, Set.of());
+        return new BoltRequestContext("127.0.0.1:12345", "127.0.0.1", "spiffe://im-chat/broker/broker-a", false, Set.of(), false);
     }
 
 

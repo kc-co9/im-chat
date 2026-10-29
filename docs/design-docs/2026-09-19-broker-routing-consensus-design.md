@@ -112,7 +112,7 @@ Broker 都会恢复本地可投递路由。这会在多实例环境制造重复�
 
 以下内容记录设计获批时的基线，用于解释方案动机，不表示执行计划推进后的当前代码状态：
 
-- `BrokerClient` 从 Nacos 获取 bootstrap 地址，随后通过 `LIST_BROKERS` 刷新地址列表。
+- `BrokerClient` 从 Nacos 获取 bootstrap 地址，随后通过 `LIST_BROKERS` 刷新地址列表（历史基线；该 RPC 已按 2026-10-25 包职责设计 D6 退出，当前以 `refreshClusterState()` → `GET_CLUSTER_STATE` 刷新 committed state 为准）。
 - SDK 的 `HASH`、`ROUND_ROBIN`、`RANDOM` 只决定第一个入口 Broker，不是 `RouteBroker` 选择算法。
 - `BrokerConnectionService` 直接读取 Gossip 投影的 `BrokerRegistry` 并硬编码取模选择 `RouteBroker`。
 - 普通注册、注销、关闭和下行会在入口 Broker 重新计算 `RouteBroker` 并转发。
@@ -652,7 +652,7 @@ Broker Bolt 请求在 JSON 反序列化完成后，进入按 operation 装配的
 
 | Access profile | Operations | 调用身份 |
 |---|---|---|
-| `CLUSTER_READ` | `LIST_BROKERS`、`GET_CLUSTER_STATE` | 配置允许的 Gateway、Message、Account、Broker peer、im-ops 等内部工作负载 |
+| `CLUSTER_READ` | `GET_CLUSTER_STATE` | 配置允许的 Gateway、Message、Account、Broker peer、im-ops 等内部工作负载 |
 | `BROKER_PEER` | `REGISTER_BROKER`、`UNREGISTER_BROKER`、`HEARTBEAT_BROKER`、`GOSSIP_DIGEST`、`GOSSIP_DELTA` | Broker mTLS 身份，并按请求 brokerId/nodeId 绑定 committed/受控加入状态 |
 | `BROKER_CONTROL` | `FENCE_ROUTING_EPOCH`、`PREPARE_ROUTE_LEASE`、`INSTALL_ROUTE_LEASE` | Broker mTLS 身份，并进一步校验 committed member、Leader/voter、operation 与 nonce/term 约束 |
 | `GATEWAY_BOOTSTRAP` | `REGISTER_GATEWAY` | Gateway mTLS 身份；只建立自身 gatewayId 的注册租约 |

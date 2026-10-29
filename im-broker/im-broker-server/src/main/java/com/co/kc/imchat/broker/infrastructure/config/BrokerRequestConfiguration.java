@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.infrastructure.config;
 
+import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
 import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.domain.authority.service.LocalRoutingLeaseService;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
@@ -17,14 +18,16 @@ import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRaftProper
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRoutingProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.RegistryProperties;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
+import com.co.kc.imchat.broker.model.properties.BrokerGossipSettings;
 import com.co.kc.imchat.broker.sdk.access.BrokerAdmissionType;
-import com.co.kc.imchat.broker.sdk.access.BrokerCallerRole;
-import com.co.kc.imchat.plugin.bolt.core.BoltRequestProcessor;
+import com.co.kc.imchat.plugin.bolt.server.BoltRequestProcessor;
+import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
 import com.co.kc.imchat.plugin.bolt.spi.BoltRequestHandler;
+
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -34,7 +37,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class BrokerRequestConfiguration {
 
-    @Bean
+    @Bean(destroyMethod = "")
     public BoltRequestProcessor brokerBoltRequestProcessor(
             BrokerRaftProperties raftProperties,
             BrokerRoutingProperties routingProperties,
@@ -43,7 +46,15 @@ public class BrokerRequestConfiguration {
             BrokerRaftAdapter raftRepository,
             LocalRoutingLeaseService leaseManager,
             GatewayRegistry gatewayRegistry,
-            List<AbstractBrokerRpcHandler<?, ?>> handlers) {
+            List<AbstractBrokerRpcHandler<?, ?>> handlers, ImBoltProperties boltProperties,
+            BrokerGossipSettings gossipProperties) {
+        boolean development = boltProperties.getServer().getMode() == BoltTransportMode.DEVELOPMENT_PLAINTEXT;
+        if (!development &&
+                (routingProperties.isAllowTrustedNetworkGatewayIdentity()
+                        || routingProperties.isAllowTrustedNetworkBrokerIdentity()
+                        || routingProperties.isAllowTrustedNetworkServiceIdentity())) {
+            throw new IllegalArgumentException("Trusted network identity is restricted to explicit Bolt development mode");
+        }
         EnumSet<BrokerAdmissionType> trustedNetworkProfiles =
                 EnumSet.noneOf(BrokerAdmissionType.class);
         if (routingProperties.isAllowTrustedNetworkGatewayIdentity()) {
@@ -60,12 +71,6 @@ public class BrokerRequestConfiguration {
             trustedNetworkProfiles.add(BrokerAdmissionType.SERVICE_DATA_PLANE);
         }
         BrokerCallerIdentityInterceptor workload = new BrokerCallerIdentityInterceptor(
-                Map.of(
-                        BrokerCallerRole.GATEWAY, routingProperties.getGatewayWorkloadIdentityPrefix(),
-                        BrokerCallerRole.BROKER, routingProperties.getBrokerWorkloadIdentityPrefix(),
-                        BrokerCallerRole.MESSAGE, routingProperties.getMessageWorkloadIdentityPrefix(),
-                        BrokerCallerRole.ACCOUNT, routingProperties.getAccountWorkloadIdentityPrefix(),
-                        BrokerCallerRole.OPS, routingProperties.getOpsWorkloadIdentityPrefix()),
                 trustedNetworkProfiles);
         List<BrokerRequestInterceptor> admission = List.of(
                 // 1. 认证调用方，再校验 Gateway/Broker 身份绑定和成员资格。
@@ -74,9 +79,8 @@ public class BrokerRequestConfiguration {
                 new GatewayRouteAuthorizationInterceptor(gatewayRegistry,
                         registryProperties.getGatewayTtl()),
                 new BrokerPeerAdmissionInterceptor(raftProperties.getNodeId(), stateRepository,
-                        routingProperties.getBrokerWorkloadIdentityPrefix(), raftProperties.getClusterId()),
+                        raftProperties.getClusterId(), gossipProperties),
                 new BrokerRouteCallerInterceptor(stateRepository,
-                        routingProperties.getBrokerWorkloadIdentityPrefix(),
                         routingProperties.isAllowTrustedNetworkBrokerIdentity()),
                 // 2. 核对业务调用方角色，随后用 Lease 环绕真实业务执行。
                 new ServiceCallerRoleInterceptor(),
@@ -90,6 +94,6 @@ public class BrokerRequestConfiguration {
             nodes.add(new BrokerHandlerInterceptor(handler));
             entries.add(new BrokerRequestInterceptorChain(nodes));
         }
-        return new BoltRequestProcessor(entries);
+        return new BoltRequestProcessor(entries, boltProperties.getServer());
     }
 }

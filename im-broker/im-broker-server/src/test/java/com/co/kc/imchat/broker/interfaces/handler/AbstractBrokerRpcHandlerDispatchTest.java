@@ -30,7 +30,7 @@ class AbstractBrokerRpcHandlerDispatchTest {
         BoltRequestHandler chain = authenticatedChain(new BrokerCallerPrincipal(
                 "gateway-1", BrokerCallerRole.GATEWAY), handler);
 
-        assertThat(chain.handle(new BoltRequestContext("remote", "host", "gateway-1", false, Set.of()), "\"value\""))
+        assertThat(chain.handle(new BoltRequestContext("remote", "host", "gateway-1", false, Set.of(), false), "\"value\""))
                 .isEqualTo("value");
         assertThatThrownBy(() -> chain.handle(null, "\"value\""))
                 .isInstanceOf(SecurityException.class);
@@ -46,7 +46,7 @@ class AbstractBrokerRpcHandlerDispatchTest {
                 "broker-1", BrokerCallerRole.BROKER), handler);
 
         assertThatThrownBy(() -> chain.handle(
-                new BoltRequestContext("remote", "host", "broker-1", false, Set.of()),
+                new BoltRequestContext("remote", "host", "broker-1", false, Set.of(), false),
                 JsonUtils.toJson(new GatewayRegisterParams("gateway-1", "127.0.0.1", 18012))))
                 .isInstanceOf(SecurityException.class)
                 .hasMessageContaining("gateway caller");

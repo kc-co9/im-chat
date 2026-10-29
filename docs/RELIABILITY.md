@@ -10,7 +10,7 @@
 - 需要客户端确认的通知使用持久化待确认任务和延迟重试；Handler 必须保持幂等。
 - Account Session 状态是认证和撤销权威。Session 替换和登出只在 Account 事务提交后发布 best-effort WebSocket 关闭控制。
 - Nacos 是配置覆盖层。Service 保留本地默认值，并显式报告远端配置缺失。
-- Broker SDK Consumer 启动时至少需要发现一个 Broker。周期性 Broker 快照刷新只有在新结果非空时才替换本地地址；刷新失败保留最后可用快照，不停止 Consumer。
+- Broker SDK Consumer 启动时至少需要一个 Nacos 候选与部署地址/完整 URI 配对交集。周期刷新仅原子安装合法且更新的完整 committed state；刷新失败保留最后有效快照，不停止 Consumer。
 - `ImChatView` 是带过期时间的 Message 领域 Redis 状态，只参与未读判断。缺失或过期按“未查看”处理，不影响持久消息事实。
 - Broker 诊断历史是有界内存观测，重启后有意丢失，不参与路由、Gossip、迁移或持久消息决策。
 - IAM MySQL 是管理身份、浏览器应用、机器 Client、应用级角色、授权和元数据的权威。Audit MySQL 是不可变管理审计事实的唯一权威。普通用户管理仅在 Account Admin Facade 可达时提供，不得回退为直接访问 Account 数据库。
@@ -89,3 +89,15 @@ probe/report 的请求与响应不携带 expireAt/expireAtMs，接收方不按�
 - WebSocket Gateway JMX Metrics 暴露 `im.gateway.connections` 和 `im.gateway.users`。
 
 故障处理、状态权威、重试策略或运行保证变化时必须同步更新本文。
+
+## Bolt 预算与生命周期
+
+全部 SDK/Peer/Gossip 调用采用不可变 typed 目标；连接层认证失败不回退地址池、其他身份或明文。共享创建预算与单 caller 单调结果接受预算分离，短 caller 超时不 cancel 共享 future。序列化前计时，池等待、gate 和解码后重验；迟到不发送新请求、不接受迟到成功。同步 DNS/原生调用可能仍未结束，不能承诺硬返回期限。
+
+初始限制为创建线程 2、队列 16、目标池 64、每目标连接 1、等待 caller 64、在途 RPC 64，创建预算 3s；精确键见 [im-bolt](../im-plugin/im-bolt/README.md#预算失败与资源)。饱和为 LOCAL，不自动淘汰其他活跃目标为新目标腾容量，不作为不可达证据，不据此承诺 TPS 或生产机器规格。后台 reconnect/monitor/heal/warmup 当前禁用，配置开启拒绝；失效后按需重新认证创建。
+
+认证、LOCAL 预算/队列、协议错误不能形成自动故障票，只有明确可归因传输失败才可作为 UNHEALTHY 输入。DEV 许可从实际受控客户端固定，在 probe/report/自动恢复入口拒绝，采样 options 重绑定不能改变授权。
+
+创建执行器和池归 manager/client，未交付候选归失败工厂，Spring 默认装配负责初始化/关闭；外部受控 Bean 归提供方。到期 Channel 持续拒绝新发送，在途直到原生响应、原 RPC 超时或原生失败 terminal 后排空关闭，caller 放弃等待不能提前释放共享资源。关闭与最后完成并发时，拒绝状态保持至物理 closeFuture 完成；不把 native future 已登记误当业务已准入。
+
+D14 沿原生 TLS 读文件：旧 Channel 不随替换换 session，新 Channel 可能读取新材料，不保证 watcher/每次 reload。建议到期前完整原子交付、按旧 → 双信任 → 新叶 → 撤旧 CA 验证并滚动重启；不是 only-restart 门禁或无中断保证。无效材料失败关闭，不复制私钥补固定字节保证；正式证书运维、在线吊销和生产容量不属于本次交付。

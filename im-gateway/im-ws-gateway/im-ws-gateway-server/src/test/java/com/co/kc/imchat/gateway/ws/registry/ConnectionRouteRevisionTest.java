@@ -9,7 +9,7 @@ class ConnectionRouteRevisionTest {
 
     @Test
     void mutationsAndSnapshotsShareOneMonotonicRevision() {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         EmbeddedChannel channel = new EmbeddedChannel();
 
         long registeredRevision = registry.register(
@@ -29,7 +29,7 @@ class ConnectionRouteRevisionTest {
 
     @Test
     void duplicateRemovalDoesNotAdvanceRevision() {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
 
         ConnectionRegistry.RouteMutation missing = registry.unregister("missing");
 
@@ -40,7 +40,7 @@ class ConnectionRouteRevisionTest {
 
     @Test
     void removingOneOfMultipleConnectionsKeepsRoutePresentAtNewRevision() {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         registry.register(101L, "session-1", "connection-1", new EmbeddedChannel());
         registry.register(101L, "session-1", "connection-2", new EmbeddedChannel());
 

@@ -36,8 +36,6 @@ public class BrokerRoutingProperties {
     private Duration snapshotBatchTimeout = Duration.ofSeconds(10);
     /* 已覆盖的注销 tombstone 超期后继续保留的宽限期。 */
     private Duration routeTombstoneGracePeriod = Duration.ofMinutes(2);
-    /* Gateway 工作负载身份前缀；生产环境需与证书发行策略一致。 */
-    private String gatewayWorkloadIdentityPrefix = "spiffe://im-chat/gateway/";
     /* 仅受控本地网络允许无证书 Gateway 身份；生产应保持关闭。 */
     private boolean allowTrustedNetworkGatewayIdentity;
     /* 单个 Broker peer RouteLookup RPC 的超时，所有候选并发执行。 */
@@ -56,33 +54,14 @@ public class BrokerRoutingProperties {
     private Duration drainReconcileInterval = Duration.ofSeconds(1);
     /* 向旧 Broker 发起 drain 路由清理 RPC 的超时。 */
     private Duration drainCleanupRpcTimeout = Duration.ofSeconds(3);
-    /* Broker peer 工作负载身份前缀；需与集群 mTLS 身份一致。 */
-    private String brokerWorkloadIdentityPrefix = "spiffe://im-chat/broker/";
     /* 仅受控本地网络允许无证书 Broker 身份；生产应保持关闭。 */
     private boolean allowTrustedNetworkBrokerIdentity;
-    /* 消息服务请求 Broker 数据面的受信身份前缀。 */
-    private String messageWorkloadIdentityPrefix = "spiffe://im-chat/message/";
-    /* 账户服务请求 Broker 数据面的受信身份前缀。 */
-    private String accountWorkloadIdentityPrefix = "spiffe://im-chat/account/";
-    /* 运维服务请求 Broker 管理数据面的受信身份前缀。 */
-    private String opsWorkloadIdentityPrefix = "spiffe://im-chat/im-ops/";
     /* 仅受控本地网络允许无证书服务身份；生产应保持关闭。 */
     private boolean allowTrustedNetworkServiceIdentity;
 
     public void validate() {
         if (algorithm == null) {
             throw new IllegalArgumentException("algorithm must not be null");
-        }
-        if (gatewayWorkloadIdentityPrefix == null || gatewayWorkloadIdentityPrefix.isBlank()) {
-            throw new IllegalArgumentException("gatewayWorkloadIdentityPrefix must not be blank");
-        }
-        if (brokerWorkloadIdentityPrefix == null || brokerWorkloadIdentityPrefix.isBlank()) {
-            throw new IllegalArgumentException("brokerWorkloadIdentityPrefix must not be blank");
-        }
-        if (messageWorkloadIdentityPrefix == null || messageWorkloadIdentityPrefix.isBlank()
-                || accountWorkloadIdentityPrefix == null || accountWorkloadIdentityPrefix.isBlank()
-                || opsWorkloadIdentityPrefix == null || opsWorkloadIdentityPrefix.isBlank()) {
-            throw new IllegalArgumentException("service workload identity prefixes must not be blank");
         }
         requirePositive(maxLeaseDuration, "maxLeaseDuration");
         requirePositive(renewalInterval, "renewalInterval");

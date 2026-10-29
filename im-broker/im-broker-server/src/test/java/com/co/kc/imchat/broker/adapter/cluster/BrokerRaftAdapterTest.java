@@ -10,6 +10,7 @@ import com.co.kc.imchat.broker.model.cqrs.command.CommitBrokerOperationCommand;
 import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterRaftTransformer;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.plugin.raft.core.RaftRuntime;
+import com.co.kc.imchat.plugin.raft.model.RaftMembership;
 import com.co.kc.imchat.broker.domain.cluster.model.LeaderTerm;
 import com.co.kc.imchat.plugin.raft.model.RaftResult;
 import java.util.Optional;
@@ -92,6 +93,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import com.co.kc.imchat.broker.infrastructure.config.BrokerClusterConfiguration;
 import java.util.concurrent.RejectedExecutionException;
@@ -125,6 +128,92 @@ class BrokerRaftAdapterTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void staleAdapterMembershipReadCanReachRuntimeBoundaryAfterExternalRemoval() throws Exception {
+        String voter = "127.0.0.1:19000";
+        MembershipEndpoint endpoint = new MembershipEndpoint("127.0.0.1:19001");
+        CountDownLatch runtimeEntered = new CountDownLatch(1);
+        CountDownLatch releaseRuntime = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<RaftMembership> membership =
+                new java.util.concurrent.atomic.AtomicReference<>(new RaftMembership(List.of(voter), List.of()));
+        java.util.concurrent.atomic.AtomicInteger additions = new java.util.concurrent.atomic.AtomicInteger();
+        List<String> events = java.util.Collections.synchronizedList(new ArrayList<>());
+        try (MockedConstruction<RaftRuntime> runtimes = Mockito.mockConstruction(
+                RaftRuntime.class, (runtime, context) -> {
+                    when(runtime.nodeId()).thenReturn("broker-a");
+                    when(runtime.membership()).thenAnswer(ignored -> membership.get());
+                    when(runtime.addLearner(endpoint.value())).thenAnswer(ignored -> {
+                        int attempt = additions.incrementAndGet();
+                        events.add("add-" + attempt + "-entered");
+                        if (attempt == 1) {
+                            runtimeEntered.countDown();
+                            if (!releaseRuntime.await(5, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("test release timed out");
+                            }
+                        }
+                        // 仅模拟 Runtime 边界之后的动作，不代表真实 JRaft 接受或提交。
+                        membership.set(new RaftMembership(List.of(voter), List.of(endpoint.value())));
+                        events.add("add-" + attempt + "-applied");
+                        return CompletableFuture.completedFuture(new RaftResult<>(
+                                RaftResult.Status.APPLIED, null, null, null));
+                    });
+                    when(runtime.removeLearner(endpoint.value())).thenAnswer(ignored -> {
+                        assertThat(membership.get().learners()).containsExactly(endpoint.value());
+                        membership.set(new RaftMembership(List.of(voter), List.of()));
+                        events.add("remove-applied");
+                        return CompletableFuture.completedFuture(new RaftResult<>(
+                                RaftResult.Status.APPLIED, null, null, null));
+                    });
+                });
+             BrokerRaftAdapter adapter = createAdapter(properties("broker-a", 19000,
+                     temporaryDirectory.resolve("stale-adapter"), List.of(voter)),
+                     state(0L, 0L, active("broker-a")))) {
+            RaftRuntime runtime = runtimes.constructed().getFirst();
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+            try {
+                java.util.concurrent.Future<BrokerConsensusMembershipResult> stale = executor.submit(
+                        () -> adapter.addLearner(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS));
+                assertThat(runtimeEntered.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(membership.get().learners()).isEmpty();
+                assertThat(stale.isDone()).isFalse();
+
+                assertThat(adapter.addLearner(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
+                        .isEqualTo(BrokerConsensusMembershipResult.Status.APPLIED);
+                assertThat(membership.get().learners()).containsExactly(endpoint.value());
+                assertThat(adapter.addLearner(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
+                        .isEqualTo(BrokerConsensusMembershipResult.Status.DUPLICATE);
+                assertThat(adapter.addLearner(new MembershipEndpoint(voter))
+                        .toCompletableFuture().get(5, TimeUnit.SECONDS).status())
+                        .isEqualTo(BrokerConsensusMembershipResult.Status.REJECTED);
+                verify(runtime, times(2)).addLearner(endpoint.value());
+                verify(runtime, Mockito.never()).addLearner(voter);
+
+                assertThat(adapter.removeMember(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
+                        .isEqualTo(BrokerConsensusMembershipResult.Status.APPLIED);
+                assertThat(membership.get().learners()).isEmpty();
+                assertThat(adapter.removeMember(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
+                        .isEqualTo(BrokerConsensusMembershipResult.Status.DUPLICATE);
+                verify(runtime, times(1)).removeLearner(endpoint.value());
+                assertThat(events).containsExactly("add-1-entered", "add-2-entered",
+                        "add-2-applied", "remove-applied");
+
+                releaseRuntime.countDown();
+                assertThat(stale.get(5, TimeUnit.SECONDS).status())
+                        .isEqualTo(BrokerConsensusMembershipResult.Status.APPLIED);
+                assertThat(membership.get().learners()).containsExactly(endpoint.value());
+                assertThat(events).containsExactly("add-1-entered", "add-2-entered",
+                        "add-2-applied", "remove-applied", "add-1-applied");
+                verify(runtime, times(2)).addLearner(endpoint.value());
+                verify(runtime, times(1)).removeLearner(endpoint.value());
+            } finally {
+                releaseRuntime.countDown();
+                executor.shutdownNow();
+                assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            }
+        }
+    }
 
     @Test
     @SuppressWarnings({"rawtypes", "unchecked"})

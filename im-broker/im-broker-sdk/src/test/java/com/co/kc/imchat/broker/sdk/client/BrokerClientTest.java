@@ -14,6 +14,8 @@ import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
 import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
+import com.co.kc.imchat.plugin.bolt.exception.BoltInvocationException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,6 +38,8 @@ class BrokerClientTest {
         client.unregisterGateway(new GatewayUnregisterParams("gw-1"));
 
         assertThat(invoker.addresses).hasSize(3);
+        assertThat(invoker.targets).hasSize(3);
+        assertThat(invoker.targets).allSatisfy(target -> assertThat(target.expectedPeerIdentity()).isEqualTo("spiffe://im-chat/broker/bootstrap-" + target.address().split(":")[1]));
         assertThat(invoker.addresses).containsOnly(invoker.addresses.get(0));
     }
 
@@ -62,6 +66,7 @@ class BrokerClientTest {
         assertThat(invoker.service).isEqualTo(BrokerBoltService.GATEWAY.service());
         assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.REGISTER_GATEWAY.operation());
         assertThat(invoker.request).isSameAs(command);
+        assertThat(invoker.targets).containsExactly(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/bootstrap-12200"));
     }
 
     @Test
@@ -75,6 +80,7 @@ class BrokerClientTest {
         assertThat(invoker.service).isEqualTo(BrokerBoltService.BROKER.service());
         assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.REGISTER_BROKER.operation());
         assertThat(invoker.request).isSameAs(command);
+        assertThat(invoker.targets).containsExactly(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/bootstrap-12200"));
     }
 
     @Test
@@ -88,6 +94,7 @@ class BrokerClientTest {
         assertThat(invoker.service).isEqualTo(BrokerBoltService.BROKER.service());
         assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.HEARTBEAT_BROKER.operation());
         assertThat(invoker.request).isSameAs(command);
+        assertThat(invoker.targets).containsExactly(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/bootstrap-12200"));
     }
 
     @Test
@@ -101,6 +108,7 @@ class BrokerClientTest {
         assertThat(invoker.service).isEqualTo(BrokerBoltService.BROKER.service());
         assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.UNREGISTER_BROKER.operation());
         assertThat(invoker.request).isSameAs(command);
+        assertThat(invoker.targets).containsExactly(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/bootstrap-12200"));
     }
 
     @Test
@@ -114,6 +122,7 @@ class BrokerClientTest {
         assertThat(invoker.service).isEqualTo(BrokerBoltService.GATEWAY.service());
         assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.UNREGISTER_GATEWAY.operation());
         assertThat(invoker.request).isSameAs(command);
+        assertThat(invoker.targets).containsExactly(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/bootstrap-12200"));
     }
 
     @Test
@@ -127,6 +136,7 @@ class BrokerClientTest {
         assertThat(invoker.service).isEqualTo(BrokerBoltService.GATEWAY.service());
         assertThat(invoker.operation).isEqualTo(BrokerBoltOperation.HEARTBEAT_GATEWAY.operation());
         assertThat(invoker.request).isSameAs(command);
+        assertThat(invoker.targets).containsExactly(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/bootstrap-12200"));
     }
 
     private static BrokerClient client(CapturingBoltInvocation invoker,
@@ -141,29 +151,21 @@ class BrokerClientTest {
                 })
                 .toList();
         return new BrokerClient(invoker, new StaticDiscoveryClient(instances),
-                ServiceName.IM_BROKER, loadBalance, 3000);
+                ServiceName.IM_BROKER, loadBalance, 3000,
+                instances.stream()
+                        .map(instance -> new BoltTarget(instance.getHost() + ":" + instance.getPort(),
+                                "spiffe://im-chat/broker/bootstrap-" + instance.getPort())).toList());
     }
 
     private static class CapturingBoltInvocation implements BoltInvoker {
         @Override
-        public <T, R> R invokeAuthenticated(String address, String service, String operation,
-                                             T request, Class<R> responseType, int timeoutMillis,
-                                             String expectedPeerIdentity, String identityPrefix) {
-            throw new UnsupportedOperationException("ordinary SDK client does not use authenticated peer calls");
-        }
-
-        private String address;
-        private final List<String> addresses = new ArrayList<>();
-        private String service;
-        private String operation;
-        private Object request;
-        private Class<?> responseType;
-        private Object response;
-
-        @Override
         @SuppressWarnings("unchecked")
-        public <T, R> R invoke(String address, String service, String operation, T request,
-                               Class<R> responseType, int timeoutMillis) {
+        public <T, R> R invoke(BoltTarget target, String service, String operation,
+                               T request, Class<R> responseType, int timeoutMillis) {
+            targets.add(target);
+
+            String address = target.address();
+
             this.address = address;
             this.addresses.add(address);
             this.service = service;
@@ -172,6 +174,16 @@ class BrokerClientTest {
             this.responseType = responseType;
             return (R) response;
         }
+
+        private final List<BoltTarget> targets = new ArrayList<>();
+        private String address;
+        private final List<String> addresses = new ArrayList<>();
+        private String service;
+        private String operation;
+        private Object request;
+        private Class<?> responseType;
+        private Object response;
+
     }
 
     private record StaticServiceInstance(String instanceId, String host, int port) implements ServiceInstance {

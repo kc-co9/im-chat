@@ -415,8 +415,9 @@ def validate_effective(payload, manifest):
                        "build/pluginManagement/plugins/plugin/dependencies/dependency",
                        "build/extensions/extension", "reporting/plugins/plugin",
                        "reporting/plugins/plugin/dependencies/dependency"):
-        for coordinate in root.findall(model_path):
-            fixed_version(text(coordinate, "version"))
+        for context in [root, *root.findall("profiles/profile")]:
+            for coordinate in context.findall(model_path):
+                fixed_version(text(coordinate, "version"))
     for name in ("skipTests", "maven.test.skip", "testFailureIgnore", "maven.test.failure.ignore"):
         require(all((n.text or "").strip().lower() not in ("true", "1") for n in root.iter(name)), "TEST_SKIP_OR_IGNORE_FORBIDDEN")
     # 固定 -Pjava9-plus,!deploy；仅接受这两个已知的保留 profile 声明。

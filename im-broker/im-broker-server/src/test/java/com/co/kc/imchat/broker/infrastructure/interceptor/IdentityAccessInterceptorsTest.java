@@ -109,7 +109,7 @@ class IdentityAccessInterceptorsTest {
     @Test
     void brokerDataPlaneBindsClaimedRequesterToCommittedTlsIdentity() throws Exception {
         BrokerRouteCallerInterceptor interceptor = new BrokerRouteCallerInterceptor(
-                repository.asAdapter(), BROKER_PREFIX, false);
+                repository.asAdapter(), false);
         RouteLookupParams params = new RouteLookupParams(
                 "broker-a", 1L, 7L, 2_000L, 1);
         BrokerRequestInvocation<RouteLookupParams> invocation =
@@ -124,7 +124,7 @@ class IdentityAccessInterceptorsTest {
     @Test
     void peerInterceptorBindsGossipNodeButTreatsLeaseHolderAsLocalTarget() throws Exception {
         BrokerPeerAdmissionInterceptor interceptor = new BrokerPeerAdmissionInterceptor(
-                "broker-b", repository.asAdapter(), BROKER_PREFIX, "cluster");
+                "broker-b", repository.asAdapter(), "cluster", gossipProperties());
         BrokerRequestInvocation<GossipDigestParams> gossip =
                 BrokerRequestInvocation.initial(BrokerBoltOperation.GOSSIP_DIGEST,
                         new GossipDigestParams("broker-a", List.of()), null)
@@ -148,7 +148,7 @@ class IdentityAccessInterceptorsTest {
     @Test
     void controlInterceptorRejectsUnknownRequestType() {
         BrokerPeerAdmissionInterceptor interceptor = new BrokerPeerAdmissionInterceptor(
-                "broker-b", repository.asAdapter(), BROKER_PREFIX, "cluster");
+                "broker-b", repository.asAdapter(), "cluster", gossipProperties());
         BrokerRequestInvocation<Object> invocation = BrokerRequestInvocation.initial(
                         BrokerBoltOperation.FETCH_QUORUM_READ_INDEX, new Object(), null)
                 .withPrincipal(new BrokerCallerPrincipal(
@@ -173,17 +173,105 @@ class IdentityAccessInterceptorsTest {
                 request -> "ok")).doesNotThrowAnyException();
     }
 
+    @Test
+    void ordinaryAdmissionNeverTrustsLegacySubjectOrUnverifiedIdentity() {
+        BrokerCallerIdentityInterceptor interceptor = workloadInterceptor();
+        for (BoltRequestContext transport : List.of(
+                new BoltRequestContext("remote", "127.0.0.1", GATEWAY_PREFIX + "forged", false, Set.of(), false),
+                new BoltRequestContext("remote", "127.0.0.1", GATEWAY_PREFIX + "forged", true, Set.of(), false),
+                new BoltRequestContext("remote", "127.0.0.1", GATEWAY_PREFIX + "a", true, Set.of(GATEWAY_PREFIX + "a", GATEWAY_PREFIX + "b"), false))) {
+            assertThatThrownBy(() -> interceptor.intercept(BrokerRequestInvocation.initial(BrokerBoltOperation.HEARTBEAT_GATEWAY,
+                    new GatewayHeartbeatParams("gw"), transport), request -> "unexpected"))
+                    .isInstanceOf(SecurityException.class);
+        }
+    }
+
+    @Test
+    void explicitDevelopmentMarkerAllowsOrdinaryRegistrationButNeverObservation() throws Exception {
+        BrokerCallerIdentityInterceptor interceptor = new BrokerCallerIdentityInterceptor(
+                Set.of(com.co.kc.imchat.broker.sdk.access.BrokerAdmissionType.BROKER_PEER,
+                        com.co.kc.imchat.broker.sdk.access.BrokerAdmissionType.BROKER_OBSERVATION));
+        BoltRequestContext development = new BoltRequestContext("127.0.0.1:1", "127.0.0.1", null, false, Set.of(), true);
+        Object principal = interceptor.intercept(BrokerRequestInvocation.initial(BrokerBoltOperation.REGISTER_BROKER,
+                new Object(), development), request -> request.principal());
+        assertThat(((BrokerCallerPrincipal) principal).callerRole()).isEqualTo(BrokerCallerRole.TRUSTED_NETWORK);
+        for (BrokerBoltOperation operation : List.of(BrokerBoltOperation.PROBE_BROKER, BrokerBoltOperation.FETCH_BROKER_HEALTH_REPORT)) {
+            assertThatThrownBy(() -> interceptor.intercept(BrokerRequestInvocation.initial(operation, new Object(), development), request -> "unexpected"))
+                    .isInstanceOf(SecurityException.class).hasMessageContaining("observation");
+        }
+        assertThatThrownBy(() -> interceptor.intercept(BrokerRequestInvocation.initial(BrokerBoltOperation.REGISTER_BROKER,
+                new Object(), new BoltRequestContext("remote", "127.0.0.1", null, false, Set.of(), false)), request -> "unexpected"))
+                .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    void gossipMappingNeverAuthorizesOrdinaryPeerObservationId() {
+        BrokerPeerAdmissionInterceptor interceptor = new BrokerPeerAdmissionInterceptor(
+                "broker-b", repository.asAdapter(), "cluster", gossipProperties());
+        BrokerRequestInvocation<com.co.kc.imchat.broker.sdk.model.params.BrokerRegisterParams> ordinary =
+                BrokerRequestInvocation.initial(BrokerBoltOperation.REGISTER_BROKER,
+                        new com.co.kc.imchat.broker.sdk.model.params.BrokerRegisterParams("observation-a", "a", 18020), null)
+                        .withPrincipal(new BrokerCallerPrincipal(BROKER_PREFIX + "broker-a", BrokerCallerRole.BROKER));
+        assertThatThrownBy(() -> interceptor.intercept(ordinary, request -> "unexpected"))
+                .isInstanceOf(SecurityException.class).hasMessageContaining("does not match request");
+    }
+
+    @Test
+    void developmentGossipRequiresExplicitTransportMarkerAndNeverAuthorizesObservation() throws Exception {
+        BrokerCallerIdentityInterceptor identity = new BrokerCallerIdentityInterceptor(
+                Set.of(com.co.kc.imchat.broker.sdk.access.BrokerAdmissionType.BROKER_PEER));
+        BrokerPeerAdmissionInterceptor admission = new BrokerPeerAdmissionInterceptor(
+                "broker-b", repository.asAdapter(), "cluster", gossipProperties());
+        BoltRequestContext development = new BoltRequestContext("127.0.0.1:1", "127.0.0.1", null, false, Set.of(), true);
+        BrokerRequestInvocation<GossipDigestParams> invocation = BrokerRequestInvocation.initial(
+                BrokerBoltOperation.GOSSIP_DIGEST, new GossipDigestParams("development-observation", List.of()), development);
+        assertThat(identity.intercept(invocation, authenticated -> admission.intercept(authenticated, request -> "ok")))
+                .isEqualTo("ok");
+        assertThatThrownBy(() -> admission.intercept(BrokerRequestInvocation.initial(BrokerBoltOperation.GOSSIP_DIGEST,
+                        new GossipDigestParams("development-observation", List.of()), null)
+                        .withPrincipal(new BrokerCallerPrincipal("trusted-network://127.0.0.1", BrokerCallerRole.TRUSTED_NETWORK)),
+                request -> "unexpected")).isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> identity.intercept(BrokerRequestInvocation.initial(BrokerBoltOperation.PROBE_BROKER,
+                new Object(), development), request -> "unexpected")).isInstanceOf(SecurityException.class);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "BROKER, spiffe://im-chat/broker/node",
+            "GATEWAY, spiffe://im-chat/gateway/node",
+            "MESSAGE, spiffe://im-chat/message/node",
+            "ACCOUNT, spiffe://im-chat/account/node",
+            "OPS, spiffe://im-chat/im-ops/node"
+    })
+    void fixedRoleNamespaceResolvesCanonicalRole(BrokerCallerRole role, String identity) throws Exception {
+        Object principal = workloadInterceptor().intercept(BrokerRequestInvocation.initial(
+                BrokerBoltOperation.GET_CLUSTER_STATE, new Object(), context(identity)), request -> request.principal());
+        assertThat(principal).isEqualTo(new BrokerCallerPrincipal(identity, role));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "spiffe://custom/broker/node", "spiffe://custom/gateway/node",
+            "spiffe://custom/message/node", "spiffe://custom/account/node", "spiffe://custom/im-ops/node"
+    })
+    void customRoleNamespaceCannotAuthorizeClusterRead(String identity) {
+        assertThatThrownBy(() -> workloadInterceptor().intercept(BrokerRequestInvocation.initial(
+                BrokerBoltOperation.GET_CLUSTER_STATE, new Object(), context(identity)), request -> "unexpected"))
+                .isInstanceOf(SecurityException.class).hasMessageContaining("unique allowed leaf URI identity");
+    }
+
+    private com.co.kc.imchat.broker.model.properties.BrokerGossipSettings gossipProperties() {
+        return new com.co.kc.imchat.broker.model.properties.BrokerGossipSettings("local", "local:18020", List.of(),
+                List.of(new com.co.kc.imchat.broker.model.properties.BrokerGossipSettings.PeerBinding("broker-a",
+                        new com.co.kc.imchat.plugin.bolt.model.BoltTarget("127.0.0.1:18020", BROKER_PREFIX + "broker-a"))), 1, Duration.ofSeconds(3));
+    }
+
     private BrokerCallerIdentityInterceptor workloadInterceptor() {
-        return new BrokerCallerIdentityInterceptor(Map.of(
-                BrokerCallerRole.GATEWAY, GATEWAY_PREFIX,
-                BrokerCallerRole.BROKER, BROKER_PREFIX,
-                BrokerCallerRole.MESSAGE, "spiffe://im-chat/message/",
-                BrokerCallerRole.ACCOUNT, "spiffe://im-chat/account/",
-                BrokerCallerRole.OPS, "spiffe://im-chat/im-ops/"), Set.of());
+        return new BrokerCallerIdentityInterceptor(Set.of());
     }
 
     private BoltRequestContext context(String identity) {
-        return new BoltRequestContext("remote", "127.0.0.1", identity, false, Set.of());
+        return new BoltRequestContext("remote", "127.0.0.1", identity, true, Set.of(identity), false);
     }
 
     private static BrokerClusterState state() {

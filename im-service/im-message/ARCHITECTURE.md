@@ -70,7 +70,7 @@ flowchart TD
 - Gateway 建立可信用户上下文，Message 不信任外部伪造身份。
 - Social Facade 提供好友、群和成员投影；Message 不访问 Social 表。
 - Social 好友提交后的 `preparePrivateChat` 是一次 RPC、一个 Message 事务的双侧会话准备；按 canonical user pair 有界加锁，任一侧已存在时只补缺失侧，避免跨服务串行两次调用形成单侧事实。
-- Broker 只负责在线路由；Message 拥有 ReceiptTask、ACK 业务动作和重投策略。
+- Broker 只负责在线路由；Message 拥有 ReceiptTask、ACK 业务动作和重投策略。Message 出站经 Broker SDK 以部署 bootstrap 配对与 Nacos 候选交集建立可信调用，后续按 committed state 生成不可变 BoltTarget；受控连接认证归 im-bolt，不进入消息领域，也不改变提交后通知或重投语义。
 - `ImChatView` 属于 Message，不放入 Account Session、Gateway 或 Broker。
 
 ## 依赖规则

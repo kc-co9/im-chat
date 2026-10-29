@@ -352,6 +352,9 @@ public final class BrokerClusterAppService {
      * 不代表故障摘流成功或所有 Gateway 路由重建完成，后续调度可继续恢复
      */
     public CompletionStage<Void> reconcileFailures() {
+        if (!brokerPeerAdapter.observationsAllowed()) {
+            return CompletableFuture.failedFuture(new SecurityException("Automatic failure removal requires authenticated transport"));
+        }
         // 1. 非阻塞取得轮次锁；在途轮次实际完成前不启动新一轮。
         if (!observationLock.tryLock()) {
             return CompletableFuture.completedFuture(null);

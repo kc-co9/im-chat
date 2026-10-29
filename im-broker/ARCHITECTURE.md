@@ -498,7 +498,7 @@ flowchart TD
 
 ### 健康报告的时间与传输边界
 
-`getHealthReport` 返回本机报告；`BrokerPeerAdapter.fetchHealthReport` 接收目标、clusterId、revision、epoch、brokerIds 五项领域事实，在执行器任务内构造 SDK Params、caller 与 nonce。调用 `invokeAuthenticated` 前采样一次 `requestAt = Instant.now()`，全部行都按该起点减去年龄还原，不把网络耗时加到连续失败时长。实际观察者取已认证目标，客户端校验行数量、重复、目标范围与状态/时长，不比较响应上下文回显；这依赖对端按请求生成报告，不代表 TLS 验证业务内容。
+`getHealthReport` 返回本机报告；`BrokerPeerAdapter.fetchHealthReport` 接收目标、clusterId、revision、epoch、brokerIds 五项领域事实，在执行器任务内构造 SDK Params、caller 与 nonce。调用统一 typed `invoke` 前采样一次 `requestAt = Instant.now()`，全部行都按该起点减去年龄还原，不把网络耗时加到连续失败时长。实际观察者取已认证目标，客户端校验行数量、重复、目标范围与状态/时长，不比较响应上下文回显；这依赖对端按请求生成报告，不代表 TLS 验证业务内容。
 
 本机快照读取处采样墙钟和单调时间；汇合及最终重验后采样一次 `evaluatedAt = Instant.now()` 供所有目标判断。样本窗口、冷却和单次认证预算用单调时间，报告年龄在本机墙钟上评估。正常墙钟下传输和等待消耗 freshness；当前接受墙钟回拨延长有效性、前跳提前过期和独立采样间年龄高估/低估，不宣称消除轮内墙钟跳变。
 
@@ -530,7 +530,7 @@ sequenceDiagram
 ```
 
 - 本地注册、心跳、注销和快照变化先写入 `BrokerGossipAdapter`，由 Adapter 为实体生成带版本的 `GossipDeltaEntry`。Broker、Gateway 和 Connection 使用不同的实体类型和 key，不共享业务字段。
-- `BrokerGossipScheduler` 每轮完成后等待 5 秒再执行；优先使用本机已知 Broker，没有已知 peer 时使用静态 seed。每轮只按 `gossipFanout` 选择部分 peer，通过同步调用 `GossipSynchronizer.syncPeer` 串行同步；单个 peer 超时或失败不终止后续 peer 的同步。
+- `BrokerGossipScheduler` 每轮完成后等待 5 秒再执行；优先使用本机已知 Broker，没有已知 peer 时使用静态 seed。每轮只按 `gossipFanout` 选择部分 peer，通过同步调用 `GossipSynchronizer.syncPeer` 串行同步；单个 peer 普通运行失败记录后继续，AUTHENTICATION 失败重抛并终止本轮；发现或 seed 无可信配对时在发送前拒绝，不改走普通连接。
 - 同步顺序是 `digest -> keysNewerThan/keysOlderThan -> deltas -> merge`。双方先交换摘要，再只传递缺失或版本较新的条目；接收端按版本合并，旧版本不能覆盖新版本。
 - `REGISTERED` 条目合并后投影到本地 Broker/Gateway Registry；远端 Connection 只保留在 Gossip 视图，不写入当前 Broker 的业务 ConnectionRegistry，避免远端观察状态绕过 RouteBroker 所有权。
 - 注销不会立即删除 key，而是写入 `REMOVED` tombstone 并保留配置的 removed TTL。墓碑传播完成前，离线节点带回的旧 `REGISTERED` 条目不能复活已删除实体；TTL 到期后才允许清理历史删除证据。
@@ -742,7 +742,7 @@ sequenceDiagram
 
 对端 fetchQuorumReadIndex 可查询任意 Broker，不要求 learner 资格。响应 nodeId 必须匹配目标且 quorumReadIndex 非负；协议不携带集群标识。结果是已取得且本机已应用的 quorum ReadIndex，不保证为最新 applied index；节点协议版本必须匹配。
 
-当前普通 Peer RPC 使用 `BoltInvoker.invoke`；probe/report 使用 `invokeAuthenticated`，在同一池内连接验证真实 TLS 与唯一 Broker URI SAN。二者尚未统一为连接层认证入口；[连接层统一 invoke 设计](../docs/design-docs/2026-10-20-bolt-unified-invoke-design.md)是后续方案，不能视为当前实现或已部署能力。
+全部 Peer RPC、probe/report、SDK 引导/刷新和 Gossip digest/delta 使用 `BoltTarget` 与统一 `BoltInvoker.invoke`。连接层由 im-bolt 受控装配执行真实 TLS、严格叶 URI 和 D10 有效区间检查；模式从实际 running client 固定，并核对 Invoker 同源。自动观察许可在 Adapter 构造时固定，不从可重绑定采样 options 推导；DEV 在 probe/report/reconcileFailures 的恢复或集群读取前拒绝。当前源码不等于已生产部署，验收状态仍归计划。
 
 业务 Peer RPC 由 BrokerPeerAdapter 直接使用 BoltInvoker，与 JRaft 原生通信分离。fence 接收目标 BrokerNode 与 RoutingEpochFence，返回领域 FenceAck。配置层拥有有界 peerExecutor 及关闭职责；任务拒绝返回失败阶段，不在调用线程执行 RPC。
 
@@ -855,3 +855,15 @@ RaftBrokerClusterStateMachine 实现类型化 RaftStateHandler，接收已解码
 日志命令与快照均使用 v2，只接受版本 2，明确拒绝 v1 及其他不支持的格式版本，不提供字段别名、旧格式兼容或混合格式重放。不兼容的数据目录必须停止节点并保全原目录后，显式换用新目录；程序不自动迁移或删除数据，任何数据删除须另行确认。有业务状态的目录必须保全恢复与审计证据，不能直接删除。
 
 support.raft 是 Broker 专属技术接入边界，仅包含 codec、model、statemachine 三个精确职责包，不包含后代包。它们依赖领域、命令、结果、转换器和 Raft SPI，不依赖应用编排、入口、运行配置/生命周期、Runtime 或网络 client；domain 不反向依赖 support.raft。
+
+## Bolt 目标与入站授权
+
+Gossip Scheduler 固定部署 `observationId → BoltTarget` 配对，已知观察或 seed 只有同时匹配地址/观察 ID/完整 Broker URI 才可发送；观察 ID 不等于稳定 Raft brokerId，Registry/Gossip 不能生成授权。Peer 控制调用从可信 committed 节点与固定 namespace 生成目标，传输错误分类仍由观察用例决定是否计票。
+
+MTLS 入站只接受握手成功后的严格叶 URI，不回退 Subject 或首 URI；Processor 对当前 session local/peer 非空 X.509 全数组执行 D10 额外有效区间检查，不称实际 CertPath。后续责任链继续检查成员、角色、scope/audience、Gateway 租约和 Lease/fence。
+
+DEV 下行的 `im.broker.gateway-push.bolt.development-targets` 只把经过 endpoint/marker 核对的地址配为合法 Gateway URI，作为 pool/routing descriptor；不覆盖 Registry principalId、DTO/Gossip 身份，不改变原租约授权。MTLS 不读取此配对作认证目标，也不因失败改走 DEV。配置与 D14 材料边界见 [Server README](im-broker-server/README.md)及 [im-bolt](../im-plugin/im-bolt/README.md)。
+
+### Gossip 共享启动参数
+
+`model.properties.BrokerGossipSettings` 是配置装配创建的不可变运行参数，不直接绑定 YAML。Scheduler 与入站准入共享同一启动快照；观察 ID、地址、完整证书 URI 的配对不从 Registry 学习，领域不依赖该技术参数。放在既有 model.properties 类型职责包，避免 interfaces 反向依赖 infrastructure；绑定源仍归 infrastructure.config.properties。

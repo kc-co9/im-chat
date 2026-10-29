@@ -70,6 +70,8 @@ class BrokerFailureObservationStateTest {
         when(adapter.getConsensusMembership()).thenReturn(membership);
         when(adapter.confirmLeadership(any())).thenAnswer(ignored -> CompletableFuture.completedFuture(
                 new QuorumRead(new LeaderTerm(term.get()), new QuorumReadIndex(1L))));
+        // 直接依赖仅建模MTLS授权前提；实际mode的正反例见BrokerPeerAdapterTest。
+        when(peer.observationsAllowed()).thenReturn(true);
         when(peer.fetchHealthReport(any(), any(), any(), any(), any())).thenReturn(CompletableFuture.completedFuture(List.of()));
         app = new BrokerClusterAppService(adapter, peer, null, Duration.ofMillis(1), Duration.ofMillis(1), null,
                 Duration.ofSeconds(10),

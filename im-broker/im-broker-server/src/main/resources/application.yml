@@ -43,8 +43,18 @@ im:
   bolt:
     client:
       enabled: true
+      mode: MTLS
+      tls:
+        enabled: true
+      allowed-peer-uri-prefixes:
+        - spiffe://im-chat/broker/
+        - spiffe://im-chat/gateway/
     server:
       enabled: true
+      mode: MTLS
+      tls:
+        enabled: true
+        need-client-auth: true
       port: 18020
   broker:
     management:
@@ -59,6 +69,7 @@ im:
       port: ${im.bolt.server.port}
     cluster:
       seed-addresses: []
+      trusted-peers: [] # observation-id与target(address/expected-peer-identity)部署可信配对
       gossip-fanout: 2
       gossip-timeout-ms: 3000
       gossip-removed-ttl-ms: 300000
@@ -95,8 +106,7 @@ im:
       max-pending-snapshot-bytes: 67108864
       snapshot-batch-timeout: 10s
       route-tombstone-grace-period: 2m
-      gateway-workload-identity-prefix: spiffe://im-chat/gateway/
-      allow-trusted-network-gateway-identity: ${IM_BROKER_ALLOW_TRUSTED_NETWORK_GATEWAY_IDENTITY:true}
+      allow-trusted-network-gateway-identity: ${IM_BROKER_ALLOW_TRUSTED_NETWORK_GATEWAY_IDENTITY:false}
       route-lookup-timeout: 300ms
       route-lookup-negative-cache: 50ms
       route-lookup-negative-cache-capacity: 1024
@@ -105,12 +115,8 @@ im:
       drain-operation-timeout: 2m
       drain-reconcile-interval: 1s
       drain-cleanup-rpc-timeout: 3s
-      broker-workload-identity-prefix: spiffe://im-chat/broker/
-      allow-trusted-network-broker-identity: ${IM_BROKER_ALLOW_TRUSTED_NETWORK_BROKER_IDENTITY:true}
-      message-workload-identity-prefix: spiffe://im-chat/message/
-      account-workload-identity-prefix: spiffe://im-chat/account/
-      ops-workload-identity-prefix: spiffe://im-chat/im-ops/
-      allow-trusted-network-service-identity: ${IM_BROKER_ALLOW_TRUSTED_NETWORK_SERVICE_IDENTITY:true}
+      allow-trusted-network-broker-identity: ${IM_BROKER_ALLOW_TRUSTED_NETWORK_BROKER_IDENTITY:false}
+      allow-trusted-network-service-identity: ${IM_BROKER_ALLOW_TRUSTED_NETWORK_SERVICE_IDENTITY:false}
     registry:
       gateway-ttl: 60s
     gateway-push:

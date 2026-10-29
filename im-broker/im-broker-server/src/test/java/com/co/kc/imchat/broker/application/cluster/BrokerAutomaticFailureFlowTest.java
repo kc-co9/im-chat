@@ -83,6 +83,8 @@ class BrokerAutomaticFailureFlowTest {
         when(fixture.adapter.getLocalBroker().getLeaderTerm()).thenReturn(Optional.of(new LeaderTerm(1L)));
         when(fixture.adapter.getClusterId()).thenReturn(new BrokerClusterId("cluster-a"));
         BrokerPeerAdapter peer = fixture.peerAdapter;
+        // 本用例替换MTLS对端；真实状态机、Begin/fence/epoch/Lease/recovery仍由原断言验证。
+        when(peer.observationsAllowed()).thenReturn(true);
         BrokerHealthObservationTracker store = new BrokerHealthObservationTracker(new BrokerId("a"), Duration.ofSeconds(10));
         ScheduledExecutorService quarantine = mock(ScheduledExecutorService.class);
         doAnswer(call -> { call.getArgument(0, Runnable.class).run(); return null; })

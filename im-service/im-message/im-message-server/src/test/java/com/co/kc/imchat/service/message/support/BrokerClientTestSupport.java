@@ -16,6 +16,7 @@ import org.springframework.cloud.client.discovery.DiscoveryClient;
 
 import java.net.URI;
 import java.util.List;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import java.util.Map;
 
 public final class BrokerClientTestSupport {
@@ -24,29 +25,22 @@ public final class BrokerClientTestSupport {
 
     public static BrokerClient client(BoltInvoker invoker) {
         return new BrokerClient(routingInvoker(invoker), discovery(), ServiceName.IM_BROKER,
-                BrokerLoadBalance.HASH, 3000);
+                BrokerLoadBalance.HASH, 3000,
+                List.of(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/broker-test")));
     }
 
     private static BoltInvoker routingInvoker(BoltInvoker delegate) {
         return new BoltInvoker() {
             @Override
-            public <T, R> R invokeAuthenticated(String address, String service, String operation, T request,
-                                                Class<R> responseType, int timeoutMillis,
-                                                String expectedPeerIdentity, String identityPrefix) {
-                throw new UnsupportedOperationException("authenticated invocation is not used by this fixture");
-            }
-
-            @Override
             @SuppressWarnings("unchecked")
-            public <T, R> R invoke(String address, String service, String operation, T request,
-                                   Class<R> responseType, int timeoutMillis) {
-                if ("getClusterState".equals(operation)) {
-                    return (R) state();
-                }
-                BrokerFrameWriteResult result = delegate.invoke(address, service, operation,
+            public <T, R> R invoke(BoltTarget target, String service, String operation,
+                                   T request, Class<R> responseType, int timeoutMillis) {
+                if ("getClusterState".equals(operation)) { return (R) state(); }
+                BrokerFrameWriteResult result = delegate.invoke(target, service, operation,
                         request, BrokerFrameWriteResult.class, timeoutMillis);
                 return (R) RouteBrokerResult.executed(1L, result);
             }
+
         };
     }
 

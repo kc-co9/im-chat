@@ -1,10 +1,36 @@
 # Design Documents
 
+- [Bolt 包职责与 Broker Gossip 运行参数归位](2026-10-25-bolt-package-boundaries-design.md)：原包迁移设计用户批准、独立设计 Review Approved；Review 追加 D6 删除无生产调用者的 Broker 列表 RPC 已获用户批准、独立设计 Review a61ffe608a987aada Approved，无必须修改项；实施、完整验收与独立 Review 已完成，详见[已归档计划](../exec-plans/completed/2026-10-25-bolt-package-boundaries.md)。
+
 设计文档记录背景、备选方案、决策和后果，解释系统为什么采用当前形态；执行状态属于 `docs/exec-plans`。新设计遵循[技术设计文档规范](../references/DESIGN_DOC_GUIDE.md)并从[设计模板](TEMPLATE.md)开始。通过 `grill`、brainstorming 或其他访谈确认的选择必须写入“决策记录”，记录完整语义和影响，不能只保留 A/B/C 字母或依赖聊天历史。
 
 命中[技术设计文档规范](../references/DESIGN_DOC_GUIDE.md)触发条件的工作，应先完成设计批准和独立 Review，再创建 execution plan 或实施代码；无需单独设计的工作可由已批准 Product spec 或 `docs/PLANS.md` 允许的其他事实源进入计划。active plan 必须链接一个实际存在的设计或产品规格；机械检查保证链接和结构存在，内容是否完整仍由 Review 判断。
 
 ## Current Designs
+
+- [Broker 治理职责简化与官方 JRaft 迁移设计](2026-10-28-official-jraft-governance-simplification-design.md)：草案，待独立设计 Review。按 D9 删除私有 JRaft 补丁：观察资格改由已提交 Broker 业务状态决定；显式成员维护持久化完整目标配置，经官方 `changePeers` 幂等收敛；Leader 用官方 `listPeers`/`listLearners` 诊断漂移；`im-raft` 只保留官方能力封装。O1–O4 待用户决定；历史研究移入附录 C。未批准前不授权生产修改、换依赖或创建执行计划。
+
+- [Bolt TLS 拒绝证据修正](2026-10-28-bolt-tls-rejection-proof-design.md)：用户批准测试侧严格取证方向，独立设计 Reviewer `aefe0c40fa1d38c8e` Approved；以连接关联的原生服务端拒绝和客户端实际选链观察替代 TLS 1.3 成功后读取的时序假设，不修改生产 TLS，实施验收见现有 T3。
+
+- [Gateway 目标职责内聚](2026-10-28-gateway-target-inline-design.md)：用户批准删除身份包装对象，独立设计 Reviewer `aa00ec4801ac133f0` Approved；原模式、快照、目标选择及校验收回 GatewayClient，实施验收见现有 T3。
+
+- [Broker 启动可信配对职责内聚](2026-10-28-broker-bootstrap-inline-design.md)：用户批准删除身份包装对象，独立设计 Reviewer `a6eeb49b80726e483` Approved，现有 T3 实施；校验、快照、发现交集与节点目标构造收回 BrokerClient，配置及信任规则不变。
+
+- [Bolt 传输模式独立枚举](2026-10-28-bolt-transport-mode-design.md)：用户批准提取 `BoltTransportMode` 并补齐注释，独立设计 Reviewer `aa6dedabbf9c56d38` Approved，现有 T3 实施；仅类型迁移，不改配置值或模式行为，不合并身份对象。
+
+- [项目角色身份 URI 前缀固定化](2026-10-28-fixed-peer-identity-prefixes-design.md)：用户确认五角色一起固定，取消部署覆盖，保留通用 Plugin 能力、bootstrap 配对及身份对象；独立设计 Reviewer `a7ce1f2aa262d78e2` Approved、必须项 none，现有 T3 实施中，完整验收及私有依赖阻塞保留。
+
+- [Bolt 生命周期串行化增量](2026-10-26-bolt-client-serialized-lifecycle-design.md)：最终 ReentrantLock 与固定 5 秒 tryLock 方案独立设计 Reviewer `a3b3f5a6c96a74ee1` Approved、必须项 none，T3 实施中。取代初始化取消/owner/future等待，保留短 calls 锁和唯一 closed；仅 lifecycle/background 窄验证，尚未验收，旧 DECODE 缺口及更宽验证暂停保留。
+
+- [Bolt 客户端生命周期状态收敛](2026-10-26-bolt-client-lifecycle-state-design.md)：用户已明确授权实施，独立设计 Reviewer `a46adc81a21ae2558` Approved、必须项 none；四态替换 Client 三个布尔字段，保留唯一 Tracker.closed、初始化回滚和运行期关闭责任，纳入 T3 实施及 lifecycle/background 窄验证。尚未验收，clean/full/commit 继续暂停，既有 DECODE 失败保留。
+
+- [Bolt 按实际职责拆包](2026-10-25-bolt-responsibility-packages-design.md)：用户明确认可 invocation / connection / channel / client 目标职责与必要跨包 public；独立设计 Reviewer `ad3341b14c207845a` Approved、必须项 none，恢复 T3 实施，尚未验收。精确 visibility 矩阵保留唯一 Tracker monitor/closed、原生 future hook、Factory 回查与固定装配，不新增桥接接口或弱化 checker；clean/full/commit 继续暂停。
+
+- [Bolt 受控客户端命名与连接获取封装](2026-10-25-bolt-controlled-client-api-design.md)：用户明确批准 Client 改名为 BoltControlledClient、acquire 收为 package-private；独立设计 Reviewer `a515ed306ad89329e` 首轮 Revise，已修订分类、共享 fixture 与旧产物隔离方案，原 Reviewer 复核 Approved，三个必须项关闭，进入 T3 实施；尚未验收。仅迁移七个直接访问测试，消费方拒绝断言改用正式 invoke；保留 RpcClient 独立校验，不调整 Invoker 构造类型，clean/full/commit 继续暂停。
+
+- [Bolt 连接工厂依赖评估](2026-10-25-bolt-factory-dependencies-design.md)：独立 Reviewer `a12ce5a7edf571b89` 首轮 Revise 保留；原 Reviewer 复核 Approved、findings none，两个必须项关闭，仅批准保留现状、零生产修改。选择保留 client.manager() 与固定 snapshot 模式读取，不实施 bindManager、mode 参数或其他 Factory 生产改动；不扩生命周期修复或 BoltRpcClient 契约变更。
+
+- [Bolt 客户端调用追踪职责拆分](2026-10-25-bolt-client-call-tracking-design.md)：用户已批准最小拆分范围，独立设计 Reviewer `a35e419d309f04bf8` Approved、必须项 none；单个 package-private 协作者集中调用追踪，保留生命周期与准入共享同一 monitor，实施纳入现有活跃计划 T3，验收未完成。
 
 - [收尾流程精简实施设计](2026-10-22-closeout-process-simplification-implementation-design.md)：用户批准、独立设计 Review Approved，实施中；S1/S2 代码及聚焦验证完成，S3 政策同步与真实 full 验收未完成。当前合同为同冻结输入自测一次、reactor 一次、同轮专用报告校验及真实 HA 一次，不承诺实测耗时收益。
 
@@ -16,7 +42,7 @@
 
 - [Harness 验证输入隔离与阶段恢复](2026-10-21-harness-verification-resume-design.md)：已由精简实施设计取代／延期；阶段链、恢复与实现输入指纹例外不属当前能力，完整 Git 输入冻结仍保留。历史方案与 Review 不删除，不晋级旧失败。
 
-- [Bolt 连接层认证与统一 invoke 生产设计](2026-10-20-bolt-unified-invoke-design.md)：草案基线已审，reviewer `5151be08-386f-491` Accept-as-design-baseline；O1–O4 身份引导、证书路径截止、明文开发与部署/重连选择未决，禁止直接实施。供用户后续推进，不作为10-11旧计划的生产实现前置。
+- [Bolt 连接层认证与统一 invoke 生产设计](2026-10-20-bolt-unified-invoke-design.md)：**D14 原生 TLS 材料加载收敛已获用户明确批准，独立设计 reviewer `c80596b3` 最终 Accept、无 remaining；首轮 Revise 已关闭，仅进入既有测试有限调整。D13 为未批准候选，已由 D14 取代，不实施、不新增私有 secret 副本。当前 T1–T3 passing、T4 唯一 active/Block、T5/T6 not_started，Loop#3 expired，不自动续期。只撤下同进程所有新 Channel 固定旧材料保证，不取消标准 TLS/严格身份/D10/D11、CA 双向原生拒绝、资源与剩余验收义务。** 以下 D11/计划批准及 T1 状态为历史范围，不覆盖 D14：D11 用户已批准，独立设计 reviewer `1fb8baed-2232-4e1` Approved/findings none：保证限于受控 invoke 和经审计公开 RpcClient typed-command（含 Connection/CONNECT），缺上下文拒绝；原生 TLS/encoder/response/control 单独信任并审计。同 JVM 可信代码前提，不承诺恶意进程内 sandbox；禁止任意预编码业务、codec/transport 替换、非受控 pipeline/unsafe 写入，以受控装配所有权、启动拒绝及架构 API 规则约束，不承诺启动检查永久隔离运行期特权修改。raw witness 保留为旧 all-origin 主张的正向 COUNTEREVIDENCE，不改为运行期拒绝；另需配置/架构负例与原生实际路径/rawbytes 审计。reviewer `31433f1e-b3e4-46d` 的旧主张 Block 保留。[唯一计划](../exec-plans/completed/2026-10-22-bolt-unified-invoke.md) 当前 T4 唯一 active/WIP=1；以下计划审查为历史范围：计划 reviewer `1a730f5e-903f-4cb` 全文及精确 diff Review Approved/findings none，完整技术退出仍 pending，不批准生产迁移。D10/B 及 reviewer `aa137e0a-4814-47d` Approved、隐藏实际路径保证损失保留；旧完整设计及计划 Review 仅覆盖历史范围，全部 SDK/Gossip 迁移及其余技术退出要求不缩减，不生产上线。
 
 - [Bolt 连接层身份认证原型](2026-10-20-bolt-connection-authentication-spike-design.md)：用户批准、独立设计 reviewer `0461448d-b90c-462` Accept；仅测试源码验证握手/身份完成前业务发送屏障、地址+身份池隔离及重连并发，不切换生产调用链，不预设原型成功；纳入既有A5，生产方案待原型证据另行批准。
 
@@ -86,3 +112,5 @@
 - [Architecture upgrade](2026-06-08-architecture-upgrade-design.md)
 
 New documents use `YYYY-MM-DD-<topic>-design.md` and must link to their execution plan when implementation begins.
+
+- [Peer 身份 URI 前缀统一命名](2026-10-25-peer-identity-uri-prefix-design.md)：用户批准，独立设计 Reviewer `a0b58853328dc8e68` Approved，无必须项；在现有 T3 实施，无旧别名，clean/full 暂停。

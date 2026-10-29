@@ -1,20 +1,23 @@
 {
   "schemaVersion": 2,
-  "status": "implementation_review_pending",
+  "status": "isolated_verified_adoption_blocked",
   "coordinate": "com.co.kc.thirdparty.sofa:jraft-core:1.4.1-imchat.1",
   "sourceCommit": "cb1a0c7ac16ff146ad8abb04b1bcb035270bb234",
-  "sourceArchiveSha256": "63a95b4cbc7a3384ca22abaa245cb3fd0fb713d5809381ecdac168656e0d6d0d",
+  "sourceArchiveSha256": "6c43b6b09f480f1371b7ec42800fa22bc18ace419ef21ffbbc9c3a382e594a05",
   "sourceFilesManifestSha256": "b56c1249ec555869997a72b9d476b02f42dac49d62155fb878dbe77ffcee8feb",
   "sourceFileCount": 951,
   "sourceMappingEvidence": {
     "origin": "https://github.com/sofastack/sofa-jraft",
-    "recoveryCommitRecord": "/tmp/jraft-patched-artifact-before/source-commit.txt",
-    "archive": "/tmp/jraft-patched-artifact-before/upstream-source.tar",
-    "assurance": "local recovery archive-to-commit mapping; no independent tag/signature verification claimed",
-    "sourceCommitRecordSha256": "87b2f30705ef59b6790a177f96bff96783ed38e75f16c8cf6e481603e2d89fd2"
+    "downloadUrl": "https://codeload.github.com/sofastack/sofa-jraft/tar.gz/cb1a0c7ac16ff146ad8abb04b1bcb035270bb234",
+    "downloadSha256": "cb2e047d4fab46312a5dc08dcf28bdb2bb871c81fe033e8a6d2c3aa8f8d99c6b",
+    "normalization": "remove codeload root prefix; sorted regular files; zero uid/gid/mtime; preserve file bytes and executable flags",
+    "assurance": "HTTPS fixed-commit download and exact match of all 951 file hashes to previously recorded source manifest; no independent tag/signature verification claimed",
+    "reviewer": "a51c4707223cdc2aa",
+    "review": "Scoped Approved: archive mapping only, not artifact adoption",
+    "previousArchiveSha256": "63a95b4cbc7a3384ca22abaa245cb3fd0fb713d5809381ecdac168656e0d6d0d"
   },
   "sourceDateEpoch": 1781481600,
-  "patchSha256": "f83c0943a31b2c8e3dd38114c4c388dacec7436b818247e3aa77ba723a5a3b3c",
+  "patchSha256": "25e99897b7c3e5660b0fe1c4d0b672142b2bc6dc1999a3d701791f203e665cfc",
   "patchAllowedPaths": [
     "jraft-core/pom.xml",
     "jraft-core/src/main/java/com/alipay/sofa/jraft/FSMCaller.java",
@@ -37,7 +40,7 @@
     "LICENSE": "verbatim upstream root LICENSE",
     "NOTICE": "local private-modification notice; no upstream NOTICE exists"
   },
-  "inputLockSha256": null,
+  "inputLockSha256": "f65c95e04c2876621653dff82c33e1f561de313090d2767fd29eb40bbd242a7a",
   "requiredSuites": {
     "com.alipay.sofa.jraft.RouteTableTest": 7,
     "com.alipay.sofa.jraft.StatusTest": 7,
@@ -161,7 +164,7 @@
     "native": {
       "rocksdbjni": "8.8.1",
       "jna": "5.14.0",
-      "matrix": "only measured Darwin arm64; runtime evidence pending"
+      "matrix": "only measured Darwin arm64; isolated full 2026-10-29 exercised runtime on this platform; other platforms unmeasured"
     },
     "profile": "java9-plus active; deploy disabled",
     "reactorGoals": [
@@ -201,18 +204,23 @@
     },
     "baselineRequiredCounts": "99 historical suite minimums retained; storage.log1/1/5 were already included; lifecycle raised1->6 by reviewed additions; full discovery required"
   },
-  "recipeDualBuild": "not_run",
-  "isolatedInstall": "not_run",
-  "consumerCompile": "not_run",
+  "recipeDualBuild": "passed: verify-lock 2026-10-29T04:40:09Z-05:19:23Z, two rounds 99 suites/473 tests, 0 failures/errors, 1 reviewed skip, identical 791 inputs and binary/sources/POM payloads; evidence jraft-rebuild/verify-lock-20261029/accepted-comparison.json",
+  "isolatedInstall": "passed: verify-lock build-1 payloads installed only into isolated /tmp/jraft-artifact-m2; default Maven repository untouched; not published",
+  "consumerCompile": "passed: im-plugin/im-raft -am test 3 suites/51 tests 0 failures; isolated full 2026-10-29T08:22:14Z 2422 tests and routing-ha 25 scenarios passed",
   "productionAdoption": "blocked",
   "remainingGates": [
     "recipe implementation Review",
-    "actual complete dual verify and input review/lock",
     "prior unstable leader regression evaluation",
-    "project integration and real HA",
     "registry ownership and publication authorization"
   ],
-  "inputInventoryReview": "pending; full two-build refresh required",
+  "inputInventoryReview": "accepted",
+  "inputInventoryReviewEvidence": {
+    "scope": "791 frozen capture-input JAR/POM entries and exact lock bytes only; not artifact adoption",
+    "reviewer": "term_125b80ef-9be2-4a80-9714-c1699e8128ae",
+    "report": "/Users/kc/.claude/jobs/bb58725d/tmp/jraft-rebuild/r1-final-input-review.md",
+    "verdict": "Accept",
+    "verifyLock": "passed 2026-10-29; see recipeDualBuild"
+  },
   "sourceComparison": {
     "pristineRegularFiles": 951,
     "patchedRegularFiles": 957,
@@ -222,6 +230,6 @@
     "evidence": "/tmp/jraft-candidate-full-source-comparison.json",
     "historicalManifestCorrection": "949-file manifest incorrectly excluded any log component; physical source and full tests intact; storage.log suites1+1+5 and eight classes confirmed by auditor65c2e636"
   },
-  "recipeImplementationReview": "pending; independent review checkpoint required",
+  "recipeImplementationReview": "pending overall independent review; R2 profile-version fix has local Accept (jraft-rebuild/profile-version-fix/review.md)",
   "reproducibilityRisk": "Planned actual implementation pins maven-jar-plugin 3.4.2 with project.build.outputTimestamp=1781481600 and explicit manifest entries; this is an implementation change, not a fresh reproducibility claim. The retained maven-source-plugin remains 2.0.2. Supported toolchain inputs are Maven 3.8.4, Java 21.0.10 (Azul Systems, Inc.), Darwin arm64, TZ=UTC, LANG/LC_ALL=en_US.UTF-8, and user.name=kc; no machine-specific path is part of the recipe."
 }

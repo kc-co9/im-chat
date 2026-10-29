@@ -15,7 +15,8 @@ import com.alipay.remoting.rpc.RpcConnectionEventHandler;
 import com.alipay.remoting.rpc.RpcConnectionFactory;
 import com.alipay.remoting.rpc.RpcServer;
 import com.alipay.remoting.rpc.protocol.RpcRequestCommand;
-import com.co.kc.imchat.plugin.bolt.core.BoltRequestProcessor;
+import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
+import com.co.kc.imchat.plugin.bolt.server.BoltRequestProcessor;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequest;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 import com.co.kc.imchat.plugin.bolt.spi.BoltRequestHandler;
@@ -328,7 +329,7 @@ class BoltConnectionAuthenticationSpikeTest {
                         handled.incrementAndGet();
                         return "pong";
                     }
-                })));
+                }), new ImBoltProperties.Server()));
                 assertThat(server.start()).isTrue();
                 client.option(BoltClientOption.CLI_SSL_ENABLE, tls);
                 client.option(BoltClientOption.CLI_SSL_KEYSTORE_TYPE, "PKCS12");

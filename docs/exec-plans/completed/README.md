@@ -4,6 +4,12 @@ Completed plans are retained as implementation history. Move a plan here only af
 
 Completed plans:
 
+- [Bolt 包职责与 Broker 快照归位](2026-10-25-bolt-package-boundaries.md#attempt6-与复审-r1r52026-10-29)：Bolt 按职责拆包、Broker 快照归位及后续已批准调整完成；冻结 full attempt8 与独立 quality 复审 Accept 后归档。已知偏差与偶发失败见技术债 TD-01–TD-04，D9 延后；原验收时间、指纹、历史失败与 stale 保留。
+
+- [HA 证据时序与维护验收收尾](2026-10-24-ha-evidence-order-closeout.md)：日志采集早于场景映射，既有两文件维护及完整隔离验收通过，最终实现与正式 quality 均 Accept；保留条件 skip、原失败及非生产发布边界。
+
+- [Bolt 连接层认证与统一 invoke](2026-10-22-bolt-unified-invoke.md#t6-状态关闭清单)：实现已验收并已迁移；迁移精确 Review 及第二时点廉价检查已完成；原验收时间、指纹、历史失败、stale 与残余风险保留，不等同生产发布。
+
 - [收尾流程精简](2026-10-22-closeout-simplification.md)：撤下阶段链和复杂归档平台，保留战术修复，完成一次reactor与真实HA去重验收；关闭审计按状态内容Review与廉价治理执行。
 - [Broker Adapter 职责重划](2026-10-11-broker-adapter-boundaries.md)：实施及最终完整验收、独立quality已完成；私有制品发布、未来连接认证与历史稳定性边界保留。
 

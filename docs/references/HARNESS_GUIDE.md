@@ -16,6 +16,8 @@ im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
 
 这些入口共同构成一个 Harness，不另建并行的 `docs/harness` 工作区或第二套事实源。Instruction 路由任务上下文，Tools 执行约束，Environment 明确运行前提，State 保持工作可恢复，Feedback 提供验证与治理信号。
 
+正常运行资源的关闭反馈应区分「清理尝试完成」与「全部物理终止」：单项等待失败不能无意截断仍由 native owner 持有的后续清理。Bolt 的同步延后失败契约由[生命周期设计](../design-docs/2026-10-26-bolt-client-serialized-lifecycle-design.md)拥有，真实 TLS 中断/处理器回归及自动化限制登记在规则矩阵；不以终态枚举或异常被捕获代替资源清理证据。
+
 ## 反馈层级
 
 根据问题性质选择最窄、最快且可靠的传感器：
@@ -32,6 +34,14 @@ im-chat 的 Harness 直接使用现有仓库事实源和执行入口：
 快速门禁不连接 MySQL、Redis、Nacos 或外部网络。涉及真实运行环境的验证应放到集成测试、部署检查或运行监控，不伪装成本地静态规则。
 
 GitHub Actions 的 Verify 与 Harness GC job 在调用 `readiness`、`clean`、`report` 或 `harness-gc.sh` 前必须安装 `ripgrep`。缺少 `rg` 属于工具环境失败，不能把随后缺失的计划匹配误报为 `PROGRESS.md` 状态错误；报告入口在工具缺失时直接失败并说明安装方式。
+
+## 第三方构建输入证据
+
+第三方 recipe 的审核区分原始声明、descriptor 有效模型、物化输入与实际解析/执行上下文；任何一层不自动替代另一层。先按 parent/dependency/dependencyManagement/plugin dependency 角色判断传播，再核验有效值，不能把外部库自建插件当消费时执行，或用缺少对应 JAR 证明未解析。JRaft 的 owning 契约见 `third-party/jraft-applied-membership/README.md` 和私有制品设计；capture、input review、verify-lock、消费者与采用分别保留结论。外部模型参与边界为 Review-only，自动化须具备真实 Maven descriptor/profile/管理覆盖的可靠正反 fixture，不引入通用 resolver 或字符串豁免。现有 `test_build.py` 的保留 profile 缺版本矩阵只保护该窄规则，不代表输入审核完成。
+
+## 固定收口批次与阶段冻结
+
+需要构建私有第三方制品的任务采用固定批次（普通跨模块任务不增加 capture/verify-lock）：实现/稳定文档冻结 → capture 双轮 → 一次性 input review/精确锁 → verify-lock 双轮 → 消费者/单实现 → 一次 clean/full → 独立整体 Review 与状态归档。capture、input review、verify-lock、full 各自拥有独立输入和退出条件，前一阶段的通过、Accept 或历史 freshness 不能冒充后一阶段；同一冻结输入不得无新依据重复辅助取证或重复 input review。full 已产生的 architecture/startup/behavior/E2E/HA 证据不再独立重跑；实现、依赖、共享规则、稳定文档或输入变化会重新打开受影响阶段。失败先回到最窄层归因，重跑须有修复或前提变化，不因等待时间扩大范围，也不降低门禁。
 
 ## 有界验证与收尾窗口
 
@@ -139,7 +149,7 @@ BrokerPeerAdapterTest 的协议/预算/身份/失败断言与 LayerBoundaryTest 
 
 实际完成闸门的最窄传感器补充为 `BrokerFailureObservationRoundTest.roundRemainsOccupiedUntilCrossThreadFailureAndCanThenRestart`、`BrokerAutomaticFailureObservationTest.aProbeStillRunningKeepsTargetGateAcrossContextReset`、`schedulerAndObservationShareRecoveryUntilUnderlyingQuorumActuallyCompletes`，分别证明跨线程失败后再入、Context 切换不释放底层在途探测、恢复入口共享实际完成边界。不能仅按出现 `whenComplete`、`finally` 或锁类名判定正确。
 
-失败原因与时序副作用证据采用 **聚焦测试 + Review-only**，规范所有者为 UNIT_TEST_GUIDE「Assertions」「Determinism」。`BoltConnectionAuthenticationSpikeTest` 的无 gate 负对照证明 Handler 零次但请求已提前放行；暂停握手用例分别观察 attempted/forwarded，身份拒绝检查受控 cause 链与稳定原因。该证据只属于测试原型，不表示当前生产连接层认证已实施。只有结构化分析能够关联测试声称、异常包装和实际副作用位置，并具备必要拒绝、无关超时、提前发送及合法异步缓冲的正反 fixture 后，才升级通用自动检查；不按异常类名或测试类名增设白名单。
+失败原因与时序副作用证据采用 **聚焦测试 + Review-only**，规范所有者为 UNIT_TEST_GUIDE「Assertions」「Determinism」。`BoltConnectionAuthenticationSpikeTest` 的无 gate 负对照证明 Handler 零次但请求已提前放行；暂停握手用例分别观察 attempted/forwarded，身份拒绝检查受控 cause 链与稳定原因。该证据只属于测试原型，不能单独证明当前受控实现；正式实现另由 BoltUnifiedInvokeTest、BoltProductionResourcesTest、BoltProductionBackgroundTest 和消费方启动/集成测试取证。只有结构化分析能够关联测试声称、异常包装和实际副作用位置，并具备必要拒绝、无关超时、提前发送及合法异步缓冲的正反 fixture 后，才升级通用自动检查；不按异常类名或测试类名增设白名单。
 
 防御边界守卫采用 **聚焦测试 + Review-only**，规范正文由 CODING_GUIDE「校验与防御边界」拥有。合法聚合 Begin/Commit 的 revision 与状态迁移不变量由聚合测试固定；异步报告等待期间任期/Context 变化由观察 Round/State 测试保护，不把已通过入口校验等同于后续事实不变。只有能够关联构造/迁移契约和异步数据流、区分冗余守卫与必要重验，并有正反 fixture 后才自动化。
 
@@ -392,6 +402,8 @@ DTPet 的七类模板用于提示过程工件字段，但除实施计划外未�
 
 `routing-ha` 是显式慢门禁，不进入 `quick`。它先在本轮运行所生成的 Surefire XML 中定位每个场景对应的确定性断言，再启动隔离 Nacos、Redis、三个持久化 Raft Broker 和两个 Gateway；跨进程部分检查三份权威状态一致、Gateway 单实例退出时另一实例继续健康，以及三个 Broker 逐个停止、恢复后重新收敛。应用层 fence、Lease、Lookup、快照、授权、Receipt 与幂等边界由同一轮聚焦测试证明，不把进程内断言误报成容器级故障。所有 Compose 资源以唯一 project 登记，失败保留日志但仍尝试清理；runner 返回后 ledger 非空、PID 残留、场景缺失或证据字段缺失都会 fail closed。
 
+HA 场景映射前必须有界采集本轮 `diagnostics/compose.log`；采集失败不得发布场景，不能依赖历史文件或 EXIT 清理后才生成证据。EXIT 仍补采失败诊断并清理 owned 资源，保留原失败退出码。`test-routing-ha-harness.sh` 用全新目录证明日志先于映射，并用已有日志下的采集失败反例证明不会误用旧证据。
+
 隔离 HA 的 Nacos 依赖健康条件同时检查 HTTP 8848 和命名 gRPC 9848；仅 HTTP 端口可连接时，Broker 可能在客户端仍为 `STARTING` 的状态尝试注册并启动失败。`test-routing-ha-harness.sh` 静态检查该条件，真实 HA 运行验证应用启动与故障恢复。
 
 HA runner 的超时反例使用独立 1 秒预算验证 `124` 传播；成功、缺场景、子进程失败和资源残留 fixture 使用 15 秒启动预算，避免机器高负载时 Ruby/脚本启动超过 2 秒造成假阳性。fixture 预算与真实 HA 的 900 秒运行上限互不影响。
@@ -432,3 +444,55 @@ Review finding
 ```
 
 这类链路是 Harness 的基本单位：规范解释原因，测试证明行为，门禁阻止稳定反模式再次出现，Review 处理无法机械判断的语义。
+
+## 锁外副作用与持续拒绝状态
+
+将close、通知等副作用移出锁时，锁内必须先提交持续有效的拒绝状态；副作用完成前不能撤销准入屏障。Bolt生命周期规则由统一invoke设计拥有，最窄传感器为生产 `BoltConnectionLifecycleTest#drainRejectsHeldNativeRequestUntilPhysicalCloseCompletes` 的零在途/最后完成两窗口回归。当前采用聚焦并发测试 + Review-only：静态检查无法仅凭close在锁外或存在draining集合判断状态转换正确性。自动化升级须可靠关联准入线性化、实际副作用完成与回调清理，并具备提前恢复准入、正确拒绝和重复关闭的正反fixture；不新增类名白名单或泛化检查框架。
+
+### Bolt模式授权的事实来源
+
+- owning specification：[统一invoke设计](../design-docs/2026-10-20-bolt-unified-invoke-design.md)“模式授权事实不可变”。观察/自动摘流许可由实际受控传输固定模式导出并保存在Adapter final字段，不从可重绑定业务options读取许可Boolean。
+- 最窄检查：`BrokerDevelopmentObservationPermissionTest` 通过真实DEV Spring client装配后修改普通options，直接调用probe/report/reconcileFailures仍在任何恢复/集群读取前拒绝；既有Peer MTLS测试保持正向路径。
+- 装配来源（实际client running、Invoker引用相同client、所有入口共享事实）为Review-only，尚无可靠低成本数据流checker；只有具备actual-vs-config mode、后续mutable污染及已有FAIL_BROKER恢复的正反fixture后才考虑自动结构检查，不能用类名白名单代替。
+
+### Bolt 统一调用的分层证据
+
+规则登记在[规则矩阵](HARNESS_RULE_MATRIX.md)，规范由统一 invoke 设计、im-bolt README、Security/Reliability 和 Coding Guide 拥有。`BoltInvocationBoundaryTest` 按包所有权/API 检查生产类，地址契约先于 owner 豁免检查；正反 fixture 使用同一 production predicate，不加类名例外。规则的机器证据与 source Review 分开登记：T5 已在批准的原 JRaft 制品恢复后实际编译，正常 focused 四方法 GREEN、all-rules-missing control 为 4 tests / 2 assertion failures / 0 errors / 0 skips，恢复原 bytes 后四方法 GREEN；architecture 与 quick 独立窗口各 79 tests / 0 failures / 0 errors / 2 既有 localMySQL skips（`/tmp/bolt-t5-wide-gates/`）。此前 29.70s 私有依赖失败保留为历史，不是当前未编译状态。这些 scoped 证据不替代 T6 full 或真实 MySQL 验证。
+
+规则文件及正反 fixture 的五条真实路径均在 `im-test/im-architecture-test/src/test/java/`：
+
+- `com/co/kc/imchat/architecture/BoltInvocationBoundaryTest.java`：实际规则与逐违规 API 断言。
+- `com/co/kc/imchat/plugin/bolt/spi/fixture/AddressInvocationBypass.java`：owner 包中的地址契约反例。
+- `com/co/kc/imchat/gateway/ws/handler/fixture/DirectBusinessRpcBypass.java`：实际 Bolt 业务包中的 native invoke、factory/codec 构造、transport option、raw/pipeline/unsafe 反例，含无 Bolt 依赖 helper。
+- `com/co/kc/imchat/plugin/bolt/client/fixture/ControlledProtocolWrite.java`：受控协议 owner 正例。
+- `com/co/kc/imchat/gateway/ws/server/handler/fixture/WebSocketProtocolWrite.java`：合法外部 WebSocket 写入正例。
+
+该检查不证明运行期 all-origin raw 拦截。`BoltOutboundOriginsGateTest#explicitPreencodedContextWriteBypassesTypedGateWitness` 必须保留为旧 broad 主张的 COUNTEREVIDENCE；测试通过表示真实 encoder context 的预编码业务可绕 typed gate，不改称拒绝证据。D11 同 JVM 可信代码前提、全部可达 ctx.write 起点清单、原生 TLS/encoder/response/control/rawbytes 来源审计为 **聚焦集成测试 + Review-only**：静态 API 集合不能证明 pipeline 传播、动态特权修改或所有原生路径。自动化条件是能可靠关联实际装配、每个写起点、命令来源、编码前计数及 native completion，并有违规旁路/合法响应控制帧正反 fixture；不能靠包名或一次启动校验声称永久 containment。
+
+D10 会话数组、严格叶 URI、typed gate、资源/终态排空、后台禁用和材料轮换分别由 im-bolt 聚焦测试拥有；owner 准入和固定实际模式由 Broker/Gateway 测试拥有；消费方 startup 检查真实 Spring/SDK 装配，E2E 检查真实 Gateway，HA 使用真实 mTLS 而非开发观察票。D14 材料更新测试不取消双向 CA 原生拒绝义务，不将历史失败改为 GREEN。
+
+`scripts/affected-modules.sh` 沿现有路径并集：im-bolt 变化带入四个消费方启动模块、Broker/Gateway behavior、E2E 与 architecture；Gossip 带入 Broker/E2E/architecture；Account/Message 配置变化也带入 E2E。`test-harness.sh` 单路径注入 fixture 防止混合工作树掩盖漏映射，仅证明路由，不冒充实际启动或业务通过。没有新 mode、缓存、journal 或 scope 排除；最终 full 的同轮 reactor 报告与真实 HA 仍不可少。
+
+### 固定项目角色身份命名空间
+
+规范所有者为 [Security「固定项目角色身份命名空间」](../SECURITY.md#固定项目角色身份命名空间)，设计依据为[五角色固定前缀设计](../design-docs/2026-10-28-fixed-peer-identity-prefixes-design.md)。项目五角色统一使用 `PeerIdentityConstants` 固定值；bootstrap、committed 目标、Gateway 下行描述和接收方角色授权不能由部署属性改变。通用 `im.bolt.client.allowed-peer-uri-prefixes` 仍可配置，Plugin 不引入项目角色耦合；固定命名空间不替代 CA 隔离或完整身份认证。
+
+采用 **SDK/授权层聚焦契约测试 + Review-only**：Broker SDK 的 `BrokerClientTest`、`BrokerClientRoutingTest` 与 Gateway SDK 的 `GatewayClientTest` 负责目标构造、配对及错误命名空间拒绝；Broker 的 `IdentityAccessInterceptorsTest`、`ServiceCallerRoleInterceptorTest` 和 Gateway 的 `GatewayBrokerAuthorizationTest` 负责角色拒绝与唯一身份约束。测试预期保留独立字面量，不全部引用生产常量。此处登记测试责任，不表示这些测试已在当前输入执行或通过；配置装配及跨边界验证仍按实际报告记录。
+
+九处项目配置入口、YAML/环境占位符和无意义前缀传参的移除，当前由 Review 检查精确差异及生产调用链，并核对迁移说明：旧覆盖不生效、未知属性可能被忽略、自定义前缀部署需协调证书/二进制/配置，不能声称旧键统一 fail-fast。静态移除检查保持 **Review-only**：只有可低成本可靠地区分项目角色绑定、通用 Plugin 参数、历史文档和合法测试 trust domain，并具备配置入口残留反例、通用可配置前缀与历史/测试正例后，才升级自动检查。本次不新增框架、checker、类名例外或旧键拒绝机制。
+
+### 资源采样 fixture 的完成边界
+
+`scripts/test-load-test-harness.sh` 的真实采样器 fixture 用 fake Docker 第五次 stats 调用终止本次 owned 目标；此前四次采集已经返回，再由 Ruby 父进程 wait/reap。不能用固定进程存活秒数推断样本数：宿主调度和命令启动成本会使四条样本要求偶发失败。fixture 的 30s 只防挂，不替代样本数、0600、单调时间与 schema 断言；正式采样器不增加测试开关。采样间隔算法仍由同文件显式 elapsed 向量及 full-interval mutation 检验，不把本 fixture 的零间隔当生产周期保证。最窄回归须包含正常输出与丢输出负例，完整父 Harness 仍需独立实际执行。
+
+### 命令期限 fixture 的成功与超时见证
+
+`scripts/test-routing-ha-process.sh` 的真实 runner stub 将 engine hang 负例与正常 build 路径分开：负例通过 ready PID 和阻塞 pipe 见证真正挂起，要求 engine-info exit124、groupGone、owned PID 消失、无 Maven/Compose 调用及外层有界结束；正例以 engine-info 成功事件、显式返回 marker 和 Maven 启动顺序证明路径，fake Maven exit23 必须原码传播。正例 15s 命令预算和 45s 外层等待仅防挂，不把亚秒内进程启动当性能保证；负例 engine 2s、外层6s仍单独约束。cleanup/down 模式保留原 exit29、logs 超时后恰好一次 down 与资源账本断言，不改生产期限/终止算法。现有 deterministic fixture guards 自动保护这些行为；识别其他测试中不当宿主启动时限仍为 Review-only，待可靠低成本时序分析及正反 fixture 后再自动化，不新增框架。
+
+### 健康恢复 fixture 的状态见证
+
+`scripts/test-load-test-harness.sh` 的 management restore 正例按服务记录重启后 inspect 序列，要求首次 unhealthy、下一次 healthy，并验证真实 runner 最终 BASE_READY；不能仅以固定秒数内成功推断两次检查已执行。正例60s仅防挂，不构成宿主性能保证；永久 unhealthy 负例要求真实 runner exit124、具体超时消息及 RESTORING，不能靠放宽正例预算代替。生产 `wait_for_service_health` 与 timeout 算法不增加测试开关。此约定由现有 fake Docker/runner fixture 自动执行；是否涉及不恰当时间假设仍为 Review-only，待低误报静态时序分析及正反 fixture 可可靠识别后再自动化，不新增 checker/框架。
+
+### HA 测试材料所有权
+
+真实 HA 不用 DEV 替代默认 MTLS。`scripts/lib/routing-ha-tls.rb` 仅在 runner 新建私有空目录内签发测试 CA/独立叶库，移除 CA 私钥，启动前只读校验全部材料及精确部署配对；材料非生产供应，也不实现 D13。`scripts/test-routing-ha-tls.sh` 保护独立密钥、严格 URI/DNS、证书/信任/有效期、缺失/损坏/公开权限/配置篡改拒绝和生成失败。`test-routing-ha-process.sh` 保护 TLS check 必须早于 Compose up、前检失败无创建、down 成功删除材料而 down 失败保留；同轮manifest分支自测用显式stub，不复用真实证书当网络成功。真实 mount 权限、容器 JRE 互操作及多 Broker 互认证须由实际 HA 证明，不能由离线 GREEN 推导。SIGKILL/崩溃残留人工确认后清理，不新增旧目录自动接管规则。

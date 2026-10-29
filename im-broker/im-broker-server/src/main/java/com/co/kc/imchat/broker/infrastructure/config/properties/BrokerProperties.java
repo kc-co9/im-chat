@@ -1,5 +1,8 @@
 package com.co.kc.imchat.broker.infrastructure.config.properties;
 
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
+import java.util.List;
+
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -81,6 +84,7 @@ public class BrokerProperties {
              * 单次 Gateway Bolt RPC 调用超时时间，单位为毫秒。
              */
             private int timeoutMs = 3000;
+            private List<BoltTarget> developmentTargets = List.of();
         }
     }
 

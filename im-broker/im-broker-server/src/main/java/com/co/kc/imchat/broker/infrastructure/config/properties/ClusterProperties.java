@@ -1,6 +1,7 @@
 package com.co.kc.imchat.broker.infrastructure.config.properties;
 
 import lombok.Data;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
@@ -21,6 +22,17 @@ public class ClusterProperties {
      * Broker 启动时通过种子节点发现 Gossip 观察状态，后续也会从 Gossip 状态中发现其他 Broker。
      */
     private List<String> seedAddresses = new ArrayList<>();
+
+    /**
+     * 部署可信观察ID/地址/完整身份配对，不从Gossip或Nacos学习授权。
+     */
+    private List<TrustedPeer> trustedPeers = new ArrayList<>();
+
+    @Data
+    public static class TrustedPeer {
+        private String observationId;
+        private BoltTarget target;
+    }
 
     /**
      * 每轮 Gossip 随机选择并同步的 Broker 节点数量。

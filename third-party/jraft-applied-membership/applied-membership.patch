@@ -1502,7 +1502,7 @@ index 0000000..05fc20d
 +
 +}
 diff --git a/jraft-core/src/test/java/com/alipay/sofa/jraft/core/NodeTest.java b/jraft-core/src/test/java/com/alipay/sofa/jraft/core/NodeTest.java
-index e1bb4df..b2323d7 100644
+index e1bb4df..ce7c593 100644
 --- a/jraft-core/src/test/java/com/alipay/sofa/jraft/core/NodeTest.java
 +++ b/jraft-core/src/test/java/com/alipay/sofa/jraft/core/NodeTest.java
 @@ -2527,34 +2527,39 @@ public class NodeTest {
@@ -1628,6 +1628,59 @@ index e1bb4df..b2323d7 100644
 +            } finally {
 +                node.join();
 +            }
++        }
+     }
+ 
+     @Test
+@@ -2901,26 +2912,36 @@ public class NodeTest {
+ 
+         final TestCluster cluster = new TestCluster("unitest", this.dataPath, peers, 300);
+ 
+-        for (final PeerId peer : peers) {
+-            assertTrue(cluster.start(peer.getEndpoint()));
+-        }
+-
+-        cluster.waitLeader();
++        try {
++            for (final PeerId peer : peers) {
++                assertTrue(cluster.start(peer.getEndpoint()));
++            }
+ 
+-        Node leader = cluster.getLeader();
+-        assertNotNull(leader);
+-        final Node oldLeader = leader;
++            cluster.waitLeader();
+ 
+-        final CountDownLatch latch = new CountDownLatch(1);
+-        oldLeader.removePeer(oldLeader.getNodeId().getPeerId(), new ExpectClosure(latch));
+-        waitLatch(latch);
++            Node leader = cluster.getLeader();
++            assertNotNull(leader);
++            final Node oldLeader = leader;
+ 
+-        Thread.sleep(100);
+-        leader = cluster.getLeader();
+-        assertNotNull(leader);
+-        assertNotSame(leader, oldLeader);
++            final CountDownLatch latch = new CountDownLatch(1);
++            oldLeader.removePeer(oldLeader.getNodeId().getPeerId(), new ExpectClosure(latch));
++            waitLatch(latch);
+ 
+-        cluster.stopAll();
++            final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
++            leader = null;
++            while (System.nanoTime() - deadline < 0) {
++                final Node candidate = cluster.getLeader();
++                if (candidate != null && candidate != oldLeader) {
++                    leader = candidate;
++                    break;
++                }
++                Thread.sleep(10);
++            }
++            assertNotNull(leader);
++            assertNotSame(leader, oldLeader);
++        } finally {
++            cluster.stopAll();
 +        }
      }
  

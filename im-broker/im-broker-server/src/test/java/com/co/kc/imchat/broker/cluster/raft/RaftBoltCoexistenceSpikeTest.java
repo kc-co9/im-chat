@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.cluster.raft;
 
+import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
 import com.alipay.remoting.rpc.RpcClient;
 import com.alipay.remoting.rpc.RpcServer;
 import com.alipay.sofa.jraft.Iterator;
@@ -12,9 +13,15 @@ import com.alipay.sofa.jraft.entity.PeerId;
 import com.alipay.sofa.jraft.entity.Task;
 import com.alipay.sofa.jraft.option.NodeOptions;
 import com.alipay.sofa.jraft.util.Endpoint;
-import com.co.kc.imchat.plugin.bolt.core.BoltRequestProcessor;
-import com.co.kc.imchat.plugin.bolt.model.BoltRequest;
-import com.co.kc.imchat.plugin.bolt.model.BoltResponse;
+import com.co.kc.imchat.plugin.bolt.ImBoltAutoConfiguration;
+import com.co.kc.imchat.plugin.bolt.client.BoltControlledClient;
+import com.co.kc.imchat.plugin.bolt.invocation.BoltClientInvoker;
+import com.co.kc.imchat.plugin.bolt.server.BoltControlledServer;
+import com.co.kc.imchat.plugin.bolt.server.BoltRequestProcessor;
+import com.co.kc.imchat.plugin.bolt.exception.BoltInvocationException;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
+import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
+import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 import com.co.kc.imchat.plugin.bolt.spi.BoltRequestHandler;
 import io.micrometer.core.instrument.Gauge;
@@ -36,8 +43,10 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.awaitility.Awaitility.await;
 
 class RaftBoltCoexistenceSpikeTest {
@@ -47,33 +56,57 @@ class RaftBoltCoexistenceSpikeTest {
 
     @Test
     void springLifecycleRunsBusinessBoltAndRaftInSameProcess() throws Exception {
-        int boltPort = availablePort();
+        AtomicInteger boltPort = new AtomicInteger();
         int raftPort = availablePort();
         Set<Long> existingThreadIds = liveThreadIds();
 
         new ApplicationContextRunner()
-                .withUserConfiguration(SpikeConfiguration.class)
+                .withUserConfiguration(SpikeConfiguration.class, ImBoltAutoConfiguration.class)
+                .withInitializer(context -> context.getEnvironment().setActiveProfiles("bolt-dev"))
                 .withPropertyValues(
-                        "spike.bolt-port=" + boltPort,
+                        "im.bolt.client.enabled=true", "im.bolt.server.enabled=true",
+                        "im.bolt.client.mode=DEVELOPMENT_PLAINTEXT",
+                        "im.bolt.server.mode=DEVELOPMENT_PLAINTEXT",
+                        "im.bolt.client.development.synthetic-data=true",
+                        "im.bolt.server.development.synthetic-data=true",
+                        "im.bolt.client.allowed-peer-uri-prefixes[0]=spiffe://test/coexistence/",
+                        "im.bolt.server.host=127.0.0.1", "im.bolt.server.port=0",
                         "spike.raft-port=" + raftPort,
                         "spike.raft-directory=" + temporaryDirectory.resolve("raft"))
                 .run(context -> {
                     assertThat(context).hasNotFailed();
+                    RpcServer server = context.getBean(RpcServer.class);
+                    assertThat(server).isInstanceOf(BoltControlledServer.class);
+                    assertThat(((BoltControlledServer) server).configuredMode())
+                            .isEqualTo(BoltTransportMode.DEVELOPMENT_PLAINTEXT);
+                    boltPort.set(server.port());
+                    assertThat(boltPort.get()).isPositive();
+                    // ApplicationContextRunner 不执行 ApplicationRunner，显式注册正式 Processor。
+                    server.registerUserProcessor(context.getBean(BoltRequestProcessor.class));
                     RpcClient client = context.getBean(RpcClient.class);
-                    BoltResponse response = (BoltResponse) client.invokeSync(
-                            "127.0.0.1:" + boltPort,
-                            new BoltRequest("spike", "ping", "payload"),
-                            3_000);
-                    assertThat(response.isSuccess()).isTrue();
-                    assertThat(response.getData()).isEqualTo("\"pong\"");
+                    assertThat(client).isInstanceOf(BoltControlledClient.class);
+                    BoltControlledClient controlled = (BoltControlledClient) client;
+                    assertThat(controlled.configuredMode())
+                            .isEqualTo(BoltTransportMode.DEVELOPMENT_PLAINTEXT);
+                    assertThat(controlled.isRunningControlledAssembly()).isTrue();
+                    BoltInvoker invoker = context.getBean(BoltInvoker.class);
+                    assertThat(invoker).isInstanceOf(BoltClientInvoker.class);
+                    assertThat(((BoltClientInvoker) invoker).usesControlledClient(controlled)).isTrue();
+                    BoltTarget target = new BoltTarget("127.0.0.1:" + boltPort.get(),
+                            "spiffe://test/coexistence/business");
+                    assertThat(invoker.invoke(target, "spike", "ping", "payload", String.class, 3_000))
+                            .isEqualTo("pong");
+                    AtomicInteger failures = context.getBean(AtomicInteger.class);
+                    assertThat(failures.get()).isZero();
 
-                    BoltResponse failure = (BoltResponse) client.invokeSync(
-                            "127.0.0.1:" + boltPort,
-                            new BoltRequest("spike", "fail", "payload"),
-                            3_000);
-                    assertThat(failure.isSuccess()).isFalse();
-                    assertThat(failure.getCode()).isEqualTo("BOLT_HANDLER_ERROR");
-                    assertThat(failure.getMessage()).isEqualTo("expected spike failure");
+                    BoltInvocationException failure = catchThrowableOfType(() ->
+                            invoker.invoke(target, "spike", "fail", "payload", String.class, 3_000),
+                            BoltInvocationException.class);
+                    assertThat(failure).isNotNull();
+                    assertThat(failure.failure()).isEqualTo(BoltInvocationException.Failure.PROTOCOL);
+                    assertThat(failure).hasCauseInstanceOf(IllegalArgumentException.class)
+                            .hasRootCauseMessage("Invalid or unsuccessful Bolt response");
+                    assertThat(failures.get()).isEqualTo(1);
 
                     SpikeRaftRuntime raft = context.getBean(SpikeRaftRuntime.class);
                     raft.apply(1L);
@@ -83,7 +116,7 @@ class RaftBoltCoexistenceSpikeTest {
                             .get("im.broker.raft.metrics.count").gauge().value()).isPositive();
                 });
 
-        await().atMost(Duration.ofSeconds(10)).until(() -> canBind(boltPort) && canBind(raftPort));
+        await().atMost(Duration.ofSeconds(10)).until(() -> canBind(boltPort.get()) && canBind(raftPort));
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(newInfrastructureThreads(existingThreadIds)).isEmpty());
     }
@@ -130,11 +163,14 @@ class RaftBoltCoexistenceSpikeTest {
     @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
     static class SpikeConfiguration {
 
-        @Bean(initMethod = "start", destroyMethod = "stop")
-        RpcServer businessBoltServer(Environment environment) {
-            int port = environment.getRequiredProperty("spike.bolt-port", Integer.class);
-            RpcServer server = new RpcServer("127.0.0.1", port);
-            BoltRequestHandler handler = new BoltRequestHandler() {
+        @Bean
+        AtomicInteger failureInvocations() {
+            return new AtomicInteger();
+        }
+
+        @Bean
+        BoltRequestHandler pingHandler() {
+            return new BoltRequestHandler() {
                 @Override
                 public String service() {
                     return "spike";
@@ -147,10 +183,19 @@ class RaftBoltCoexistenceSpikeTest {
 
                 @Override
                 public Object handle(BoltRequestContext context, String payload) {
+                    assertThat(context.remoteHost()).isEqualTo("127.0.0.1");
+                    assertThat(context.developmentPlaintext()).isTrue();
+                    assertThat(context.tlsVerified()).isFalse();
+                    assertThat(context.peerIdentity()).isNull();
+                    assertThat(context.peerUriIdentities()).isEmpty();
                     return "pong";
                 }
             };
-            BoltRequestHandler failingHandler = new BoltRequestHandler() {
+        }
+
+        @Bean
+        BoltRequestHandler failingHandler(AtomicInteger failureInvocations) {
+            return new BoltRequestHandler() {
                 @Override
                 public String service() {
                     return "spike";
@@ -163,16 +208,10 @@ class RaftBoltCoexistenceSpikeTest {
 
                 @Override
                 public Object handle(BoltRequestContext context, String payload) {
+                    failureInvocations.incrementAndGet();
                     throw new IllegalStateException("expected spike failure");
                 }
             };
-            server.registerUserProcessor(new BoltRequestProcessor(List.of(handler, failingHandler)));
-            return server;
-        }
-
-        @Bean(initMethod = "init", destroyMethod = "shutdown")
-        RpcClient businessBoltClient() {
-            return new RpcClient();
         }
 
         @Bean

@@ -63,6 +63,7 @@ bash "$ROOT_DIR/scripts/check-management-ui.sh"
 bash "$ROOT_DIR/scripts/test-local-compose-harness.sh"
 bash "$ROOT_DIR/scripts/test-load-test-harness.sh"
 bash "$ROOT_DIR/scripts/test-routing-ha-harness.sh"
+bash "$ROOT_DIR/scripts/test-routing-ha-tls.sh"
 bash "$ROOT_DIR/scripts/test-routing-ha-process.sh"
 bash "$ROOT_DIR/scripts/test-reactor-evidence.sh"
 bash "$ROOT_DIR/scripts/test-routing-capacity-harness.sh"
@@ -558,9 +559,9 @@ assert_impact "im-gateway/im-ws-gateway/im-ws-gateway-server,im-test/im-e2e-test
   "im-gateway/im-ws-gateway/im-ws-gateway-server/src/main/java/example.java"
 assert_impact "im-gateway/im-ws-gateway/im-ws-gateway-sdk,im-gateway/im-ws-gateway/im-ws-gateway-server,im-broker/im-broker-server,im-test/im-e2e-test,im-test/im-architecture-test" \
   "im-gateway/im-ws-gateway/im-ws-gateway-sdk/src/main/java/example.java"
-assert_impact "im-plugin/im-bolt,im-test/im-e2e-test,im-test/im-architecture-test" \
+assert_impact "im-plugin/im-bolt,im-broker/im-broker-server,im-gateway/im-ws-gateway/im-ws-gateway-server,im-service/im-account/im-account-server,im-service/im-message/im-message-server,im-test/im-e2e-test,im-test/im-architecture-test" \
   "im-plugin/im-bolt/src/main/java/example.java"
-assert_impact "im-plugin/im-gossip,im-test/im-architecture-test" \
+assert_impact "im-plugin/im-gossip,im-broker/im-broker-server,im-test/im-e2e-test,im-test/im-architecture-test" \
   "im-plugin/im-gossip/src/main/java/example.java"
 assert_impact "im-plugin/im-mq-kafka,im-test/im-architecture-test" \
   "im-plugin/im-mq/src/main/java/example.java"
@@ -575,6 +576,22 @@ assert_impact "im-management/im-iam/im-iam-server,im-management/im-admin,im-mana
 assert_impact "im-test/im-load-test,im-test/im-architecture-test" \
   "im-test/im-load-test/src/test/java/example.java"
 assert_impact all "im-common/src/main/java/example.java"
+
+# Bolt 认证、Gossip 及消费方配置必须带入既有 startup/behavior/E2E 所属模块。
+# 每个路径单独注入，防止混合工作树的其他路径掩盖漏映射；不启动 Maven/Docker。
+assert_impact "im-plugin/im-bolt,im-broker/im-broker-server,im-gateway/im-ws-gateway/im-ws-gateway-server,im-service/im-account/im-account-server,im-service/im-message/im-message-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-plugin/im-bolt/src/main/java/com/co/kc/imchat/plugin/bolt/client/BoltControlledClient.java"
+assert_impact "im-plugin/im-gossip,im-broker/im-broker-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-plugin/im-gossip/src/main/java/com/co/kc/imchat/plugin/gossip/client/GossipPeerClient.java"
+assert_impact "im-service/im-account/im-account-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-service/im-account/im-account-server/src/main/resources/application-bolt-dev.yml"
+assert_impact "im-service/im-message/im-message-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-service/im-message/im-message-server/src/main/resources/application.yml"
+
+assert_impact "im-broker/im-broker-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-broker/im-broker-server/src/main/resources/application.yml"
+assert_impact "im-gateway/im-ws-gateway/im-ws-gateway-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-gateway/im-ws-gateway/im-ws-gateway-server/src/main/resources/application-bolt-dev.yml"
 
 # full 必须自行包含环境、清洁状态、Harness fixture 和 Maven verify，不能依赖调用者记住前置命令。
 full_root="$(mktemp -d)"

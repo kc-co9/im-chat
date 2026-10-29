@@ -7,7 +7,7 @@ import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import com.co.kc.imchat.broker.interfaces.scheduler.BrokerGossipScheduler;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.ClusterProperties;
-import com.co.kc.imchat.broker.interfaces.scheduler.BrokerGossipProperties;
+import com.co.kc.imchat.broker.model.properties.BrokerGossipSettings;
 import com.co.kc.imchat.broker.support.gossip.GossipSyncTracker;
 import com.co.kc.imchat.plugin.gossip.sync.GossipSynchronizer;
 import org.springframework.context.annotation.Bean;
@@ -17,15 +17,21 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RegistryGossipConfiguration {
     @Bean
+    public BrokerGossipSettings brokerGossipSettings(
+            ClusterProperties clusterProperties, BrokerProperties brokerProperties) {
+        BrokerProperties.Instance instance = brokerProperties.getInstance();
+        return new BrokerGossipSettings(instance.getId(), instance.getAddress(),
+                clusterProperties.getSeedAddresses(), clusterProperties.getTrustedPeers().stream()
+                        .map(peer -> new BrokerGossipSettings.PeerBinding(peer.getObservationId(), peer.getTarget())).toList(),
+                clusterProperties.getGossipFanout(),
+                java.time.Duration.ofMillis(clusterProperties.getGossipTimeoutMs()));
+    }
+
+    @Bean
     public BrokerGossipScheduler brokerGossipScheduler(
             BrokerRegistry brokerRegistry, GossipSynchronizer gossipSynchronizer,
-            ClusterProperties clusterProperties, BrokerProperties brokerProperties,
-            GossipSyncTracker gossipSyncTracker) {
-        BrokerProperties.Instance instance = brokerProperties.getInstance();
-        return new BrokerGossipScheduler(brokerRegistry, gossipSynchronizer,
-                new BrokerGossipProperties(instance.getId(), instance.getAddress(),
-                        clusterProperties.getSeedAddresses(), clusterProperties.getGossipFanout(),
-                        java.time.Duration.ofMillis(clusterProperties.getGossipTimeoutMs())), gossipSyncTracker);
+            BrokerGossipSettings gossipProperties, GossipSyncTracker gossipSyncTracker) {
+        return new BrokerGossipScheduler(brokerRegistry, gossipSynchronizer, gossipProperties, gossipSyncTracker);
     }
 
     @Bean

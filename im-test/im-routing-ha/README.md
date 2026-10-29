@@ -25,3 +25,13 @@ mvn -q -pl im-test/im-routing-ha -am \
 运行要求 JDK 21、Maven，以及本机 loopback 监听权限；完整入口另需 Docker Compose。Raft 和 RPC 端口动态分配，日志、fence 标记和证书只写 JUnit 临时目录。观察、稳定窗口与冷却使用显式测试常量；不覆盖生产默认值，不降低多数派阈值。失败等待由 Awaitility 和调度器限定，不以固定睡眠推断选举或恢复完成。
 
 完整 runner 保留原恢复测试及所有历史场景映射，只接受本轮新生成的通过用例。单独通过 Maven 模块测试不等于完整 `routing-ha` 验收通过。
+
+## 受控传输前提
+
+真实 TLS HA fixture 的客户端使用 `BoltControlledClient` 和 typed 目标统一 invoke，地址/完整身份由 fixture 显式配对。服务端使用原生 `RpcServer`，由 fixture 显式配置原生 TLS 与 client auth，并注册正式 `BoltRequestProcessor` 及身份/成员准入链，仍验证接收方角色及 fencing/Lease；不是 `BoltControlledServer` 或 Spring 受控服务端装配，不能据此声称已验证其启动契约。开发模式不能提供有效观察票或自动故障摘流，不能用 plaintext 容器恢复替代真实安全 HA。标准 JSSE、D10 会话数组区间与 D11 受控来源边界见 [im-bolt](../../im-plugin/im-bolt/README.md)。本模块成功也不证明生产证书签发/分发或容量。
+
+## Compose 材料边界
+
+真实容器拓扑每轮由 runner 签发一次性测试 CA 和五个独立叶库，保持默认 MTLS、双向 client-auth、严格 Broker/Gateway URI namespace 与部署可信 bootstrap/Gossip 配对。节点只读挂载自己的 `0600` 材料，启动前离线校验，先 down 本轮 project 再删除材料；down 失败保留，不接管旧目录。具体配置键、观察 ID 与稳定身份区别及崩溃边界见[本地部署说明](../../deploy/local/README.md#ha-专用测试材料)。
+
+`bash scripts/test-routing-ha-tls.sh` 只验证离线材料、权限、配对和失败关闭；`test-routing-ha-process.sh` 以 stub 验证前检顺序/原码传播/清理，不冒充实际容器 mTLS 成功。Compose 调试使用旧 exec JAR 时须单独标记制品 SHA，不复用跨输入 full manifest 或发布 25 场景验收证明。

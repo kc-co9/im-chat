@@ -33,6 +33,11 @@ im:
   bolt:
     client:
       enabled: true
+      mode: MTLS
+      tls:
+        enabled: true
+      allowed-peer-uri-prefixes:
+        - spiffe://im-chat/broker/
   session:
     web:
       public-paths:
@@ -45,6 +50,7 @@ im:
   account:
     broker:
       timeout-millis: 3000
+      bootstrap-targets: [] # 部署显式配对，空列表失败关闭
 
 spring:
   application:

@@ -18,7 +18,7 @@ class GatewayBrokerAuthorizationTest {
 
     private final GatewayBrokerAuthorizer authorizer = new GatewayBrokerAuthorizer(
             GatewayBrokerAuthorizationTest::state,
-            "spiffe://im-chat/broker/", false);
+            false);
 
     @Test
     void acceptsOnlyCommittedBrokerTlsIdentity() {
@@ -29,12 +29,26 @@ class GatewayBrokerAuthorizationTest {
                 context("spiffe://im-chat/broker/broker-unknown")))
                 .isInstanceOf(SecurityException.class);
         assertThatThrownBy(() -> authorizer.authorize(
+                context("spiffe://custom.example/broker/broker-a")))
+                .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> authorizer.authorize(
                 context("spiffe://im-chat/gateway/gateway-a")))
                 .isInstanceOf(SecurityException.class);
     }
 
+    @Test
+    void rejectsLegacyUnverifiedAndAmbiguousBrokerIdentities() {
+        for (BoltRequestContext context : List.of(
+                new BoltRequestContext("remote", "127.0.0.1", "spiffe://im-chat/broker/broker-a", false, Set.of(), false),
+                new BoltRequestContext("remote", "127.0.0.1", "spiffe://im-chat/broker/broker-a", true, Set.of(), false),
+                new BoltRequestContext("remote", "127.0.0.1", "spiffe://im-chat/broker/broker-a", true,
+                        Set.of("spiffe://im-chat/broker/broker-a", "spiffe://im-chat/broker/broker-b"), false))) {
+            assertThatThrownBy(() -> authorizer.authorize(context)).isInstanceOf(SecurityException.class);
+        }
+    }
+
     private BoltRequestContext context(String identity) {
-        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", identity, false, Set.of());
+        return new BoltRequestContext("127.0.0.1:18020", "127.0.0.1", identity, true, Set.of(identity), false);
     }
 
     private static BrokerClusterState state() {

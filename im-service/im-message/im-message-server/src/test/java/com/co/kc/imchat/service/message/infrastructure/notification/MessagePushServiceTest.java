@@ -6,6 +6,7 @@ import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.common.model.io.FrameResponse;
 import com.co.kc.imchat.common.model.enums.FrameType;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.service.message.support.BrokerClientTestSupport;
 import org.junit.jupiter.api.Test;
 
@@ -31,20 +32,18 @@ class MessagePushServiceTest {
 
     private record StubBoltInvoker(BrokerFrameWriteResult response) implements BoltInvoker {
         @Override
-        public <T, R> R invokeAuthenticated(String address, String service, String operation, T request,
-                                            Class<R> responseType, int timeoutMillis,
-                                            String expectedPeerIdentity, String identityPrefix) {
-            throw new UnsupportedOperationException("authenticated invocation is not used by this fixture");
-        }
-
-        @Override
         @SuppressWarnings("unchecked")
-        public <T, R> R invoke(String address, String service, String operation, T request,
-                               Class<R> responseType, int timeoutMillis) {
+        public <T, R> R invoke(BoltTarget target, String service, String operation,
+                               T request, Class<R> responseType, int timeoutMillis) {
+            assertEquals(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/broker-test"), target);
+
+            String address = target.address();
+
             BrokerFrameWriteParams params = (BrokerFrameWriteParams) request;
             assertEquals("receipt-1", params.routeContext().operationId());
             return (R) BrokerFrameWriteResult.writeResult(params.userId(), response.acceptedConnectionIds(),
                     response.failedConnectionIds());
         }
+
     }
 }

@@ -7,8 +7,8 @@
 - HTTP 请求和 WebSocket 握手通过 `im-account` 在线认证 Access Token；超时、线程池饱和、结果格式错误或 Provider 失败时，Gateway 必须 fail closed。
 - Gateway 删除外部传入的用户与 Session Header，只根据 Account 认证结果重新构建。
 - Broker、Gateway 和 Service RPC 都是内部接口，不得作为公共客户端 API 暴露。
-- Gateway 的注册、心跳、注销、连接增量、完整路由快照和整轮 ACK 必须绑定 Bolt 传输身份。Broker 只从当前 mTLS
-  session 的 URI SAN（其次为证书 Subject）解析 workload identity，并要求它与已注册 `gatewayId`、端点和
+- Gateway 的注册、心跳、注销、连接增量、完整路由快照和整轮 ACK 必须绑定 Bolt 传输身份。Broker 只从当前握手成功的 mTLS
+  session 对端叶证书的严格 namespace 唯一 URI SAN 解析 workload identity，不回退 Subject 或首 URI，并要求它与已注册 `gatewayId`、端点和
   有效租约一致；请求体中的 `gatewayId` 不是身份事实。
 - `trusted-network://` 身份回退只用于本地明文环境。生产必须关闭
   `im.broker.routing.allow-trusted-network-gateway-identity`，同时启用 Bolt 双向 TLS 和客户端证书校验。
@@ -22,6 +22,26 @@
 - `im-iam-server` 是管理凭证和 RBAC 的唯一权威。Admin 与 Ops 只接受 IAM 支持的 BFF Session，不接受普通 Account Token。
 - `im-audit-server` 是管理 Audit 持久化的唯一权威。浏览器 API 使用 IAM BFF Session；内部 HTTP 接收仅接受具有 `audit:ingest` 的专用 Client Credentials Token。
 - Service Facade 与 SDK 定义传输契约，敏感领域模型或持久化模型不得通过这些边界泄漏。
+
+## 固定项目角色身份命名空间
+
+本节是固定项目前缀规则的 owning specification。`im-common` 的 `PeerIdentityConstants` 定义以下五个固定值，项目 SDK 目标构造、bootstrap 配对校验与接收方角色授权使用同一约定，不允许部署属性覆盖。
+
+| 角色 | 常量 | 固定 URI 前缀 |
+|---|---|---|
+| Broker | `BROKER_URI_PREFIX` | `spiffe://im-chat/broker/` |
+| Gateway | `GATEWAY_URI_PREFIX` | `spiffe://im-chat/gateway/` |
+| Message | `MESSAGE_URI_PREFIX` | `spiffe://im-chat/message/` |
+| Account | `ACCOUNT_URI_PREFIX` | `spiffe://im-chat/account/` |
+| Ops | `OPS_URI_PREFIX` | `spiffe://im-chat/im-ops/` |
+
+固定 URI 不是凭据，不替代证书信任链、有效期、namespace 内唯一 URI、完整身份精确匹配、成员或业务授权。节点 ID、完整身份、地址、可信 bootstrap 配对和 committed 拓扑仍由原流程管理，不从发现 metadata、首响应或证书自动学习新的角色规则。通用 Plugin 保留任意合法 trust domain 的解析与验证能力，不依赖这些角色常量；`im.bolt.client.allowed-peer-uri-prefixes` 仍可配置，只限制传输目标，不能扩展项目角色授权。
+
+不同环境可以使用相同命名空间，但必须隔离 CA 与信任材料，生产不得信任测试 CA。固定命名空间本身不提供独立多租户隔离。
+
+原五角色共九处前缀配置入口及环境占位符已移除，不保留别名，也不新增旧键拒绝框架。Spring 未知属性可能被忽略；旧覆盖不再生效，不保证残留旧键启动失败。既有默认值部署的 wire 身份不变；自定义前缀部署必须协调二进制、证书身份、Nacos、环境变量及部署配置迁移到固定值，并移除旧覆盖，不能只升级二进制或只替换配置键。发布和回滚均须保持证书、二进制与配置匹配，不支持无前提混合版本；错误角色或自定义命名空间继续在原校验位置拒绝，不回退明文。
+
+固定值、错误命名空间与角色拒绝由 SDK/授权层聚焦契约测试覆盖；配置入口移除、Plugin 无角色耦合和部署迁移完整性由 Review 核对，自动化条件见 [Harness Guide](references/HARNESS_GUIDE.md#固定项目角色身份命名空间)。设计依据见[已批准设计](design-docs/2026-10-28-fixed-peer-identity-prefixes-design.md)。
 
 ## 配置与密钥
 
@@ -70,3 +90,17 @@
 - 安全敏感修复必须包含聚焦回归测试；信任模型变化时同步更新本文。
 
 安全漏洞应私下报告给仓库 Owner，不要创建包含利用细节的公开 Issue。
+
+## Bolt 统一调用与材料边界
+
+出站必须使用不可变 `BoltTarget(address, expectedPeerIdentity)` 与统一 invoke。模式、允许的 URI 前缀和资源策略在受控客户端构造时固定；Spring 核对实际 running client 与 Invoker 同源，不接受任意外部普通 RpcClient/Invoker。前缀要求完整节点边界，叶证书 namespace 内唯一 URI 必须等于完整预期身份；中间 CA/根不要求 workload URI。SDK bootstrap 将 Nacos 候选与部署地址/URI 配对取交集，Gossip seed 与观察 ID 也须可信配对，不能从 metadata/响应/观察学习首次身份。
+
+D10 保持标准原生 JSSE 信任验证，仅在成功握手后，从当前 session 的 local/peer 非空 X.509 全数组计算额外有效区间 `latestNotBefore <= now < earliestNotAfter`。包括呈现的根/锚及未使用成员；不是 CertPath，也不监控配置但未呈现或隐藏路径的证书。新发送和入站新业务准入检查该区间，缺失/不可读/非 X.509/空区间拒绝，不降级仅查叶证书；已准入请求不因到期立即取消。
+
+D11 的发送前保证仅覆盖受控 invoke 与经审计公开 typed-command（包括 Connection/CONNECT），缺逐命令受控上下文拒绝。原生 TLS/encoder/response/control 单独信任并审计；业务禁止任意预编码 ctx.write、自定义 codec/transport、非受控 pipeline 和 unsafe 写入。受控装配、架构 API 规则及启动拒绝不是任意 raw 字节运行期隔离，更不是同 JVM 恶意代码 sandbox；有权限修改进程或容器的操作者仍在可信边界内。
+
+DEVELOPMENT_PLAINTEXT 仅限独立 bolt-dev、合成数据、字面回环或经实际 create/inspect 检查的 internal 容器网络；prod/production 禁止，TLS 失败不回退。开发允许普通路由/投递/清理，不发有效观察票、不自动摘流。D12 Gateway 部署 URI 配对仅用于 DEV 下行 pool/routing descriptor，不覆盖 trusted-network principal、DTO/Gossip 或租约授权；MTLS 不读取此配对替代证书身份。
+
+D14 固定启动路径/选项而非文件字节。旧 Channel 保持 TLS session，新 Channel 可能由原生加载读更新材料；不承诺 watcher、每次 reload 或任意 inplace write 一致。建议完整原子交付并滚动重启，CA 采用旧 → 双信任 → 新叶 → 撤旧，验证双向新连接及撤旧原生 TLS 拒绝；这不是 only-restart 门禁。不实施 D13 私有 secret 副本，不宣称消除原私钥权限、同 UID/root 或残留风险。正式签发、secret 分发/轮换和生产上线另行评审交付，不提供在线吊销或撤销已准入业务；紧急泄露需独立停机/撤信任处置。
+
+安全 Review 应核对创建/握手/身份/有效期/caller 预算/协议失败的原因归属与脱敏，不记录私钥、密码或请求内容；身份只进入受控日志，指标应使用固定 mode/phase/failure 维度，禁止身份高基数标签。该要求不表示已交付完整审计事件流、告警阈值或监控平台。配置初值与资源所有者见 [im-bolt README](../im-plugin/im-bolt/README.md)。

@@ -253,6 +253,18 @@ Spike 适合用 overlay 做局部验证，但生产会产生重复 FQCN、类路
 
 同步访问器禁止 FSM callback 重入。实际提交 future 及 ReadIndex 完成回调可能由 FSM 线程触发，不能将所有 thenCompose 误认为应用线程。先确定性验证现有 continuation；若暴露重入，仅在真实需要读取成员的路径切换到既有执行资源，保持重入守卫，不引入通用 executor 框架或批量异步化。线程边界调整需具体回归及独立 Review，不由本文预先认定所有调用安全。
 
+## 2026-10-29 上游移除 Leader 测试取证修订（独立设计 Review Approved）
+
+独立设计 Reviewer `af2108f5c64ed7d60` Approved，必须修改项 none。已按下述精确范围形成候选补丁；本次未运行构建或测试，实现 Review 与后续验证尚未完成。
+
+新 capture 第一轮 99 suite/473 项出现唯一失败：NodeTest#testRemovingLeaderTriggerTimeoutNow 在 removePeer 成功闭包后等待 100ms，单次 getLeader 返回 null。完整失败和原始归档保留；没有证据证明 TimeoutNow 未发送或未处理，也不把生产补丁未直接修改该路径解释为已排除间接影响。
+
+推荐仅修正该方法的异步观测：removePeer 成功闭包后，在 3 秒 monotonic deadline 内等待 getLeader 返回非 null 且不同于 oldLeader 的同一个对象，保留原有成功闭包及最终新旧 Leader 不同断言；超时仍失败，finally 始终 stopAll。3 秒是有界测试完成期限，不是宣称原 100ms SLA 已满足。只证明成员移除后的新 Leader 就绪，不以此声称已证明 TimeoutNow RPC 机制；该机制仍需核对既有 processor/replicator 定向测试的真实覆盖，缺少时明确保留限制。禁止用 TestCluster.waitLeader 的无界循环、扩大生产选举期限或跳过用例。
+
+精确范围扩展只允许 NodeTest#testRemovingLeaderTriggerTimeoutNow，原 testSnapshotSync 变更保持；TestCluster 和相邻 shutdown 测试不改。新增测试侧状态诊断限于该方法，不引入全局 helper 或测试框架。核对真实旧失败作为现场 RED，独立 Review 批准后先目标方法、完整 NodeTest，再新目录重跑完整双 verify；不修改已失败 capture，不复用旧 input lock。若有界条件仍失败，先取现场而非继续调大期限。更新 patch/provenance SHA 必须由上述精确差异支撑，source commit/archive/legal SHA 不变，required suite 最低 64 项和 reviewed skips 不变。
+
+本段为当前计划收口中的修复候选，不授权发布、替换官方依赖或实施延期治理草案，设计批准不等于测试通过。
+
 ## 附录 C：独立 Review
 
 - 首轮：独立 reviewer `fd291440`，结论 `Revise`，四项修订：区分已批准策略/本地执行与生产 Registry 门槛；明确 checkout patch/POM/test 边界；固定根 POM owner、私有 GAV 与单实现消费者证明；删除同步方案不适用的 completion executor rejection。

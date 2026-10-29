@@ -84,7 +84,7 @@ class RegistrationLifecycleTest {
 
         private CapturingBrokerClient() {
             super(BrokerClientTestSupport.invoker(), BrokerClientTestSupport.discovery(),
-                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000);
+                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000, BrokerClientTestSupport.identities());
         }
 
         @Override

@@ -3,6 +3,8 @@
 # 证据边界：RH-05 来自隔离 Java 网络运行时；Gateway 重建以应用 ACK 输入替代，不冒充容器自动摘流。
 # 输入：ROUTING_HA_STATE_DIR 由 routing_ha.sh 注入；可用 ROUTING_HA_PROJECT_NAME 覆盖 Compose project，
 #      ROUTING_HA_RESTART_READY_TIMEOUT_SECONDS 配置 Gateway/Broker 重启后的就绪等待秒数。
+# 材料：本轮mktemp 0700目录签发测试CA/独立私钥，0600 PKCS12和配置只读挂载；启动前完整校验。
+#       正常失败/取消先down owned project，再删除本轮材料；down失败保留路径供人工核对，不删除未知目录。
 # 输出/副作用：写 scenarios.jsonl、topology.json 与 diagnostics/；创建的 Compose 资源全登记并在 EXIT trap 清理。
 # 隔离：只操作 deploy/local/compose.routing-ha.yml 和本次唯一 project，不复用普通 local/full 环境。
 # 退出码：构建、测试、拓扑、故障恢复、证据映射或清理任一步失败均非零。
@@ -33,6 +35,8 @@ mkdir -p "$STATE_DIR" "$DIAGNOSTIC_DIR"
 : > "$SCENARIO_EVIDENCE"
 PROCESS_HELPER="$ROOT_DIR/scripts/lib/routing-ha-process.rb"
 RESOURCE_ATTEMPTED=0
+TLS_DIR=""
+TLS_HELPER="$ROOT_DIR/scripts/lib/routing-ha-tls.rb"
 run_step() {
   local name="$1" timeout="$2"
   shift 2
@@ -54,6 +58,13 @@ cleanup() {
     fi
   else
     printf 'No resource creation attempted; skipping Compose cleanup.\n'
+  fi
+  if [[ -n "$TLS_DIR" ]]; then
+    if (( cleanup_status == 0 )); then
+      rm -rf -- "$TLS_DIR"
+    else
+      printf 'HA cleanup failed; owned TLS material retained at %s\n' "$TLS_DIR" >&2
+    fi
   fi
   if (( original_status != 0 )); then
     exit "$original_status"
@@ -115,6 +126,59 @@ assert_cluster_state_consistent() {
     http://127.0.0.1:19123/management/cluster-state
 }
 
+# 参数：证据阶段、应已移除的 Gateway host（空表示全部在线）。固定三管理端只读观察，
+# 45 秒内同时核对实际 Registry 注册/删除投影与成功 Gossip；非 2xx 与连接错误在期限内重试。
+# 保存各节点原观察，不以健康或 WARN 推断。
+assert_gossip_converged() {
+  run_step gossip-convergence 55 ruby -rjson -rnet/http -ruri -ryaml -e '
+    compose, output, phase, removed_host, *urls = ARGV
+    document = YAML.load_file(compose)
+    services = document.fetch("services").values
+    brokers = services.map { |service| service.fetch("environment", {})["IM_BROKER_HOST"] }.compact
+    gateways = services.map { |service| service.fetch("environment", {})["IM_GATEWAY_HOST"] }.compact.reject { |host| host == removed_host }.sort
+    expected = brokers.map { |host| "broker-#{host}-18020" }.sort
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 45
+    last = nil
+    # 非 2xx 观察与连接错误同属可重试的瞬时状态，只在 45 秒期限耗尽后失败。
+    rejected = Class.new(StandardError)
+    loop do
+      begin
+        views = urls.map do |url|
+          read = lambda do |path|
+            uri = URI(url + path)
+            http = Net::HTTP.new(uri.host, uri.port)
+            http.open_timeout = 2; http.read_timeout = 2
+            response = http.get(uri.request_uri)
+            raise rejected, "Gossip observation HTTP rejected" unless response.is_a?(Net::HTTPSuccess)
+            value = JSON.parse(response.body)
+            value.is_a?(Hash) ? value.fetch("data") : value
+          end
+          {"broker"=>url, "brokers"=>read.call("/management/brokers"),
+           "gateways"=>read.call("/management/gateways"), "records"=>read.call("/management/gossip/records?limit=100")}
+        end
+        converged = views.all? { |view|
+          view.fetch("brokers").map { |item| item.fetch("brokerId") }.sort == expected &&
+          view.fetch("gateways").map { |item| item.fetch("host") }.sort == gateways &&
+          view.fetch("records").any? { |record| record.fetch("status") == "SUCCESS" }
+        }
+        if converged
+          File.write(output, JSON.generate({"phase"=>phase, "removedGatewayHost"=>removed_host,
+            "expectedBrokerObservations"=>expected, "expectedGatewayHosts"=>gateways, "views"=>views}) + "\n")
+          break
+        end
+        last = "Registry/Gossip observations have not converged"
+      rescue rejected => failure
+        last = failure.message
+      rescue IOError, SystemCallError, Timeout::Error, JSON::ParserError, KeyError => failure
+        last = failure.class.name
+      end
+      abort "Gossip convergence failed: #{last}" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+      IO.select(nil, nil, nil, 0.25)
+    end
+  ' "$COMPOSE_FILE" "$STATE_DIR/gossip-$1.json" "$1" "$2" \
+    http://127.0.0.1:19121 http://127.0.0.1:19122 http://127.0.0.1:19123
+}
+
 run_focused_scenarios() {
   # 独立 mTLS/JRaft 层需要 Broker 生产依赖；reactor 仅执行这两个测试类，不重复全部上游测试。
   run_step focused-routing-ha "" mvn -q -pl im-test/im-routing-ha -am \
@@ -132,8 +196,10 @@ run_focused_scenarios() {
 probe_gateway_restart() {
   run_step compose-stop "" "${COMPOSE[@]}" stop -t 10 gateway-ha-1
   poll_http http://127.0.0.1:19211/actuator/health 15
+  assert_gossip_converged gateway-removed "gateway-ha-1"
   run_step compose-start "" "${COMPOSE[@]}" start gateway-ha-1
   poll_http http://127.0.0.1:19111/actuator/health "$RESTART_READY_TIMEOUT_SECONDS"
+  assert_gossip_converged gateway-restored ""
 }
 
 probe_each_broker_restart() {
@@ -176,13 +242,18 @@ if [[ -n "$REACTOR_EVIDENCE" ]]; then
   run_step reactor-check "" ruby "$EVIDENCE_HELPER" check "$ROOT_DIR" "$REACTOR_EVIDENCE"
 fi
 run_step engine-info "${ROUTING_HA_ENGINE_TIMEOUT_SECONDS:-8}" docker info
-run_step compose-config "" docker compose -f "$COMPOSE_FILE" config --quiet
 if [[ -z "$REACTOR_EVIDENCE" ]]; then
 run_step package "" mvn -q -pl im-broker/im-broker-server,im-gateway/im-ws-gateway/im-ws-gateway-server \
   -am -DskipTests package
 run_focused_scenarios
 run_step standalone-check "" ruby "$EVIDENCE_HELPER" ha-check "$ROOT_DIR" "$STARTED_EPOCH"
 fi
+# 每轮只使用新目录，不接收调用者传入的旧材料路径。
+TLS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/im-chat-routing-ha-tls.XXXXXXXX")"
+export ROUTING_HA_TLS_DIR="$TLS_DIR"
+run_step tls-create "" ruby "$TLS_HELPER" create "$TLS_DIR" "$COMPOSE_FILE"
+run_step tls-check "" ruby "$TLS_HELPER" check "$TLS_DIR" "$COMPOSE_FILE"
+run_step compose-config "" "${COMPOSE[@]}" config --quiet
 RESOURCE_ATTEMPTED=1
 printf '{"kind":"compose-project","id":"%s"}\n' "$PROJECT_NAME" > "$RESOURCE_LEDGER"
 run_step compose-up "" "${COMPOSE[@]}" up --detach --build --wait
@@ -192,8 +263,11 @@ poll_http http://127.0.0.1:19123/actuator/health
 poll_http http://127.0.0.1:19111/actuator/health
 poll_http http://127.0.0.1:19211/actuator/health
 assert_cluster_state_consistent
+assert_gossip_converged initial-registration ""
 probe_gateway_restart
 probe_each_broker_restart
+# 映射引用本轮拓扑日志，必须先采集成功；EXIT 仍补采异常诊断并清理资源。
+ROUTING_HA_STEP_OUTPUT="$DIAGNOSTIC_DIR/compose.log" run_step topology-logs "${ROUTING_HA_LOGS_TIMEOUT_SECONDS:-5}" "${COMPOSE[@]}" logs --no-color
 write_scenario_evidence
 
 printf 'routing-ha executed 25 mapped scenarios on project %s.\n' "$PROJECT_NAME"

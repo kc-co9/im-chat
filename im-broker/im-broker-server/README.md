@@ -144,7 +144,7 @@ Nacos metadata 的 `management-host` 发布管理地址，监听地址与发布�
 
 目标 epoch 的 ACTIVE Broker 执行 Lease prepare/install。新 epoch 不表示节点新加入，ACTIVE 也不表示已安装有效 Lease。
 
-下表所有键的前缀为 `im.broker.routing`。
+角色身份使用 `PeerIdentityConstants` 的五个固定命名空间，见[固定项目角色身份命名空间](#固定项目角色身份命名空间)。下表仅列出 `im.broker.routing` 下的可信网络回退开关，不提供角色前缀覆盖。
 
 | 键 | 默认值 | 用途/约束 |
 |---|---|---|
@@ -179,7 +179,7 @@ Nacos metadata 的 `management-host` 发布管理地址，监听地址与发布�
 
 #### 从采样到新故障操作
 
-1. `BrokerFailureProbeScheduler` 在当前 voter 上探测其他 committed ACTIVE 目标。`BrokerPeerAdapter.probe` 通过 `invokeAuthenticated` 验证真实 TLS 对端与唯一 Broker URI SAN；Subject、首个 URI 或可信网络回退不能替代此身份。
+1. `BrokerFailureProbeScheduler` 在当前 voter 上探测其他 committed ACTIVE 目标。`BrokerPeerAdapter.probe` 通过统一 typed `invoke` 验证真实 TLS 对端与唯一 Broker URI SAN；Subject、首个 URI 或可信网络回退不能替代此身份。
 2. `BrokerHealthObservationTracker` 保存本机最新样本、单调采样时间和连续失败起点。只有 `TRANSPORT_UNAVAILABLE` 形成 UNHEALTHY；本机预算耗尽、TLS/身份/协议错误和队列拒绝为 UNKNOWN。HEALTHY、UNKNOWN 或采样断档均打断旧失败窗口。
 3. Leader 的 `reconcileFailures` 先恢复既有未终态 `FAIL_BROKER`；没有待恢复操作时，读取本机 `getLeaderTerm()` 的 Optional 任期并检查 revision、实际 membership 与 Broker 绑定。任期为空、非 Leader 或成员不一致时作废冷却并跳过新建。
 4. `BrokerObservationState.advance(topology, leaderTerm, observedAt)` 是冷却的唯一资格入口。冷却满足且没有阻塞操作后，应用读取本机快照，并经 `fetchHealthReport` 并发拉取其他 voter 本轮报告；失败按空报告处理，不沿用旧票。
@@ -192,7 +192,7 @@ Nacos metadata 的 `management-host` 发布管理地址，监听地址与发布�
 
 请求用 `callerBrokerId`、`receiverBrokerId` 区分调用者与接收者，报告查询的 `brokerIds` 是被观察集合；报告外层 `observerBrokerId` 表示实际观察者，行内 `brokerId` 表示被观察者，probe 响应仍用 `brokerId`。旧 target/reporter 字段不作别名，需同版本成组部署；RPC operation `fetchBrokerHealthReport` 和 Raft v2 格式不变。
 
-probe/report 不携带绝对请求期限，接收方允许晚到的只读查询。此处删除期限不影响 Lease、Gateway 快照、RouteLookup 或其他有副作用协议。当前普通调用仍走 `invoke`，健康观察走 `invokeAuthenticated`；[连接层统一 invoke 设计](../../docs/design-docs/2026-10-20-bolt-unified-invoke-design.md)属于后续方案，尚未接入当前生产调用链。
+probe/report 不携带绝对请求期限，接收方允许晚到的只读查询。此处删除期限不影响 Lease、Gateway 快照、RouteLookup 或其他有副作用协议。全部 Peer、健康观察、Gateway 下行和 Gossip 均使用不可变 `BoltTarget` 与统一 `invoke`，不保留旧入口；连接/发送边界见 [im-bolt](../../im-plugin/im-bolt/README.md)。
 
 `getHealthReport` 提供本机快照，`fetchHealthReport` 拉取远端报告。Adapter 在执行器任务内构造请求及 nonce，RPC 前取一次 `requestAt = Instant.now()`，用报告年龄还原全部行的观察时刻；实际观察者取自已认证目标，而非信任 payload 身份。报告行的数量、重复、范围、状态和时长仍校验，但客户端不再比较响应上下文回显，也不做返回后的绝对期限检查。这依赖已认证 Broker 按请求生成报告，不表示 TLS 能验证业务内容，亦不再用回显发现服务端错上下文缺陷。
 
@@ -202,7 +202,7 @@ probe/report 不携带绝对请求期限，接收方允许晚到的只读查询�
 
 #### 观察暂停与排查
 
-默认明文开发环境不会形成独立故障票。生产应为每个稳定 brokerId 签发独立 URI SAN 并开启双向 TLS，不能用可信网络回退替代。自动操作未发起时，依次检查 TLS 身份、当前 voter 绑定、freshness、冷却、观察队列和未终态 operation。
+默认配置为 MTLS；显式受限明文开发环境不形成独立故障票，也不自动摘流。生产应为每个稳定 brokerId 签发独立 URI SAN 并开启双向 TLS，不能用可信网络回退替代。自动操作未发起时，依次检查 TLS 身份、当前 voter 绑定、freshness、冷却、观察队列和未终态 operation。
 
 同步 DNS 或共享连接等待可能长期占用观察线程；单次预算限制结果接受性，不保证方法按固定墙钟期限返回。专用执行器不占 fence/Lease 队列；在途调用实际结束前不释放闸门，不因超时无限重发。自动处置因此可能安全暂停，但不会降低多数或新鲜度要求。
 
@@ -210,22 +210,17 @@ probe/report 不携带绝对请求期限，接收方允许晚到的只读查询�
 
 ### 受信身份与 TLS
 
-下表所有键的前缀为 `im.broker.routing`。
+角色身份使用 `PeerIdentityConstants` 的五个固定命名空间，见[固定项目角色身份命名空间](#固定项目角色身份命名空间)。下表仅列出 `im.broker.routing` 下的可信网络回退开关，不提供角色前缀覆盖。
 
 | 键 | 本地默认值 | 部署要求 |
 |---|---|---|
-| `gateway-workload-identity-prefix` | `spiffe://im-chat/gateway/` | 与 Gateway 证书身份匹配 |
-| `broker-workload-identity-prefix` | `spiffe://im-chat/broker/` | 与 peer 证书身份匹配 |
-| `message-workload-identity-prefix` | `spiffe://im-chat/message/` | 下行调用身份 |
-| `account-workload-identity-prefix` | `spiffe://im-chat/account/` | 关闭控制调用身份 |
-| `ops-workload-identity-prefix` | `spiffe://im-chat/im-ops/` | Ops 服务身份 |
-| `allow-trusted-network-gateway-identity` | 环境变量默认 `true` | `IM_BROKER_ALLOW_TRUSTED_NETWORK_GATEWAY_IDENTITY`，生产设 `false` |
-| `allow-trusted-network-broker-identity` | 环境变量默认 `true` | `IM_BROKER_ALLOW_TRUSTED_NETWORK_BROKER_IDENTITY`，生产设 `false` |
-| `allow-trusted-network-service-identity` | 环境变量默认 `true` | `IM_BROKER_ALLOW_TRUSTED_NETWORK_SERVICE_IDENTITY`，生产设 `false` |
+| `allow-trusted-network-gateway-identity` | 环境变量默认 `false` | `IM_BROKER_ALLOW_TRUSTED_NETWORK_GATEWAY_IDENTITY`，生产设 `false` |
+| `allow-trusted-network-broker-identity` | 环境变量默认 `false` | `IM_BROKER_ALLOW_TRUSTED_NETWORK_BROKER_IDENTITY`，生产设 `false` |
+| `allow-trusted-network-service-identity` | 环境变量默认 `false` | `IM_BROKER_ALLOW_TRUSTED_NETWORK_SERVICE_IDENTITY`，生产设 `false` |
 
-三个可信网络回退的 typed properties 默认均为 `false`，本地 `application.yml` 才通过环境变量缺省启用。它们只用于受控明文开发网络，生产必须关闭并启用 Bolt mTLS。
+三个可信网络回退在 typed properties 与默认 application.yml 均为 `false`，只在独立 bolt-dev profile 显式启用。生产必须关闭并启用 Bolt mTLS；TLS 错误不会切换模式。
 
-Gateway 路由写入验证 TLS session 身份（优先 URI SAN，其次 Subject）、`im-broker` audience、`broker:route:write` scope、Gateway 租约和注册地址，不能只信任请求体 `gatewayId`。明文连接不能伪造 TLS 身份。
+Gateway 路由写入验证 TLS session 严格 namespace 唯一叶 URI SAN 身份（不回退 Subject 或首 URI）、`im-broker` audience、`broker:route:write` scope、Gateway 租约和注册地址，不能只信任请求体 `gatewayId`。明文连接不能伪造 TLS 身份。
 
 生产环境的 Bolt TLS 配置：
 
@@ -324,3 +319,19 @@ mvn -q -pl im-broker/im-broker-server -am test
 本地 Follower 修复已通过访问器 16 项、Runtime 22 项、Broker 聚焦 87 项及原三项 `AutomaticFailureTlsHaTest`；Runtime reviewer `a682f997`、HA fixture reviewer `cf4028e1` 均 scoped Accept，HA 日志为 `/tmp/follower-ha-three-final.log`。该 HA 使用真实三 Broker TLS，Gateway ACK 为替代边界，不是真实 Gateway E2E；不能据此关闭私有发布、双构建/输入锁或最终全仓门禁缺口。完整证据与当前计划状态通过[计划索引](../../docs/exec-plans/active/README.md)定位，最终门禁以 Harness 当前工作树指纹记录为准。
 
 真实本地多节点故障拓扑入口为 `./scripts/verify.sh routing-ha`，运行隔离的三 Broker/两 Gateway，详情见[本地编排的路由高可用拓扑](../../deploy/local/README.md#路由高可用拓扑)。普通 full Compose、realtime E2E 和本地 load test 的单 Broker 结果不等于生产多副本容量保证；证据范围与生产缺口见 [Broker 验证矩阵](../README.md#验证状态)。
+
+## 受控 Bolt 装配配置
+
+默认 client/server 为 MTLS 且启用 TLS/client auth，未注入材料时拒绝启动。`im.bolt.client.allowed-peer-uri-prefixes` 仍可配置，本模块默认配置为 Broker、Gateway 两个 namespace；该通用传输策略不改变固定项目角色规则，前缀只是策略边界，实际目标仍须完整 URI 匹配。资源初值、共享创建与 caller 接受预算、原生 RPC 排空、后台 reconnect/heal/warmup 全部禁用及外部 Bean 同源要求见 [im-bolt](../../im-plugin/im-bolt/README.md)。
+
+`im.broker.cluster.seed-addresses` 仍是候选；新增 `im.broker.cluster.trusted-peers`，每项为 `observation-id` 和 `target.address` / `target.expected-peer-identity`。启动固定快照，观察 ID、地址和完整 Broker URI 一一对应，拒绝冲突；未获配对的 seed 或 Registry peer 不发送，不能用观察自报身份补齐信任。入站与 Scheduler 共用同一个 `BrokerGossipSettings` 启动快照：仅 digest/delta 以请求观察 ID 查部署配对，与真实叶证书 principal 的完整 URI 精确比较，再以该 principal 的稳定 brokerId 校验 committed member。普通注册等 Peer 请求仍执行原稳定 ID 绑定；配置对象后续 mutation 不会扩展授权。DEV 普通 Gossip 仅走已有显式 development marker/trusted-network 分支，不产生证书身份或有效观察票。
+
+Gateway 下行使用固定 `PeerIdentityConstants.GATEWAY_URI_PREFIX`（`spiffe://im-chat/gateway/`）；`im.broker.gateway-push.bolt.development-targets` 默认空，每项为 address/expected-peer-identity，仅固定实际 DEV 模式下作下行描述配对，不覆盖认证 principal 或租约。MTLS 使用注册的证书身份，不使用 DEV 配对替代认证。模式授权从实际 running controlled client 固定并核对 Invoker 同源，不受采样 options 后续 mutation 改变。
+
+D14 固定路径/选项而非文件字节：旧 Channel 保持 session，新 Channel 可能读更新文件，不承诺每次 reload/watch 或原地并发写一致。建议完整原子交付与滚动重启，CA 依次双信任、新叶、撤旧并验证双向原生拒绝；不是 only-restart 门禁。不新增私钥副本，正式证书分发与生产上线仍为后续交付。
+
+### 固定项目角色身份命名空间
+
+项目五角色前缀由 `im-common` 的 `PeerIdentityConstants` 固定：Broker 为 `spiffe://im-chat/broker/`、Gateway 为 `spiffe://im-chat/gateway/`、Message 为 `spiffe://im-chat/message/`、Account 为 `spiffe://im-chat/account/`、Ops 为 `spiffe://im-chat/im-ops/`，不再提供部署覆盖。通用 Plugin 的 `im.bolt.client.allowed-peer-uri-prefixes` 仍可配置，但不能改变 SDK 目标校验或接收方角色授权。
+
+旧项目前缀键及环境占位符不再生效，无兼容别名；Spring 未知属性可能被忽略，不保证启动失败。默认值部署的 wire 身份不变；自定义前缀部署须协调二进制、证书身份、Nacos、环境变量及部署配置迁移，发布或回滚不能只切换键名或二进制，不支持无前提混合版本。各环境必须隔离 CA 与信任材料，生产不得信任测试 CA；固定 URI 不替代认证、成员或业务授权。完整边界见[安全规范](../../docs/SECURITY.md#固定项目角色身份命名空间)与[已批准设计](../../docs/design-docs/2026-10-28-fixed-peer-identity-prefixes-design.md)。

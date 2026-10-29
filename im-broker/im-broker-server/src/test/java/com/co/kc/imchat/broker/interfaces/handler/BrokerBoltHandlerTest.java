@@ -31,6 +31,7 @@ import com.co.kc.imchat.common.model.io.FrameRequest;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.plugin.bolt.model.BoltRequestContext;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.service.message.facade.MessageService;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -129,7 +130,9 @@ class BrokerBoltHandlerTest {
     }
 
     private BoltRequestContext requestContext() {
-        return new BoltRequestContext("127.0.0.1:12345", "127.0.0.1", GATEWAY_IDENTITY, false, Set.of());
+        // Handler单元边界的已认证叶身份事实；不替代Processor/JSSE真实TLS集成测试。
+        return new BoltRequestContext("127.0.0.1:12345", "127.0.0.1", GATEWAY_IDENTITY,
+                true, Set.of(GATEWAY_IDENTITY), false);
     }
 
     @Test
@@ -168,18 +171,18 @@ class BrokerBoltHandlerTest {
 
     private static BoltInvoker unusedBoltInvoker() {
         return new BoltInvoker() {
-            @Override
-            public <T, R> R invokeAuthenticated(String address, String service, String operation,
-                                               T request, Class<R> responseType, int timeoutMillis,
-                                               String expectedPeerIdentity, String identityPrefix) {
-                throw new AssertionError("ordinary data plane must not request authenticated observation RPC");
-            }
+        private BoltTarget typedTarget;
 
-            @Override
-            public <T, R> R invoke(String address, String service, String operation, T request,
-                                   Class<R> responseType, int timeoutMillis) {
+        @Override
+        public <T, R> R invoke(BoltTarget target, String service, String operation,
+                               T request, Class<R> responseType, int timeoutMillis) {
+            this.typedTarget = target;
+
+            String address = target.address();
+
                 throw new UnsupportedOperationException("unused bolt invoker");
             }
+
         };
     }
 

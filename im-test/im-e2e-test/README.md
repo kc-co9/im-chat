@@ -16,3 +16,9 @@ Account 认证和 Message Facade 实现作为受控测试边界替换，因此�
 ```bash
 ./scripts/verify.sh e2e
 ```
+
+## Bolt 开发目标与真实边界
+
+黄金旅程也验证真实 Broker → Gateway 下行、session close 清理和重连。fixture 在固定实际 DEV 模式下，用真实预绑定端口生成 D12 部署描述配对，再启动正式 Broker/Gateway context；不伪造 TLS principal，不覆盖原注册/租约事实。所有调用仍是 typed 目标，配对仅作 pool/routing descriptor，开发不发有效观察票、不自动摘流。该旅程不证明 mTLS 安全 HA；后者由 routing-ha 独立拥有。
+
+消费方 startup 只隔离外部设施，不替换正式受控客户端/SDK 生命周期；模块运行与完整验收以实际同指纹报告为准，不能以 stub、静态配对检查或 create/inspect 当业务已启动。

@@ -1,6 +1,12 @@
 package com.co.kc.imchat.broker.application.cluster;
 
 import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
+import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRoutingProperties;
+import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerFailureObservationProperties;
+import com.co.kc.imchat.plugin.bolt.client.BoltControlledClient;
+import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
+import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerHealthStatus;
 
@@ -198,7 +204,19 @@ class BrokerAutomaticFailureObservationTest {
         CompletableFuture<QuorumRead> quorum = new CompletableFuture<>();
         when(adapter.confirmLeadership(any())).thenReturn(quorum);
         when(adapter.getClusterId()).thenReturn(new BrokerClusterId("cluster-a"));
-        BrokerClusterAppService service = new BrokerClusterAppService(adapter, null, null,
+        ImBoltProperties.Client transportPolicy = new ImBoltProperties.Client();
+        transportPolicy.setAllowedPeerUriPrefixes(List.of("spiffe://im-chat/broker/"));
+        transportPolicy.getTls().setEnabled(true);
+        transportPolicy.getTls().setKeyStore("unit-transport-construction-only.p12");
+        transportPolicy.getTls().setKeyStorePassword("test-only");
+        // 仅构造实际MTLS固定策略，不启动网络；本用例的恢复在quorum完成前不会调用对端。
+        BoltControlledClient transport = new BoltControlledClient(transportPolicy);
+        BoltInvoker invoker = mock(BoltInvoker.class);
+        BrokerPeerAdapter peer = new BrokerPeerAdapter(invoker, new BrokerProperties(), Runnable::run,
+                Runnable::run, new BrokerRoutingProperties(), new BrokerFailureObservationProperties(),
+                "a", Runnable::run, transport);
+        assertThat(peer.observationsAllowed()).isTrue();
+        BrokerClusterAppService service = new BrokerClusterAppService(adapter, peer, null,
                 Duration.ofMillis(1), Duration.ofMillis(1), null, Duration.ofSeconds(1),
                 new BrokerHealthObservationTracker(new BrokerId("a"), Duration.ofSeconds(10)),
                 policy(), Duration.ofSeconds(60));
@@ -218,6 +236,7 @@ class BrokerAutomaticFailureObservationTest {
         verify(adapter, times(2)).confirmLeadership(any());
         retry.completeExceptionally(new IllegalStateException("controlled second quorum loss"));
         verify(adapter.getLocalBroker(), never()).getLeaderTerm();
+        verifyNoInteractions(invoker);
     }
 
     private static BrokerFailureObservationService policy() {

@@ -24,7 +24,7 @@ class AbstractBrokerRpcHandlerTest {
         private TestParams params;
 
         private TestRpcHandler() {
-            super(BrokerBoltOperation.LIST_BROKERS);
+            super(BrokerBoltOperation.GET_CLUSTER_STATE);
         }
 
         @Override

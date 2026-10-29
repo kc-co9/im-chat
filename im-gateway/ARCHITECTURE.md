@@ -88,3 +88,9 @@ Broker 暂时不可用时，已建立连接仍由本机持有，但注册、上�
 - `im-ws-gateway-server` 依赖 Gateway SDK、Broker SDK、Account Facade 和通用 Plugin。
 - `im-ws-gateway-sdk` 只保存 Bolt 契约和客户端，不依赖 Netty Server 实现。
 - 外部协议模型在 Gateway 边界终止，业务服务不依赖 Netty、WebFlux 或 Gateway 内部类型。
+
+## 内部 Bolt 身份边界
+
+上行 Broker SDK 在 Nacos 候选与部署配对交集上引导，随后使用完整 committed state 和固定 namespace 选择 typed 目标；注册、心跳、快照/ACK、帧与关闭均走统一 invoke。下行 `GatewayClient` 固定实际模式，MTLS 使用注册的严格 Gateway 叶 URI；DEV 显式配对只是目标描述，不冒充认证 principal，也不改写注册租约。
+
+im-bolt 拥有连接认证、D10 当前两端会话数组有效区间、typed gate 和资源生命周期；Gateway 仍拥有 committed Broker 授权与本机连接。入站身份缺失或错角色拒绝，TLS 成功不等于拥有写入权限。WebSocket 对外 pipeline 的合法写入与内部 Bolt 业务 transport 所有权分别约束，不能混用 raw API 绕过受控调用。模式、材料更新及开发隔离的详细契约见 [im-bolt](../im-plugin/im-bolt/README.md)。

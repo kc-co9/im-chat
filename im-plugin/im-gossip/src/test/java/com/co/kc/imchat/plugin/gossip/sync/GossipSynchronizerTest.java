@@ -10,6 +10,7 @@ import com.co.kc.imchat.plugin.gossip.model.param.GossipDeltaParams;
 import com.co.kc.imchat.plugin.gossip.model.param.GossipDigestParams;
 import com.co.kc.imchat.plugin.gossip.model.result.GossipDigestResult;
 import org.junit.jupiter.api.Test;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 
 import java.util.List;
 
@@ -32,20 +33,20 @@ class GossipSynchronizerTest {
         GossipDeltaEntry localDelta = delta("BROKER:broker-1", "node-1", 1000);
         when(syncStore.digest()).thenReturn(List.of(digest));
         when(peerClient.exchangeDigest(
-                "127.0.0.1:12200", "broker.sync", "digest",
+                new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/node-2"), "broker.sync", "digest",
                 new GossipDigestParams("node-1", List.of(digest)), 3000))
                 .thenReturn(new GossipDigestResult(List.of(remoteDelta), List.of(localDelta.key())));
         when(syncStore.deltas(List.of(localDelta.key()))).thenReturn(List.of(localDelta));
 
         Integer processedCount = synchronizer.syncPeer(
                 "node-1",
-                "127.0.0.1:12200",
+                new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/node-2"),
                 operations,
                 3000);
 
         verify(syncStore).merge(List.of(remoteDelta));
         verify(peerClient).pushDeltas(
-                "127.0.0.1:12200", "broker.sync", "delta",
+                new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/node-2"), "broker.sync", "delta",
                 new GossipDeltaParams("node-1", List.of(localDelta)), 3000);
         assertThat(processedCount).isEqualTo(2);
     }

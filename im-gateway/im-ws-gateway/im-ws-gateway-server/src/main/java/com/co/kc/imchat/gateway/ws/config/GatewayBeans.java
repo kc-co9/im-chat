@@ -1,5 +1,9 @@
 package com.co.kc.imchat.gateway.ws.config;
 
+import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
+import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
+import lombok.extern.slf4j.Slf4j;
+
 import com.co.kc.imchat.broker.sdk.BrokerClient;
 import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.gateway.ws.config.properties.GatewayProperties;
@@ -23,12 +27,23 @@ import org.springframework.context.annotation.Configuration;
 import java.util.UUID;
 
 @Configuration
+@Slf4j
 public class GatewayBeans {
 
     @Bean
     @ConditionalOnMissingBean
-    public ConnectionRegistry connectionRegistry() {
-        return new ConnectionRegistry();
+    public ConnectionRegistry connectionRegistry(BrokerClient brokerClient, GatewayInstanceIdentity identity) {
+        return new ConnectionRegistry(removal -> {
+            if (!removal.mutation().routeAbsent()) {
+                return;
+            }
+            try {
+                brokerClient.unregisterConnection(new ConnectionUnregisterParams(
+                        removal.userId(), identity.gatewayId(), removal.mutation().routeRevision()));
+            } catch (RuntimeException failure) {
+                log.warn("failed to unregister ws route, gatewayId:{}, userId:{}", identity.gatewayId(), removal.userId(), failure);
+            }
+        });
     }
 
     @Bean
@@ -59,7 +74,8 @@ public class GatewayBeans {
                 discoveryClient,
                 ServiceName.IM_BROKER,
                 properties.getBroker().getBolt().getLoadBalance(),
-                properties.getBroker().getBolt().getTimeoutMillis());
+                properties.getBroker().getBolt().getTimeoutMillis(),
+                properties.getBroker().getBootstrapTargets());
     }
 
     @Bean
@@ -99,9 +115,12 @@ public class GatewayBeans {
     @Bean
     public GatewayBrokerAuthorizer gatewayBrokerAuthorizer(
             BrokerClient brokerClient,
-            GatewayProperties properties) {
+            GatewayProperties properties, ImBoltProperties boltProperties) {
+        if (properties.getBroker().isAllowTrustedNetworkIdentity()
+                && boltProperties.getServer().getMode() != BoltTransportMode.DEVELOPMENT_PLAINTEXT) {
+            throw new IllegalArgumentException("Gateway trusted network identity requires Bolt development mode");
+        }
         return new GatewayBrokerAuthorizer(brokerClient::currentClusterState,
-                properties.getBroker().getWorkloadIdentityPrefix(),
                 properties.getBroker().isAllowTrustedNetworkIdentity());
     }
 

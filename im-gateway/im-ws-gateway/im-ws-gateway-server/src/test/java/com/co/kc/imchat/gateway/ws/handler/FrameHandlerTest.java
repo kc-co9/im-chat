@@ -99,7 +99,7 @@ class FrameHandlerTest {
     private static class SuccessfulBrokerClient extends BrokerClient {
         private SuccessfulBrokerClient() {
             super(BrokerClientTestSupport.invoker(), BrokerClientTestSupport.discovery(),
-                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000);
+                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000, BrokerClientTestSupport.identities());
         }
 
         @Override

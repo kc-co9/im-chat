@@ -42,7 +42,11 @@ flowchart LR
 - `im-service` 拥有 Account、Social、Message 业务规则和持久化事实。
 - `im-management` 中的 IAM、Admin、Ops、Audit 是独立部署的管理应用，不与普通用户认证或业务表合并。
 
-Broker SDK 先通过 Nacos 发现一个 Broker 作为 bootstrap；首次调用成功后，周期性执行 `GET_CLUSTER_STATE` 获取已提交 Broker 集群状态并原子替换本地地址列表。Nacos 负责启动发现，Broker 的 Raft committed state 与 Gossip Registry 负责运行时路由事实。
+Broker SDK 将 Nacos 候选地址与部署显式地址/完整 URI 配对取交集作为 bootstrap；首次可信调用后，周期性执行 `GET_CLUSTER_STATE`，原子安装已提交完整状态，并以固定 Broker namespace + committed brokerId 构造后续目标。Nacos metadata、Gossip 观察和首响应自报身份都不是首次信任源。Raft committed state 拥有权威拓扑，Gossip Registry 只拥有运行观察。
+
+项目角色身份命名空间由 `im-common` 的 `PeerIdentityConstants` 固定：Broker 为 `spiffe://im-chat/broker/`、Gateway 为 `spiffe://im-chat/gateway/`、Message 为 `spiffe://im-chat/message/`、Account 为 `spiffe://im-chat/account/`、Ops 为 `spiffe://im-chat/im-ops/`，不提供部署覆盖。SDK 构造目标、bootstrap 校验与 Server 角色授权共同遵循该约定；节点 ID、完整身份、地址和 committed 拓扑仍按原流程管理。通用 Plugin 不依赖项目角色常量，`im.bolt.client.allowed-peer-uri-prefixes` 仍可配置，但不能改变项目角色规则。环境隔离与自定义前缀部署迁移见 [安全规范](docs/SECURITY.md#固定项目角色身份命名空间)。
+
+所有 Bolt 业务调用统一使用不可变 `BoltTarget(address, expectedPeerIdentity)`，由 im-bolt 受控客户端固定模式/前缀/预算资源策略并完成连接认证和 typed 发送准入。目标选择归 SDK/Adapter，证书和连接生命周期归 Plugin，成员、角色、租约及业务授权仍归接收模块；不保留地址调用或认证失败回退。D11 同 JVM 可信代码和 D10 会话数组边界见 [im-bolt](im-plugin/im-bolt/README.md)，不把静态 API 检查当任意 raw 字节运行期隔离。
 
 ## 业务上下文与部署边界
 

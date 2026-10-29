@@ -1,6 +1,7 @@
 package com.co.kc.imchat.broker.interfaces.scheduler;
 
-import com.co.kc.imchat.broker.interfaces.scheduler.BrokerGossipProperties;
+import com.co.kc.imchat.broker.model.properties.BrokerGossipSettings;
+
 import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerRegistration;
@@ -8,9 +9,10 @@ import com.co.kc.imchat.broker.model.cqrs.dto.GossipRecordDTO;
 import com.co.kc.imchat.broker.model.enums.DiagnosticStatus;
 import com.co.kc.imchat.broker.support.gossip.GossipSyncTracker;
 import com.co.kc.imchat.plugin.gossip.sync.GossipSyncOperations;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
+import com.co.kc.imchat.plugin.bolt.exception.BoltInvocationException;
 import com.co.kc.imchat.plugin.gossip.sync.GossipSynchronizer;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.Duration;
@@ -35,12 +37,12 @@ public class BrokerGossipScheduler {
 
     private final BrokerRegistry brokerRegistry;
     private final GossipSynchronizer gossipSynchronizer;
-    private final BrokerGossipProperties properties;
+    private final BrokerGossipSettings properties;
     private final GossipSyncTracker gossipSyncTracker;
 
     public BrokerGossipScheduler(BrokerRegistry brokerRegistry,
                                  GossipSynchronizer gossipSynchronizer,
-                                 BrokerGossipProperties properties,
+                                 BrokerGossipSettings properties,
                                  GossipSyncTracker gossipSyncTracker) {
         this.brokerRegistry = brokerRegistry;
         this.gossipSynchronizer = gossipSynchronizer;
@@ -53,7 +55,7 @@ public class BrokerGossipScheduler {
      */
     @Scheduled(fixedDelay = GOSSIP_DELAY_MS)
     public void gossip() {
-        List<String> peers = new ArrayList<>(peers());
+        List<BoltTarget> peers = new ArrayList<>(peers());
         if (peers.isEmpty()) {
             return;
         }
@@ -66,17 +68,20 @@ public class BrokerGossipScheduler {
     /**
      * 与单个 peer 交换状态摘要和缺失的增量数据。
      */
-    private void syncPeer(String address) {
+    private void syncPeer(BoltTarget target) {
+        String address = target.address();
         Instant startedAt = Instant.now();
         try {
             Integer processedCount = gossipSynchronizer.syncPeer(
                     properties.brokerId(),
-                    address,
+                    target,
                     SYNC_OPERATIONS,
                     Math.toIntExact(properties.timeout().toMillis()));
             trackGossip(address, processedCount, startedAt, DiagnosticStatus.SUCCESS, null);
         } catch (RuntimeException exception) {
             trackGossip(address, 0, startedAt, DiagnosticStatus.FAILED, exception.getMessage());
+            if (exception instanceof BoltInvocationException invocation
+                    && invocation.failure() == BoltInvocationException.Failure.AUTHENTICATION) { throw exception; }
             log.warn("failed to gossip broker state to peer:{}, error:{}", address, exception.toString());
         }
     }
@@ -106,22 +111,21 @@ public class BrokerGossipScheduler {
     /**
      * 优先使用已发现的 Broker；尚未发现远端 Broker 时，使用静态种子节点引导 Gossip 发现。
      */
-    private List<String> peers() {
+    private List<BoltTarget> peers() {
         String localAddress = properties.localAddress();
-        List<String> peers = brokerRegistry.list()
-                .stream()
-                .map(BrokerRegistration::address)
-                .distinct()
-                .filter(address -> !localAddress.equals(address))
-                .toList();
-        if (CollectionUtils.isEmpty(peers)) {
-            peers = properties.seedAddresses()
-                    .stream()
-                    .distinct()
-                    .filter(address -> !localAddress.equals(address))
-                    .toList();
+        List<BrokerRegistration> discovered = brokerRegistry.list().stream()
+                .filter(registration -> !localAddress.equals(registration.address())).toList();
+        if (!discovered.isEmpty()) {
+            return discovered.stream().map(registration -> properties.trustedPeers().stream()
+                    .filter(peer -> peer.observationId().equals(registration.brokerId())
+                            && peer.target().address().equals(registration.address()))
+                    .findFirst().orElseThrow(() -> new SecurityException("Unbound Gossip observation identity/address"))
+                    .target()).distinct().toList();
         }
-        return peers;
+        return properties.seedAddresses().stream().distinct().filter(address -> !localAddress.equals(address))
+                .map(address -> properties.trustedPeers().stream().filter(peer -> peer.target().address().equals(address))
+                        .findFirst().orElseThrow(() -> new SecurityException("Gossip seed requires trusted identity pair"))
+                        .target()).toList();
     }
 
 }

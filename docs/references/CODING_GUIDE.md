@@ -302,3 +302,13 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 领域服务尺度、值对象建模、Adapter 输入输出、边界包装类型语义、构造器业务逻辑、条件 Bean 是否形成完整能力、方法可读性和注释价值由 Review 判断。不要为了自动化增加“每包最多 N 个类”、禁止所有 getter、禁止所有构造器或方法长度等高误报规则。
 
 确需例外时在代码附近说明原因，并在 Review、Harness 反馈或技术债务中记录退出条件；不得通过关闭规则或扩大排除范围消除反馈。
+
+## Bolt 受控传输边界
+
+- SDK、Peer Adapter、Gossip 和通用 BoltRpcClient 只调用 `BoltInvoker.invoke(BoltTarget, service, operation, request, responseType, timeoutMillis)`；目标携带地址/完整预期身份，不携带 URI 前缀、mode 或信任开关，不留旧地址版兼容入口。
+- 初始发现与 seed 必须核对部署可信配对。Nacos metadata、Gossip 或 payload 自报身份不能创建授权；后续从已认证 committed state 保留稳定 Broker 身份绑定，观察 ID 不冒充 brokerId。
+- im-bolt 拥有原生工厂、manager、codec/transport、gate 和生命周期。业务不直接使用 RpcClient invoke/oneway、替换 option/manager、创建 ConnectionFactory，或通过 raw write、pipeline、unsafe API 绕过。合法外部 WebSocket transport 属于 Gateway Netty server，不与内部 Bolt handler 混同。
+- 模式与策略复制为启动快照；业务安全许可从实际 running controlled client 导出并核对 Invoker 同源，不能由可重绑定 options 或配置声明单独授权。外部 Bean 必须符合正式受控契约，不为了测试接受普通客户端。
+- D10 仅约束当前成功 TLS session 两端非空 X.509 全数组的额外有效区间，不称 CertPath；D11 以同 JVM 可信代码为前提，静态 API 规则不代表拦住任意特权预编码 bytes。实际写起点和原生协议来源仍须集成测试与独立审计。
+- caller 接受预算、共享创建和原生 RPC terminal 分别记账；不 cancel 他人共享任务，不因外层放弃等待释放仍运行任务。关闭移出锁前提交持续拒绝状态，物理完成后清引用。
+- D14 只固定 TLS 路径/选项，不固定文件字节；不新增 watcher、私钥副本或 only-restart 门禁。资源、材料和失败分类的完整运行契约归 [im-bolt README](../../im-plugin/im-bolt/README.md)。

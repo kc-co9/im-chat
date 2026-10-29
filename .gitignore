@@ -59,3 +59,5 @@ lerna-debug.log*
 # Generated documentation is reproducible and must not be committed.
 docs/generated/*
 !docs/generated/.gitkeep
+
+.pi/

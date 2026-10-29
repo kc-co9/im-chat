@@ -1,0 +1,22 @@
+im:
+  bolt:
+    client:
+      mode: DEVELOPMENT_PLAINTEXT
+      tls:
+        enabled: false
+      development:
+        synthetic-data: ${IM_BOLT_SYNTHETIC_DATA:false}
+        isolated-container-network: ${IM_BOLT_ISOLATED_CONTAINER_NETWORK:false}
+    server:
+      mode: DEVELOPMENT_PLAINTEXT
+      host: ${IM_BOLT_SERVER_HOST:127.0.0.1}
+      tls:
+        enabled: false
+      development:
+        synthetic-data: ${IM_BOLT_SYNTHETIC_DATA:false}
+        isolated-container-network: ${IM_BOLT_ISOLATED_CONTAINER_NETWORK:false}
+  broker:
+    routing:
+      allow-trusted-network-gateway-identity: true
+      allow-trusted-network-broker-identity: true
+      allow-trusted-network-service-identity: true

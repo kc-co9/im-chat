@@ -149,11 +149,11 @@ Gateway 向 Broker 发送的分片快照及整轮 ACK 使用 `updateExpireAtMs`�
 - `delivery.close-deduplication-capacity`、`delivery.close-deduplication-retention`：关闭控制去重容量和
   保留窗口，默认 `100000`、`10m`。
 
-Gateway 通过 Nacos 发现初始 Broker 地址，之后由 Broker SDK 定时读取 Broker 集群快照；不配置固定 Broker 地址或 seed address。`im.bolt.client.enabled=true` 用于创建出站 `BoltInvoker`，`im.bolt.server.enabled=true` 用于接收 Broker 下行调用。`im.gateway.ws.bind-host` 只控制 Netty WebSocket 的本机监听地址，`im.gateway.ws.host` 是注册给 Broker 的可访问地址，两者不能互相替代。
+调用 Broker 使用固定 `PeerIdentityConstants.BROKER_URI_PREFIX`（`spiffe://im-chat/broker/`），必须配置 `im.gateway.ws.broker.bootstrap-targets`（默认空，每项 `address`、`expected-peer-identity`）。SDK 只使用 Nacos 候选与显式配对交集，空列表/冲突/无交集拒绝；首次及后续刷新、路由调用均为 typed 目标。配对不替代服务发现，不是 Gossip seed。默认启用 MTLS，部署须提供本机私钥链/信任 CA；无材料启动失败，不回退明文。仅合成数据可使用独立 `bolt-dev`，详见 [本地开发拓扑](../../../deploy/local/README.md#bolt-受限开发拓扑)。策略由构造快照固定，消费方同步重建，不保留旧地址 API。`im.bolt.client.enabled=true` 用于创建出站 `BoltInvoker`，`im.bolt.server.enabled=true` 用于接收 Broker 下行调用。`im.gateway.ws.bind-host` 只控制 Netty WebSocket 的本机监听地址，`im.gateway.ws.host` 是注册给 Broker 的可访问地址，两者不能互相替代。
 
 生产环境必须为 `im.bolt.client.tls` 和 `im.bolt.server.tls` 配置包含本机私钥证书链与信任 CA 的 keystore。
-Gateway 调用 Broker 时，Broker 从 TLS session 的 URI SAN（其次为证书 Subject）解析 workload identity，
-不会信任请求体自行声明身份。本地明文环境依赖 Broker 的显式可信网络回退，生产必须关闭该回退。
+Gateway 调用 Broker 时，Broker 仅从握手成功后的严格 namespace 唯一叶 URI SAN 解析 workload identity，
+不会信任 Subject、首 URI 或请求体自行声明身份。受限明文开发需显式 profile、合成数据和网络检查；生产必须关闭可信网络回退。
 
 本地默认端口为：浏览器 WebSocket `18011`、Gateway 下行 Bolt `18012`、Actuator HTTP `19011`。Gateway Bolt 端口不得与同机 Broker Bolt `18020` 或 Broker 管理 HTTP `19020` 重复，否则 Broker 会把下行帧发送到错误的监听器。
 
@@ -188,3 +188,9 @@ Gateway 调用 Broker 时，Broker 从 TLS session 的 URI SAN（其次为证书
 ```bash
 mvn -q -pl im-gateway/im-ws-gateway/im-ws-gateway-server -am test
 ```
+
+### 固定项目角色身份命名空间
+
+项目五角色前缀由 `im-common` 的 `PeerIdentityConstants` 固定：Broker 为 `spiffe://im-chat/broker/`、Gateway 为 `spiffe://im-chat/gateway/`、Message 为 `spiffe://im-chat/message/`、Account 为 `spiffe://im-chat/account/`、Ops 为 `spiffe://im-chat/im-ops/`，不再提供部署覆盖。通用 Plugin 的 `im.bolt.client.allowed-peer-uri-prefixes` 仍可配置，但不能改变 SDK 目标校验或接收方角色授权。
+
+旧项目前缀键及环境占位符不再生效，无兼容别名；Spring 未知属性可能被忽略，不保证启动失败。默认值部署的 wire 身份不变；自定义前缀部署须协调二进制、证书身份、Nacos、环境变量及部署配置迁移，发布或回滚不能只切换键名或二进制，不支持无前提混合版本。各环境必须隔离 CA 与信任材料，生产不得信任测试 CA；固定 URI 不替代认证、成员或业务授权。完整边界见[安全规范](../../../docs/SECURITY.md#固定项目角色身份命名空间)与[已批准设计](../../../docs/design-docs/2026-10-28-fixed-peer-identity-prefixes-design.md)。

@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.infrastructure.chain.interceptor;
 
+import static com.co.kc.imchat.common.constant.PeerIdentityConstants.BROKER_URI_PREFIX;
+
 import com.co.kc.imchat.broker.infrastructure.chain.BrokerRequestChain;
 
 import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
@@ -11,18 +13,12 @@ import com.co.kc.imchat.broker.sdk.access.BrokerCallerRole;
 
 /** 将 Broker 数据面请求声明绑定到传输身份和 committed member。 */
 public final class BrokerRouteCallerInterceptor implements BrokerRequestInterceptor {
-    private final BrokerRaftAdapter stateRepository;
-    private final String identityPrefix;
+    private final BrokerRaftAdapter brokerRaftAdapter;
     private final boolean allowTrustedNetworkIdentity;
 
-    public BrokerRouteCallerInterceptor(BrokerRaftAdapter stateRepository,
-                                            String identityPrefix,
-                                            boolean allowTrustedNetworkIdentity) {
-        if (stateRepository == null || identityPrefix == null || identityPrefix.isBlank()) {
-            throw new IllegalArgumentException("invalid Broker data-plane access configuration");
-        }
-        this.stateRepository = stateRepository;
-        this.identityPrefix = identityPrefix;
+    public BrokerRouteCallerInterceptor(BrokerRaftAdapter brokerRaftAdapter,
+                                        boolean allowTrustedNetworkIdentity) {
+        this.brokerRaftAdapter = brokerRaftAdapter;
         this.allowTrustedNetworkIdentity = allowTrustedNetworkIdentity;
     }
 
@@ -39,13 +35,13 @@ public final class BrokerRouteCallerInterceptor implements BrokerRequestIntercep
         }
         String requesterBrokerId = request.requesterBrokerId();
         boolean trustedTls = principal.callerRole() == BrokerCallerRole.BROKER
-                && (identityPrefix + requesterBrokerId).equals(principal.callerIdentity());
+                && (BROKER_URI_PREFIX + requesterBrokerId).equals(principal.callerIdentity());
         boolean trustedNetwork = allowTrustedNetworkIdentity
                 && principal.callerRole() == BrokerCallerRole.TRUSTED_NETWORK;
         if (!trustedTls && !trustedNetwork) {
             throw new SecurityException("Broker data-plane identity mismatch");
         }
-        boolean committed = stateRepository.getCommittedState().brokers().stream()
+        boolean committed = brokerRaftAdapter.getCommittedState().brokers().stream()
                 .anyMatch(node -> node.brokerId().equals(requesterBrokerId));
         if (!committed) {
             throw new SecurityException("Broker data-plane requester is not committed");

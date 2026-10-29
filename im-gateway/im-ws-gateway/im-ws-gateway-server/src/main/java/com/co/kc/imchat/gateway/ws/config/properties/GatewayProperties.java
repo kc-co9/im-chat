@@ -6,6 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
+import java.util.List;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 
 /**
  * WS 网关配置项。
@@ -83,8 +85,8 @@ public class GatewayProperties {
          * Broker Bolt 调用配置。
          */
         private BrokerBolt bolt = new BrokerBolt();
-        private String workloadIdentityPrefix = "spiffe://im-chat/broker/";
-        private boolean allowTrustedNetworkIdentity = true;
+        private List<BoltTarget> bootstrapTargets = List.of();
+        private boolean allowTrustedNetworkIdentity;
     }
 
     @Data

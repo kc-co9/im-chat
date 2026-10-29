@@ -25,11 +25,6 @@ public enum BrokerBoltOperation {
     HEARTBEAT_BROKER(BrokerBoltService.BROKER, "heartbeatBroker", BrokerAdmissionType.BROKER_PEER),
 
     /**
-     * 查询 Broker 实例快照。
-     */
-    LIST_BROKERS(BrokerBoltService.BROKER, "listBrokers", BrokerAdmissionType.CLUSTER_READ),
-
-    /**
      * 获取 Raft 已提交的完整 BrokerClusterState。
      */
     GET_CLUSTER_STATE(BrokerBoltService.BROKER, "getClusterState", BrokerAdmissionType.CLUSTER_READ),

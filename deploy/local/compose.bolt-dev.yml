@@ -1,0 +1,75 @@
+# 仅供合成数据的专用开发拓扑；必须经 scripts/bolt-dev-up.sh create/inspect 后启动。
+# 不与 compose.yml 合并，不附着 broadinfra。Account/Message 数据服务不在此最小拓扑中。
+name: im-chat-bolt-dev
+x-environment: &environment
+  SPRING_PROFILES_ACTIVE: bolt-dev
+  IM_BOLT_SYNTHETIC_DATA: "true"
+  IM_BOLT_ISOLATED_CONTAINER_NETWORK: "true"
+  IM_NACOS_SERVER_ADDR: 172.30.88.4:8848
+  SPRING_CLOUD_NACOS_CONFIG_ENABLED: "false"
+  SPRING_DATA_REDIS_HOST: 172.30.88.3
+  SPRING_DATA_REDIS_SSL_ENABLED: "false"
+  IM_REDIS_REDISSON_ADDRESS: redis://172.30.88.3:6379
+  SW_AGENT_ENABLE: "false"
+services:
+  broker:
+    image: ${BOLT_DEV_BROKER_IMAGE:-im-chat/im-broker-server:bolt-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-broker/im-broker-server/target/*-exec.jar
+    environment:
+      <<: *environment
+      IM_BOLT_SERVER_HOST: 172.30.88.10
+      IM_BROKER_HOST: 172.30.88.10
+      IM_BROKER_GATEWAYPUSH_BOLT_DEVELOPMENTTARGETS_0_ADDRESS: 172.30.88.11:18012
+      IM_BROKER_GATEWAYPUSH_BOLT_DEVELOPMENTTARGETS_0_EXPECTEDPEERIDENTITY: spiffe://im-chat/gateway/bolt-dev-gateway
+      IM_BROKER_ROUTE_ENDPOINT: 172.30.88.10:18020
+      IM_BROKER_RAFT_ENDPOINT: 172.30.88.10:18120
+      IM_BROKER_RAFT_DATA_DIRECTORY: /tmp/bolt-dev-raft
+    networks:
+      bolt-dev:
+        ipv4_address: 172.30.88.10
+  gateway:
+    image: ${BOLT_DEV_GATEWAY_IMAGE:-im-chat/im-ws-gateway-server:bolt-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/local/app.Dockerfile
+      args:
+        JAR_FILE: im-gateway/im-ws-gateway/im-ws-gateway-server/target/*-exec.jar
+    environment:
+      <<: *environment
+      IM_BOLT_SERVER_HOST: 172.30.88.11
+      IM_GATEWAY_HOST: 172.30.88.11
+      IM_GATEWAY_BIND_HOST: 172.30.88.11
+      IM_BROKER_ROUTE_ENDPOINT: 172.30.88.10:18020
+    ports:
+      - "127.0.0.1:18011:18011"
+    networks:
+      bolt-dev:
+        ipv4_address: 172.30.88.11
+  redis:
+    image: redis:7.2.0
+    tmpfs:
+      - /data
+    networks:
+      bolt-dev:
+        ipv4_address: 172.30.88.3
+  nacos:
+    image: nacos/nacos-server:v3.0.2
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 128m
+      JVM_XMX: 256m
+      JVM_XMN: 64m
+    networks:
+      bolt-dev:
+        ipv4_address: 172.30.88.4
+networks:
+  bolt-dev:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.88.0/24

@@ -17,6 +17,9 @@ import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRoutingPro
 import com.co.kc.imchat.broker.interfaces.scheduler.BrokerMembershipScheduler;
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.client.BoltControlledClient;
+import com.co.kc.imchat.plugin.bolt.invocation.BoltClientInvoker;
+import com.alipay.remoting.rpc.RpcClient;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -113,10 +116,16 @@ public class BrokerClusterConfiguration {
             @Qualifier("brokerRouteLookupExecutor") ExecutorService routeLookupExecutor,
             BrokerRoutingProperties routingProperties, BrokerFailureObservationProperties observationProperties,
             BrokerRaftProperties raftProperties,
-            @Qualifier("brokerObservationExecutor") ExecutorService observationExecutor) {
+            @Qualifier("brokerObservationExecutor") ExecutorService observationExecutor, RpcClient transport) {
+        if (!(transport instanceof BoltControlledClient controlled)
+                || !controlled.isRunningControlledAssembly()
+                || !(invoker instanceof BoltClientInvoker owned)
+                || !owned.usesControlledClient(controlled)) {
+            throw new IllegalArgumentException("Broker observation requires matching running controlled transport");
+        }
         return new BrokerPeerAdapter(invoker, properties, peerExecutor,
                 routeLookupExecutor, routingProperties, observationProperties, raftProperties.getNodeId(), observationExecutor,
-                routingProperties.getBrokerWorkloadIdentityPrefix());
+                controlled);
     }
 
 }

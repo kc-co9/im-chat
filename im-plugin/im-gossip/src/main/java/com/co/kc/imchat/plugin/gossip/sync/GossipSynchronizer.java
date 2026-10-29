@@ -1,6 +1,7 @@
 package com.co.kc.imchat.plugin.gossip.sync;
 
 import com.co.kc.imchat.plugin.gossip.client.GossipPeerClient;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.plugin.gossip.model.GossipDeltaEntry;
 import com.co.kc.imchat.plugin.gossip.model.param.GossipDeltaParams;
 import com.co.kc.imchat.plugin.gossip.model.param.GossipDigestParams;
@@ -29,18 +30,18 @@ public class GossipSynchronizer {
      * 再根据 peer 返回的 staleKeys，把本机对应 delta 推送给 peer。
      *
      * @param localNodeId   本机节点 ID
-     * @param peerAddress   peer 远端地址
+     * @param peerTarget    peer 地址与完整身份
      * @param operations    gossip RPC 操作名
      * @param timeoutMillis RPC 调用超时时间
      * @return 本次合并和推送的增量条目数
      */
     public Integer syncPeer(String localNodeId,
-                            String peerAddress,
+                            BoltTarget peerTarget,
                             GossipSyncOperations operations,
                             int timeoutMillis) {
         // 发送本地摘要，并合并 peer 返回的较新状态增量。
         GossipDigestResult result = peerClient.exchangeDigest(
-                peerAddress,
+                peerTarget,
                 operations.service(),
                 operations.digestOperation(),
                 new GossipDigestParams(localNodeId, syncStore.digest()),
@@ -51,7 +52,7 @@ public class GossipSynchronizer {
         List<GossipDeltaEntry> deltas = syncStore.deltas(result.staleKeys());
         if (!deltas.isEmpty()) {
             peerClient.pushDeltas(
-                    peerAddress,
+                    peerTarget,
                     operations.service(),
                     operations.deltaOperation(),
                     new GossipDeltaParams(localNodeId, deltas),

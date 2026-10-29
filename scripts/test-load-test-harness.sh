@@ -361,6 +361,17 @@ if [[ "${1:-}" == inspect ]]; then
     [[ " $* " != *'.State.Health.FailingStreak'* ]] || suffix=":0"
     if [[ "${FAKE_DOCKER_DYNAMIC_HEALTH:-0}" == 1 ]]; then
       current_health="$(cat "$FAKE_DOCKER_HEALTH_STATE")"
+      if [[ -n "${FAKE_DOCKER_HEALTH_SEQUENCE_LOG:-}" && "$suffix" == :0 \
+          && -f "${FAKE_DOCKER_RESTART_MARKER:-}" ]]; then
+        read -r health_check <"$FAKE_DOCKER_RESTART_MARKER"
+        health_check=$((health_check + 1))
+        printf '%s\n' "$health_check" >"$FAKE_DOCKER_RESTART_MARKER"
+        current_health=unhealthy
+        if (( health_check >= 2 )) && [[ "${FAKE_DOCKER_ALWAYS_UNHEALTHY:-0}" != 1 ]]; then
+          current_health=healthy
+        fi
+        printf '%s %s %s\n' "${!#}" "$health_check" "$current_health" >>"$FAKE_DOCKER_HEALTH_SEQUENCE_LOG"
+      fi
       printf '%s%s\n' "$current_health" "$suffix"
       if [[ "${FAKE_DOCKER_RESTART_TRANSIENT_UNHEALTHY:-0}" == 1 \
           && "$current_health" == unhealthy \
@@ -396,7 +407,7 @@ if [[ "${1:-}" == compose ]]; then
   fi
   if [[ "${FAKE_DOCKER_DYNAMIC_HEALTH:-0}" == 1 && "$args" == *" restart "* ]]; then
     printf 'unhealthy\n' >"$FAKE_DOCKER_HEALTH_STATE"
-    [[ -z "${FAKE_DOCKER_RESTART_MARKER:-}" ]] || : >"$FAKE_DOCKER_RESTART_MARKER"
+    [[ -z "${FAKE_DOCKER_RESTART_MARKER:-}" ]] || printf '0\n' >"$FAKE_DOCKER_RESTART_MARKER"
   fi
   if [[ "${FAKE_DOCKER_DYNAMIC:-0}" == 1 && "$args" == *" up "* ]]; then
     if [[ "$args" == *'compose.load-test.yml'* ]]; then printf 'load' >"$FAKE_DOCKER_STATE"; else printf 'base' >"$FAKE_DOCKER_STATE"; fi
@@ -415,7 +426,11 @@ if [[ "${1:-}" == compose ]]; then
         && " im-iam-server im-audit-server im-admin im-ops " == *" $service "* ]]; then
       exit 0
     fi
-    printf 'fixture-container\n'
+    if [[ -n "${FAKE_DOCKER_HEALTH_SEQUENCE_LOG:-}" ]]; then
+      printf '%s\n' "$service"
+    else
+      printf 'fixture-container\n'
+    fi
   fi
   exit 0
 fi
@@ -568,13 +583,52 @@ assert(cases.some(([elapsed, expected]) => remaining(mutation, elapsed) !== expe
   'the same vectors must detect failure to subtract collection time');
 JS
 
-sleep 5.5 &
-sample_pid=$!
+# 目标进程由第五次 stats 调用终止：此前四次采样已经返回，不以宿主速度推断样本数。
+# Ruby 父进程负责 wait/reap；30s 仅防挂，缺行/schema 等仍由下方原断言拒绝。
 sample_file="$temp_dir/resources.jsonl"
-FAKE_DOCKER_STATS_DELAY=0.1 LOAD_TEST_RESOURCE_INTERVAL_SECONDS=1 \
-  DOCKER_BIN="$temp_dir/bin/docker" \
-  "$RESOURCE_SAMPLER" "$sample_pid" "$sample_file"
-wait "$sample_pid" 2>/dev/null || true
+cat >"$temp_dir/bin/sample-docker" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+count=0
+[[ ! -f "$SAMPLE_COUNTER" ]] || read -r count <"$SAMPLE_COUNTER"
+count=$((count + 1))
+printf '%s\n' "$count" >"$SAMPLE_COUNTER"
+if (( count == 5 )); then kill -TERM "$SAMPLE_TARGET_PID"; fi
+printf '{"Name":"fixture","CPUPerc":"1%%","MemUsage":"1MiB / 1GiB"}\n'
+SH
+chmod +x "$temp_dir/bin/sample-docker"
+ruby -rtimeout -e '
+  sampler, docker, output, counter = ARGV
+  reader, writer = IO.pipe
+  target = Process.spawn(RbConfig.ruby, "-e", "STDIN.read", in: reader)
+  reader.close
+  owned = [target]
+  begin
+    collector = Process.spawn({"DOCKER_BIN" => docker, "SAMPLE_COUNTER" => counter,
+      "SAMPLE_TARGET_PID" => target.to_s, "LOAD_TEST_RESOURCE_INTERVAL_SECONDS" => "0"},
+      sampler, target.to_s, output)
+    owned << collector
+    Timeout.timeout(30) do
+      Process.wait(target)
+      owned.delete(target)
+      Process.wait(collector)
+      owned.delete(collector)
+      abort "resource sampler failed: #{$?.exitstatus}" unless $?.success?
+    end
+  ensure
+    writer.close
+    owned.each do |pid|
+      begin
+        Process.kill("KILL", pid)
+      rescue Errno::ESRCH
+      end
+      begin
+        Process.wait(pid)
+      rescue Errno::ECHILD
+      end
+    end
+  end
+' "$RESOURCE_SAMPLER" "$temp_dir/bin/sample-docker" "$sample_file" "$temp_dir/sample-counter"
 ruby -rjson -e '
   path=ARGV.fetch(0)
   abort "resource sample mode must be 0600" unless (File.stat(path).mode & 0777) == 0600
@@ -824,15 +878,18 @@ health_recovered_state="$(tail -1 "$temp_dir/runtime/runtime-state.jsonl" | ruby
   exit 1
 }
 
+# 重启后按服务记录第一次 unhealthy、第二次 healthy；60s 仅防挂，不证明宿主性能。
 printf '{"version":1,"state":"RESTORING","batchId":null}\n' \
   >"$temp_dir/runtime/runtime-state.jsonl"
 printf 'unhealthy\n' >"$temp_dir/docker-health-state"
 rm -f "$temp_dir/docker-restart-marker"
+: >"$temp_dir/health-sequence.log"
 FAKE_DOCKER_DYNAMIC_HEALTH=1 FAKE_DOCKER_HEALTH_STATE="$temp_dir/docker-health-state" \
   FAKE_DOCKER_RESTART_TRANSIENT_UNHEALTHY=1 \
   FAKE_DOCKER_RESTART_MARKER="$temp_dir/docker-restart-marker" \
-  LOAD_TEST_MANAGEMENT_HEALTH_TIMEOUT_SECONDS=2 \
-  LOAD_TEST_MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS=5 \
+  FAKE_DOCKER_HEALTH_SEQUENCE_LOG="$temp_dir/health-sequence.log" \
+  LOAD_TEST_MANAGEMENT_HEALTH_TIMEOUT_SECONDS=60 \
+  LOAD_TEST_MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS=60 \
   LOAD_TEST_DISCOVERY_SETTLE_SECONDS=0 LOAD_TEST_RUNTIME_ROOT="$temp_dir/runtime" \
   DOCKER_BIN="$temp_dir/bin/docker" LOCAL_UP_BIN="$temp_dir/bin/local_up" \
   HTTP_BIN="$temp_dir/bin/curl" K6_BIN="$temp_dir/bin/k6" "$RUNNER" restore >/dev/null
@@ -841,6 +898,46 @@ transient_health_state="$(tail -1 "$temp_dir/runtime/runtime-state.jsonl" | ruby
   printf 'post-restart transient unhealthy fixture must wait until BASE_READY\n' >&2
   exit 1
 }
+
+ruby -e '
+  rows=File.readlines(ARGV.fetch(0)).map(&:split)
+  expected=%w[im-audit-server im-admin im-ops]
+  abort "health sequence must cover restored management services" unless rows.map(&:first).uniq.sort == expected.sort
+  expected.each do |service|
+    actual=rows.select { |row| row.first == service }.map { |row| row.drop(1) }
+    abort "#{service} must inspect unhealthy then healthy: #{actual.inspect}" unless actual == [["1", "unhealthy"], ["2", "healthy"]]
+  end
+' "$temp_dir/health-sequence.log"
+
+# 永久 unhealthy 走同一真实 restore，必须有界失败且保持 RESTORING；不以扩预算代替负例。
+printf '{"version":1,"state":"RESTORING","batchId":null}\n' >"$temp_dir/runtime/runtime-state.jsonl"
+rm -f "$temp_dir/docker-restart-marker"
+: >"$temp_dir/health-negative-sequence.log"
+printf 'unhealthy\n' >"$temp_dir/docker-health-state"
+if FAKE_DOCKER_DYNAMIC_HEALTH=1 FAKE_DOCKER_HEALTH_STATE="$temp_dir/docker-health-state" \
+    FAKE_DOCKER_RESTART_TRANSIENT_UNHEALTHY=1 FAKE_DOCKER_ALWAYS_UNHEALTHY=1 \
+    FAKE_DOCKER_RESTART_MARKER="$temp_dir/docker-restart-marker" \
+    FAKE_DOCKER_HEALTH_SEQUENCE_LOG="$temp_dir/health-negative-sequence.log" \
+    LOAD_TEST_MANAGEMENT_HEALTH_TIMEOUT_SECONDS=60 \
+    LOAD_TEST_MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS=3 \
+    LOAD_TEST_DISCOVERY_SETTLE_SECONDS=0 LOAD_TEST_RUNTIME_ROOT="$temp_dir/runtime" \
+    DOCKER_BIN="$temp_dir/bin/docker" LOCAL_UP_BIN="$temp_dir/bin/local_up" \
+    HTTP_BIN="$temp_dir/bin/curl" K6_BIN="$temp_dir/bin/k6" \
+    "$RUNNER" restore >"$temp_dir/health-negative.log" 2>&1; then
+  printf 'permanently unhealthy restore must fail\n' >&2
+  exit 1
+else
+  health_negative_status=$?
+fi
+[[ "$health_negative_status" == 124 ]] || { printf 'unhealthy restore must exit124, got %s\n' "$health_negative_status" >&2; exit 1; }
+grep -Fxq 'im-audit-server did not become healthy within 3s' "$temp_dir/health-negative.log"
+ruby -rjson -e '
+  state=JSON.parse(File.readlines(ARGV.fetch(0)).last).fetch("state")
+  abort "failed health restore must retain RESTORING" unless state == "RESTORING"
+  rows=File.readlines(ARGV.fetch(1)).map(&:split)
+  abort "unhealthy failure must inspect restarted service and never see healthy" unless
+    !rows.empty? && rows.all? { |row| row.first == "im-audit-server" && row.last == "unhealthy" }
+' "$temp_dir/runtime/runtime-state.jsonl" "$temp_dir/health-negative-sequence.log"
 
 printf '{"version":1,"state":"BASE_READY","batchId":null}\n' \
   >"$temp_dir/runtime/runtime-state.jsonl"

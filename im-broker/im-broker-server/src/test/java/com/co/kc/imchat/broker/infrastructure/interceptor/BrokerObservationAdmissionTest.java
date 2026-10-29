@@ -27,7 +27,9 @@ class BrokerObservationAdmissionTest {
     private static final String PREFIX = "spiffe://im-chat/broker/";
     private final BrokerRaftAdapter adapter = mock(BrokerRaftAdapter.class);
     private final BrokerPeerAdmissionInterceptor interceptor = new BrokerPeerAdmissionInterceptor(
-            "b", adapter, PREFIX, "cluster");
+            "b", adapter, "cluster",
+            new com.co.kc.imchat.broker.model.properties.BrokerGossipSettings("local", "local:18020",
+                    List.of(), List.of(), 1, java.time.Duration.ofSeconds(3)));
 
     @Test
     void boundCurrentVoterDelegatesWithoutRoutingLease() throws Exception {

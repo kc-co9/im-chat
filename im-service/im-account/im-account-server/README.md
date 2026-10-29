@@ -48,10 +48,16 @@ Account 独占 `im_chat_account` Schema，当前只拥有 `db_user`。本地初�
 - `im.bolt.client.enabled`：启用 Broker SDK 所需的 `BoltInvoker`，账号服务必须为 `true`。
 - `im.account.broker.timeout-millis`：Broker 调用超时时间，默认 `3000`。
 
-账号服务通过 Nacos 发现初始 Broker 地址，之后由 Broker SDK 定时读取 Broker 集群快照。本地不配置固定 Broker 地址或 seed address。
+调用 Broker 使用固定 `PeerIdentityConstants.BROKER_URI_PREFIX`（`spiffe://im-chat/broker/`），必须配置 `im.account.broker.bootstrap-targets`（默认空，每项 `address`、`expected-peer-identity`）。SDK 只使用 Nacos 候选与显式配对交集，空列表/冲突/无交集拒绝；首次及后续刷新、路由调用均为 typed 目标。配对不替代服务发现，不是 Gossip seed。默认启用 MTLS，部署须提供本机私钥链/信任 CA；无材料启动失败，不回退明文。仅合成数据可使用独立 `bolt-dev`，详见 [本地开发拓扑](../../../deploy/local/README.md#bolt-受限开发拓扑)。策略由构造快照固定，消费方同步重建，不保留旧地址 API。
 
 连接关闭结果通过 `im.account.session.connection.close{outcome=success|failure}` 计数器和 `im.account.session.connection.close.duration` timer 暴露；指标不包含用户、Session、连接或 Token 标签。
 
 ```bash
 mvn -q -pl im-service/im-account/im-account-server -am test
 ```
+
+### 固定项目角色身份命名空间
+
+项目五角色前缀由 `im-common` 的 `PeerIdentityConstants` 固定：Broker 为 `spiffe://im-chat/broker/`、Gateway 为 `spiffe://im-chat/gateway/`、Message 为 `spiffe://im-chat/message/`、Account 为 `spiffe://im-chat/account/`、Ops 为 `spiffe://im-chat/im-ops/`，不再提供部署覆盖。通用 Plugin 的 `im.bolt.client.allowed-peer-uri-prefixes` 仍可配置，但不能改变 SDK 目标校验或接收方角色授权。
+
+旧项目前缀键及环境占位符不再生效，无兼容别名；Spring 未知属性可能被忽略，不保证启动失败。默认值部署的 wire 身份不变；自定义前缀部署须协调二进制、证书身份、Nacos、环境变量及部署配置迁移，发布或回滚不能只切换键名或二进制，不支持无前提混合版本。各环境必须隔离 CA 与信任材料，生产不得信任测试 CA；固定 URI 不替代认证、成员或业务授权。完整边界见[安全规范](../../../docs/SECURITY.md#固定项目角色身份命名空间)与[已批准设计](../../../docs/design-docs/2026-10-28-fixed-peer-identity-prefixes-design.md)。
