@@ -81,7 +81,7 @@ class ModuleBoundaryTest {
     @Test
     void opsCliDependsOnlyOnJdkJacksonAndCommonJsonContracts() {
         JavaClasses cliClasses = new ClassFileImporter().importPath(repoRoot().resolve(
-                "im-management/im-ops-cli/target/classes"));
+                "im-management/im-ops/im-ops-cli/target/classes"));
         classes()
                 .that().resideInAPackage("com.co.kc.imchat.management.ops.cli..")
                 .should().onlyDependOnClassesThat().resideInAnyPackage(
@@ -94,7 +94,7 @@ class ModuleBoundaryTest {
     @Test
     void opsMustNotDependOnBrokerServerImplementations() {
         JavaClasses opsClasses = new ClassFileImporter().importPath(repoRoot().resolve(
-                "im-management/im-ops/target/classes"));
+                "im-management/im-ops/im-ops-server/target/classes"));
         noClasses()
                 .that().resideInAPackage("com.co.kc.imchat.management.ops..")
                 .should().dependOnClassesThat().resideInAnyPackage(

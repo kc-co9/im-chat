@@ -68,7 +68,7 @@
         </dependency>
         <dependency>
             <groupId>com.co.kc.im</groupId>
-            <artifactId>im-ops</artifactId>
+            <artifactId>im-ops-server</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

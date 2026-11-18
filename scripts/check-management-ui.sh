@@ -12,7 +12,7 @@ UI_ROOTS=(
   "im-management/im-admin/ui"
   "im-management/im-audit/im-audit-server/ui"
   "im-management/im-iam/im-iam-server/ui"
-  "im-management/im-ops/ui"
+  "im-management/im-ops/im-ops-server/ui"
 )
 EXPECTED_PORTS=(18042 18041 18040 18043)
 TOKENS=(

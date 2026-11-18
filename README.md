@@ -75,7 +75,7 @@ HTTP 请求和 WebSocket 握手都通过 Account Facade 校验 Access Token 和�
 
 认证设计见[集中式会话认证](docs/design-docs/2026-08-14-centralized-session-authentication-design.md)，安全保证见 [SECURITY.md](docs/SECURITY.md)。
 
-管理身份不复用普通 Account Token。运维浏览器通过 IAM BFF 登录，独立 [im-ops-cli](im-management/im-ops-cli/README.md) 通过浏览器 Authorization Code + PKCE 登录后，仅在前台内存持有五分钟用户 Token，经 Ops HTTPS 固定用例访问 Broker；不直接连接 JRaft 或持有 Broker 服务凭证。CLI 启动、固定回调配置、请求记录和 UNKNOWN 恢复见模块 README；客户端范围验收不代表真实跨服务旅程或生产部署已验收，当前执行状态由 [PROGRESS.md](PROGRESS.md) 与活跃计划拥有。
+管理身份不复用普通 Account Token。运维浏览器通过 IAM BFF 登录，独立 [im-ops-cli](im-management/im-ops/im-ops-cli/README.md) 通过浏览器 Authorization Code + PKCE 登录后，仅在前台内存持有五分钟用户 Token，经 Ops HTTPS 固定用例访问 Broker；不直接连接 JRaft 或持有 Broker 服务凭证。CLI 启动、固定回调配置、请求记录和 UNKNOWN 恢复见模块 README；客户端范围验收不代表真实跨服务旅程或生产部署已验收，当前执行状态由 [PROGRESS.md](PROGRESS.md) 与活跃计划拥有。
 
 ### 消息与通知链路
 
@@ -132,7 +132,7 @@ Redis 回执任务提供有界重投，但不是数据库 Outbox，也不承诺�
 | `im-service/im-account` | 用户、凭证和在线会话 |
 | `im-service/im-social` | 好友、群组和成员关系 |
 | `im-service/im-message` | 聊天、消息、收件箱和通知 |
-| `im-management/im-ops` | Broker 只读业务诊断聚合和独立监控页面 |
+| `im-management/im-ops` | 聚合 `im-ops-server` 运行控制台与 `im-ops-cli` 独立客户端 |
 | `im-management/im-iam` | 统一管理端身份、OAuth2/OIDC、机器客户端、应用级 RBAC 与接入 SDK |
 | `im-management/im-admin` | IAM 接入、普通用户管理和管理 UI |
 | `im-management/im-audit` | 集中业务/安全审计 SDK、接收服务、查询 UI 和受限 Excel 导出 |

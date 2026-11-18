@@ -30,7 +30,7 @@ class ObservabilityConfigurationTest {
             application("im-management/im-iam/im-iam-server", "server.port", 18040, 19040),
             application("im-management/im-audit/im-audit-server", "server.port", 18041, 19041),
             application("im-management/im-admin", "server.port", 18042, 19042),
-            application("im-management/im-ops", "server.port", 18043, 19043));
+            application("im-management/im-ops/im-ops-server", "server.port", 18043, 19043));
     private static final List<String> SERVLET_SECURITY_OWNERS = List.of(
             "im-management/im-iam/im-iam-sdk/src/main/java/com/co/kc/imchat/management/iam/sdk/security/IamBffSecurityConfigurer.java",
             "im-management/im-admin/src/main/java/com/co/kc/imchat/management/admin/infrastructure/config/beans/AdminSecurityBeans.java",
@@ -110,7 +110,7 @@ class ObservabilityConfigurationTest {
         }
         for (String sourcePath : List.of(
                 "im-management/im-iam/im-iam-sdk/src/main/java/com/co/kc/imchat/management/iam/sdk/ImIamSdkAutoConfiguration.java",
-                "im-management/im-ops/src/main/java/com/co/kc/imchat/management/ops/infrastructure/config/beans/OpsSecurityBeans.java")) {
+                "im-management/im-ops/im-ops-server/src/main/java/com/co/kc/imchat/management/ops/infrastructure/config/beans/OpsSecurityBeans.java")) {
             assertThat(Files.readString(REPO_ROOT.resolve(sourcePath)))
                     .as(sourcePath)
                     .containsPattern("IamBffSecurityConfigurer\\s+configurer")

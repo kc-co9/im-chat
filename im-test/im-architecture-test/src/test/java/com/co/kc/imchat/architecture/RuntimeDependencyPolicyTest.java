@@ -921,7 +921,7 @@ class RuntimeDependencyPolicyTest {
         Path rootPom = REPO_ROOT.resolve("pom.xml");
         Path managementPom = REPO_ROOT.resolve("im-management/pom.xml");
         Path adminPom = REPO_ROOT.resolve("im-management/im-admin/pom.xml");
-        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/pom.xml");
+        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/im-ops-server/pom.xml");
         Path iamPom = REPO_ROOT.resolve("im-management/im-iam/pom.xml");
         Path iamServerPom = REPO_ROOT.resolve(
                 "im-management/im-iam/im-iam-server/pom.xml");
@@ -938,7 +938,7 @@ class RuntimeDependencyPolicyTest {
         assertThat(iamPom).exists();
         assertThat(auditPom).exists();
         assertThat(moduleNames(managementPom))
-                .containsExactlyInAnyOrder("im-iam", "im-admin", "im-ops", "im-audit", "im-ops-cli");
+                .containsExactlyInAnyOrder("im-iam", "im-admin", "im-ops", "im-audit");
         assertThat(moduleNames(iamPom))
                 .containsExactlyInAnyOrder("im-iam-server", "im-iam-sdk");
         assertThat(moduleNames(auditPom))
@@ -972,8 +972,26 @@ class RuntimeDependencyPolicyTest {
     }
 
     @Test
+    void opsModulesShareCapabilityParent() throws Exception {
+        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/pom.xml");
+        Path serverPom = REPO_ROOT.resolve("im-management/im-ops/im-ops-server/pom.xml");
+        Path cliPom = REPO_ROOT.resolve("im-management/im-ops/im-ops-cli/pom.xml");
+
+        assertThat(moduleNames(opsPom)).containsExactly("im-ops-server", "im-ops-cli");
+        Document parent = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(opsPom.toFile());
+        assertThat(childText(parent.getDocumentElement(), "packaging")).isEqualTo("pom");
+        for (Path childPom : List.of(serverPom, cliPom)) {
+            Document child = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(childPom.toFile());
+            Element childParent = (Element) child.getElementsByTagName("parent").item(0);
+            assertThat(childText(childParent, "artifactId")).isEqualTo("im-ops");
+        }
+        assertThat(hasDependency(cliPom, "com.co.kc.im", "im-ops-server")).isFalse();
+        assertThat(REPO_ROOT.resolve("im-management/im-ops-cli")).doesNotExist();
+    }
+
+    @Test
     void opsCliRuntimeDependenciesStayWithinApprovedJsonLibrary() throws Exception {
-        Path cliPom = REPO_ROOT.resolve("im-management/im-ops-cli/pom.xml");
+        Path cliPom = REPO_ROOT.resolve("im-management/im-ops/im-ops-cli/pom.xml");
         Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(cliPom.toFile());
         NodeList dependencies = document.getElementsByTagName("dependency");
         for (int index = 0; index < dependencies.getLength(); index++) {
@@ -1120,7 +1138,7 @@ class RuntimeDependencyPolicyTest {
     void managementApplicationsDoNotOwnAdministratorAuthenticationState() throws Exception {
         List<Path> applicationSources = List.of(
                 REPO_ROOT.resolve("im-management/im-admin/src/main/java"),
-                REPO_ROOT.resolve("im-management/im-ops/src/main/java"));
+                REPO_ROOT.resolve("im-management/im-ops/im-ops-server/src/main/java"));
         List<String> forbiddenOwnershipPaths = List.of(
                 "/domain/administrator/",
                 "/infrastructure/session/",
@@ -1149,7 +1167,7 @@ class RuntimeDependencyPolicyTest {
         Path accountServerPom = REPO_ROOT.resolve(
                 "im-service/im-account/im-account-server/pom.xml");
         Path adminPom = REPO_ROOT.resolve("im-management/im-admin/pom.xml");
-        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/pom.xml");
+        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/im-ops-server/pom.xml");
 
         assertThat(moduleNames(accountPom)).contains("im-account-admin-facade");
         assertThat(facadePom).exists();
@@ -1200,7 +1218,7 @@ class RuntimeDependencyPolicyTest {
     void webInfrastructureDependenciesFollowOwnership() throws Exception {
         Path webPom = REPO_ROOT.resolve("im-plugin/im-web/pom.xml");
         Path adminPom = REPO_ROOT.resolve("im-management/im-admin/pom.xml");
-        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/pom.xml");
+        Path opsPom = REPO_ROOT.resolve("im-management/im-ops/im-ops-server/pom.xml");
         Path iamSdkPom = REPO_ROOT.resolve("im-management/im-iam/im-iam-sdk/pom.xml");
 
         assertThat(hasDependency(webPom, "com.co.kc.im", "im-session")).isFalse();
@@ -1216,7 +1234,7 @@ class RuntimeDependencyPolicyTest {
                 REPO_ROOT.resolve("im-management/im-admin/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-management/im-audit/im-audit-server/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-management/im-iam/im-iam-server/src/main/resources/application.yml"),
-                REPO_ROOT.resolve("im-management/im-ops/src/main/resources/application.yml"),
+                REPO_ROOT.resolve("im-management/im-ops/im-ops-server/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-service/im-account/im-account-server/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-service/im-message/im-message-server/src/main/resources/application.yml"),
                 REPO_ROOT.resolve("im-service/im-social/im-social-server/src/main/resources/application.yml"));
@@ -1240,7 +1258,7 @@ class RuntimeDependencyPolicyTest {
                 "im-management/im-audit/im-audit-server/src/main/resources/application.yml",
                 18041);
         assertManagementPort(
-                "im-management/im-ops/src/main/resources/application.yml",
+                "im-management/im-ops/im-ops-server/src/main/resources/application.yml",
                 18043);
         assertManagementPort(
                 "im-management/im-admin/src/main/resources/application.yml",

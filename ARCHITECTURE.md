@@ -68,11 +68,13 @@ Broker SDK 将 Nacos 候选地址与部署显式地址/完整 URI 配对取交�
 | `im-iam-sdk` | 管理应用复用的 OAuth2/OIDC BFF、管理员 Bearer、Token Session、Introspection 和权限目录同步；不依赖 IAM Server 实现 |
 | `im-ops-cli` | 独立 Java 21 前台客户端，仅依赖 JDK／Jackson；经浏览器 Authorization Code + PKCE 登录 IAM，再调用 Ops 的固定 CLI HTTP 用例，不依赖 Server 或保存 Token |
 | `im-admin` | 普通用户管理用例与 UI；通过 Account Admin Facade 修改 Account 事实，不直连 Account 数据库 |
-| `im-ops` | Broker 发现、诊断聚合、受控集群 operation 与运行控制台；不拥有路由状态或业务事实 |
+| `im-ops-server` | Broker 发现、诊断聚合、受控集群 operation 与运行控制台；不拥有路由状态或业务事实，运行服务名为 `im-ops` |
 | `im-audit-sdk` | 不可变 Audit Event、上下文采集、声明式审计和传输适配 |
 | `im-audit-server` | Audit 接收、幂等追加、查询、UI 和受限导出；是管理 Audit 唯一持久化所有者 |
 
 Admin、IAM、Ops 通过按来源隔离的 Kafka 或认证异步 HTTP 向 Audit 提交事实。生产者依赖 Audit SDK，不依赖 Audit Server；管理应用通过 IAM SDK 接入身份能力，不复制 IAM 的管理员、角色或授权模型。
+
+`im-management/im-ops` 仅为 Maven 聚合父模块，包含 `im-ops-server` 和 `im-ops-cli`；两者分别打包运行，CLI 不依赖 Server 的 Java 实现。
 
 CLI 不是独立部署的管理服务，不适用服务端 Nacos 注册要求。它仅向显式配置的 IAM／Ops HTTPS origin 发送请求；固定 IPv4 loopback 回调只承接单次授权码。Ops 的 `/api/cli/**` 使用独立无状态 Bearer 链，每次通过真实 Introspection 校验管理员主体、精确 Client、audience、scope 与 authority；浏览器 BFF 保持独立链及 CSRF。Ops 审计绑定当前管理员与可信 Client，Broker 仍拥有 operation 与许可权威，CLI 的 owner-only 非敏感请求记录只用于显式原语义恢复，不成为授权依据。
 

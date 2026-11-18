@@ -56,7 +56,8 @@ class ReactorEvidence
     'im-management/im-iam/im-iam-sdk/pom.xml' => 'com.co.kc.im:im-iam-sdk:0.0.1-SNAPSHOT',
     'im-management/im-admin/pom.xml' => 'com.co.kc.im:im-admin:0.0.1-SNAPSHOT',
     'im-management/im-ops/pom.xml' => 'com.co.kc.im:im-ops:0.0.1-SNAPSHOT',
-    'im-management/im-ops-cli/pom.xml' => 'com.co.kc.im:im-ops-cli:0.0.1-SNAPSHOT',
+    'im-management/im-ops/im-ops-server/pom.xml' => 'com.co.kc.im:im-ops-server:0.0.1-SNAPSHOT',
+    'im-management/im-ops/im-ops-cli/pom.xml' => 'com.co.kc.im:im-ops-cli:0.0.1-SNAPSHOT',
     'im-management/im-audit/pom.xml' => 'com.co.kc.im:im-audit:0.0.1-SNAPSHOT',
     'im-management/im-audit/im-audit-sdk/pom.xml' => 'com.co.kc.im:im-audit-sdk:0.0.1-SNAPSHOT',
     'im-management/im-audit/im-audit-server/pom.xml' => 'com.co.kc.im:im-audit-server:0.0.1-SNAPSHOT',
@@ -66,14 +67,14 @@ class ReactorEvidence
     'im-test/im-load-test/pom.xml' => 'com.co.kc.im:im-load-test:0.0.1-SNAPSHOT',
     'im-test/im-routing-ha/pom.xml' => 'com.co.kc.im:im-routing-ha:0.0.1-SNAPSHOT'
   }.freeze
-  # 受审 52 个 canonical POM 的 packaging：其余显式 pom；列明模块为缺省 jar 或显式 jar。
+  # 受审 53 个 canonical POM 的 packaging：其余显式 pom；列明模块为缺省 jar 或显式 jar。
   # 正文合同独立于 caller oracle；fixture 正文/期望不从本表生成。
   FORMAL_JAR_ARTIFACTS = %w[
     im-common im-cache im-identity im-excel im-metrics im-tracing im-lock im-datasource
     im-session im-web im-dubbo im-bolt im-mq-kafka im-gossip im-raft im-nacos
     im-http-gateway im-ws-gateway-sdk im-ws-gateway-server im-broker-sdk im-broker-server
     im-account-facade im-account-admin-facade im-account-server im-social-facade im-social-server
-    im-message-facade im-message-server im-iam-server im-iam-sdk im-admin im-ops im-ops-cli
+    im-message-facade im-message-server im-iam-server im-iam-sdk im-admin im-ops-server im-ops-cli
     im-audit-sdk im-audit-server im-architecture-test im-e2e-test im-load-test im-routing-ha
   ].freeze
   HA_EXTRA = %w[RoutingHaScenarioManifestTest BrokerFailureRecoveryAppServiceTest LocalRouteAppServiceReceiveTest ConnectionCloseDeduplicatorTest ConnectionRegistryTest GatewayBrokerAuthorizationTest ImMessageNotifierInvokerTest].freeze
@@ -332,7 +333,7 @@ class ReactorEvidence
       group, artifact, version = entry.fetch('gav').split(':')
       [group, artifact, entry.fetch('packaging'), version].join(':')
     end
-    raise 'invalid active profiles oracle' unless expected.size == 52 && expected.uniq.size == 52 && oracle.map { |entry| entry.fetch('gav') }.sort == FORMAL_CANONICAL.values.sort
+    raise 'invalid active profiles oracle' unless expected.size == 53 && expected.uniq.size == 53 && oracle.map { |entry| entry.fetch('gav') }.sort == FORMAL_CANONICAL.values.sort
     raise 'invalid active profiles oracle' unless oracle.all? do |entry|
       artifact = entry.fetch('gav').split(':')[1]
       entry.fetch('packaging') == (FORMAL_JAR_ARTIFACTS.include?(artifact) ? 'jar' : 'pom')
@@ -385,7 +386,7 @@ class ReactorEvidence
     left = [0, (72 - length) / 2].max
     banner = '-' * left + '--< ' + coordinate + ' >--' + '-' * [0, 72 - length - left].max
     building = 'Building ' + root.fetch('name') + ' ' + version
-    counter = ' [1/52]'
+    counter = ' [1/53]'
     building += ' ' * [0, 72 - units.call(building) - units.call(counter)].max + counter
     packaging = root.fetch('packaging')
     left = [0, (72 - units.call(packaging) - 4) / 2].max
@@ -553,7 +554,7 @@ class ReactorEvidence
 
   # 固定已审输入；改变文件须先审查额外内容读取形状，不从现场学习允许项。
   def approved_compose_yaml
-    { 'deploy/local/compose.yml' => '4e7e6a7d84750a985eba9ead7e480104d73d8fae21e67c2967d59956c93084c7',
+    { 'deploy/local/compose.yml' => 'c19fffab3b47756f8516eb96b33efa5caaa376b44ca8f3ce435ee19d0ff78835',
       'deploy/local/compose.load-test.yml' => '518a9670d12094827ea6f9dde391b85263e72740bae94b3dc7c1a8279233bd43' }
   end
 
@@ -947,7 +948,7 @@ class ReactorEvidence
   # 不发布正式manifest，callbacks不能作为真实prepare/verify入口。
   def run_model_lifecycle_fixture(collect:, clear:, verify:)
     summary = collect.call
-    raise 'invalid fixture collection' unless summary.is_a?(Hash) && summary['hostProvenance'] == false && summary['bootstrapComplete'] == false && summary['projectCount'] == 52
+    raise 'invalid fixture collection' unless summary.is_a?(Hash) && summary['hostProvenance'] == false && summary['bootstrapComplete'] == false && summary['projectCount'] == 53
     clear.call
     verify.call
   end
@@ -1020,14 +1021,14 @@ class ReactorEvidence
     text = stdout.dup.force_encoding(Encoding::UTF_8)
     raise 'invalid active profiles stdout' unless text.valid_encoding? && !text.start_with?("﻿") && !text.match?(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/)
     lines = text.lines
-    # scanning/H/header/E/52 rows，根banner四行，其后正文直到唯一summary H。
-    order = lines.shift(56).join
+    # scanning/H/header/E/53 rows，根banner四行，其后正文直到唯一summary H。
+    order = lines.shift(57).join
     banner = lines.shift(4).join
     separator = '[INFO] ' + '-' * 72 + "\n"
     summary_index = lines.index(separator)
     raise 'invalid active profiles stdout' unless summary_index
     logged = lines.shift(summary_index).join
-    summary = lines.shift(55).join
+    summary = lines.shift(56).join
     tail = lines.join
     root_duration = summary.match(/^\[INFO\] .*SUCCESS \[ *([^\]\n]+)\]\n/)
     raise 'invalid active profiles stdout' unless root_duration
@@ -1242,7 +1243,7 @@ class ReactorEvidence
       keys = %w[gav pom basedir packaging modules sha256]
       raise 'formal oracle differs from raw POM bytes' unless oracle.map { |entry| entry.select { |key, _| keys.include?(key) } } == raw_oracle.map { |entry| entry.select { |key, _| keys.include?(key) } }
       oracle = raw_oracle
-      raise 'formal oracle must contain exactly 52 entries' unless oracle.size == 52
+      raise 'formal oracle must contain exactly 53 entries' unless oracle.size == 53
       expected = FORMAL_CANONICAL.map { |pom, gav| [gav, File.dirname(pom) == '.' ? @root : @root + '/' + File.dirname(pom)] }.sort_by(&:first)
       actual = oracle.map { |entry| [entry.fetch('gav'), entry.fetch('basedir')] }.sort_by(&:first)
       raise 'formal oracle must use reviewed canonical identity set' unless actual == expected && oracle == oracle.sort_by { |entry| entry.fetch('gav') } && oracle.all? { |entry| entry.fetch('pom') == @root + '/' + FORMAL_CANONICAL.key(entry.fetch('gav')) }
@@ -1363,7 +1364,7 @@ class ReactorEvidence
                      else 'org.apache.maven.plugins'
                      end
     rel = base == @root ? '' : relative(base)
-    ui = { 'im-management/im-iam/im-iam-server' => 'iam', 'im-management/im-admin' => 'admin', 'im-management/im-ops' => 'ops', 'im-management/im-audit/im-audit-server' => 'audit' }
+    ui = { 'im-management/im-iam/im-iam-server' => 'iam', 'im-management/im-admin' => 'admin', 'im-management/im-ops/im-ops-server' => 'ops', 'im-management/im-audit/im-audit-server' => 'audit' }
     boot = %w[im-gateway/im-http-gateway im-gateway/im-ws-gateway/im-ws-gateway-server im-broker/im-broker-server im-service/im-account/im-account-server im-service/im-social/im-social-server im-service/im-message/im-message-server] + ui.keys
     if artifact == 'exec-maven-plugin'
       version = ui.key?(rel) ? '3.6.3' : (rel == 'im-test/im-load-test' ? '3.5.0' : nil)
@@ -1375,7 +1376,7 @@ class ReactorEvidence
     allowed << 'dependencies' if artifact == 'maven-shade-plugin'
     raise 'unknown plugin field' unless (plugin.elements.to_a.map(&:name) - allowed).empty?
     raise 'Boot outside approved module' if artifact == 'spring-boot-maven-plugin' && !boot.include?(rel)
-    raise 'Shade outside CLI' if artifact == 'maven-shade-plugin' && rel != 'im-management/im-ops-cli'
+    raise 'Shade outside CLI' if artifact == 'maven-shade-plugin' && rel != 'im-management/im-ops/im-ops-cli'
     compiler = '<release>21</release><parameters>true</parameters><annotationProcessorPaths><path><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>1.18.42</version></path><path><groupId>org.mapstruct</groupId><artifactId>mapstruct-processor</artifactId><version>1.5.5.Final</version></path></annotationProcessorPaths>'
     arg = '@{argLine} -Dfile.encoding=UTF-8 -Djava.awt.headless=true -Xshare:off -javaagent:${settings.localRepository}/org/mockito/mockito-core/5.17.0/mockito-core-5.17.0.jar'
     surefire = '<argLine>' + arg + '</argLine>'

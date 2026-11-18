@@ -34,6 +34,8 @@ full 的模型/Maven、readiness、clean、自测及报告阶段保持 HOME/JAVA
 
 ## 普通生产源码所有权首片
 
+Ops 聚合迁移后的当前正式 reactor 为 53 项；精确清单、packaging 与路径变更由[Ops 模块聚合设计](../design-docs/2026-11-18-ops-module-aggregation-design.md)拥有。下述原 52 项描述保留原引入时点；当前 reader、独立 raw/effective/display/body/stdout fixture 同步采用 53 项，拒绝条件与独立来源要求不变。固定清单的身份替换与重复负例必须保持完整项数，用原位替换隔离身份错误；缺项由独立负例证明，避免数量守卫掩盖身份检查。`RuntimeDependencyPolicyTest.opsModulesShareCapabilityParent` 保护父子结构，`test-harness.sh` 保护父 POM 同时影响两个子模块及 CLI 标准流精确新根；不扩大生产输出许可。
+
 报告清单按[已批准 synthetic 补充](../design-docs/2026-11-05-jacoco-synthetic-report-inventory-design.md)接入原 validate/check：完整 class 清单 C 绑定 header flags 与 SHA，固定 JaCoCo 0.8.13 的 synthetic class 分类 F 额外记录原因，XML 唯一 class 集合必须等于 C-F。顶层 MapStruct 实现不得进入 F；实际 counter 类型唯一、数值非负，允许无指令 counter 的 class 保留记录。运行测试的生产模块缺 exec/report 拒绝，两产物必须成对、非空且在本轮时间窗口；无测试无产物模块不伪造 coverage。产物摘要、R 与 F 均进入同一 manifest，check 重派生并比对。原隔离 self-test 保护集合／counter及 verify 后替换和伪造；真实 provenance 及固定未执行类 missed 仍需原正式验收，不以合成 exec 内容冒充实际 JaCoCo 数据。
 
 validate/check 对生产 class 和默认 annotations 下全部 generated Java 记录非空、mtime 不早于本轮 startedAt 且不晚于检查时刻；generated 源集合及 SHA 与 class／mapper 一起进入原 manifest。check 重枚举，拒绝新增、缺失和内容替换。时间检查只是补充：真实同轮 provenance 仍来自正式 prepare 的整批清除与后续重建，不能 touch 旧文件冒充鲜度。隔离 fixture 的旧 class／旧生成源／空生成源及验证后新增源回归保护该子合同，真实 full 和 report manifest 义务保持开放。
@@ -372,7 +374,7 @@ Review finding 同时满足以下条件时，才适合转为自动门禁：
 
 ### 管理端 IAM 边界
 
-独立 Ops CLI 的标准流承载公开命令交互，不沿用服务端禁止所有控制台输出的适用范围。`check-drift.sh` 仅允许根路径 `im-management/im-ops-cli/src/main/java/**` 的 `System.out/err`；不按类名、包名或任意同名模块放行。所有生产源的 `printStackTrace()` 和其他生产目录的标准流输出仍被拒绝，测试控制台规则不变。`test-harness.sh` 用两个标准流正例和五个负例保护该边界；CLI 无 Spring／Server 依赖继续由架构传感器保护。该许可只区分交互与诊断，不证明输出无秘密；授权 URL fallback 可用，授权码、verifier 和 Token 禁止输出，内容数据流由 Review 与 CLI 行为测试检查。只有具备低误报跨调用数据流分析及可靠正反 fixture 后才自动化；批准的独立 CLI 交互边界被新设计替代时撤销该目录许可，不扩大服务端排除范围。
+独立 Ops CLI 的标准流承载公开命令交互，不沿用服务端禁止所有控制台输出的适用范围。`check-drift.sh` 仅允许根路径 `im-management/im-ops/im-ops-cli/src/main/java/**` 的 `System.out/err`；不按类名、包名或任意同名模块放行。所有生产源的 `printStackTrace()` 和其他生产目录的标准流输出仍被拒绝，测试控制台规则不变。`test-harness.sh` 用两个标准流正例和五个负例保护该边界；CLI 无 Spring／Server 依赖继续由架构传感器保护。该许可只区分交互与诊断，不证明输出无秘密；授权 URL fallback 可用，授权码、verifier 和 Token 禁止输出，内容数据流由 Review 与 CLI 行为测试检查。只有具备低误报跨调用数据流分析及可靠正反 fixture 后才自动化；批准的独立 CLI 交互边界被新设计替代时撤销该目录许可，不扩大服务端排除范围。
 
 CLI 的可信来源必须在相应边界保留：权限目录常量经薄组合注解同时约束 scope／authority；操作审计读取本次认证主体与可信 Introspection Client，不接受终端自报身份；Leader 跟随只允许精确发现的受支持端点，并保留同一操作语义。查询失败只说明结果未知，不能证明未提交。Ops 的 `OpsCliControllerTest`、`OpsCliAuditTest` 和真实 RestClient 的 `HttpBrokerManagementClientTest` 分别保护 HTTP 授权／投影、审计失败隔离和 Broker 查询协议；`im-e2e-test` 的 `OpsBrokerManagementContractE2ETest` 连接正式出站客户端与真实 Broker HTTP／Raft，保护成功 learner 加入、查询／幂等及五写 epoch 不匹配拒绝，外部设施和未启动 learner 的限制由模块 README 明示。IAM SDK／Server、Ops 和独立 CLI 变更经 `affected-modules.sh` 带入该 E2E 模块，`test-harness.sh` 的各拥有方独立路径 fixture 保护映射，避免混合工作树中其他路径掩盖漏选；映射不代表真实 IAM 登录旅程已通过，沿用现有 e2e tag 和入口；跨模块同类代码的数据流仍属 Review-only，自动化条件是出现能区分可信服务发现与任意提示、认证属性与自报 Header 的低误报正反 fixture，不增加类名白名单。
 

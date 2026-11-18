@@ -5,10 +5,11 @@
 | 模块 | 职责 | 当前状态 |
 |---|---|---|
 | `im-iam` | 统一管理端身份、OAuth2/OIDC、应用级 RBAC；聚合 `im-iam-server` 与 `im-iam-sdk` | 已实现基础闭环 |
-| `im-ops` | 聚合 Broker 诊断并发起受控集群 operation，提供运行控制台 | 已接入 IAM 与集中审计 |
-| `im-ops-cli` | 独立 Java 21 前台客户端，通过 IAM／Ops HTTP 执行固定命令 | 客户端实现与 T10 范围验收完成；真实跨服务旅程由 T11 验证，尚未完成 |
+| `im-ops` | 聚合 `im-ops-server` 运行控制台与 `im-ops-cli` 独立客户端 | Server 已接入 IAM 与集中审计；CLI 与真实跨服务旅程验收见归档计划 |
 | `im-admin` | IAM 接入、普通用户管理和管理 UI | 已接入 IAM 与集中审计 |
 | `im-audit` | 集中审计契约、接收、追加存储、查询、独立 UI 和 Excel 导出 | 已实现基础闭环 |
+
+`im-ops-server` 与 `im-ops-cli` 分别打包运行；CLI 仅通过明确 HTTP 契约访问 Server，不依赖其 Java 实现。Server 的应用名、Nacos 服务名和 Compose service 继续使用 `im-ops`。构建和运行入口见 [Ops README](im-ops/README.md)。
 
 `im-iam-server` 是独立部署的统一认证与授权中心，`im-iam-sdk` 是 Admin、Ops
 接入该中心的公共契约和 Spring Security 集成。Admin 与 Ops 仍分别构建和部署，

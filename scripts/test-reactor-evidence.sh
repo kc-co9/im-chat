@@ -156,7 +156,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     end
     plugins
   end
-  # 两个模块的独立小 oracle；不是正式52集合的简化替代。
+  # 两个模块的独立小 oracle；不是正式53集合的简化替代。
   model_oracle = [
     { 'gav' => 'example:parent:1', 'pom' => root + '/pom.xml', 'basedir' => root, 'packaging' => 'pom', 'modules' => ['child'] },
     { 'gav' => 'example:child:1', 'pom' => root + '/child/pom.xml', 'basedir' => root + '/child', 'packaging' => 'jar', 'modules' => [] }
@@ -219,13 +219,14 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     { 'gav' => 'com.co.kc.im:im-message:0.0.1-SNAPSHOT', 'pom' => root + '/im-service/im-message/pom.xml', 'basedir' => root + "/im-service/im-message", 'packaging' => 'pom', 'modules' => ['im-message-facade', 'im-message-server'] },
     { 'gav' => 'com.co.kc.im:im-message-facade:0.0.1-SNAPSHOT', 'pom' => root + '/im-service/im-message/im-message-facade/pom.xml', 'basedir' => root + "/im-service/im-message/im-message-facade", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-message-server:0.0.1-SNAPSHOT', 'pom' => root + '/im-service/im-message/im-message-server/pom.xml', 'basedir' => root + "/im-service/im-message/im-message-server", 'packaging' => 'jar', 'modules' => [] },
-    { 'gav' => 'com.co.kc.im:im-management:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/pom.xml', 'basedir' => root + "/im-management", 'packaging' => 'pom', 'modules' => ['im-iam', 'im-admin', 'im-ops', 'im-ops-cli', 'im-audit'] },
+    { 'gav' => 'com.co.kc.im:im-management:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/pom.xml', 'basedir' => root + "/im-management", 'packaging' => 'pom', 'modules' => ['im-iam', 'im-admin', 'im-ops', 'im-audit'] },
     { 'gav' => 'com.co.kc.im:im-iam:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-iam/pom.xml', 'basedir' => root + "/im-management/im-iam", 'packaging' => 'pom', 'modules' => ['im-iam-server', 'im-iam-sdk'] },
     { 'gav' => 'com.co.kc.im:im-iam-server:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-iam/im-iam-server/pom.xml', 'basedir' => root + "/im-management/im-iam/im-iam-server", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-iam-sdk:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-iam/im-iam-sdk/pom.xml', 'basedir' => root + "/im-management/im-iam/im-iam-sdk", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-admin:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-admin/pom.xml', 'basedir' => root + "/im-management/im-admin", 'packaging' => 'jar', 'modules' => [] },
-    { 'gav' => 'com.co.kc.im:im-ops:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-ops/pom.xml', 'basedir' => root + "/im-management/im-ops", 'packaging' => 'jar', 'modules' => [] },
-    { 'gav' => 'com.co.kc.im:im-ops-cli:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-ops-cli/pom.xml', 'basedir' => root + "/im-management/im-ops-cli", 'packaging' => 'jar', 'modules' => [] },
+    { 'gav' => 'com.co.kc.im:im-ops:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-ops/pom.xml', 'basedir' => root + "/im-management/im-ops", 'packaging' => 'pom', 'modules' => ['im-ops-server', 'im-ops-cli'] },
+    { 'gav' => 'com.co.kc.im:im-ops-server:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-ops/im-ops-server/pom.xml', 'basedir' => root + "/im-management/im-ops/im-ops-server", 'packaging' => 'jar', 'modules' => [] },
+    { 'gav' => 'com.co.kc.im:im-ops-cli:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-ops/im-ops-cli/pom.xml', 'basedir' => root + "/im-management/im-ops/im-ops-cli", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-audit:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-audit/pom.xml', 'basedir' => root + "/im-management/im-audit", 'packaging' => 'pom', 'modules' => ['im-audit-sdk', 'im-audit-server'] },
     { 'gav' => 'com.co.kc.im:im-audit-sdk:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-audit/im-audit-sdk/pom.xml', 'basedir' => root + "/im-management/im-audit/im-audit-sdk", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-audit-server:0.0.1-SNAPSHOT', 'pom' => root + '/im-management/im-audit/im-audit-server/pom.xml', 'basedir' => root + "/im-management/im-audit/im-audit-server", 'packaging' => 'jar', 'modules' => [] },
@@ -275,13 +276,14 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     ['im-service/im-message/pom.xml', 'im-message', 'im-service', 'pom', ['im-message-facade', 'im-message-server']],
     ['im-service/im-message/im-message-facade/pom.xml', 'im-message-facade', 'im-message', nil, []],
     ['im-service/im-message/im-message-server/pom.xml', 'im-message-server', 'im-message', nil, []],
-    ['im-management/pom.xml', 'im-management', 'im-chat', 'pom', ['im-iam', 'im-admin', 'im-ops', 'im-ops-cli', 'im-audit']],
+    ['im-management/pom.xml', 'im-management', 'im-chat', 'pom', ['im-iam', 'im-admin', 'im-ops', 'im-audit']],
     ['im-management/im-iam/pom.xml', 'im-iam', 'im-management', 'pom', ['im-iam-server', 'im-iam-sdk']],
     ['im-management/im-iam/im-iam-server/pom.xml', 'im-iam-server', 'im-iam', nil, []],
     ['im-management/im-iam/im-iam-sdk/pom.xml', 'im-iam-sdk', 'im-iam', nil, []],
     ['im-management/im-admin/pom.xml', 'im-admin', 'im-management', nil, []],
-    ['im-management/im-ops/pom.xml', 'im-ops', 'im-management', nil, []],
-    ['im-management/im-ops-cli/pom.xml', 'im-ops-cli', 'im-management', nil, []],
+    ['im-management/im-ops/pom.xml', 'im-ops', 'im-management', 'pom', ['im-ops-server', 'im-ops-cli']],
+    ['im-management/im-ops/im-ops-server/pom.xml', 'im-ops-server', 'im-ops', nil, []],
+    ['im-management/im-ops/im-ops-cli/pom.xml', 'im-ops-cli', 'im-ops', nil, []],
     ['im-management/im-audit/pom.xml', 'im-audit', 'im-management', 'pom', ['im-audit-sdk', 'im-audit-server']],
     ['im-management/im-audit/im-audit-sdk/pom.xml', 'im-audit-sdk', 'im-audit', nil, []],
     ['im-management/im-audit/im-audit-server/pom.xml', 'im-audit-server', 'im-audit', nil, []],
@@ -338,13 +340,14 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     { 'gav' => 'com.co.kc.im:im-message:0.0.1-SNAPSHOT', 'basedir' => root + "/im-service/im-message", 'packaging' => 'pom', 'modules' => ['im-message-facade', 'im-message-server'] },
     { 'gav' => 'com.co.kc.im:im-message-facade:0.0.1-SNAPSHOT', 'basedir' => root + "/im-service/im-message/im-message-facade", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-message-server:0.0.1-SNAPSHOT', 'basedir' => root + "/im-service/im-message/im-message-server", 'packaging' => 'jar', 'modules' => [] },
-    { 'gav' => 'com.co.kc.im:im-management:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management", 'packaging' => 'pom', 'modules' => ['im-iam', 'im-admin', 'im-ops', 'im-ops-cli', 'im-audit'] },
+    { 'gav' => 'com.co.kc.im:im-management:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management", 'packaging' => 'pom', 'modules' => ['im-iam', 'im-admin', 'im-ops', 'im-audit'] },
     { 'gav' => 'com.co.kc.im:im-iam:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-iam", 'packaging' => 'pom', 'modules' => ['im-iam-server', 'im-iam-sdk'] },
     { 'gav' => 'com.co.kc.im:im-iam-server:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-iam/im-iam-server", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-iam-sdk:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-iam/im-iam-sdk", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-admin:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-admin", 'packaging' => 'jar', 'modules' => [] },
-    { 'gav' => 'com.co.kc.im:im-ops:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-ops", 'packaging' => 'jar', 'modules' => [] },
-    { 'gav' => 'com.co.kc.im:im-ops-cli:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-ops-cli", 'packaging' => 'jar', 'modules' => [] },
+    { 'gav' => 'com.co.kc.im:im-ops:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-ops", 'packaging' => 'pom', 'modules' => ['im-ops-server', 'im-ops-cli'] },
+    { 'gav' => 'com.co.kc.im:im-ops-server:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-ops/im-ops-server", 'packaging' => 'jar', 'modules' => [] },
+    { 'gav' => 'com.co.kc.im:im-ops-cli:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-ops/im-ops-cli", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-audit:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-audit", 'packaging' => 'pom', 'modules' => ['im-audit-sdk', 'im-audit-server'] },
     { 'gav' => 'com.co.kc.im:im-audit-sdk:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-audit/im-audit-sdk", 'packaging' => 'jar', 'modules' => [] },
     { 'gav' => 'com.co.kc.im:im-audit-server:0.0.1-SNAPSHOT', 'basedir' => root + "/im-management/im-audit/im-audit-server", 'packaging' => 'jar', 'modules' => [] },
@@ -359,7 +362,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     model_project.call(id, entry.fetch('basedir'), entry.fetch('packaging'), entry.fetch('modules')).sub('<groupId>example</groupId>', '<groupId>' + group + '</groupId>').sub('<version>1</version>', '<version>' + version + '</version>')
   end
   formal_xml = '<projects>' + formal_projects.join + '</projects>'
-  raise 'independent effective XML fixture count' unless formal_xml_specs.size == 52
+  raise 'independent effective XML fixture count' unless formal_xml_specs.size == 53
     replaced_xml = formal_projects.map.with_index { |project, i| i == 0 ? project.sub('com.co.kc.im', 'foreign.co.kc.im') : project }.join
   assert_failure('formal replaced XML identity') { evidence.read_effective_model('<projects>' + replaced_xml + '</projects>', formal_oracle, model_context, contract: :formal) }
   formal_summary = evidence.read_effective_model(formal_xml, formal_oracle, model_context, contract: :formal)
@@ -459,7 +462,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   end
   # 缺席与空 modules 的叶子策略；无关 build/dependencies 不属于有限身份语法。
   File.binwrite(root + '/im-common/pom.xml', raw_child_bytes.sub('<modules></modules>', '<build><unrelated/></build><dependencies/>'))
-  raise 'leaf absent modules' unless evidence.read_raw_pom_oracle.size == 52
+  raise 'leaf absent modules' unless evidence.read_raw_pom_oracle.size == 53
   File.binwrite(root + '/im-common/pom.xml', raw_child_bytes)
   File.binwrite(root + '/pom.xml', raw_root_bytes.sub('</project>', '<!-- byte change --></project>'))
   assert_failure('consumer rejects bytes replaced even same identity') { evidence.read_effective_model(formal_xml, formal_oracle, model_context, contract: :formal) }
@@ -472,7 +475,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   assert_failure('raw symlink') { evidence.read_raw_pom_oracle }
   File.unlink(root + '/im-common/pom.xml')
   File.rename(root + '/im-common/pom.saved', root + '/im-common/pom.xml')
-  raise 'raw restored positive' unless evidence.read_effective_model(formal_xml, formal_oracle, model_context, contract: :formal).fetch('modules').size == 52
+  raise 'raw restored positive' unless evidence.read_effective_model(formal_xml, formal_oracle, model_context, contract: :formal).fetch('modules').size == 53
   provenance_root = root
   provenance_maven = '/opt/maven/bin/mvn'
   provenance_common = {
@@ -483,7 +486,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   provenance_verify = provenance_common.merge('argv' => ['mvn', '-q', 'verify'])
   provenance_inputs = { 'localRepository' => { 'path' => root + '/repository', 'sha256' => 'a' * 64 }, 'effectivePom' => { 'path' => root + '/.harness/runtime/effective-pom.xml', 'sha256' => Digest::SHA256.hexdigest(formal_xml) } }
   binding = evidence.bind_model_provenance(model: provenance_model, verify: provenance_verify, inputs: provenance_inputs)
-  raise 'bound model fixture' unless evidence.read_bound_effective_model(formal_xml, formal_oracle, binding).fetch('modules').size == 52
+  raise 'bound model fixture' unless evidence.read_bound_effective_model(formal_xml, formal_oracle, binding).fetch('modules').size == 53
   projection_projects = formal_projects.map.with_index do |project, index|
     case index
     when 0 then project.sub('</project>', '<name> Root 😀 </name></project>')
@@ -497,7 +500,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     inputs['effectivePom']['sha256'] = Digest::SHA256.hexdigest(xml)
     evidence.bind_model_provenance(model: provenance_model, verify: provenance_verify, inputs: inputs)
   end
-  raise 'named bound positive baseline' unless evidence.read_bound_effective_model(projection_xml, formal_oracle, projection_binding.call(projection_xml)).fetch('modules').size == 52
+  raise 'named bound positive baseline' unless evidence.read_bound_effective_model(projection_xml, formal_oracle, projection_binding.call(projection_xml)).fetch('modules').size == 53
   invalid_name_xml = projection_xml.sub('<name> Root 😀 </name>', '<name><nested/>Root</name>')
   assert_failure('bound projection rejects nested name') { evidence.read_bound_effective_model(invalid_name_xml, formal_oracle, projection_binding.call(invalid_name_xml)) }
   # 独立预期 literal，按受审原始项目序；不从 XML、oracle 或生产常量投影。
@@ -544,7 +547,8 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     { 'gav' => 'com.co.kc.im:im-iam-server:0.0.1-SNAPSHOT', 'name' => 'im-iam-server', 'packaging' => 'jar', 'version' => '0.0.1-SNAPSHOT' },
     { 'gav' => 'com.co.kc.im:im-iam-sdk:0.0.1-SNAPSHOT', 'name' => 'im-iam-sdk', 'packaging' => 'jar', 'version' => '0.0.1-SNAPSHOT' },
     { 'gav' => 'com.co.kc.im:im-admin:0.0.1-SNAPSHOT', 'name' => 'im-admin', 'packaging' => 'jar', 'version' => '0.0.1-SNAPSHOT' },
-    { 'gav' => 'com.co.kc.im:im-ops:0.0.1-SNAPSHOT', 'name' => 'im-ops', 'packaging' => 'jar', 'version' => '0.0.1-SNAPSHOT' },
+    { 'gav' => 'com.co.kc.im:im-ops:0.0.1-SNAPSHOT', 'name' => 'im-ops', 'packaging' => 'pom', 'version' => '0.0.1-SNAPSHOT' },
+    { 'gav' => 'com.co.kc.im:im-ops-server:0.0.1-SNAPSHOT', 'name' => 'im-ops-server', 'packaging' => 'jar', 'version' => '0.0.1-SNAPSHOT' },
     { 'gav' => 'com.co.kc.im:im-ops-cli:0.0.1-SNAPSHOT', 'name' => 'im-ops-cli', 'packaging' => 'jar', 'version' => '0.0.1-SNAPSHOT' },
     { 'gav' => 'com.co.kc.im:im-audit:0.0.1-SNAPSHOT', 'name' => 'im-audit', 'packaging' => 'pom', 'version' => '0.0.1-SNAPSHOT' },
     { 'gav' => 'com.co.kc.im:im-audit-sdk:0.0.1-SNAPSHOT', 'name' => 'im-audit-sdk', 'packaging' => 'jar', 'version' => '0.0.1-SNAPSHOT' },
@@ -558,7 +562,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   projected = evidence.read_bound_effective_model(projection_xml, formal_oracle, projection_binding.call(projection_xml))
   raise 'independent display projection' unless projected.fetch('displayProjects') == expected_projection
   raise 'display XML SHA binding' unless projected.fetch('effectivePomSha256') == Digest::SHA256.hexdigest(projection_xml)
-  # 独立冻结52行预期，不调用生产模板或projection生成。
+  # 独立冻结53行预期，不调用生产模板或projection生成。
   build_order_segment = <<~'BUILD_ORDER'
     [INFO] Scanning for projects...
     [INFO] ------------------------------------------------------------------------
@@ -606,7 +610,8 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     [INFO] im-iam-server                                                      [jar]
     [INFO] im-iam-sdk                                                         [jar]
     [INFO] im-admin                                                           [jar]
-    [INFO] im-ops                                                             [jar]
+    [INFO] im-ops                                                             [pom]
+    [INFO] im-ops-server                                                      [jar]
     [INFO] im-ops-cli                                                         [jar]
     [INFO] im-audit                                                           [pom]
     [INFO] im-audit-sdk                                                       [jar]
@@ -620,23 +625,23 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   build_order_segment = build_order_segment.sub("[INFO]\n", "[INFO] \n")
   order_binding = projection_binding.call(projection_xml)
   order_summary = evidence.read_active_profiles_build_order(build_order_segment, xml: projection_xml, oracle: formal_oracle, binding: order_binding)
-  raise 'build order legal baseline' unless order_summary.fetch('projectCount') == 52 && order_summary.fetch('effectivePomSha256') == Digest::SHA256.hexdigest(projection_xml)
+  raise 'build order legal baseline' unless order_summary.fetch('projectCount') == 53 && order_summary.fetch('effectivePomSha256') == Digest::SHA256.hexdigest(projection_xml)
   assert_failure('build order missing logger blank space') { evidence.read_active_profiles_build_order(build_order_segment.sub("[INFO] \n", "[INFO]\n"), xml: projection_xml, oracle: formal_oracle, binding: order_binding) }
   root_banner_segment = <<~'ROOT_BANNER'
     [INFO]
     [INFO] ------------------------< com.co.kc.im:im-chat >------------------------
-    [INFO] Building  Root 😀  0.0.1-SNAPSHOT                                 [1/52]
+    [INFO] Building  Root 😀  0.0.1-SNAPSHOT                                 [1/53]
     [INFO] --------------------------------[ pom ]---------------------------------
   ROOT_BANNER
   root_banner_segment = root_banner_segment.sub("[INFO]\n", "[INFO] \n")
   banner_summary = evidence.read_active_profiles_root_banner(root_banner_segment, xml: projection_xml, oracle: formal_oracle, binding: order_binding)
   raise 'root banner legal baseline' unless banner_summary.fetch('effectivePomSha256') == Digest::SHA256.hexdigest(projection_xml)
-  assert_failure('root banner wrong counter') { evidence.read_active_profiles_root_banner(root_banner_segment.sub('[1/52]', '[2/52]'), xml: projection_xml, oracle: formal_oracle, binding: order_binding) }
+  assert_failure('root banner wrong counter') { evidence.read_active_profiles_root_banner(root_banner_segment.sub('[1/53]', '[2/53]'), xml: projection_xml, oracle: formal_oracle, binding: order_binding) }
   [root_banner_segment + root_banner_segment, root_banner_segment + "[INFO] unknown\n",
    root_banner_segment.delete_suffix("\n"), root_banner_segment + "\n",
    root_banner_segment.sub("[INFO] \n", "[INFO]\n"), root_banner_segment.gsub("\n", "\r\n"),
    root_banner_segment.sub('--< ', '--<'), root_banner_segment.sub('im-chat >--', 'im-common >--'),
-   root_banner_segment.sub('[1/52]', '[1/53]'), root_banner_segment.sub('[ pom ]', '[ jar ]'),
+   root_banner_segment.sub('[1/53]', '[1/54]'), root_banner_segment.sub('[ pom ]', '[ jar ]'),
    root_banner_segment.sub('Root 😀 ', 'Root 😀  '), "﻿" + root_banner_segment].each do |segment|
     begin
       evidence.read_active_profiles_root_banner(segment, xml: projection_xml, oracle: formal_oracle, binding: order_binding)
@@ -647,10 +652,10 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     raise 'invalid banner accepted'
   end
   empty_banner_xml = projection_xml.sub('<name> Root 😀 </name>', '<name/>')
-  empty_banner = root_banner_segment.lines[0..1].join + '[INFO] Building  0.0.1-SNAPSHOT' + ' ' * 41 + " [1/52]\n" + root_banner_segment.lines[3]
+  empty_banner = root_banner_segment.lines[0..1].join + '[INFO] Building  0.0.1-SNAPSHOT' + ' ' * 41 + " [1/53]\n" + root_banner_segment.lines[3]
   raise 'empty root name banner positive' unless evidence.read_active_profiles_root_banner(empty_banner, xml: empty_banner_xml, oracle: formal_oracle, binding: projection_binding.call(empty_banner_xml)).fetch('effectivePomSha256') == Digest::SHA256.hexdigest(empty_banner_xml)
   long_banner_xml = projection_xml.sub('<name> Root 😀 </name>', '<name>' + '😀' * 36 + '</name>')
-  long_banner = root_banner_segment.lines[0..1].join + '[INFO] Building ' + '😀' * 36 + " 0.0.1-SNAPSHOT [1/52]\n" + root_banner_segment.lines[3]
+  long_banner = root_banner_segment.lines[0..1].join + '[INFO] Building ' + '😀' * 36 + " 0.0.1-SNAPSHOT [1/53]\n" + root_banner_segment.lines[3]
   evidence.read_active_profiles_root_banner(long_banner, xml: long_banner_xml, oracle: formal_oracle, binding: projection_binding.call(long_banner_xml))
   reordered_banner_xml = '<projects>' + projection_projects.reverse.join + '</projects>'
   evidence.read_active_profiles_root_banner(root_banner_segment, xml: reordered_banner_xml, oracle: formal_oracle, binding: projection_binding.call(reordered_banner_xml))
@@ -677,7 +682,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   # 长名称仍至少一空格；独立literal行，不能使用Ruby codepoint长度代替Java UTF-16。
   long_xml = projection_xml.sub('<name> Root 😀 </name>', '<name>' + '😀' * 36 + '</name>')
   long_segment = build_order_segment.sub(build_order_segment.lines[4], '[INFO] ' + '😀' * 36 + " [pom]\n")
-  raise 'long UTF16 build order positive' unless evidence.read_active_profiles_build_order(long_segment, xml: long_xml, oracle: formal_oracle, binding: projection_binding.call(long_xml)).fetch('projectCount') == 52
+  raise 'long UTF16 build order positive' unless evidence.read_active_profiles_build_order(long_segment, xml: long_xml, oracle: formal_oracle, binding: projection_binding.call(long_xml)).fetch('projectCount') == 53
   reversed_xml = '<projects>' + projection_projects.reverse.join + '</projects>'
   reversed_projection = evidence.read_bound_effective_model(reversed_xml, formal_oracle, projection_binding.call(reversed_xml))
   raise 'display preserves XML order not sorted oracle' unless reversed_projection.fetch('displayProjects') == expected_projection.reverse
@@ -729,7 +734,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   end
   assert_failure('XML bytes replaced') { evidence.read_bound_effective_model(formal_xml + "\n", formal_oracle, binding) }
   provenance_inputs['localRepository']['path'] += '/caller-mutated'
-  raise 'binding aliases caller' unless evidence.read_bound_effective_model(formal_xml, formal_oracle, binding).fetch('modules').size == 52
+  raise 'binding aliases caller' unless evidence.read_bound_effective_model(formal_xml, formal_oracle, binding).fetch('modules').size == 53
   # bootstrap 的 filesystem 是新隔离根；baseline 独立于生产扫描结果。
   host_dir = root + '/host-fixture'
   FileUtils.mkdir_p(host_dir + '/home/bin')
@@ -884,7 +889,8 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     com.co.kc.im:im-iam-server:jar:0.0.1-SNAPSHOT
     com.co.kc.im:im-iam-sdk:jar:0.0.1-SNAPSHOT
     com.co.kc.im:im-admin:jar:0.0.1-SNAPSHOT
-    com.co.kc.im:im-ops:jar:0.0.1-SNAPSHOT
+    com.co.kc.im:im-ops:pom:0.0.1-SNAPSHOT
+    com.co.kc.im:im-ops-server:jar:0.0.1-SNAPSHOT
     com.co.kc.im:im-ops-cli:jar:0.0.1-SNAPSHOT
     com.co.kc.im:im-audit:pom:0.0.1-SNAPSHOT
     com.co.kc.im:im-audit-sdk:jar:0.0.1-SNAPSHOT
@@ -896,19 +902,19 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     com.co.kc.im:im-routing-ha:jar:0.0.1-SNAPSHOT
   IDS
   # 正文专用 oracle 的独立 packaging 事实，不沿用 reader 合成 XML 的一致性 packaging。
-  body_jar_facts = %w[im-common im-cache im-identity im-excel im-metrics im-tracing im-lock im-datasource im-session im-web im-dubbo im-bolt im-mq-kafka im-gossip im-raft im-nacos im-http-gateway im-ws-gateway-sdk im-ws-gateway-server im-broker-sdk im-broker-server im-account-facade im-account-admin-facade im-account-server im-social-facade im-social-server im-message-facade im-message-server im-iam-server im-iam-sdk im-admin im-ops im-ops-cli im-audit-sdk im-audit-server im-architecture-test im-e2e-test im-load-test im-routing-ha]
+  body_jar_facts = %w[im-common im-cache im-identity im-excel im-metrics im-tracing im-lock im-datasource im-session im-web im-dubbo im-bolt im-mq-kafka im-gossip im-raft im-nacos im-http-gateway im-ws-gateway-sdk im-ws-gateway-server im-broker-sdk im-broker-server im-account-facade im-account-admin-facade im-account-server im-social-facade im-social-server im-message-facade im-message-server im-iam-server im-iam-sdk im-admin im-ops-server im-ops-cli im-audit-sdk im-audit-server im-architecture-test im-e2e-test im-load-test im-routing-ha]
   body_oracle = formal_oracle.map { |entry| entry.merge('packaging' => body_jar_facts.include?(entry.fetch('gav').split(':')[1]) ? 'jar' : 'pom') }
   active_body = body_identities.map { |id| "\nActive Profiles for Project '#{id}':\n\nThe following profiles are active:\n\n - fixture-a (source: external)\n\n\n" }.join
   read_body = lambda do |body, xml = settings_xml, sha = settings_sha, identity = settings_identity_sha|
     evidence.read_active_profiles_body(body, oracle: body_oracle, settings_xml: xml, settings_sha256: sha, settings_identity_sha: identity)
   end
-  # 独立固定logger/plugin字面量；正文沿用独立52 identity literal，不调用生产模板。
+  # 独立固定logger/plugin字面量；正文沿用独立53 identity literal，不调用生产模板。
   logged_body_segment = "[INFO] \n[INFO] --- maven-help-plugin:3.5.1:active-profiles (default-cli) @ im-chat ---\n[INFO] " + active_body + "\n"
   read_logged = lambda do |segment|
     evidence.read_active_profiles_logged_body(segment, xml: projection_xml, oracle: body_oracle, binding: order_binding, settings_xml: settings_xml, settings_sha256: settings_sha, settings_identity_sha: settings_identity_sha)
   end
   logged_summary = read_logged.call(logged_body_segment)
-  raise 'logged body legal baseline' unless logged_summary.fetch('projectCount') == 52 && logged_summary.fetch('bodySha256') == Digest::SHA256.hexdigest(active_body)
+  raise 'logged body legal baseline' unless logged_summary.fetch('projectCount') == 53 && logged_summary.fetch('bodySha256') == Digest::SHA256.hexdigest(active_body)
   assert_failure('logger must not strip INFO inside body') { read_logged.call(logged_body_segment.sub("\nActive Profiles for Project", "\n[INFO] Active Profiles for Project")) }
   [logged_body_segment.sub('3.5.1:', '3.5.2:'), logged_body_segment.sub('default-cli', 'other-cli'),
    logged_body_segment.sub('@ im-chat', '@ im-common'), logged_body_segment.sub('active-profiles', 'effective-pom'),
@@ -979,6 +985,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     [INFO] im-iam-sdk ......................................... SKIPPED
     [INFO] im-admin ........................................... SKIPPED
     [INFO] im-ops ............................................. SKIPPED
+    [INFO] im-ops-server ...................................... SKIPPED
     [INFO] im-ops-cli ......................................... SKIPPED
     [INFO] im-audit ........................................... SKIPPED
     [INFO] im-audit-sdk ....................................... SKIPPED
@@ -1003,7 +1010,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     evidence.read_active_profiles_stdout(text, xml: xml, oracle: raw, binding: bound, settings_xml: settings_xml, settings_sha256: settings_sha, settings_identity_sha: settings_identity_sha)
   end
   stdout_summary = read_stdout.call(stdout_fixture)
-  raise 'complete stdout legal independent baseline' unless stdout_summary.fetch('projectCount') == 52 && stdout_summary.fetch('stdoutSha256') == Digest::SHA256.hexdigest(stdout_fixture)
+  raise 'complete stdout legal independent baseline' unless stdout_summary.fetch('projectCount') == 53 && stdout_summary.fetch('stdoutSha256') == Digest::SHA256.hexdigest(stdout_fixture)
   raise 'summary pure format literal' unless evidence.format_active_profiles_summary(expected_projection, '1.234 s') == summary_segment
   # 纯格式接缝只有展示输入，无formal接受/provenance含义；mixed预期独立literal。
   mixed_projects = [
@@ -1035,14 +1042,14 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   ['0.000 s', '59.999 s', '01:00 min', '59:59 min', '01:00 h', '23:59 h', '1 d 00:00 h', '12 d 23:59 h'].each do |duration|
     summary_text = evidence.format_active_profiles_summary(expected_projection, duration)
     text = stdout_fixture.sub(summary_segment, summary_text).sub('Total time:  2.345 s', 'Total time:  ' + duration)
-    raise 'duration branch positive' unless read_stdout.call(text).fetch('projectCount') == 52
+    raise 'duration branch positive' unless read_stdout.call(text).fetch('projectCount') == 53
   end
   ['-1.000 s','00.000 s','60.000 s','1.00 s','1.0000 s','00:59 min','60:00 min','01:60 min','00:01 h','24:00 h','01:60 h','0 d 00:00 h','01 d 00:00 h','1 d 24:00 h','1 d 00:60 h','١.000 s','1.000 s '].each do |duration|
     assert_failure('duration finite grammar') { read_stdout.call(stdout_fixture.sub('Total time:  2.345 s', 'Total time:  ' + duration)) }
     assert_failure('summary duration finite grammar') { evidence.format_active_profiles_summary(expected_projection, duration) }
   end
   ['2024-02-29T23:59:59+23:59','0001-01-01T00:00:00-00:30','9999-12-31T23:59:59Z'].each do |stamp|
-    raise 'timestamp calendar positive' unless read_stdout.call(stdout_fixture.sub('2026-11-03T08:30:01Z',stamp)).fetch('projectCount') == 52
+    raise 'timestamp calendar positive' unless read_stdout.call(stdout_fixture.sub('2026-11-03T08:30:01Z',stamp)).fetch('projectCount') == 53
   end
   ['0000-01-01T00:00:00Z','2025-02-29T00:00:00Z','2024-04-31T00:00:00Z','2026-13-01T00:00:00Z','2026-01-00T00:00:00Z','2026-11-03T24:00:00Z','2026-11-03T08:60:00Z','2026-11-03T08:30:60Z','2026-11-03T08:30:01+24:00','2026-11-03T08:30:01+01:60','2026-11-03T08:30:01+0100','2026-11-03T08:30:01.001Z','2026-11-03T08:30:01','2026-11-03T08:30:01Zextra'].each do |stamp|
     assert_failure('timestamp finite calendar/zone grammar') { read_stdout.call(stdout_fixture.sub('2026-11-03T08:30:01Z',stamp)) }
@@ -1093,7 +1100,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   # repository 必须来自当前binding，不能由stdout独立更换。
   repo_result['stdout'] = order_binding.fetch('inputs').fetch('localRepository').fetch('path')
   FileUtils.mkdir_p(repo_result.fetch('stdout'))
-  raise 'B2 three output legal baseline' unless b2_read.call([model_result, repo_result, active_result]).fetch('projectCount') == 52
+  raise 'B2 three output legal baseline' unless b2_read.call([model_result, repo_result, active_result]).fetch('projectCount') == 53
   ["\n", "\r\n", " ", "\e[0m", "\0"].each do |suffix|
     assert_failure('B2 evaluate exact bytes no strip') { b2_read.call([model_result, repo_result.merge('stdout' => repo_result.fetch('stdout') + suffix), active_result]) }
   end
@@ -1109,7 +1116,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   dynamic_model = order_binding.fetch('model').merge('argv' => order_binding.fetch('model').fetch('argv')[0...-1] + ['-Doutput=' + private_output + '/effective-pom.xml'])
   dynamic_inputs = order_binding.fetch('inputs').merge('effectivePom' => order_binding.fetch('inputs').fetch('effectivePom').merge('path' => private_output + '/effective-pom.xml'))
   dynamic_binding = evidence.bind_model_provenance(model: dynamic_model, verify: order_binding.fetch('verify'), inputs: dynamic_inputs)
-  raise 'B2 registered private output binding' unless evidence.read_bound_effective_model(projection_xml, body_oracle, dynamic_binding).fetch('displayProjects').size == 52
+  raise 'B2 registered private output binding' unless evidence.read_bound_effective_model(projection_xml, body_oracle, dynamic_binding).fetch('displayProjects').size == 53
   assert_failure('B2 no arbitrary dynamic model filename') do
     bad_model = dynamic_model.merge('argv' => dynamic_model.fetch('argv')[0...-1] + ['-Doutput=' + private_output + '/other.xml'])
     evidence.bind_model_provenance(model: bad_model, verify: order_binding.fetch('verify'), inputs: dynamic_inputs)
@@ -1192,7 +1199,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     production_fixture.fixture_snapshot['drift'] = 'changed' if File.exist?(source_dir + '/drift')
   end
   collected = production_fixture.collect_approved_model(output: private_parent + '/production-collect')
-  raise 'production three commands/readers' unless collected.fetch('projectCount') == 52 && File.readlines(source_dir + '/calls').size == 3
+  raise 'production three commands/readers' unless collected.fetch('projectCount') == 53 && File.readlines(source_dir + '/calls').size == 3
   assert_failure('formal reader rejects isolated collection') { evidence.read_approved_collection(collected) }
   fake_true = collected.merge('hostProvenance' => true, 'bootstrapComplete' => true)
   assert_failure('true labels do not authorize source') { evidence.read_approved_collection(fake_true) }
@@ -1514,7 +1521,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     model_context: order_binding.fetch('model'), verify_context: order_binding.fetch('verify'),
     settings_xml: settings_xml, settings_sha256: settings_sha, settings_identity_sha: settings_identity_sha }
   mock_collected = evidence.collect_model_fixture(**mock_arguments)
-  raise 'B2 mock full readers' unless mock_collected.fetch('projectCount') == 52 && mock_calls.size == 3 && mock_collected.fetch('hostProvenance') == false
+  raise 'B2 mock full readers' unless mock_collected.fetch('projectCount') == 53 && mock_calls.size == 3 && mock_collected.fetch('hostProvenance') == false
   raise 'B2 mock no lifecycle invocation' if mock_calls.flatten.any? { |arg| %w[verify clean prepare].include?(arg) }
   mock_calls.clear
   failed_runner = lambda do |argv, cwd|
@@ -1574,7 +1581,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   ensure
     File.binwrite(root + '/pom.xml', raw_root_before)
   end
-  raise 'whole stdout raw restored positive' unless read_stdout.call(stdout_fixture).fetch('projectCount') == 52
+  raise 'whole stdout raw restored positive' unless read_stdout.call(stdout_fixture).fetch('projectCount') == 53
   long_summary_projects = [
     { 'gav' => 'com.co.kc.im:im-chat:0.0.1-SNAPSHOT', 'name' => '😀' * 26, 'version' => '1' },
     { 'gav' => 'com.co.kc.im:child:1', 'name' => 'x' * 51, 'version' => '1' }
@@ -1601,7 +1608,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     end
   end
   body_summary = read_body.call(active_body)
-  raise 'active body positive' unless body_summary.fetch('projectCount') == 52 && body_summary.fetch('bodySha256') == Digest::SHA256.hexdigest(active_body)
+  raise 'active body positive' unless body_summary.fetch('projectCount') == 53 && body_summary.fetch('bodySha256') == Digest::SHA256.hexdigest(active_body)
   raise 'same-call settings active summary' unless body_summary.fetch('settings').fetch('activeProfileIdentitySha256') == settings_identity_sha && body_summary.fetch('settings').fetch('settingsSha256') == settings_sha
   File.binwrite(root + '/pom.xml', raw_root_bytes.sub('</project>', '<!-- changed after oracle --></project>'))
   begin
@@ -1629,11 +1636,11 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   File.binwrite(root + '/pom.xml', raw_root_bytes.sub('</project>', '<!-- changed after oracle --></project>'))
   reject_body_oracle.call(body_oracle)
   refreshed = evidence.read_raw_pom_oracle
-  raise 'active body refreshed raw positive' unless evidence.read_active_profiles_body(active_body, oracle: refreshed, settings_xml: settings_xml, settings_sha256: settings_sha, settings_identity_sha: settings_identity_sha).fetch('projectCount') == 52
+  raise 'active body refreshed raw positive' unless evidence.read_active_profiles_body(active_body, oracle: refreshed, settings_xml: settings_xml, settings_sha256: settings_sha, settings_identity_sha: settings_identity_sha).fetch('projectCount') == 53
   File.binwrite(root + '/pom.xml', raw_root_bytes.sub('<modules>', '<modules unexpected="x">'))
   reject_body_oracle.call(body_oracle)
   File.binwrite(root + '/pom.xml', raw_root_bytes)
-  raise 'active body raw restoration' unless read_body.call(active_body).fetch('projectCount') == 52
+  raise 'active body raw restoration' unless read_body.call(active_body).fetch('projectCount') == 53
   assert_failure('active body wrong source') { read_body.call(active_body.sub('(source: external)', '(source: project)')) }
   assert_failure('active body wrong identity') { read_body.call(active_body.sub(' - fixture-a ', ' - foreign ')) }
   reject_body = lambda do |body|
@@ -1672,13 +1679,17 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   unicode_sha = Digest::SHA256.hexdigest("fixture-é")
   read_body.call(active_body.gsub('fixture-a', "fixture-é"), unicode_settings, Digest::SHA256.hexdigest(unicode_settings), unicode_sha)
   assert_failure('profile identity no Unicode normalization') { read_body.call(active_body.gsub('fixture-a', "fixture-é"), unicode_settings, Digest::SHA256.hexdigest(unicode_settings), unicode_sha) }
-  raise 'formal 52 model summary' unless formal_summary.fetch('modules').size == 52
-  assert_failure('formal reduced oracle') { evidence.read_effective_model(formal_xml, formal_oracle.first(51), model_context, contract: :formal) }
+  raise 'formal 53 model summary' unless formal_summary.fetch('modules').size == 53
+  assert_failure('formal reduced oracle') { evidence.read_effective_model(formal_xml, formal_oracle.first(52), model_context, contract: :formal) }
   expanded_oracle = formal_oracle + [formal_oracle.last.merge('gav' => 'example:z:1')]
   assert_failure('formal expanded oracle') { evidence.read_effective_model(formal_xml, expanded_oracle, model_context, contract: :formal) }
-  replaced_oracle = formal_oracle.first(51) + [formal_oracle.last.merge('gav' => 'example:replacement:1')]
+  replaced_oracle = formal_oracle.dup
+  replaced_oracle[-1] = formal_oracle.last.merge('gav' => 'example:replacement:1')
+  raise 'replacement must preserve cardinality' unless replaced_oracle.size == 53
   assert_failure('formal replaced identity') { evidence.read_effective_model(formal_xml, replaced_oracle, model_context, contract: :formal) }
-  duplicate_oracle = formal_oracle.first(51) + [formal_oracle.first]
+  duplicate_oracle = formal_oracle.dup
+  duplicate_oracle[-1] = formal_oracle.first
+  raise 'duplicate must preserve cardinality' unless duplicate_oracle.size == 53
   assert_failure('formal duplicate identity') { evidence.read_effective_model(formal_xml, duplicate_oracle, model_context, contract: :formal) }
   path_oracle = formal_oracle.dup
   path_oracle[0] = path_oracle[0].merge('pom' => root + '/other/pom.xml')
@@ -1752,7 +1763,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
     oracle = [{ 'gav' => 'example:special:1', 'pom' => base + '/pom.xml', 'basedir' => base, 'packaging' => 'jar', 'modules' => [] }]
     ['<projects>' + model_project.call('special', base, 'jar', [], extra) + '</projects>', oracle]
   end
-  shade_xml, shade_oracle = special_model.call('im-management/im-ops-cli', shade)
+  shade_xml, shade_oracle = special_model.call('im-management/im-ops/im-ops-cli', shade)
   raise 'Shade legitimate model missing' unless evidence.read_effective_model(shade_xml, shade_oracle, model_context).fetch('modules').first.fetch('plugins').include?('maven-shade-plugin')
   {
     'missing execution false' => shade_xml.sub('<createDependencyReducedPom>false</createDependencyReducedPom>', ''),
@@ -2055,7 +2066,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   File.delete(File.join(root, added_generated))
   inventory = verified.fetch('summaries').fetch('productionClasses')
   common_classes = inventory.find { |mod| mod.fetch('pom') == 'im-common/pom.xml' }.fetch('classes')
-  raise 'class inventory missing' unless inventory.size == 52 && common_classes == [{ 'path' => class_file, 'internalName' => owned_name, 'accessFlags' => 33, 'sha256' => Digest::SHA256.hexdigest(owned_class) }]
+  raise 'class inventory missing' unless inventory.size == 53 && common_classes == [{ 'path' => class_file, 'internalName' => owned_name, 'accessFlags' => 33, 'sha256' => Digest::SHA256.hexdigest(owned_class) }]
   raise 'empty module classes missing' unless inventory.find { |mod| mod.fetch('pom') == 'pom.xml' }.fetch('classes') == []
   raise 'class hash not bound' unless verified.fetch('sha256').fetch(class_file) == Digest::SHA256.hexdigest(owned_class)
   reject_inventory = lambda do |label, diagnostic|
@@ -2083,7 +2094,7 @@ Dir.mktmpdir('reactor-evidence-') do |root|
   write.call(class_file, class_bytes.call(owned_name + '$Other'))
   reject_inventory.call('path mismatch', 'class ownership: path mismatch')
   write.call(class_file, owned_class)
-  duplicate_class = class_file.sub('im-common/', 'im-management/im-ops-cli/')
+  duplicate_class = class_file.sub('im-common/', 'im-management/im-ops/im-ops-cli/')
   write.call(duplicate_class, owned_class)
   reject_inventory.call('duplicate', 'class ownership: duplicate internal name')
   File.delete(File.join(root, duplicate_class))

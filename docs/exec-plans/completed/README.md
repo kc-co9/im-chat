@@ -4,6 +4,8 @@ Completed plans are retained as implementation history. Move a plan here only af
 
 Completed plans:
 
+- [Ops 模块聚合](2026-11-18-ops-module-aggregation.md)：T1 `passing`，Ops Server 与 CLI 已纳入同一父模块；实现 full、25 个真实 HA 场景与独立 quality Accept 已完成。保留原验收时间、指纹和历史失败，文档状态与链接更新不作为新 full 证据。
+
 - [Broker 成员应用流程可读性](2026-11-09-broker-membership-flow-readability.md)：T1–T3 `passing`，冻结 full、真实 HA 与独立 quality Accept；原验收指纹、时间、历史 Block 和失败记录保留，群聊风险由独立设计草案跟踪。
 
 - [官方 JRaft 治理迁移与自有运维 CLI](2026-10-30-official-jraft-and-ops-cli.md)：T1–T12 `passing`；新冻结 full／真实 HA、独立完整 T11 Review、正式 quality Accept、合同回归与状态迁移 Review 均已完成；原验收时间、指纹、历史失败、旧 Revise 与 stale 保留。

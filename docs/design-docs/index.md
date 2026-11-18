@@ -8,6 +8,8 @@
 
 ## Current Designs
 
+- [Ops 模块聚合](2026-11-18-ops-module-aggregation-design.md)：已实施，`im-ops` 聚合 `im-ops-server` 与 `im-ops-cli`；完整 full、25 个真实 HA 场景与独立 quality Accept 已通过，见[归档计划](../exec-plans/completed/2026-11-18-ops-module-aggregation.md)。原验收时间、指纹及历史失败保留，文档完成状态更新不晋级原证据 freshness。
+
 - [群聊会话补偿与通知对象](2026-11-18-group-chat-recovery-and-notification-design.md)：独立草案。记录 Social 群变更交接失败与 Message 通知对象偏差，比较恢复和资格过滤方案。候选方案待批准与独立 Review，未实施。
 - [Learner 同步确认与后台恢复职责分离](2026-11-12-learner-confirmation-explicit-recovery-design.md)：已批准。用户批准保留 scheduler/resume 自动恢复、不新增恢复 HTTP 接口，并批准 CLI 确认端点保存/传递修复；独立 Review 第二轮 Approved、findings none，首轮 Revise 保留。已在[Broker 成员应用流程计划](../exec-plans/completed/2026-11-09-broker-membership-flow-readability.md)完成实施验收，T1–T3 均为 `passing`；冻结 full、真实 HA 与独立 quality Accept 的原件及历史限制见已归档计划。
 

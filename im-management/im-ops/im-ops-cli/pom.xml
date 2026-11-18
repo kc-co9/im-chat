@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.co.kc.im</groupId>
-        <artifactId>im-management</artifactId>
+        <artifactId>im-ops</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
     <artifactId>im-ops-cli</artifactId>

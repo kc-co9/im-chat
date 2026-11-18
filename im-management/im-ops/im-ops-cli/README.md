@@ -6,7 +6,7 @@
 
 ## 实现状态
 
-客户端 T10 范围的实现、冻结验收和独立 Review 已完成，证据由[归档计划 T10](../../docs/exec-plans/completed/2026-10-30-official-jraft-and-ops-cli.md#t10-自有交互-cli)拥有；真实 IAM／Ops／MySQL／浏览器 HTTP 旅程由已完成的 T11 验证。以下局部证据保留其原始边界，不将本地 fixture 解释为真实跨服务或生产验收。已实现单次登录 state、PKCE S256、120 秒会话截止时间和一次性消费，以及固定 IPv4 loopback 端口的有界回调监听器。请求记录已覆盖创建时 owner-only、原语义恢复与禁止覆盖，读取权限和严格输入已取得局部独立 Accept。HTTP 客户端已实现换码／内存 Bearer 集群读取、到期禁发、撤销先清本地引用、禁止 redirect／Cookie／Authenticator 和连接预算校验的窄切片。有界 Body 接收与原始异步请求的绝对 deadline／超时中断取消已取得局部独立 Accept；严格远端 JSON／envelope、串行命令、原 operation UNKNOWN 读取及非法 Bearer 防泄漏修复已通过模块反馈，Bearer 修复已取得同范围独立 Accept。写边界修复已取得同范围独立 Accept：提交结果关联原 operationId 与实际 status，401 清除本地认证，403 明确权限拒绝。入口已有 help、配置、login／logout／exit 和两个读取命令；配置祖先信任与撤销失败报告修复已取得局部独立 Accept。子进程已通过本地受信 JDK HTTPS fixture 的 callback→换码及失败撤销组合，不代表真实 IAM／浏览器验收。Shade JAR 与实际 `--help` smoke 已通过一次，后续源码变化后仍需重验。五个固定写命令入口及 `operation retry` 已接入本地 HTTPS fixture，并验证发送时原记录存在及 retry 不改原 bytes；写入口退出分类／UNKNOWN 恢复提示修复已取得同范围独立 Accept，后续本地 TLS 自签／hostname 拒绝、reason 和认证后写拒绝回归已通过，增量契约 Review 已取得局部 Accept；Java 中断恢复提示与真实线程中断回归已通过，源码窄 Review 已取得局部 Accept，不把局部测试通过视为完整登录或运维验收。
+客户端 T10 范围的实现、冻结验收和独立 Review 已完成，证据由[归档计划 T10](../../../docs/exec-plans/completed/2026-10-30-official-jraft-and-ops-cli.md#t10-自有交互-cli)拥有；真实 IAM／Ops／MySQL／浏览器 HTTP 旅程由已完成的 T11 验证。以下局部证据保留其原始边界，不将本地 fixture 解释为真实跨服务或生产验收。已实现单次登录 state、PKCE S256、120 秒会话截止时间和一次性消费，以及固定 IPv4 loopback 端口的有界回调监听器。请求记录已覆盖创建时 owner-only、原语义恢复与禁止覆盖，读取权限和严格输入已取得局部独立 Accept。HTTP 客户端已实现换码／内存 Bearer 集群读取、到期禁发、撤销先清本地引用、禁止 redirect／Cookie／Authenticator 和连接预算校验的窄切片。有界 Body 接收与原始异步请求的绝对 deadline／超时中断取消已取得局部独立 Accept；严格远端 JSON／envelope、串行命令、原 operation UNKNOWN 读取及非法 Bearer 防泄漏修复已通过模块反馈，Bearer 修复已取得同范围独立 Accept。写边界修复已取得同范围独立 Accept：提交结果关联原 operationId 与实际 status，401 清除本地认证，403 明确权限拒绝。入口已有 help、配置、login／logout／exit 和两个读取命令；配置祖先信任与撤销失败报告修复已取得局部独立 Accept。子进程已通过本地受信 JDK HTTPS fixture 的 callback→换码及失败撤销组合，不代表真实 IAM／浏览器验收。Shade JAR 与实际 `--help` smoke 已通过一次，后续源码变化后仍需重验。五个固定写命令入口及 `operation retry` 已接入本地 HTTPS fixture，并验证发送时原记录存在及 retry 不改原 bytes；写入口退出分类／UNKNOWN 恢复提示修复已取得同范围独立 Accept，后续本地 TLS 自签／hostname 拒绝、reason 和认证后写拒绝回归已通过，增量契约 Review 已取得局部 Accept；Java 中断恢复提示与真实线程中断回归已通过，源码窄 Review 已取得局部 Accept，不把局部测试通过视为完整登录或运维验收。
 
 ## 当前命令用法
 
@@ -27,9 +27,9 @@ IAM Token 响应显式接纳标准可选 `scope` 字段；它不替代 Ops 服�
 示例值必须替换为实际部署与注册值。将配置权限设置为 `chmod 600 <config-file>` 后，构建并启动：
 
 ```bash
-mvn -q -pl im-management/im-ops-cli -am package
-java -jar im-management/im-ops-cli/target/im-ops-cli.jar --help
-java -jar im-management/im-ops-cli/target/im-ops-cli.jar --config <config-file>
+mvn -q -pl im-management/im-ops/im-ops-cli -am package
+java -jar im-management/im-ops/im-ops-cli/target/im-ops-cli.jar --help
+java -jar im-management/im-ops/im-ops-cli/target/im-ops-cli.jar --config <config-file>
 ```
 
 1. 输入 `login`。CLI 先绑定固定 `127.0.0.1` 端口，再尝试打开浏览器；无法打开时仅打印授权 URL，仍需人工浏览器完成认证。端口占用时失败，不换端口。
@@ -60,7 +60,7 @@ operation retry --record <original-file> --confirm
 ## 验证
 
 ```bash
-mvn -q -pl im-management/im-ops-cli -am test
+mvn -q -pl im-management/im-ops/im-ops-cli -am test
 ```
 
-登录会话测试只证明内存会话校验，不启动 IAM、浏览器或 Ops，不证明 Token 换码请求未发出。监听器测试使用真实本机 loopback Socket，不接触外部服务。监听器原局部独立 Review 的两项 `Revise` 已修复并取得同范围 `Accept`，原件 `.harness/t10/loopback/review-repair.json`；有效回调不受浏览器响应写失败影响，关闭／超时测试补充活动读取同步与遗漏负例。该结论不覆盖完整登录或 T10 验收；预算测试仍存在真实 Socket 等待的调度敏感性。完整流程及运行约束以[批准设计](../../docs/design-docs/2026-10-30-ops-cli-authentication-design.md)和[归档计划](../../docs/exec-plans/completed/2026-10-30-official-jraft-and-ops-cli.md#t10-自有交互-cli)为准。
+登录会话测试只证明内存会话校验，不启动 IAM、浏览器或 Ops，不证明 Token 换码请求未发出。监听器测试使用真实本机 loopback Socket，不接触外部服务。监听器原局部独立 Review 的两项 `Revise` 已修复并取得同范围 `Accept`，原件 `.harness/t10/loopback/review-repair.json`；有效回调不受浏览器响应写失败影响，关闭／超时测试补充活动读取同步与遗漏负例。该结论不覆盖完整登录或 T10 验收；预算测试仍存在真实 Socket 等待的调度敏感性。完整流程及运行约束以[批准设计](../../../docs/design-docs/2026-10-30-ops-cli-authentication-design.md)和[归档计划](../../../docs/exec-plans/completed/2026-10-30-official-jraft-and-ops-cli.md#t10-自有交互-cli)为准。

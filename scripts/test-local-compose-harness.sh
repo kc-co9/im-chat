@@ -50,7 +50,7 @@ application_poms=(
   "$ROOT_DIR/im-management/im-iam/im-iam-server/pom.xml"
   "$ROOT_DIR/im-management/im-audit/im-audit-server/pom.xml"
   "$ROOT_DIR/im-management/im-admin/pom.xml"
-  "$ROOT_DIR/im-management/im-ops/pom.xml"
+  "$ROOT_DIR/im-management/im-ops/im-ops-server/pom.xml"
 )
 for pom in "${application_poms[@]}"; do
   if ! rg -q '<artifactId>spring-boot-maven-plugin</artifactId>' "$pom"; then
@@ -404,7 +404,7 @@ for jar_pattern in \
   'im-management/im-iam/im-iam-server/target/\*-exec\.jar' \
   'im-management/im-audit/im-audit-server/target/\*-exec\.jar' \
   'im-management/im-admin/target/\*-exec\.jar' \
-  'im-management/im-ops/target/\*-exec\.jar'; do
+  'im-management/im-ops/im-ops-server/target/\*-exec\.jar'; do
   if ! rg -q "^!${jar_pattern}$" "$ROOT_DIR/deploy/local/app.Dockerfile.dockerignore"; then
     printf 'Docker ignore file must allow only required exec jar path: %s\n' "$jar_pattern" >&2
     exit 1

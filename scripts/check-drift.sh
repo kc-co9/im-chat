@@ -99,7 +99,7 @@ production_stack_traces="$(rg -n --glob '**/src/main/java/**/*.java' 'printStack
 report_matches "Production code must not print stack traces directly" "$production_stack_traces"
 
 # 仅批准的独立 CLI 生产根目录以标准流提供交互协议；服务诊断继续使用统一 Logger。
-production_console_output="$(rg -n --glob '**/src/main/java/**/*.java' --glob '!/im-management/im-ops-cli/src/main/java/**' 'System\.(out|err)\.' . || true)"
+production_console_output="$(rg -n --glob '**/src/main/java/**/*.java' --glob '!/im-management/im-ops/im-ops-cli/src/main/java/**' 'System\.(out|err)\.' . || true)"
 report_matches "Production services must use the project logger instead of console output" "$production_console_output"
 
 manual_object_mapper="$(rg -n --glob '**/src/main/java/**/*.java' 'new[[:space:]]+ObjectMapper[[:space:]]*\(' . --glob '!im-common/src/main/java/com/co/kc/imchat/common/utils/JsonUtils.java' || true)"

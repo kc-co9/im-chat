@@ -17,7 +17,7 @@
 - 公共契约、配置项、复杂业务规则、生命周期和非显然失败行为提供简洁 Javadoc。自解释的私有方法、getter 和简单 Controller 不写重复注释。普通说明使用 `/* ... */`；Javadoc 使用多行 `/**`、` *`、` */` 结构，类注释统一采用多行 Javadoc；字段和 record 组件的简短说明优先使用 `/* ... */`，只有需要生成 API 文档时才使用 Javadoc。
 - record 属性较多时每个组件单独换行，并为每个组件提供简短块注释，避免长参数列表降低可读性。
 - 日志使用项目统一 Logger，不输出密码、Access/Refresh Token、指纹、完整消息内容或用户隐私。
-- 独立客户端 `im-management/im-ops-cli/src/main/java/**` 的 stdout／stderr 是命令结果、帮助和安全错误提示的公开交互接口，不是服务诊断日志；该精确生产根目录允许 `System.out/err`，其他生产目录继续禁止。所有生产目录均禁止 `printStackTrace()`。CLI 不为交互输出引入服务端日志依赖，不输出授权码、PKCE verifier 或 Token；浏览器打开失败时仅可展示批准的授权 URL。输出内容的秘密数据流由 Review 与行为测试核对，目录许可不代表内容安全。
+- 独立客户端 `im-management/im-ops/im-ops-cli/src/main/java/**` 的 stdout／stderr 是命令结果、帮助和安全错误提示的公开交互接口，不是服务诊断日志；该精确生产根目录允许 `System.out/err`，其他生产目录继续禁止。所有生产目录均禁止 `printStackTrace()`。CLI 不为交互输出引入服务端日志依赖，不输出授权码、PKCE verifier 或 Token；浏览器打开失败时仅可展示批准的授权 URL。输出内容的秘密数据流由 Review 与行为测试核对，目录许可不代表内容安全。
 
 ## 模块结构与 DDD 分层
 

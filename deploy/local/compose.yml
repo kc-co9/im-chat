@@ -500,7 +500,7 @@ services:
       context: ../..
       dockerfile: deploy/local/app.Dockerfile
       args:
-        JAR_FILE: im-management/im-ops/target/*-exec.jar
+        JAR_FILE: im-management/im-ops/im-ops-server/target/*-exec.jar
     environment:
       <<: *app-environment
       SW_AGENT_NAME: im-ops

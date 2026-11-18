@@ -1,6 +1,6 @@
 # 项目进度
 
-- 当前活跃计划：`none`。[Broker 成员应用流程可读性计划](docs/exec-plans/completed/2026-11-09-broker-membership-flow-readability.md) 已归档，T1–T3 均为 `passing`。群聊风险由独立设计草案跟踪，未实施。
+- 当前活跃计划：`none`。[Ops 模块聚合](docs/exec-plans/completed/2026-11-18-ops-module-aggregation.md) 已完成并归档，T1 `passing`；原完整验收、独立 Review 及文档收尾边界见计划。[Broker 成员应用流程可读性计划](docs/exec-plans/completed/2026-11-09-broker-membership-flow-readability.md) 已归档，T1–T3 均为 `passing`。群聊风险由独立设计草案跟踪，未实施。
 
 - Executor 可读性收尾已完成：import/命名/容量谓词/待处理阶段判定整理，未改锁和调度顺序。聚焦回归、完整Broker模块、完整架构模块均通过（证据见活跃计划），style/diff通过。下一步按窄到宽执行clean/full；T2仍active，不提交。
 

@@ -4,6 +4,8 @@
 
 ## 规则矩阵
 
+Ops 聚合迁移后，当前 canonical reactor 为 53 项（新增 `im-ops` 聚合 POM，Server 改为 `im-ops-server`，CLI 迁入同父目录）。当前精确身份由[Ops 聚合设计](../design-docs/2026-11-18-ops-module-aggregation-design.md)补充；下表原 52 项描述为引入时点历史。`RuntimeDependencyPolicyTest.opsModulesShareCapabilityParent` 校验父子结构，`test-reactor-evidence.sh` 保持独立 53 项 raw/effective/display/stdout 正反例，`test-harness.sh` 保护父子 affected 路由与 CLI 标准流精确根。
+
 reader 文本编码归覆盖率设计第 3 节及 Harness Guide：Java／TSV／JSON／Surefire／JaCoCo XML 显式 UTF-8，不依赖 locale，不以环境扩张修复编码。`test-reactor-evidence.sh` 用 C locale 的独立 Ruby CLI 校验中文启动清单与同轮 manifest；非法文本仍失败关闭，二进制／摘要不转码。真实 full／HA 仍需独立验收。
 
 full 的主模型/Maven 等阶段保留三键；仅 HA 子阶段增加受审固定 loopback `HTTPS_PROXY`。所属设计与 Guide 规定无父代理/Docker覆盖继承、不变更 Docker 配置或 TLS、失败不回退；`test-full-orchestration-harness.sh` 保护实际环境固定值、非 HA 缺席、污染隔离与失败传播。代理的现场可用性仍须实际窄 build/full/HA，fixture 不代替外部环境证明。

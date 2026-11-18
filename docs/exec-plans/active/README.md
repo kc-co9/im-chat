@@ -2,7 +2,7 @@
 
 ## 当前计划
 
-当前活跃计划：无。最近完成的[Broker 成员应用流程可读性](../completed/2026-11-09-broker-membership-flow-readability.md) 已归档，T1–T3 均为 `passing`。
+当前活跃计划：无。[Ops 模块聚合](../completed/2026-11-18-ops-module-aggregation.md) 已完成并归档，T1 `passing`；原实现验收证据及文档收尾边界见计划。最近完成的[Broker 成员应用流程可读性](../completed/2026-11-09-broker-membership-flow-readability.md) 已归档，T1–T3 均为 `passing`。
 
 最近完成的[官方 JRaft 治理迁移与自有运维 CLI](../completed/2026-10-30-official-jraft-and-ops-cli.md)已归档：T1–T12 `passing`，正式 quality 与状态迁移 Review 均为 `Accept`。
 

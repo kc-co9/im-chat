@@ -241,7 +241,7 @@ if ! markdown_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
 fi
 
 # 独立 CLI 的标准流是交互协议；其他模块仍禁止控制台诊断，所有生产源禁止堆栈直出。
-cli_console_dir="$fixture_root/im-management/im-ops-cli/src/main/java/example"
+cli_console_dir="$fixture_root/im-management/im-ops/im-ops-cli/src/main/java/example"
 mkdir -p "$cli_console_dir"
 for stream in out err; do
   printf 'class ConsoleProbe { void run() { System.%s.println("safe result"); } }\n' "$stream" > "$cli_console_dir/ConsoleProbe.java"
@@ -251,13 +251,15 @@ for stream in out err; do
   fi
 done
 rm "$cli_console_dir/ConsoleProbe.java"
-for console_case in cli-stack service-out service-err service-stack lookalike-out; do
+for console_case in cli-stack service-out service-err service-stack lookalike-out old-cli-out ops-server-out; do
   case "$console_case" in
     cli-stack) console_dir="$cli_console_dir"; statement='new Exception().printStackTrace();' ;;
     service-out) console_dir="$fixture_root/module/src/main/java/example"; statement='System.out.println("unsafe");' ;;
     service-err) console_dir="$fixture_root/module/src/main/java/example"; statement='System.err.println("unsafe");' ;;
     service-stack) console_dir="$fixture_root/module/src/main/java/example"; statement='new Exception().printStackTrace();' ;;
     lookalike-out) console_dir="$fixture_root/other/im-ops-cli/src/main/java/example"; statement='System.out.println("unsafe");' ;;
+    old-cli-out) console_dir="$fixture_root/im-management/im-ops-cli/src/main/java/example"; statement='System.out.println("unsafe");' ;;
+    ops-server-out) console_dir="$fixture_root/im-management/im-ops/im-ops-server/src/main/java/example"; statement='System.out.println("unsafe");' ;;
   esac
   mkdir -p "$console_dir"
   printf 'class ConsoleProbe { void run() { %s } }\n' "$statement" > "$console_dir/ConsoleProbe.java"
@@ -597,20 +599,23 @@ assert_impact "im-plugin/im-gossip,im-broker/im-broker-server,im-test/im-e2e-tes
   "im-plugin/im-gossip/src/main/java/example.java"
 assert_impact "im-plugin/im-mq-kafka,im-test/im-architecture-test" \
   "im-plugin/im-mq/src/main/java/example.java"
-assert_impact "im-management/im-ops,im-test/im-e2e-test,im-test/im-architecture-test" \
-  "im-management/im-ops/src/main/java/example.java"
+assert_impact "im-management/im-ops/im-ops-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-management/im-ops/im-ops-server/src/main/java/example.java"
 # CLI 授权旅程的每个拥有方单独映射，防止混合工作树掩盖 E2E 漏选。
-assert_impact "im-management/im-iam/im-iam-sdk,im-management/im-iam/im-iam-server,im-management/im-admin,im-management/im-ops,im-management/im-audit/im-audit-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+assert_impact "im-management/im-iam/im-iam-sdk,im-management/im-iam/im-iam-server,im-management/im-admin,im-management/im-ops/im-ops-server,im-management/im-audit/im-audit-server,im-test/im-e2e-test,im-test/im-architecture-test" \
   "im-management/im-iam/im-iam-sdk/src/main/java/example.java"
 assert_impact "im-management/im-iam/im-iam-server,im-test/im-e2e-test,im-test/im-architecture-test" \
   "im-management/im-iam/im-iam-server/src/main/java/example.java"
-assert_impact "im-management/im-ops-cli,im-test/im-e2e-test,im-test/im-architecture-test" \
-  "im-management/im-ops-cli/src/main/java/example.java"
+assert_impact "im-management/im-ops/im-ops-cli,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-management/im-ops/im-ops-cli/src/main/java/example.java"
+
+assert_impact "im-management/im-ops/im-ops-server,im-management/im-ops/im-ops-cli,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-management/im-ops/pom.xml"
 assert_impact "im-management/im-admin,im-test/im-architecture-test" \
   "im-management/im-admin/README.md"
 assert_impact "im-service/im-account/im-account-admin-facade,im-service/im-account/im-account-server,im-management/im-admin,im-test/im-architecture-test" \
   "im-service/im-account/im-account-admin-facade/src/main/java/example.java"
-assert_impact "im-management/im-iam/im-iam-server,im-management/im-admin,im-management/im-ops,im-management/im-audit/im-audit-server,im-test/im-architecture-test" \
+assert_impact "im-management/im-iam/im-iam-server,im-management/im-admin,im-management/im-ops/im-ops-server,im-management/im-ops/im-ops-cli,im-management/im-audit/im-audit-server,im-test/im-architecture-test" \
   "im-management/pom.xml"
 assert_impact "im-test/im-load-test,im-test/im-architecture-test" \
   "im-test/im-load-test/src/test/java/example.java"
