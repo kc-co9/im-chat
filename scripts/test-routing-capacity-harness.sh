@@ -185,7 +185,7 @@ run_fixture() {
 }
 
 run_fixture success success 0
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   detail = JSON.parse(File.read(ARGV.fetch(0)))
   abort unless detail["workloadCount"] == 30 && detail["phaseCount"] == 5
   abort unless detail["repetitionCount"] == 3 && detail["cleanupStatus"] == "passed"
@@ -207,7 +207,7 @@ FIXTURE_MODE=success \
   ROUTING_CAPACITY_DETAIL_PATH="$repository/.harness/verifications/routing-capacity-detail.json" \
   ROUTING_CAPACITY_CONFIG_DIGEST_VALUE="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$repository/scripts/verify.sh" routing-capacity >/dev/null
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   evidence = JSON.parse(File.read(ARGV.fetch(0)))
   abort unless evidence["mode"] == "routing-capacity" && evidence["status"] == "passed"
   abort unless evidence["workloadCount"] == 30 && evidence["evidenceKind"] == "routing-capacity"
@@ -227,7 +227,7 @@ run_fixture missing-report-field missing-report-field 1
 run_fixture threshold-mismatch threshold-mismatch 1
 run_fixture uncertain-no-reason uncertain-no-reason 1
 run_fixture valid-service-failed valid-service-failed 0
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   detail = JSON.parse(File.read(ARGV.fetch(0)))
   abort unless detail["qualificationStatus"] == "failed"
   abort unless detail.dig("statusCounts", "service_failed") == 1

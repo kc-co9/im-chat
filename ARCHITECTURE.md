@@ -64,14 +64,17 @@ Broker SDK 将 Nacos 候选地址与部署显式地址/完整 URI 配对取交�
 
 | 模块 | 所有权 |
 |---|---|
-| `im-iam-server` | 管理员身份、SSO、应用、机器 Client、应用级 RBAC 和 OAuth2/OIDC 授权 |
-| `im-iam-sdk` | 管理应用复用的 OAuth2/OIDC BFF、Token Session、Introspection 和权限目录同步；不依赖 IAM Server 实现 |
+| `im-iam-server` | 管理员身份、SSO、应用、confidential／专用 public Client、应用级 RBAC 和 OAuth2/OIDC 授权 |
+| `im-iam-sdk` | 管理应用复用的 OAuth2/OIDC BFF、管理员 Bearer、Token Session、Introspection 和权限目录同步；不依赖 IAM Server 实现 |
+| `im-ops-cli` | 独立 Java 21 前台客户端，仅依赖 JDK／Jackson；经浏览器 Authorization Code + PKCE 登录 IAM，再调用 Ops 的固定 CLI HTTP 用例，不依赖 Server 或保存 Token |
 | `im-admin` | 普通用户管理用例与 UI；通过 Account Admin Facade 修改 Account 事实，不直连 Account 数据库 |
 | `im-ops` | Broker 发现、诊断聚合、受控集群 operation 与运行控制台；不拥有路由状态或业务事实 |
 | `im-audit-sdk` | 不可变 Audit Event、上下文采集、声明式审计和传输适配 |
 | `im-audit-server` | Audit 接收、幂等追加、查询、UI 和受限导出；是管理 Audit 唯一持久化所有者 |
 
 Admin、IAM、Ops 通过按来源隔离的 Kafka 或认证异步 HTTP 向 Audit 提交事实。生产者依赖 Audit SDK，不依赖 Audit Server；管理应用通过 IAM SDK 接入身份能力，不复制 IAM 的管理员、角色或授权模型。
+
+CLI 不是独立部署的管理服务，不适用服务端 Nacos 注册要求。它仅向显式配置的 IAM／Ops HTTPS origin 发送请求；固定 IPv4 loopback 回调只承接单次授权码。Ops 的 `/api/cli/**` 使用独立无状态 Bearer 链，每次通过真实 Introspection 校验管理员主体、精确 Client、audience、scope 与 authority；浏览器 BFF 保持独立链及 CSRF。Ops 审计绑定当前管理员与可信 Client，Broker 仍拥有 operation 与许可权威，CLI 的 owner-only 非敏感请求记录只用于显式原语义恢复，不成为授权依据。
 
 ## 模块依赖方向
 
@@ -96,7 +99,7 @@ im-test             -> test-scope access to runtime modules; no production code
 6. Bolt、Dubbo、Nacos、Redis、HTTP 等运行协议在边界完成转换，不进入领域模型。
 7. `im-web` 只拥有通用 HTTP 行为；Session-to-Servlet 适配属于 `im-session`，IAM 身份语义属于 IAM。
 
-成员通信端点值 `MembershipEndpoint` 归 `im-common/domain/cluster/model`，只拥有不透明非空白字符串和值语义。Raft 插件提供 String 列表技术快照 `RaftMembership`；BrokerRaftAdapter 将它转换为 Broker 领域 `ConsensusMembership`，BrokerCluster 拥有成员绑定与一致性判断，不建立 Plugin → Broker 或 Domain → Plugin 的依赖。
+成员通信端点值 `MembershipEndpoint` 归 `im-common/domain/cluster/model`，只拥有不透明非空白字符串和值语义。Raft 插件以 String 列表 `RaftConfiguration` 表达完整 voters/learners 目标，不表示已提交事实；`leaderConfiguration()` 分别读取两种角色，只提供非原子的 Leader 诊断观察，不证明 FSM applied、quorum 或许可排空。BrokerRaftAdapter 负责技术边界转换，Broker 的领域聚合与 FSM 拥有已提交业务状态、成员绑定、一致性判断及维护步骤与许可；不建立 Plugin → Broker 或 Domain → Plugin 的依赖。
 
 机械可判断的依赖规则由 `im-test/im-architecture-test` 与 `scripts/check-drift.sh` 执行；跨模块实时运行旅程由 `im-test/im-e2e-test` 验证。业务语义和合理例外由 Review 判断。
 
@@ -116,7 +119,7 @@ im-test             -> test-scope access to runtime modules; no production code
 - MySQL 单服务事务只保证所属 Schema 内的写入；跨服务调用不形成分布式事务。
 - Message 在事务提交后发起在线通知，推送失败不回滚已提交消息。
 - Broker Registry/Gossip 是运行态最终一致模型，不替代业务持久化或强一致事务日志。
-- Nacos 提供配置和服务发现，不拥有用户路由或业务状态。
+- Nacos 提供配置和服务发现，不拥有用户路由或业务状态。Broker 从已初始化的实际 Node 发布完整 `raft-peer-id`，Ops 将其与受支持管理 HTTP origin 严格配对；metadata 只是可信发现范围内的寻址信息，不成为 committed 成员、TLS 身份或权限权威。Follower 的事件快照只允许无副作用拒绝，Node 查询和执行授权仍归 Broker worker。
 - Ops 聚合有界诊断，并把管理员意图转成带 IAM 权限、幂等键和预期 epoch 的 Broker operation；只有 Broker Leader 能通过 Raft 改变权威状态，节点查询失败不会自行改变 Broker 状态。
 - Audit 通过 Kafka 或认证异步 HTTP 接收，依赖来源校验、重试和 `auditId` 幂等，而不是调用方本地审计表。
 

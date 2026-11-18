@@ -15,7 +15,6 @@ import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpochFence;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
-import com.co.kc.imchat.plugin.raft.model.RaftMembership;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
@@ -44,6 +43,10 @@ public interface BrokerClusterStateTransformer {
         return brokerClusterFrom(state, operations, fence, operationHistoryCapacity, Map.of());
     }
 
+    /**
+     * operation 集合保留完整步骤、许可历史与排空事实；SDK 拓扑本身不携带执行权限。
+     * 恢复只重建领域事实，不创建本机执行槽，也不改写 incarnation。
+     */
     default BrokerCluster brokerClusterFrom(
             BrokerClusterState state,
             List<BrokerClusterOperation> operations,
@@ -98,8 +101,6 @@ public interface BrokerClusterStateTransformer {
     @ValueMapping(source = "REMOVED", target = MappingConstants.THROW_EXCEPTION)
     BrokerMembershipRole brokerMembershipRoleFrom(
             com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole role);
-
-    ConsensusMembership consensusMembershipFrom(RaftMembership membership);
 
     Set<MembershipEndpoint> membershipEndpointsFrom(List<String> endpoints);
 

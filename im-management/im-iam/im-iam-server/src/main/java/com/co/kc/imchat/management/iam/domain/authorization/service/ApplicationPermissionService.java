@@ -47,7 +47,21 @@ public class ApplicationPermissionService {
         return permissions;
     }
 
-    public List<ApplicationPermission> synchronize(Application application, List<ApplicationPermissionDefinition> newPermissions) {
+    /**
+     * 领域同步结果：完整目录及本轮是否实际撤回启用权限。
+     */
+    public record Synchronization(
+            /* 同步后的完整权限目录。 */
+            List<ApplicationPermission> permissions,
+            /* 本轮是否发生 ACTIVE 到 INACTIVE 的转换。 */
+            boolean permissionsWithdrawn
+    ) {
+        public Synchronization {
+            permissions = List.copyOf(permissions);
+        }
+    }
+
+    public Synchronization synchronize(Application application, List<ApplicationPermissionDefinition> newPermissions) {
         List<ApplicationPermission> oldPermissions = permissionRepository.find(application.getAppId());
         Map<ApplicationPermissionCode, ApplicationPermission> oldPermissionMap = FunctionUtils.mappingMap(oldPermissions, ApplicationPermission::getCode, Function.identity());
 
@@ -69,11 +83,15 @@ public class ApplicationPermissionService {
                                 .build());
             }
         }
+        boolean permissionsWithdrawn = false;
         for (ApplicationPermission deactivatePermission : oldPermissionMap.values()) {
+            if (deactivatePermission.getStatus() == ApplicationPermissionStatus.ACTIVE) {
+                permissionsWithdrawn = true;
+            }
             deactivatePermission.deactivate();
             synchronizedPermissions.add(deactivatePermission);
         }
 
-        return synchronizedPermissions;
+        return new Synchronization(synchronizedPermissions, permissionsWithdrawn);
     }
 }

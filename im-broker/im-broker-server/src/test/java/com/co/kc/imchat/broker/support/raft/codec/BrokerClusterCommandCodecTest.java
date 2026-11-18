@@ -2,6 +2,9 @@ package com.co.kc.imchat.broker.support.raft.codec;
 
 import com.co.kc.imchat.broker.support.raft.codec.BrokerClusterCommandCodec;
 import com.co.kc.imchat.broker.model.cqrs.command.AdvanceClusterOperationCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.RegisterMembershipPermitCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.ConfirmMembershipPermitDrainedCommand;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipPermit;
 import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.BeginBrokerClusterOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.CommitBrokerOperationCommand;
@@ -56,6 +59,8 @@ class BrokerClusterCommandCodecTest {
         List<BrokerClusterConsensusCommand> commands = List.of(
                 new BeginBrokerClusterOperationCommand(proposal),
                 topology,
+                new RegisterMembershipPermitCommand(operationId, "step", "permit", new BrokerId("a"), "incarnation", new ClusterRevision(4L)),
+                new ConfirmMembershipPermitDrainedCommand(operationId, "step", "permit", new BrokerId("a"), "incarnation", "target-digest", BrokerMembershipPermit.Result.TARGET_APPLIED),
                 AdvanceClusterOperationCommand.builder()
                         .operationId(operationId)
                         .commandDigest("digest-1")
@@ -88,15 +93,18 @@ class BrokerClusterCommandCodecTest {
         assertThat(commands.stream().map(Object::getClass).distinct().toList())
                 .containsExactlyInAnyOrder(BrokerClusterConsensusCommand.class.getPermittedSubclasses());
         List<String> names = List.of("BEGIN_BROKER_CLUSTER_OPERATION", "COMMIT_BROKER_OPERATION",
+                "REGISTER_MEMBERSHIP_PERMIT", "CONFIRM_MEMBERSHIP_PERMIT_DRAINED",
                 "ADVANCE_CLUSTER_OPERATION", "FENCE_ROUTING_EPOCH", "UPDATE_BROKER_DRAIN_PROGRESS",
                 "UPDATE_BROKER_DRAIN_PROGRESS", "COMPLETE_BROKER_DRAIN", "FORCE_BROKER_DRAIN",
                 "VERIFY_ROUTE_RECOVERY", "COMPLETE_ROUTE_RECOVERY");
         for (int index = 0; index < commands.size(); index++) {
             BrokerClusterConsensusCommand command = commands.get(index);
             String json = new String(BrokerClusterCommandCodec.INSTANCE.encode(command), StandardCharsets.UTF_8);
-            assertThat(json).contains("\"formatVersion\":2", "\"commandType\":\"" + names.get(index) + "\"");
+            assertThat(json).contains("\"formatVersion\":3", "\"commandType\":\"" + names.get(index) + "\"");
             if (!(command instanceof BeginBrokerClusterOperationCommand)
-                    && !(command instanceof CommitRoutingEpochFenceCommand)) {
+                    && !(command instanceof CommitRoutingEpochFenceCommand)
+                    && !(command instanceof RegisterMembershipPermitCommand)
+                    && !(command instanceof ConfirmMembershipPermitDrainedCommand)) {
                 assertThat(json).contains("changedAt").doesNotContain("changedAtEpochMilli");
             }
             BrokerClusterConsensusCommand restored = BrokerClusterCommandCodec.INSTANCE.decode(
@@ -121,7 +129,7 @@ class BrokerClusterCommandCodecTest {
         byte[] unknownVersion = ("{\"formatVersion\":99,\"commandType\":"
                 + "\"COMPLETE_BROKER_DRAIN\",\"payload\":\"{}\"}")
                 .getBytes(StandardCharsets.UTF_8);
-        byte[] unknownType = ("{\"formatVersion\":2,\"commandType\":"
+        byte[] unknownType = ("{\"formatVersion\":3,\"commandType\":"
                 + "\"UNKNOWN\",\"payload\":\"{}\"}")
                 .getBytes(StandardCharsets.UTF_8);
 
@@ -130,7 +138,7 @@ class BrokerClusterCommandCodecTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> BrokerClusterCommandCodec.INSTANCE.decode(unknownType))
                 .withMessageContaining("unsupported broker cluster command type: UNKNOWN");
-        byte[] previousVersion = ("{\"formatVersion\":1,\"commandType\":"
+        byte[] previousVersion = ("{\"formatVersion\":2,\"commandType\":"
                 + "\"UPDATE_BROKER_DRAIN_PROGRESS\",\"payload\":\"{}\"}")
                 .getBytes(StandardCharsets.UTF_8);
         assertThatIllegalArgumentException()

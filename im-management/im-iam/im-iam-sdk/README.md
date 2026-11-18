@@ -45,6 +45,16 @@ SDK 始终创建并显式注入独立的 `iamRestClient`。宿主应用可以同
 使用 Hash Router 的接入应用在会话失效后重新发起登录时，应把当前 Hash 路由转换为上述
 `continue` 参数，不能固定跳转 `/iam/login`，否则回调只能回到应用根页并丢失原访问位置。
 
+## 管理员 Bearer 与 BFF 隔离
+
+`IamAdministratorBearerAuthenticator` 为独立 CLI 入口提供每请求实时 Introspection，不读取 BFF 身份缓存，也不使用 stale-if-error。它校验 active、有效期、目标 audience、精确 Client 白名单、IAM 生成的 `ADMINISTRATOR` 主体类型及允许的非空 scope，并保留原管理员 ID；可信 Client 与 scope 保存在认证 details 中，供接入应用做用例授权和审计。认证通过不等于具备业务权限，用例仍须同时校验 scope 与管理员 RBAC。
+
+`HttpIamIntrospectionClient` 使用 OAuth `client_secret_basic`：先分别对 Client ID 和 Secret 做 UTF-8 `application/x-www-form-urlencoded` 编码，再构造 HTTP Basic 凭证，避免 `+` 等字符被 IAM 解码为其他值。`HttpIamIntrospectionClientTest#formEncodesOAuthClientCredentialsBeforeBasicBase64` 通过真实 RestClient 与 HTTP mock 校验出站编码契约，不替代真实 IAM 登录旅程验收。
+
+`HttpIamIntrospectionClient` 保留 `principal_type` 和 scope，拒绝必需基础字段的错误 JSON 类型、缺失 authorities 和超出 Instant 范围的 exp；inactive 响应可仅携带 `active=false`。既有 BFF 可以接收缺主体类型／scope 的响应，但 CLI 必须拒绝这类身份。IAM 传输故障或无效响应不能让 CLI 使用旧身份继续执行。
+
+组合安全链的应用通过 `IamBffSecurityConfigurer` 显式保留原 BFF 链，不能只新增 CLI 链后依赖条件默认链。Ops 的 order1 仅匹配 `/api/cli` 和 `/api/cli/**`，order2 兜底保留 BFF Session、Client 绑定、CSRF 和故障降级。CLI 不接受 Session Cookie，也拒绝 Cookie 与 Bearer 混用；认证／授权失败使用结构化 HTTP 401／403，原 BFF 业务错误响应不变。BFF Filter 显式跳过 CLI 路径；两种 Filter 只在安全链内运行，均禁止 Servlet 自动注册。未自行组合安全链的其他应用继续使用 SDK 默认 BFF 链。
+
 ## 包结构
 
 - `oauth` 保存 OAuth 授权客户端、授权请求和会话编排；其不可变 Token 契约放在

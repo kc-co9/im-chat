@@ -41,8 +41,8 @@ add_module() {
 }
 
 # 按路径保守并集，不解析配置内容；认证工厂变化同时带入四个真实消费方 startup、
-# Broker/Gateway behavior 与 E2E 所属模块，Gossip 同理带入 Broker。已有 affected -am test
-# 执行这些模块的测试，不创建新 mode，也不代表独立风险入口或 full 已经通过。
+# Broker/Gateway behavior 与 E2E 所属模块，Gossip 同理带入 Broker；IAM/CLI/Ops 变化带入管理旅程 E2E。
+# 已有 affected -am test 执行这些模块的测试，不创建新 mode，也不代表独立风险入口或 full 已经通过。
 while IFS= read -r file; do
   case "$file" in
     im-plugin/im-mq/*) add_module "im-plugin/im-mq-kafka" ;;
@@ -81,15 +81,26 @@ while IFS= read -r file; do
       add_module "im-test/im-e2e-test"
       ;;
     im-management/im-admin/*) add_module "im-management/im-admin" ;;
-    im-management/im-ops/*) add_module "im-management/im-ops" ;;
+    im-management/im-ops/*)
+      add_module "im-management/im-ops"
+      add_module "im-test/im-e2e-test"
+      ;;
+    im-management/im-ops-cli/*)
+      add_module "im-management/im-ops-cli"
+      add_module "im-test/im-e2e-test"
+      ;;
     im-management/im-iam/im-iam-sdk/*)
       add_module "im-management/im-iam/im-iam-sdk"
       add_module "im-management/im-iam/im-iam-server"
       add_module "im-management/im-admin"
       add_module "im-management/im-ops"
       add_module "im-management/im-audit/im-audit-server"
+      add_module "im-test/im-e2e-test"
       ;;
-    im-management/im-iam/im-iam-server/*) add_module "im-management/im-iam/im-iam-server" ;;
+    im-management/im-iam/im-iam-server/*)
+      add_module "im-management/im-iam/im-iam-server"
+      add_module "im-test/im-e2e-test"
+      ;;
     im-management/im-audit/im-audit-sdk/*)
       add_module "im-management/im-audit/im-audit-sdk"
       add_module "im-management/im-audit/im-audit-server"

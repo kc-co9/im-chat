@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.adapter.cluster;
 
+import com.co.kc.imchat.broker.sdk.model.result.MembershipPermitDrainedResult;
+import com.co.kc.imchat.broker.sdk.model.params.ConfirmMembershipPermitDrainedParams;
 import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
 import static com.co.kc.imchat.common.constant.PeerIdentityConstants.BROKER_URI_PREFIX;
 
@@ -219,6 +221,25 @@ public final class BrokerPeerAdapter {
                 }
                 return BrokerDrainTransformer.INSTANCE.routeCleanupResultFrom(result);
             }, peerExecutor);
+        } catch (RejectedExecutionException failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
+    }
+
+    /** 单次投递既有排空事实；仅 MTLS，超时不重执行目标，也不自动切换接收方。 */
+    public CompletionStage<MembershipPermitDrainedResult> confirmMembershipPermitDrained(
+            BrokerNode receiver, ConfirmMembershipPermitDrainedParams request) {
+        if (!observationsAllowed || !localBrokerId.equals(request.callerBrokerId())
+                || !localBrokerId.equals(request.executorBrokerId()) || !receiver.id().value().equals(request.receiverBrokerId())) {
+            return CompletableFuture.failedFuture(new SecurityException("permit confirmation requires exact MTLS executor and receiver"));
+        }
+        try {
+            return CompletableFuture.supplyAsync(() -> invoker.invoke(
+                    new BoltTarget(receiver.routeEndpoint().value(), BROKER_URI_PREFIX + receiver.id().value()),
+                    BrokerBoltOperation.CONFIRM_MEMBERSHIP_PERMIT_DRAINED.service().service(),
+                    BrokerBoltOperation.CONFIRM_MEMBERSHIP_PERMIT_DRAINED.operation(), request,
+                    MembershipPermitDrainedResult.class,
+                    brokerProperties.getPeerCall().getTimeoutMs()), peerExecutor);
         } catch (RejectedExecutionException failure) {
             return CompletableFuture.failedFuture(failure);
         }

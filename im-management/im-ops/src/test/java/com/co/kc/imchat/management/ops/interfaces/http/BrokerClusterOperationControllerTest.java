@@ -5,7 +5,6 @@ import com.co.kc.imchat.management.ops.application.BrokerClusterOperationAppServ
 import com.co.kc.imchat.management.ops.model.cqrs.dto.BrokerClusterNodeDTO;
 import com.co.kc.imchat.management.ops.model.cqrs.dto.BrokerClusterStateDTO;
 import com.co.kc.imchat.management.ops.model.cqrs.dto.BrokerOperationDTO;
-import com.co.kc.imchat.management.ops.infrastructure.config.beans.OpsSecurityBeans;
 import com.co.kc.imchat.plugin.web.advice.ErrorAdvice;
 import com.co.kc.imchat.plugin.web.advice.ResultAdvice;
 import org.junit.jupiter.api.Test;
@@ -32,8 +31,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(BrokerClusterOperationController.class)
-@Import({OpsSecurityBeans.class, ErrorAdvice.class, ResultAdvice.class,
+@WebMvcTest(controllers = BrokerClusterOperationController.class, properties = "im.iam.enabled=false",
+        excludeFilters = @org.springframework.context.annotation.ComponentScan.Filter(
+                type = org.springframework.context.annotation.FilterType.ASSIGNABLE_TYPE,
+                classes = com.co.kc.imchat.management.ops.infrastructure.config.beans.OpsSecurityBeans.CliSecurityConfiguration.class))
+@Import({ErrorAdvice.class, ResultAdvice.class,
         IamSecurityExceptionHandler.class,
         BrokerClusterOperationControllerTest.SecurityTestConfig.class})
 class BrokerClusterOperationControllerTest {

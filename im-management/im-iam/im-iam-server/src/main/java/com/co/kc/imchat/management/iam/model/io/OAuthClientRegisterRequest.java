@@ -1,5 +1,7 @@
 package com.co.kc.imchat.management.iam.model.io;
 
+import com.co.kc.imchat.management.iam.model.enums.IamOAuthClientTypeEnum;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.management.iam.model.enums.IamOAuthGrantTypeEnum;
 
@@ -11,6 +13,7 @@ public record OAuthClientRegisterRequest(
         Long audienceAppId,
         String name,
         String clientId,
+        IamOAuthClientTypeEnum clientType,
         String clientSecret,
         Set<IamOAuthGrantTypeEnum> grantTypes,
         Set<String> scopes,
@@ -18,11 +21,16 @@ public record OAuthClientRegisterRequest(
         Set<String> postLogoutRedirectUris
 ) {
     public OAuthClientRegisterRequest {
+        clientType = clientType == null ? IamOAuthClientTypeEnum.CONFIDENTIAL : clientType;
         AssertUtils.argNotBlank("appKey must not be blank", appKey);
         AssertUtils.argNotNull("audienceAppId must not be null", audienceAppId);
         AssertUtils.argNotBlank("oauth client name must not be blank", name);
         AssertUtils.argNotBlank("clientId must not be blank", clientId);
-        AssertUtils.argNotBlank("client secret must not be blank", clientSecret);
+        if (clientType == IamOAuthClientTypeEnum.CONFIDENTIAL) {
+            AssertUtils.argNotBlank("client secret must not be blank", clientSecret);
+        } else {
+            AssertUtils.argTrue("public client must not have secret", clientSecret == null);
+        }
         AssertUtils.argNotEmpty("oauth client grant types must not be empty", grantTypes);
         AssertUtils.argNotEmpty("oauth client scopes must not be empty", scopes);
         AssertUtils.allArgNotNull(

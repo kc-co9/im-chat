@@ -6,6 +6,7 @@ import com.co.kc.imchat.management.iam.domain.session.model.OAuthAuthorization;
 import com.co.kc.imchat.management.iam.domain.session.model.OAuthAuthorizationId;
 import com.co.kc.imchat.management.iam.domain.session.repository.OAuthAuthorizationRepository;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.entity.DbIamOAuthAuthorization;
+import com.co.kc.imchat.management.iam.infrastructure.mybatis.enums.DbIamOAuthAuthorizationStatus;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.service.DbIamOAuthAuthorizationService;
 import com.co.kc.imchat.management.iam.transformer.db.OAuthAuthorizationDbTransformer;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,12 @@ public class MysqlOAuthAuthorizationRepository implements OAuthAuthorizationRepo
     @Override
     public Optional<OAuthAuthorization> find(OAuthAuthorizationId authorizationId) {
         return authorizationService.getByAuthorizationId(authorizationId.value())
+                .map(OAuthAuthorizationDbTransformer.INSTANCE::oauthAuthorizationFrom);
+    }
+
+    @Override
+    public Optional<OAuthAuthorization> findForUpdate(OAuthAuthorizationId authorizationId) {
+        return authorizationService.getForUpdate(authorizationId.value())
                 .map(OAuthAuthorizationDbTransformer.INSTANCE::oauthAuthorizationFrom);
     }
 
@@ -60,7 +67,11 @@ public class MysqlOAuthAuthorizationRepository implements OAuthAuthorizationRepo
             authorization.setPkId(dbIamOAuthAuthorization.getId());
             authorization.setRowVersion(dbIamOAuthAuthorization.getVersion());
         } else {
-            if (!authorizationService.updateById(dbIamOAuthAuthorization)) {
+
+            if (!authorizationService.update(dbIamOAuthAuthorization, authorizationService.getUpdateWrapper()
+                    .eq(DbIamOAuthAuthorization::getId, authorization.getPkId())
+                    .eq(DbIamOAuthAuthorization::getVersion, authorization.getRowVersion())
+                    .eq(DbIamOAuthAuthorization::getStatus, DbIamOAuthAuthorizationStatus.ACTIVE))) {
                 throw new OptimisticLockingFailureException(
                         "OAuth authorization was modified concurrently: " + authorization.getId().value());
             }

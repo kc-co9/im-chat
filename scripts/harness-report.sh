@@ -26,7 +26,7 @@ current_routing_capacity_config_digest="${HARNESS_CURRENT_ROUTING_CAPACITY_CONFI
 # 根据验证记录与当前仓库状态返回 fresh、stale 或 unavailable。
 verification_freshness() {
   local file="$1"
-  ruby -rjson -e '
+  ruby -E UTF-8 -rjson -e '
     record = JSON.parse(File.read(ARGV.fetch(0)))
     current_head = ARGV.fetch(1)
     current_fingerprint = ARGV.fetch(2)
@@ -123,7 +123,7 @@ if [[ -f "$full_verification" ]] \
     && rg -q '"status":"passed"' "$full_verification" \
     && rg -q '"startedAtEpoch":[0-9]+' "$full_verification" \
     && [[ "$full_freshness" == "fresh" ]]; then
-  test_summary="$(ruby -rjson -e '
+  test_summary="$(ruby -E UTF-8 -rjson -e '
     record = JSON.parse(File.read(ARGV.fetch(0)))
     summary = record["testSummary"]
     puts %w[tests failures errors skipped].map { |name| summary[name].to_i }.join(" ") if summary
@@ -161,7 +161,7 @@ incomplete_verifications=false
 if [[ -e "${verification_files[0]}" ]]; then
   for file in "${verification_files[@]}"; do
     freshness="$(verification_freshness "$file")"
-    enriched_verification="$(ruby -rjson -e '
+    enriched_verification="$(ruby -E UTF-8 -rjson -e '
       record = JSON.parse(File.read(ARGV.fetch(0)))
       record["freshness"] = ARGV.fetch(1)
       print JSON.generate(record)
@@ -169,7 +169,7 @@ if [[ -e "${verification_files[0]}" ]]; then
     [[ -n "$verification_json" ]] && verification_json+=","
     verification_json+="$enriched_verification"
     if [[ "$freshness" == "fresh" ]]; then
-      verification_status="$(ruby -rjson -e 'print JSON.parse(File.read(ARGV.fetch(0)))["status"]' "$file")"
+      verification_status="$(ruby -E UTF-8 -rjson -e 'print JSON.parse(File.read(ARGV.fetch(0)))["status"]' "$file")"
       case "$verification_status" in
         failed) failed_verifications+=("$(sed -E 's/.*"mode":"([^"]+)".*/\1/' "$file")") ;;
         passed) ;;
@@ -206,7 +206,7 @@ fi
 e2e_verification="$ROOT_DIR/.harness/verifications/e2e.json"
 if [[ -f "$e2e_verification" ]]; then
   e2e_freshness="$(verification_freshness "$e2e_verification")"
-  e2e_runtime_json="$(ruby -rjson -rpathname -e '
+  e2e_runtime_json="$(ruby -E UTF-8 -rjson -rpathname -e '
     record = JSON.parse(File.read(ARGV.fetch(0)))
     freshness = ARGV.fetch(1)
     root = ARGV.fetch(2)
@@ -240,7 +240,7 @@ fi
 routing_ha_verification="$ROOT_DIR/.harness/verifications/routing-ha.json"
 if [[ -f "$routing_ha_verification" ]]; then
   routing_ha_freshness="$(verification_freshness "$routing_ha_verification")"
-  routing_ha_runtime_json="$(ruby -rjson -e '
+  routing_ha_runtime_json="$(ruby -E UTF-8 -rjson -e '
     record = JSON.parse(File.read(ARGV.fetch(0)))
     freshness = ARGV.fetch(1)
     status = if freshness == "fresh" && record["status"] == "passed" &&
@@ -279,13 +279,13 @@ load_test_runtime_evidence() {
   if [[ "$kind" == smoke ]]; then
     resolved_config_json="$(load_test_smoke_resolved_config 2>/dev/null || printf '{}')"
   else
-    resolved_config_json="$(ruby -rjson -e '
+    resolved_config_json="$(ruby -E UTF-8 -rjson -e '
       value = JSON.parse(File.read(ARGV.fetch(0)))["resolvedConfig"]
       print JSON.generate(value || {})
     ' "$file")"
   fi
   current_config_digest="${HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST:-$(load_test_config_digest "$ROOT_DIR" "$resolved_config_json" 2>/dev/null || printf unavailable)}"
-  ruby -rjson -e '
+  ruby -E UTF-8 -rjson -e '
     evidence = JSON.parse(File.read(ARGV.fetch(0)))
     current_scope = ARGV.fetch(1)
     kind = ARGV.fetch(2)
@@ -361,7 +361,7 @@ done
 
 routing_capacity_verification="$ROOT_DIR/.harness/verifications/routing-capacity.json"
 if [[ -f "$routing_capacity_verification" ]]; then
-  routing_capacity_runtime_json="$(ruby -rjson -e '
+  routing_capacity_runtime_json="$(ruby -E UTF-8 -rjson -e '
     evidence = JSON.parse(File.read(ARGV.fetch(0)))
     current_scope, current_config = ARGV.fetch(1), ARGV.fetch(2)
     scope_fresh = current_scope != "unavailable" &&
@@ -392,7 +392,7 @@ if [[ -f "$routing_capacity_verification" ]]; then
 else
   routing_capacity_runtime_json='{"status":"missing","freshness":"missing","topologyId":null,"workloadCount":0,"phaseCount":0,"repetitionCount":0,"qualificationStatus":null,"statusCounts":null,"cleanupStatus":null,"ordinaryDataUnchanged":null,"resultsPath":null}'
 fi
-routing_capacity_candidates_json="$(ruby -rjson -e '
+routing_capacity_candidates_json="$(ruby -E UTF-8 -rjson -e '
   directory, current_scope, current_config = ARGV
   candidates = Dir.glob(File.join(directory, "*", "evidence.json")).sort.map do |path|
     evidence = JSON.parse(File.read(path))

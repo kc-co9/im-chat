@@ -12,7 +12,7 @@ RH-10	同 epoch 错误 Broker 拒绝	broker-test	RouteBrokerExecutionInterceptor
 RH-11	单轮并发 Lookup 合并路由	broker-test	FrameDispatchAppServiceLookupTest#singleWaveRunsInParallelAndMergesGateways	历史候选与其他候选同轮并发查询并合并路由
 RH-12	多 Gateway 去重且不广播 Frame	broker-test	FrameDispatchAppServiceTest#lookupRoutesAreRevalidatedAndSameGatewayIsWrittenOnce	重复路由合并后每个 Gateway 只写一次
 RH-13	恢复 Broker 不自动承载流量	broker-test	BrokerClusterAppServiceChangeTest#restoredFailedBrokerDoesNotBecomeActiveWithoutExplicitActivation	故障恢复不绕过显式激活
-RH-14	learner 晋升降级与持久重启	broker-test	BrokerRaftAdapterTest#learnerCatchesUpAndCanBePromotedDemotedAndRemoved	成员变更按 learner 流程且可移除
+RH-14	learner 晋升降级与持久重启	isolated-runtime-test	RaftConfigurationIntegrationTest	plugin 真实 Node 网络以完整目标晋升并证明新 voter 为 quorum 必需，降级后连续复制，同目录重启恢复及移除 Leader 后仍可写；不代表 Broker 许可或 mTLS 全链
 RH-15	持久消息通知失败后 Receipt 重试	broker-test	RedisImMessageConfirmableStoreTest#initRequeuesTaskWhenConsumerFails	实时通知消费失败后 Receipt task 重新入队等待重试
 RH-16	drain ACK 水位摘要与结果语义	broker-test	BrokerDrainAppServiceTest	ACK、水位、摘要和 deadline 共同决定完成或失败
 RH-17	fence 换届与跨 epoch 下行去重	gateway-test	FrameDeliveryDeduplicatorTest#deduplicatesPerDeliveryAndConnection	相同 deliveryId 与 connectionId 只写一次

@@ -8,7 +8,7 @@
 # 指纹覆盖全部 Git-visible 文件，但排除只记录执行状态的进度与 active/completed plan。
 load_test_scope_fingerprint() {
   local root_dir="$1"
-  ruby -rdigest -ropen3 -e '
+  ruby -E UTF-8 -rdigest -ropen3 -e '
     root = File.expand_path(ARGV.fetch(0))
     output, error, status = Open3.capture3(
       "git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z",
@@ -87,7 +87,7 @@ load_test_config_digest() {
     --profile full config | ruby -rdigest -e 'puts Digest::SHA256.hexdigest(STDIN.read)')" || return $?
   k6_version="$("$k6_bin" version | sed -nE '1s/^k6 v([^ ]+).*/\1/p')" || return $?
   [[ -n "$k6_version" ]] || return 1
-  ruby -rjson -rdigest -e '
+  ruby -E UTF-8 -rjson -rdigest -e '
     root, compose_digest, k6_version, resolved_config_json = ARGV
     canonical = lambda do |value|
       case value

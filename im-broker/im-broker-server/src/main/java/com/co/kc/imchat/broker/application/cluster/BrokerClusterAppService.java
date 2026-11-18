@@ -76,13 +76,10 @@ import com.co.kc.imchat.common.utils.FunctionUtils;
 import com.co.kc.imchat.common.utils.GeneratorUtils;
 import com.co.kc.imchat.common.utils.HashUtils;
 import com.co.kc.imchat.plugin.lock.core.MutexLock;
-import com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -156,10 +153,14 @@ public final class BrokerClusterAppService {
     private final BrokerHealthObservationTracker healthObservationTracker;
     private final BrokerFailureObservationService failureObservationService;
 
-    public BrokerClusterAppService(BrokerRaftAdapter brokerRaftAdapter, BrokerPeerAdapter brokerPeerAdapter,
-                                   GatewayRegistry gatewayRegistry, Duration quarantineDuration,
-                                   Duration maxRouteEventTtl, ScheduledExecutorService quarantineScheduler,
-                                   Duration drainOperationTimeout, BrokerHealthObservationTracker healthObservationTracker,
+    public BrokerClusterAppService(BrokerRaftAdapter brokerRaftAdapter,
+                                   BrokerPeerAdapter brokerPeerAdapter,
+                                   GatewayRegistry gatewayRegistry,
+                                   Duration quarantineDuration,
+                                   Duration maxRouteEventTtl,
+                                   ScheduledExecutorService quarantineScheduler,
+                                   Duration drainOperationTimeout,
+                                   BrokerHealthObservationTracker healthObservationTracker,
                                    BrokerFailureObservationService failureObservationService,
                                    Duration observationCooldown) {
         this.brokerRaftAdapter = brokerRaftAdapter;
@@ -280,16 +281,15 @@ public final class BrokerClusterAppService {
      * 每个目标独立互斥；结果归类及上下文重验完成后释放目标锁。
      */
     public CompletionStage<Void> probeFailures() {
-        // 1. 读取本机身份、已提交集群和实际成员配置，确定当前 voter 与 ACTIVE 探测目标。
+        // 1. 读取本机身份、已提交集群业务快照，确定当前 voter 与 ACTIVE 探测目标。
         BrokerId localBrokerId = brokerRaftAdapter.getLocalBroker().getId();
         BrokerCluster cluster = brokerRaftAdapter.getClusterSnapshot();
-        ConsensusMembership membership = brokerRaftAdapter.getConsensusMembership();
 
-        Set<BrokerId> voters = cluster.findConsistentVoters(membership);
+        Set<BrokerId> voters = cluster.findObservers();
         List<BrokerNode> brokerNodes = cluster.activeBrokers();
 
         // 2. 先同步采样上下文；即使本机已不是 voter，也要在上下文变化时清除旧样本。
-        BrokerHealthObservationContext context = new BrokerHealthObservationContext(cluster.revision(), cluster.topology(membership));
+        BrokerHealthObservationContext context = new BrokerHealthObservationContext(cluster.revision(), cluster.topology());
         healthObservationTracker.synchronize(context);
 
         // 3. 仅当前 voter 发起探测；其他节点完成上下文同步后直接返回。
@@ -313,11 +313,10 @@ public final class BrokerClusterAppService {
                         BrokerHealthStatus status = failure == null && health != null ? health : BrokerHealthStatus.UNKNOWN;
                         return new BrokerHealthSample(status, MonotonicTimestamp.now());
                     }).thenAccept(sample -> {
-                        // 7. 完成后重读集群与成员，仅记录仍属于发起上下文的样本。
+                        // 7. 完成后重读已提交业务集群，仅记录仍属于发起上下文的样本。
                         BrokerCluster completedCluster = brokerRaftAdapter.getClusterSnapshot();
-                        ConsensusMembership completedMembership = brokerRaftAdapter.getConsensusMembership();
                         BrokerHealthObservationContext completedContext =
-                                new BrokerHealthObservationContext(completedCluster.revision(), completedCluster.topology(completedMembership));
+                                new BrokerHealthObservationContext(completedCluster.revision(), completedCluster.topology());
                         if (context.equals(completedContext)) {
                             healthObservationTracker.record(context, brokerNode.id(), sample.status(), sample.completedAt());
                         }
@@ -336,7 +335,7 @@ public final class BrokerClusterAppService {
      *
      * <p>仅 Leader 执行处置；存在唯一非终态 FAIL_BROKER 时，沿既有恢复流程继续推进，
      * 不重新要求故障观察满足新建条件。不存在待恢复操作时，读取本机 Leader 任期标记，
-     * 重验集群版本并检查成员一致性、冷却期和操作互斥，再汇集本机与其他 voter 的独立观察。
+     * 重验集群版本并检查观察资格、冷却期和操作互斥，再汇集本机与其他 voter 的独立观察。
      * 本机任期标记不代表多数派确认；任期不可用时作废冷却并跳过。</p>
      * <p>观察汇合后取得 quorum 领导权证明，重验起始任期、本机角色及完整观察上下文。
      * 领域规则确认新鲜、持续的不可达报告达到当前 voter 多数后，按 Broker ID 稳定顺序
@@ -386,16 +385,15 @@ public final class BrokerClusterAppService {
                 return CompletableFuture.completedFuture(null);
             }
 
-            // 4. 解析一致的 voter 集合，推进本机冷却，并确认没有阻塞新操作的既有操作。
+            // 4. 解析已提交业务 VOTER 集合，推进本机冷却，并确认没有阻塞新操作的既有操作。
             MonotonicTimestamp observedAt = MonotonicTimestamp.now();
-            ConsensusMembership membership = brokerRaftAdapter.getConsensusMembership();
-            Set<BrokerId> voterBrokerIds = initialCluster.findConsistentVoters(membership);
+            Set<BrokerId> voterBrokerIds = initialCluster.findObservers();
             if (CollectionUtils.isEmpty(voterBrokerIds)) {
                 observationState.invalidate();
                 return CompletableFuture.completedFuture(null);
             }
 
-            BrokerClusterTopology topology = initialCluster.topology(membership);
+            BrokerClusterTopology topology = initialCluster.topology();
             if (!observationState.advance(topology, leaderTerm, observedAt) || initialCluster.hasBlockingOperation()) {
                 return CompletableFuture.completedFuture(null);
             }
@@ -424,11 +422,10 @@ public final class BrokerClusterAppService {
                     brokerRaftAdapter.confirmLeadership(new QuorumReadNonce(GeneratorUtils.nextUUID()))
                             .thenCompose(quorumRead -> {
                                 BrokerCluster confirmedCluster = brokerRaftAdapter.getClusterSnapshot();
-                                ConsensusMembership confirmedMembership = brokerRaftAdapter.getConsensusMembership();
                                 // 背景变化则丢弃结果；下一次有效观察重新计时。
                                 if (!quorumRead.leaderTerm().equals(leaderTerm)
                                         || !brokerRaftAdapter.getLocalBroker().isLeader()
-                                        || !context.equals(new BrokerHealthObservationContext(confirmedCluster.revision(), confirmedCluster.topology(confirmedMembership)))) {
+                                        || !context.equals(new BrokerHealthObservationContext(confirmedCluster.revision(), confirmedCluster.topology()))) {
                                     observationState.invalidate();
                                     return CompletableFuture.completedFuture(null);
                                 }
@@ -476,14 +473,15 @@ public final class BrokerClusterAppService {
      * 校验健康探测请求的观察背景与调用方资格，并返回本机探测响应。
      *
      * <p>请求必须指向本机、属于同一集群且匹配本机已提交的 revision/epoch；调用方必须属于
-     * 实际 Raft 成员配置与 Broker 角色及端点绑定一致的 voter 集合。传输身份认证由前置准入完成，
-     * 本方法不以请求中的 callerBrokerId 代替认证身份。</p>
+     * 同一 revision 已提交业务状态中由 findObservers 解析的完整 VOTER 集合，不读取原生成员配置。
+     * 存在非终态成员操作、LEARNER_SYNCING 节点或角色/端点绑定不一致时，不产生观察资格。
+     * 传输身份认证由前置准入完成，本方法不以请求中的 callerBrokerId 代替认证身份。</p>
      * <p>本方法只证明本机能在该观察背景下处理请求，不主动探测其他节点、记录健康样本或修改集群，
      * 不执行 quorum 确认，也不要求本机持有路由 Lease。请求不携带绝对期限。</p>
      *
      * @param query 已完成结构校验的探测查询，包含调用方、接收方及集群版本
      * @return 带本机身份及请求关联上下文的响应，不表示整个集群健康或已取得故障处置资格
-     * @throws IllegalArgumentException 集群、接收方或版本不匹配，或调用方不是当前一致 voter
+     * @throws IllegalArgumentException 集群、接收方或版本不匹配，或调用方不是当前业务 VOTER
      */
     public BrokerProbeDTO probeBroker(BrokerProbeQuery query) {
         // 1. 将边界身份和版本转换为领域值，读取当前已提交集群快照。
@@ -502,9 +500,8 @@ public final class BrokerClusterAppService {
             throw new IllegalArgumentException("observation context mismatch");
         }
 
-        // 3. 按实际成员配置解析一致 voter，确认调用方仍有观察资格。
-        ConsensusMembership membership = brokerRaftAdapter.getConsensusMembership();
-        Set<BrokerId> voterIds = cluster.findConsistentVoters(membership);
+        // 3. 按已提交业务角色和端点绑定解析 VOTER，确认调用方仍有观察资格。
+        Set<BrokerId> voterIds = cluster.findObservers();
         if (!voterIds.contains(probeCallerId)) {
             throw new IllegalArgumentException("observation caller is not a current voter");
         }
@@ -525,7 +522,7 @@ public final class BrokerClusterAppService {
      *
      * @param query 已完成结构校验的报告查询，包含调用方、接收方、集群版本及完整被观察 Broker 集合
      * @return 以本机为观察者的报告，携带请求关联上下文及各目标的状态、样本年龄和连续失败时长
-     * @throws IllegalArgumentException 观察背景不匹配、调用方不是当前一致 voter，或查询目标集合不完整
+     * @throws IllegalArgumentException 观察背景不匹配、调用方不是当前业务 VOTER，或查询目标集合不完整
      */
     public BrokerHealthReportDTO getHealthReport(BrokerHealthReportQuery query) {
         // 1. 转换请求身份、版本及被观察 Broker 集合。
@@ -545,9 +542,8 @@ public final class BrokerClusterAppService {
             throw new IllegalArgumentException("observation context mismatch");
         }
 
-        // 3. 按实际成员配置确认调用方资格，不将任意已注册 Broker 当作 voter。
-        ConsensusMembership membership = brokerRaftAdapter.getConsensusMembership();
-        Set<BrokerId> voterIds = cluster.findConsistentVoters(membership);
+        // 3. 按已提交业务角色和端点绑定确认调用方资格，不将任意已注册 Broker 当作 voter。
+        Set<BrokerId> voterIds = cluster.findObservers();
         if (!voterIds.contains(callerBrokerId)) {
             throw new IllegalArgumentException("observation caller is not a current voter");
         }
@@ -558,8 +554,7 @@ public final class BrokerClusterAppService {
             throw new IllegalArgumentException("report brokerIds do not match committed state");
         }
         // 5. 同步采样 Context，背景变化时由 Tracker 丢弃旧样本。
-        BrokerHealthObservationContext context = new BrokerHealthObservationContext(
-                cluster.revision(), cluster.topology(membership));
+        BrokerHealthObservationContext context = new BrokerHealthObservationContext(cluster.revision(), cluster.topology());
         healthObservationTracker.synchronize(context);
 
         // 6. 读取本机现有样本快照，转换为应用层状态与时长，不在此处发起探测。
@@ -987,7 +982,7 @@ public final class BrokerClusterAppService {
         return switch (result.status()) {
             case APPLIED, DUPLICATE -> GatewayRouteSnapshotAckResult.acknowledged();
             case NOT_LEADER -> GatewayRouteSnapshotAckResult.notLeader(result.leaderEndpoint());
-            case REJECTED, CONFLICT, UNAVAILABLE -> GatewayRouteSnapshotAckResult.rejected(result.message());
+            case REJECTED, CONFLICT, UNAVAILABLE, IN_PROGRESS -> GatewayRouteSnapshotAckResult.rejected(result.message());
         };
     }
 

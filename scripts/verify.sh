@@ -7,7 +7,14 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+ROOT_DIR="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
+# full先以固定OS Ruby只读证明来源；摘要不是可执行环境或caller证明。
+# 父/dispatch原环境始终不变；受控环境只用于显式子阶段。
+if [[ "${1:-quick}" == full ]]; then
+  [[ $# == 1 ]] || exit 2
+  full_source_identity="$(/usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" model-attest "$ROOT_DIR")" || exit $?
+  [[ "$full_source_identity" =~ ^[0-9a-f]{64}$ ]] || exit 2
+fi
 REACTOR_MANIFEST="$ROOT_DIR/.harness/runtime/full-reactor-evidence.json"
 REACTOR_SUMMARY="$ROOT_DIR/.harness/runtime/full-reactor-summary.json"
 MODE="${1:-quick}"
@@ -33,20 +40,20 @@ record_verification() {
   local test_summary_json=""
   local detail_path="$ROOT_DIR/.harness/verifications/$mode-detail.json"
   local output_dir="$ROOT_DIR/.harness/verifications"
-  mkdir -p "$output_dir"
+  /bin/mkdir -p "$output_dir"
   if [[ "$mode" == "e2e" && "$MODE" != full ]]; then
     log_path=".harness/runtime/e2e.log"
     workload="realtime-messaging-golden-path"
-    test_count="$(ruby -r rexml/document -e '
+    test_count="$(/usr/bin/ruby -r rexml/document -e '
       puts ARGV.sum { |file| REXML::Document.new(File.read(file)).root.attributes["tests"].to_i }
-    ' $(find "$ROOT_DIR/im-test/im-e2e-test/target/surefire-reports" \
+    ' $(/usr/bin/find "$ROOT_DIR/im-test/im-e2e-test/target/surefire-reports" \
       -type f -name 'TEST-*.xml' -print 2>/dev/null))"
   elif [[ "$mode" == "full" ]]; then
     if [[ -f "$REACTOR_SUMMARY" ]]; then
-      test_summary_json="$(cat "$REACTOR_SUMMARY")"
+      test_summary_json="$(/bin/cat "$REACTOR_SUMMARY")"
     fi
   fi
-  FULL_GATE_STATUS="${gate_status:-incomplete}" FULL_FINALIZATION_STATUS="${finalization_status:-incomplete}" FULL_GATE_EXIT="${gate_exit:-}" FULL_REPORT_EXIT="${report_exit:-}" FULL_HANDOFF_EXIT="${handoff_exit:-}" ruby -rjson -e '
+  FULL_GATE_STATUS="${gate_status:-incomplete}" FULL_FINALIZATION_STATUS="${finalization_status:-incomplete}" FULL_GATE_EXIT="${gate_exit:-}" FULL_REPORT_EXIT="${report_exit:-}" FULL_HANDOFF_EXIT="${handoff_exit:-}" /usr/bin/ruby -rjson -e '
     output, mode, command, status, duration, started_epoch, finished_at,
       started_head, finished_head, started_fingerprint, finished_fingerprint,
       stable, log_path, test_count, workload, test_summary_json, detail_path = ARGV
@@ -87,7 +94,7 @@ record_verification() {
     File.write(output + ".tmp", JSON.generate(evidence) + "\n", mode: "wx")
     File.rename(output + ".tmp", output)
   ' "$output_dir/$mode.json" "$mode" "$command" "$status" "$duration" \
-    "$started_epoch" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$started_head" \
+    "$started_epoch" "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)" "$started_head" \
     "$finished_head" "$started_fingerprint" "$finished_fingerprint" "$worktree_stable" \
     "$log_path" "$test_count" "$workload" "$test_summary_json" "$detail_path"
 }
@@ -220,7 +227,7 @@ run_clean() {
     if ! shell_output="$(bash -n "$shell_file" 2>&1)"; then
       shell_syntax_failures+="$shell_output"$'\n'
     fi
-  done < <(find "$ROOT_DIR/scripts" -type f -name '*.sh' -print0)
+  done < <(/usr/bin/find "$ROOT_DIR/scripts" -type f -name '*.sh' -print0)
   if [[ -n "$shell_syntax_failures" ]]; then
     printf '%s' "$shell_syntax_failures" >&2
     clean_failure \
@@ -237,7 +244,7 @@ run_clean() {
     failures=$((failures + 1))
   fi
 
-  active_plan_files="$(find "$ROOT_DIR/docs/exec-plans/active" -type f -name '*.md' ! -name README.md -print 2>/dev/null)"
+  active_plan_files="$(/usr/bin/find "$ROOT_DIR/docs/exec-plans/active" -type f -name '*.md' ! -name README.md -print 2>/dev/null)"
   if [[ -n "$active_plan_files" ]]; then
     while IFS= read -r plan; do
       active_count=$((active_count + $({ rg -o '\|[[:space:]]*`?active`?[[:space:]]*\|' "$plan" || [[ $? -eq 1 ]]; } | wc -l | tr -d ' ')))
@@ -300,26 +307,70 @@ run_script_tests() {
   "$ROOT_DIR/scripts/test-harness.sh"
 }
 
+# 固定有限阶段在真正空环境的新进程运行；不依赖unset或errexit隔离。
+# 函数定义只取本脚本固定清单，不导出函数/父shell只读变量；不另建进程组。
+# 仅HA阶段增加受审本机HTTPS代理；模型/Maven与其他阶段仍只用三键。
+run_full_controlled() {
+  local description key stage="$1" definitions=""
+  local values=()
+  shift
+  description="$(/usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" model-execution "$ROOT_DIR")" || return $?
+  while IFS= read -r key; do values+=("$key"); done <<< "$description"
+  [[ ${#values[@]} == 3 ]] || return 2
+  local stage_environment=("HOME=${values[0]}" "JAVA_HOME=${values[1]}" "PATH=${values[2]}")
+  case "$stage" in
+    run_readiness) definitions="$(declare -f version_at_least readiness_failure run_readiness)" ;;
+    run_clean) definitions="$(declare -f clean_failure run_drift run_clean)" ;;
+    run_script_tests) definitions="$(declare -f run_script_tests)" ;;
+    run_full_ha)
+      definitions="$(declare -f run_routing_ha run_full_ha)"
+      stage_environment+=("HTTPS_PROXY=http://127.0.0.1:7890") ;;
+    "$ROOT_DIR/scripts/harness-report.sh"|"$ROOT_DIR/scripts/harness-handoff.sh")
+      /usr/bin/env -i HOME="${values[0]}" JAVA_HOME="${values[1]}" PATH="${values[2]}" /bin/bash "$stage" "$@"
+      return $? ;;
+    *) return 2 ;;
+  esac
+  /usr/bin/env -i "${stage_environment[@]}" /bin/bash -c '
+    ROOT_DIR="$1"; REACTOR_MANIFEST="$ROOT_DIR/.harness/runtime/full-reactor-evidence.json"
+    stage="$2"; shift 2
+    '"$definitions"'
+    "$stage" "$@"
+  ' full-stage "$ROOT_DIR" "$stage" "$@"
+}
+
+run_full_ha() {
+  ROUTING_HA_REACTOR_EVIDENCE="$REACTOR_MANIFEST" ROUTING_HA_REACTOR_SHA256="$1" run_routing_ha
+}
+
 # 执行交付前完整门禁：环境就绪、可交接状态、Harness 自测和 Maven verify。
 run_full() {
-  run_readiness
-  run_clean
-  run_script_tests
+  local full_source_before full_source_after
+  full_source_before="$(/usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" model-attest "$ROOT_DIR")" || return $?
+  [[ "$full_source_before" == "$full_source_identity" ]] || return 1
+  run_full_controlled run_readiness || return $?
+  full_source_after="$(/usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" model-attest "$ROOT_DIR")" || return $?
+  [[ "$full_source_before" == "$full_source_after" ]] || return 1
+  run_full_controlled run_clean || return $?
+  run_full_controlled run_script_tests || return $?
+  full_source_after="$(/usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" model-attest "$ROOT_DIR")" || return $?
+  [[ "$full_source_before" == "$full_source_after" ]] || return 1
   printf '\n==> Running full Maven verification suite\n'
-  mkdir -p "$ROOT_DIR/.harness/runtime"
-  rm -f "$REACTOR_MANIFEST" "$REACTOR_SUMMARY"
-  ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" prepare "$ROOT_DIR" "$REACTOR_MANIFEST"
+  # collect独占创建新私有目录；全部来源/reader成功前不删除旧manifest或prepare。
+  # collection proof绑定同次三命令及显式环境；verify前后重验，不回退继承PATH。
+  local model_output="$ROOT_DIR/.harness/runtime/full-model-$(/bin/date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+  /usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" model-collect "$ROOT_DIR" "$model_output"
+  /usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" model-prepare "$ROOT_DIR" "$model_output/collection.json" "$REACTOR_MANIFEST" "$REACTOR_SUMMARY"
   set +e
-  mvn -q verify 2>&1 | tee "$ROOT_DIR/.harness/runtime/full-maven.log"
+  /usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" model-verify "$ROOT_DIR" "$model_output/collection.json" "$REACTOR_MANIFEST" 2>&1 | /usr/bin/tee "$ROOT_DIR/.harness/runtime/full-maven.log"
   local pipeline_codes=("${PIPESTATUS[@]}")
   set -e
   (( pipeline_codes[0] == 0 )) || return "${pipeline_codes[0]}"
   (( pipeline_codes[1] == 0 )) || return "${pipeline_codes[1]}"
-  ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" verify "$ROOT_DIR" "$REACTOR_MANIFEST"
+  /usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" verify "$ROOT_DIR" "$REACTOR_MANIFEST"
   local reactor_sha256
-  reactor_sha256="$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV[0]).hexdigest' "$REACTOR_MANIFEST")"
+  reactor_sha256="$(/usr/bin/ruby -rdigest -e 'puts Digest::SHA256.file(ARGV[0]).hexdigest' "$REACTOR_MANIFEST")"
   # 总数在 Maven 窗口内固定；后续 HA 不再读取可能覆盖的 target 报告。
-  ruby -rjson -rrexml/document -e '
+  /usr/bin/ruby -rjson -rrexml/document -e '
     root, manifest, output = ARGV
     since = JSON.parse(File.read(manifest)).fetch("startedAt")
     totals = %w[tests failures errors skipped].to_h { |key| [key, 0] }
@@ -331,24 +382,24 @@ run_full() {
     File.write(output, JSON.generate(totals) + "\n")
   ' "$ROOT_DIR" "$REACTOR_MANIFEST" "$REACTOR_SUMMARY"
   assert_full_frozen
-  local maven_finished_at="$(date +%s)"
+  local maven_finished_at="$(/bin/date +%s)"
   local maven_started_at
-  maven_started_at="$(ruby -rjson -e 'puts JSON.parse(File.read(ARGV[0])).fetch("startedAt").to_i' "$REACTOR_MANIFEST")"
+  maven_started_at="$(/usr/bin/ruby -rjson -e 'puts JSON.parse(File.read(ARGV[0])).fetch("startedAt").to_i' "$REACTOR_MANIFEST")"
   local mode
   for mode in architecture startup behavior e2e; do
     write_reactor_detail "$mode" "$maven_finished_at"
     record_verification "$mode" passed "$((maven_finished_at - maven_started_at))" "$maven_started_at" \
       "mvn -q verify; full-reactor validation: $mode" "$started_head" "$started_head" "$started_fingerprint" "$started_fingerprint" true
   done
-  rm -f "$ROOT_DIR/.harness/verifications/routing-ha-detail.json"
-  local ha_started_at="$(date +%s)"
+  /bin/rm -f "$ROOT_DIR/.harness/verifications/routing-ha-detail.json"
+  local ha_started_at="$(/bin/date +%s)"
   assert_reactor_identity "$reactor_sha256"
-  ROUTING_HA_REACTOR_EVIDENCE="$REACTOR_MANIFEST" ROUTING_HA_REACTOR_SHA256="$reactor_sha256" run_routing_ha
+  run_full_controlled run_full_ha "$reactor_sha256"
   assert_reactor_identity "$reactor_sha256"
   assert_full_frozen
-  ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" check "$ROOT_DIR" "$REACTOR_MANIFEST"
+  /usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" check "$ROOT_DIR" "$REACTOR_MANIFEST"
   [[ -f "$ROOT_DIR/.harness/verifications/routing-ha-detail.json" ]] || return 1
-  ruby -rjson -rdigest -e '
+  /usr/bin/ruby -rjson -rdigest -e '
     file, manifest, fixed_sha = ARGV
     data = JSON.parse(File.read(file))
     data["evidenceSource"] = "full-reactor"
@@ -356,13 +407,13 @@ run_full() {
     data["reactorEvidenceSha256"] = fixed_sha
     File.write(file, JSON.generate(data) + "\n")
   ' "$ROOT_DIR/.harness/verifications/routing-ha-detail.json" "$REACTOR_MANIFEST" "$reactor_sha256"
-  record_verification routing-ha passed "$(( $(date +%s) - ha_started_at ))" "$ha_started_at" \
+  record_verification routing-ha passed "$(( $(/bin/date +%s) - ha_started_at ))" "$ha_started_at" \
     "./scripts/routing_ha.sh verify (full-reactor validation)" "$started_head" "$started_head" "$started_fingerprint" "$started_fingerprint" true
 }
 
 # 固定首次 verify 后的清单字节身份；自洽重写也不属于原 Maven 证明。
 assert_reactor_identity() {
-  [[ "$1" =~ ^[0-9a-f]{64}$ && "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV[0]).hexdigest' "$REACTOR_MANIFEST")" == "$1" ]]
+  [[ "$1" =~ ^[0-9a-f]{64}$ && "$(/usr/bin/ruby -rdigest -e 'puts Digest::SHA256.file(ARGV[0]).hexdigest' "$REACTOR_MANIFEST")" == "$1" ]]
 }
 
 # full 的源码冻结与报告摘要独立；任何后续阶段修改输入都不能借当前报告发布成功。
@@ -373,7 +424,7 @@ assert_full_frozen() {
 
 # 参数：模式、Maven 完成 epoch；只从已固定清单生成对应模式的普通验证详情。
 write_reactor_detail() {
-  ruby -rjson -rdigest -e '
+  /usr/bin/ruby -rjson -rdigest -e '
     manifest, mode, finished, output, fixed_sha = ARGV
     data = JSON.parse(File.read(manifest))
     detail = {"evidenceSource" => "full-reactor", "reactorEvidencePath" => manifest,
@@ -752,12 +803,12 @@ case "$MODE" in
     harness_execution_lock || exit $? ;;
 esac
 verification_command="./scripts/verify.sh${*:+ $*}"
-started_at="$(date +%s)"
+started_at="$(/bin/date +%s)"
 started_head="$(harness_head_revision "$ROOT_DIR")"
 started_fingerprint="$(harness_worktree_fingerprint "$ROOT_DIR")"
 if [[ "$MODE" == full ]]; then
   [[ "$started_head" != unavailable && "$started_fingerprint" != unavailable ]] || exit 2
-  rm -f "$REACTOR_MANIFEST" "$REACTOR_SUMMARY"
+  # 旧reactor记录直到run_full的model proof成功后才删除。
   gate_status=incomplete
   finalization_status=incomplete
   record_verification full incomplete 0 "$started_at" "$verification_command" "$started_head" "$started_head" "$started_fingerprint" "$started_fingerprint" true
@@ -768,14 +819,35 @@ set +e
 set -m
 (set +m; set -e; dispatch "$@") &
 dispatch_pid=$!
-trap 'kill -TERM -- "-$dispatch_pid" 2>/dev/null || true; wait "$dispatch_pid" 2>/dev/null || true; exit 130' INT
-trap 'kill -TERM -- "-$dispatch_pid" 2>/dev/null || true; wait "$dispatch_pid" 2>/dev/null || true; exit 143' TERM
+# dispatch本身可先退出；锁仍须等同组Maven/Java子孙停止，不能只wait根PID。
+cancel_full_dispatch() {
+  local code="$1"
+  trap '' INT TERM
+  kill -TERM -- "-$dispatch_pid" 2>/dev/null || true
+  wait "$dispatch_pid" 2>/dev/null || true
+  while /bin/ps -axo pgid=,stat= | /usr/bin/ruby -e 'group = ARGV[0].to_i; exit(STDIN.each_line.any? { |line| fields = line.split; fields[0].to_i == group && !fields[1].to_s.start_with?("Z") } ? 0 : 1)' "$dispatch_pid"; do
+    /bin/sleep 0.05
+  done
+  exit "$code"
+}
+trap 'cancel_full_dispatch 130' INT
+trap 'cancel_full_dispatch 143' TERM
 wait "$dispatch_pid"
 exit_code=$?
-trap 'exit 130' INT
-trap 'exit 143' TERM
 set +m
 set -e
+
+# 后处理也有独立可取消组；不得杀父shell所在组或在后代存活时释锁。
+run_full_postprocess() {
+  local result
+  set -m
+  (set +m; run_full_controlled "$@") &
+  dispatch_pid=$!
+  wait "$dispatch_pid"
+  result=$?
+  set +m
+  return "$result"
+}
 
 finished_head="$(harness_head_revision "$ROOT_DIR")"
 finished_fingerprint="$(harness_worktree_fingerprint "$ROOT_DIR")"
@@ -791,7 +863,7 @@ if [[ "$started_head" != "$finished_head" \
 fi
 
 if [[ "$MODE" == full ]] && (( exit_code == 0 )); then
-  reactor_sha256="$(ruby -rjson -e 'puts JSON.parse(File.read(ARGV[0])).fetch("reactorEvidenceSha256")' "$ROOT_DIR/.harness/verifications/architecture.json")"
+  reactor_sha256="$(/usr/bin/ruby -rjson -e 'puts JSON.parse(File.read(ARGV[0])).fetch("reactorEvidenceSha256")' "$ROOT_DIR/.harness/verifications/architecture.json")"
   assert_reactor_identity "$reactor_sha256" || exit_code=1
 fi
 
@@ -805,7 +877,7 @@ if [[ "$MODE" == full ]]; then
   gate_exit=$exit_code
   gate_status=$status
 fi
-record_verification "$MODE" "$publication_status" "$(( $(date +%s) - started_at ))" "$started_at" \
+record_verification "$MODE" "$publication_status" "$(( $(/bin/date +%s) - started_at ))" "$started_at" \
   "$verification_command" "$started_head" "$finished_head" "$started_fingerprint" \
   "$finished_fingerprint" "$worktree_stable"
 
@@ -813,9 +885,9 @@ record_verification "$MODE" "$publication_status" "$(( $(date +%s) - started_at 
 if [[ "$MODE" == "full" ]]; then
   finalization_status=incomplete
   set +e
-  "$ROOT_DIR/scripts/harness-report.sh"
+  run_full_postprocess "$ROOT_DIR/scripts/harness-report.sh"
   report_exit=$?
-  "$ROOT_DIR/scripts/harness-handoff.sh"
+  run_full_postprocess "$ROOT_DIR/scripts/harness-handoff.sh"
   handoff_exit=$?
   set -e
   finalization_status=passed
@@ -838,7 +910,7 @@ if [[ "$MODE" == "full" ]]; then
   fi
   status=passed
   (( exit_code == 0 )) || status=failed
-  record_verification full "$status" "$(( $(date +%s) - started_at ))" "$started_at" \
+  record_verification full "$status" "$(( $(/bin/date +%s) - started_at ))" "$started_at" \
     "$verification_command" "$started_head" "$finished_head" "$started_fingerprint" \
     "$finished_fingerprint" "$worktree_stable"
 fi

@@ -11,6 +11,11 @@
 - `RoutingHaScenarioManifestTest` 校验场景 ID、证据类型及当前测试方法定位。
 - `AutomaticFailureTlsHaTest` 使用真实三个 `BrokerRaftAdapter` / JRaft 节点、三个 SOFA `RpcServer` / `RpcClient`，以及生产观察用例、领域资格服务、RPC 身份准入、fence 和 Lease 安装链路。每个 Broker 使用独立私钥和唯一 URI SAN。测试启动时调用 JDK `keytool` 生成临时证书并互相信任公钥，测试后由 JUnit 删除临时目录；不提交证书或私钥。
 - RH-05 的 `isolated-runtime-test` 不代表容器自动摘流。测试停止真实 follower 或 Leader 的 RPC/Raft 资源，等待存活 voter 独立观察和 Leader 本轮报告拉取产生 `FAIL_BROKER`，核对旧 epoch 隔离、目标 `INACTIVE`、新 epoch Lease 安装，以及 Gateway 确认成功或缺失确认降级。
+- 成员维护增量通过公开 `BrokerMembershipAppService` 验证 follower 两步降级、Leader 自降级后向替代 Leader 发送真实 mTLS 排空确认及显式恢复。夹具采用生产允许的默认最小 voter 数 1，核对最终 native voters／learners、步骤排空及 operation 终态；该参数不改变 JRaft 多数派算法。
+- PENDING 门禁场景先通过真实 Raft 提交维护意图，受控暂停 native 执行，验证三个节点拒绝观察资格且不登记自动操作，再显式完成原维护并恢复资格。该场景不模拟 native UNKNOWN，不单独证明 LEARNER_SYNCING 或旧许可跨重启的 D16 阻塞。
+- UNKNOWN 门禁场景在 native 调用前真实提交许可，停止旧 Leader 并在替代 Leader 显式恢复，验证不能替换未排空许可；随后以原身份、端点和日志重启旧 executor，等待回放后确认 UNKNOWN 及维护阻断持续存在，新 incarnation 不得执行旧许可。该场景不证明 native 调用中崩溃的全部窗口，也不替代独立 LEARNER_SYNCING 门禁覆盖。
+- B4 新增独立初始两 voter／一 LEARNER_SYNCING 的真实 JRaft／mTLS 夹具：没有 PENDING operation 时仍拒绝观察，正式 ReadIndex 同步确认后角色转为 LEARNER、operation 成功、观察资格恢复。该场景不证明动态加入过程，后者由 E2E 加入旅程拥有。
+- B4 在既有 UNKNOWN 场景发送真实 typed mTLS 请求，变异证书调用者、许可 ID、incarnation 与目标摘要，断言生产准入的准确拒绝原因、完整 operation／revision 及含 learners 的 native 配置不变；不以客户端超时或任意异常冒充服务端认证拒绝。新增 focused 套件及 affected 同轮报告均为 8 项通过，独立 B4 限定 Accept 见 `.harness/t11/b4-gap-fix-20261106/b4-final-review.json`；不沿用旧 XML，不替代最终 full／真实容器 HA。
 - Gateway 进程与完整路由重建在此测试中替换为注册事实和显式应用 ACK 输入。真实 WebSocket、Gateway 重建和容器重启仍由既有 E2E 与 Compose 场景覆盖，不能从隔离测试推导。
 
 ## 聚焦运行

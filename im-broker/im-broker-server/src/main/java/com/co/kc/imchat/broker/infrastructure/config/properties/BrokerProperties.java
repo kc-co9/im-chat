@@ -28,6 +28,20 @@ public class BrokerProperties {
      */
     private PeerCall peerCall = new PeerCall();
 
+    /** 入站成员许可确认的本地等待预算，与 outbound peer 调用独立。 */
+    private MembershipConfirmation membershipConfirmation = new MembershipConfirmation();
+
+    /**
+     * 入站确认等待配置，构造 Handler 时校验并快照，不提供在线热缩容。
+     */
+    @Data
+    public static class MembershipConfirmation {
+        /** 同时占用 Handler 等待预算的请求上限，必须为正。 */
+        private int maxConcurrentWaiters = 8;
+        /** 从请求准入起计算的本地等待期限，毫秒，必须为正。 */
+        private int timeoutMs = 3000;
+    }
+
     /**
      * 当前 Broker 实例的网络端点配置。
      */

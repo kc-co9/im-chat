@@ -4,6 +4,44 @@ Broker 运行服务，负责用户到 Gateway 的路由、精确帧投递、权�
 
 本文用于构建、启动、配置和排障；内部拓扑、数据归属、状态转换及故障一致性以 [Broker Architecture](../ARCHITECTURE.md) 为准。
 
+## 管理提示发布与 Follower 拒绝
+
+应用服务只通过注入的 `MembershipOperationService` 管理两类尝试。成员通过状态 ACQUIRED／SHARED／CONFLICT／CAPACITY_EXCEEDED 区分执行与直接返回；独立 `InMemoryMembershipOperationAttemptRepository` 保存领域 `MembershipOperationAttempt` 的身份、保留事实及领域结果完成源。服务负责摘要冲突、共享、固定容量及精确释放，认领组合操作在同一锁内，Future 通知在锁外；不增设 Future 表或独立 completed 标志。领域结果与 Adapter 共识结果由 MapStruct 映射，公开派生 Stage 不保证实例相同，取消不影响内部共享结果；成员表最多保留 4096 个身份，包括已完成但不能释放的记录。`identityRetained` 表示已观察到历史操作或开始提交 Begin，不只是“提交正在执行”。它不是永久许可账本：Begin 前可能尚无 Permit，执行器也不保存 operation 摘要；阶段队列容量不能代替应用身份容量。learner 由同一个领域服务 `MembershipOperationService` 的 claimLearnerConfirmation／releaseLearnerConfirmation 协调确认与恢复的在途互斥，领域资源库的内存实现持有唯一占用表，完成即按尝试实例精确释放后通知，只合并领域服务，不合并两类占用资源库；旧 MembershipOperationAttempts 中间层已删除。成员共享完成源只承载领域 Outcome，领域不依赖 Adapter 或 CQRS；learner 领域对象只保存完整请求身份，不保存 Command、CQRS 结果或 Future。应用服务持有局部完成信号并决定 worker 发布位置；预算和 generation 继续归执行器。尚未观察到历史操作、未开始提交 Begin 的确定拒绝可精确释放；一旦开始提交或结果未知，保守保留身份，不回收执行器许可。诊断先复验 term/revision，再发布配置比较；采样失效时标记 unavailable，不把跨版本差异发布为漂移。
+
+官方首次 Nacos registration 前，`BrokerClusterConfiguration` 的 customizer 通过已初始化 Adapter／Node 发布保留 metadata `raft-peer-id`；值是实际 `PeerId.toString()`，不是原始配置。已设同值保留，异值及空白冲突失败关闭，初始化失败不注册。显式 `management-host`／`management-port` 仍独立提供管理 HTTP 地址，不能把 Raft 地址当作管理端口。
+
+H7／H8 只允许 caller 读取无 Node 的 following 事件快照用于纯拒绝：先摘要冲突、既有共享，再 closed／永久 roleFault／满额硬拒绝，最后 `roleStopped` 加有效且同 generation 的观察才返回 `NOT_LEADER`。这条路径零 workflow／永久预算／队列／pump／许可／native 增长。缺观察、generation 不匹配或独立 FSM failure 时不返回可信提示。getter 原子无锁，不在 executor mutex 内反锁 `rolePublication`；所有实际角色／Leader Node 查询、worker 首检和后续执行门禁保留。事件延迟使提示可能过时，它不是实时健康或 quorum 证明。
+
+## 成员许可执行边界
+
+应用层直接依赖具体 `adapter.cluster.membership.BrokerMembershipExecutor`，保留唯一账本、mutex、单worker及生命周期，删除application接口和Default实现。learner预留返回JDK Executor，ConfirmationRound固定只读视图和不可取消等待桥不变。完整领域报告参与去重，包含受信身份和收发集群上下文；领域确认结果在Handler/Peer边界与SDK响应转换。入队准入使用ACCEPTED而非共识APPLIED；原生配置观察保留错误码与诊断。RaftAdapter在原调用线程同步进入Runtime，不保留第二线程池。FollowingObservation保留一次无锁转换；配置对角色监听、监控和应用使用同一个实例。
+
+`MembershipDiagnosticMetrics` 在 `support.monitoring` 中保存最近配置采样，并通过 Spring `MeterBinder` 注册漂移和诊断不可用 Gauge。应用服务仅报告采样结果；指标不参与准入，也不替代每次操作的实时校验。
+
+`BrokerMembershipExecutor` 在共识 Register 前预留本进程身份，每进程最多 4096 条记录；失败、提交未知和封闭记录均不回收、不复用。进程 incarnation 每次重建，旧许可缺少精确预留时失败关闭，不接管旧执行能力。配置层注入固定一个工作线程和一个等待槽，拒绝不回退到调用线程或公共池。新成员操作按永久槽及队列容量准入；已接纳流程的 continuation 队列独立限制为 4096，不因本轮最后一个合法 Permit 预留而拒绝后续推进或收尾。发送结果锁内固定完成源和结果，完全退出执行器锁后通知，避免同步 continuation 持锁读取 Node。
+
+远程确认只登记受限事实槽，也计入上述全局 4096 上限，永不回收且不能获得 native 能力。同一许可、同一在途事实共享一个确认阶段链；矛盾事实被拒绝，不覆盖在途事实。调用者获得只读派生结果，取消派生 Future 不取消保留的执行或确认。角色 listener 与 Runtime 共享同一永久 fault latch；异常后保留账本并关闭全部新准入。角色事件、native callback 和 FSM continuation 只记账，可能调用 Node 的确认阶段以及完成发布均交回同一个 worker；pump 被拒绝时保留 pending，任务退出或同事实重投可再次唤醒，不在调用方补跑，也不承诺停机后必达。
+
+远程 Handler 在认证后非阻塞申请独立等待预算，满额立即返回 `UNKNOWN` 且不调用应用；准入后从该时刻计算单一本地期限，超时也返回 `UNKNOWN`。每确认轮复用固定的不可取消 Future 等待桥，不为每请求安装 CompletionStage relay。中断后只在原剩余期限内继续等待，退出时恢复 interrupt 标志；正常、异常和超时均释放请求预算，不取消或完成共享事实、不释放永久许可、不重执行 native。`UNKNOWN` 不证明未提交，调用方只能显式重投同一事实。本机异步调用仍使用同轮固定只读 CompletionStage。该预算只约束此 Handler 的已准入等待，不隔离全部 Bolt 流量或上游 Processor 队列，也不保证同步应用代码可抢占或网络端到端 SLA。
+
+本地能力只允许 `OPEN → CLOSING → DRAINED`。封闭撤销排队任务，已进入原生方法的工作须等待同步返回和明确完成证据；请求超时不取消原生工作。`APPLIED` 与排空分开记账，BUSY、NOT_LEADER、异常或丢失 callback 均不能推断排空。只有未进入原生入口的已撤销任务可明确报告 `TARGET_NOT_APPLIED`。
+
+执行结果确认参数统一为领域值对象 MembershipExecutionConfirmation。应用提交前调用 checkMembershipExecutionConfirmation，只检查不修改快照或 revision；状态机应用日志时调用 confirmMembershipExecution，重新执行同一规则，只有首次接受才更新执行结果并递增 revision，重复与拒绝不改状态。Command 与领域对象由 MapStruct 转换，wire 不变。
+
+应用入口按方向命名：sendExecutionResult 向指定 Broker 发送已有结果；confirmExecution 接收并确认，返回异步阶段；submitExecutionConfirmation 接收同一确认请求，返回供调用方限时等待的句柄，本方法不阻塞。底层协议及 Adapter 名称不变。
+
+代码中的“成员执行结果确认”表示确认某次成员变更执行已结束及其结果，不是主动停止旧执行，也不等于整次成员操作成功。私有 prepareExecutionConfirmation 分段检查上报者/接收者身份，由领域服务返回执行记录准入决定；ACCEPTED只说明找到记录，不代表最终结果已获授权。submitExecutionConfirmation仅负责执行器提交及同步准入异常转换，私有 confirmExecution(request, stages) 获取有效证据、完整复验并提交结果；身份关系和记录查询归领域，线程调度和实时证据复验仍在应用层。
+
+`CONFIRM_MEMBERSHIP_PERMIT_DRAINED` 只提交固定许可身份、目标摘要和结果。远程要求 MTLS BROKER URI 与 caller/executor 一致，DEV 不提供证明；精确自移除持有者可确认原许可，不获得其他 CONTROL 权限。Leader 经专用 term/generation/index 已应用一致读、应用校验及共识 CAS 提交；Adapter 保留 generation，worker 消费和提交前复验同一角色快照，同 term stop/start 也拒绝旧证据；本机复用相同校验，不伪造 MTLS。确认超时只可重投同一事实。首次维护、resume 与 Scheduler 统一进入持久化完整目标步骤；精确许可确认排空后才推进下一步，全部步骤成功且无未排空许可才按当前 revision 提交 native 业务 Commit。非原生 learner 同步确认仍使用原 acceptedRevision 合同，成功重放保持 DUPLICATE 与原 epochs。成员执行组件当前位于 `adapter.cluster.membership.BrokerMembershipExecutor`，直接拥有本机执行账本、单 worker、generation、排空和生命周期；不再保留 application 执行接口或 `Default` 实现。`MembershipPermitDrainedResult` 是 SDK result 边界类型，领域确认使用 `MembershipConfirmationResult`，两者由 Adapter Transformer 转换。当前代码窄回归和完整模块证据已通过，最终交付仍以最新冻结 full/HA、quality 与计划归档为准。
+
+维护状态与端点/步骤查找由领域聚合提供；Permit 重传的顺序/唯一性检查归 operation，本机排空事实的候选选择归 MembershipOperationService，接收者必须具备 committed target voter 绑定。领域不读取 Executor；应用服务采样后仍在选定时及发送前复验本机状态，完整安全扫描不因构造校验而删除。
+
+已排空旧 holder 可通过内部 typed `sendExecutionResult(operationId, receiverBrokerId)` 显式投递事实。worker 优先选择持久化当前待确认许可，无待确认才选最高步骤的精确已确认本机 currentPermit；未知 native、外来 incarnation 或矛盾历史均拒绝。receiver 必须是该步骤完整 target 的 voter，地址来自已提交 BrokerNode，MTLS 绑定其完整 Broker URI。一次显式请求只投递一次，不找候选、不自动重试。自动首次与显式投递共用 operation 单一发送占用；同 receiver 在途共享固定 view，后续预留不能更换 owner；fault／close 消费与发布均失败关闭。现有 Ops／CLI 尚无定向旧 holder 的公开恢复入口，内部接缝不代表运维恢复可达；真实三节点测试的本地 peer 转发不代表真实 MTLS 网络验收。
+
+诊断、执行结果发送和 learner 业务阶段由 `BrokerMembershipAppService` 编排。Prepared／Finished 阶段载体为该类的私有嵌套 LearnerConfirmationState，不再作为 model.execution 公共类型。公开入口集中在前；恢复链准备后一次分流，后续直接传递共识结果，不再使用 Outcome 包装。私有 executeMembershipStep 执行已登记步骤，sendExecutionResultToLeader 定位接收方，sendRecordedExecutionResult 选择并发送本机已有结果。领域 `LearnerConfirmationAttempt` 仅保存操作 ID、Broker、epoch 和端点构成的请求身份，实例区分先后尝试；AppService 局部完成信号连接正常发布与角色失效；在途相同请求立即返回 IN_PROGRESS，不同内容立即拒绝。重复请求不等待执行者结果，也不再次消耗永久预算。IN_PROGRESS 不证明 Begin 已提交，acceptedEpoch/targetEpoch 为空；保留原 ID，稍后查询或原记录重发，查询暂时找不到不证明未提交。完成后精确移除记录，后续确认请求按已提交 operation 校验身份，只返回登记事实，不推进历史操作，也不长期缓存响应或未提交拒绝。应用服务通过 `reserveLearnerExecution` 取得本轮 `LearnerExecution`（实现 `Executor`），它复用现有 worker，不创建线程池；每阶段开始前检查本轮执行资格，失效时由 worker 调用应用收尾，关闭／故障后不承诺必达。应用服务用 Future 链编排证据、共识与结果发布。执行器只拥有唯一 worker、generation、共享永久预算及在途发送占用；每次新尝试消耗预算，完成清理不归还预算。身份一致的历史成功或未完成请求均返回 DUPLICATE 和原 epoch；DUPLICATE 只确认登记，不保证终态，调用方按 operationId 查询。历史未完成操作由现有 Scheduler 调用 resume 恢复，恢复路径在 worker 内重读阶段，不再回调 confirmLearner，也不重新取证。新确认遇到 Begin DUPLICATE 不接管恢复；两个入口共用在途互斥表，任一入口遇到同身份在途请求立即 IN_PROGRESS；确认先占表时本轮恢复不等待，后续扫描再推进，不承诺持续重发下的有界完成时间。
+
+每次新成员 Begin 前从当前 Leader 读取完整原生配置，与已提交业务角色／绑定比对，并复验 term 与 revision；不一致或不可读取拒绝新维护，不修复配置、不影响普通自动故障观察。Scheduler 空闲扫描合并为单一 worker 诊断事实，不创建 permit／attempt。指标无 operationId／endpoint 标签：`im.broker.membership.native.busy` 记录 BUSY 次数，`im.broker.membership.permit.undrained` 表示本机未排空预留，`im.broker.membership.maintenance.blocked` 表示非终态成员维护或 learner 同步，`im.broker.membership.configuration.drift` 与 `im.broker.membership.diagnostic.unavailable` 分别表达漂移和诊断不可用；漂移诊断本身不暂停普通自动故障接管。
+
 ## 阅读入口
 
 | 想了解 | 文档 |
@@ -32,7 +70,7 @@ Broker 把「消息业务」与「在线连接位置」分开：Message 保存�
 
 以下命令均在仓库根目录执行。需要 JDK 21、Maven 3.8.4+ 且低于 4.0；使用本地编排还需 Docker 27+、Docker Compose 2.31+。完整环境要求和 UI 构建工具见[根 README](../../README.md#环境)。
 
-当前根 POM 管理私有候选 `com.co.kc.thirdparty.sofa:jraft-core:1.4.1-imchat.1`，仅安装在本机隔离仓库 `/tmp/jraft-artifact-m2`，尚未发布到 Registry。下列通用构建/编排命令以该制品可解析为前提；其他机器不能直接用普通 `mvn` 完成构建，须先按[制品构建材料](../../third-party/jraft-applied-membership/README.md)准备源码构建并隔离安装，或等待获准 Registry 发布。本机候选验证命令需显式添加 `-Dmaven.repo.local=/tmp/jraft-artifact-m2`，这不表示生产发布、双构建或依赖输入锁已完成。
+当前根 POM 唯一管理官方 `com.alipay.sofa:jraft-core:1.4.1`，不再依赖私有候选或要求先执行本机补丁构建。私有制品材料已彻底移除，历史构建事实仅保留在执行历史中，不再提供可调用构建入口。
 
 ```bash
 mvn clean package
@@ -45,9 +83,11 @@ mvn clean package
 
 联调按 MySQL/Redis/Nacos → Account/Social/Message → Broker → WS Gateway → HTTP Gateway 顺序启动。Broker 不需要业务表，但上行处理需要 Message Facade 可用。应用导入 Nacos `im-broker.yml`（默认 `INFRA_GROUP`）；默认本地 Nacos 为 `127.0.0.1:8848`，部署地址、凭据及公共配置见 [im-nacos](../../im-plugin/im-nacos/README.md)。
 
-Broker 成员通信端点使用 `im-common` 的 `MembershipEndpoint`。RaftMembership 是插件提供的字符串列表技术快照，BrokerRaftAdapter.getConsensusMembership 将其转换为领域 `ConsensusMembership`，voter/learner 使用不可变 Set，同角色重复合并，跨角色交叠拒绝；BrokerCluster.findConsistentVoters 对照自身角色、端点绑定及成员变更状态，一致时返回 voter BrokerId，否则返回空集合，自动观察失败关闭。报告最新事实、多数和稳定窗口仍由 BrokerFailureObservationService.evaluate 判断。部署配置和外部协议继续使用原字符串格式，不解析或规范化端点，不改变 v2 日志与快照字段。
+Broker 成员通信端点使用 `im-common` 的 `MembershipEndpoint`。业务完整目标使用不可变 `ConsensusMembership`，voter/learner 同角色重复合并、跨角色交叠拒绝。`BrokerRaftAdapter.readLeaderMembershipConfiguration()` 仅提供 Leader 的 voters/learners 诊断观察；底层两次独立列表读取不构成原子稳定配置，不证明 FSM applied、quorum 或许可排空，Follower 不提供该查询。业务权威状态由已提交 FSM 管理，成员维护通过完整持久化目标与不可转移的本机许可执行。
 
-当前 Runtime 读取本机已应用的 stable membership，支持 Leader、Follower 和 learner；joint、停止/错误、队列拒绝、超时和中断失败关闭，不回退初始配置或缓存。超时/中断保留 cause，中断恢复线程标志。同步成员读取不得在 FSM callback 或其同步 continuation 内执行；它不是 quorum 证明，也不与业务状态读取构成原子快照，详见[成员读取边界](../ARCHITECTURE.md#membership-与-brokerroutingstate)。
+BrokerCluster.findObservers() 只从同一 revision 的已提交业务角色和端点绑定解析完整 VOTER 集合；存在未终态成员操作、LEARNER_SYNCING、绑定缺失或 DISCOVERED 错绑时返回空集合。观察 Context 仅包含 revision 与已提交业务拓扑，不含原生成员配置；原生配置漂移或读取失败不重置样本和冷却。业务观察阈值按完整业务 VOTER 集合计算，排除目标自报，报告缺失不缩小分母；该阈值不是原生 JRaft quorum，同任期 ReadIndex、revision/epoch 前后重验和完整 MTLS 身份绑定继续保留，Lease、fence、quarantine 与消息语义不变。报告最新事实、多数和稳定窗口仍由 BrokerFailureObservationService.evaluate 判断。部署配置和外部协议继续使用原字符串格式，不解析或规范化端点。
+
+learner 确认先检查当前 Leader learners 观察中包含目标，该观察仅是前置条件；仍须校验身份与绑定端点、expected epoch/revision、同任期 quorum ReadIndex，以及认证目标 applied index 不小于该 read index，再以 Begin CAS 接受，保留 acceptedRevision 与 worker／generation／fault／close 复验。不得将两次列表观察作为本机已应用配置或 quorum 证明。日志与快照采用 v3，旧格式拒绝，不自动迁移或回退；详见[成员读取边界](../ARCHITECTURE.md#membership-与-brokerroutingstate)。
 
 默认单节点使用本地稳定身份和独立 Raft 目录。多节点建群前必须统一初始成员配置，分配稳定节点身份、可达端点和独立持久卷；不要直接复制单节点默认值。SOFAJRaft 原生端口不接受业务 token，跨主机部署必须由 sidecar/service mesh 的 mTLS 与 workload identity 保护。
 
@@ -122,6 +162,9 @@ Nacos metadata 的 `management-host` 发布管理地址，监听地址与发布�
 | `im.broker.gateway-push.bolt` | `timeout-ms` | `3000` | 单次 Gateway 调用超时 |
 | `im.broker.peer-call` | `timeout-ms` | `3000` | 控制面 peer 调用超时 |
 | `im.broker.peer-call` | `max-concurrent-requests` / `max-pending-requests` | `8` / `128` | 正数，启动装配生效；队列拒绝不在调用线程执行，fence 按未确认等待 quarantine |
+| `im.broker.membership-confirmation` | `max-concurrent-waiters` / `timeout-ms` | `8` / `3000` | 入站许可确认等待上限／本地期限；均为正数，Handler 构造时快照，与 outbound `peer-call` 独立 |
+
+成员确认等待配置由 typed `BrokerProperties.MembershipConfirmation` 提供本地默认，Nacos 可覆盖启动输入，不承诺在线 Semaphore 热缩容。默认值是保守资源预算，不代表已测容量或 SLA。
 
 ### Raft 身份与持久化
 
@@ -174,23 +217,23 @@ Nacos metadata 的 `management-host` 发布管理地址，监听地址与发布�
 |---|---|---|
 | `probe-interval` / `report-interval` | `1s` / `1s` | 正数，短于 freshness |
 | `rpc-timeout` | `500ms` | 单次认证调用的单调结果接受预算，不超过 freshness；不是阻塞连接获取的硬返回期限 |
-| `stable-window` / `freshness` / `cooldown` | `30s` / `10s` / `60s` | 正数；启动、换届、拓扑或实际 membership 变化及一致性恢复后重新冷却 |
+| `stable-window` / `freshness` / `cooldown` | `30s` / `10s` / `60s` | 正数；启动、换届、业务拓扑变化及观察资格恢复后重新冷却 |
 | `max-concurrent-requests` / `max-pending-requests` | `4` / `64` | 观察专用有界线程/队列；拒绝不在调用线程执行 |
 
 #### 从采样到新故障操作
 
 1. `BrokerFailureProbeScheduler` 在当前 voter 上探测其他 committed ACTIVE 目标。`BrokerPeerAdapter.probe` 通过统一 typed `invoke` 验证真实 TLS 对端与唯一 Broker URI SAN；Subject、首个 URI 或可信网络回退不能替代此身份。
 2. `BrokerHealthObservationTracker` 保存本机最新样本、单调采样时间和连续失败起点。只有 `TRANSPORT_UNAVAILABLE` 形成 UNHEALTHY；本机预算耗尽、TLS/身份/协议错误和队列拒绝为 UNKNOWN。HEALTHY、UNKNOWN 或采样断档均打断旧失败窗口。
-3. Leader 的 `reconcileFailures` 先恢复既有未终态 `FAIL_BROKER`；没有待恢复操作时，读取本机 `getLeaderTerm()` 的 Optional 任期并检查 revision、实际 membership 与 Broker 绑定。任期为空、非 Leader 或成员不一致时作废冷却并跳过新建。
+3. Leader 的 `reconcileFailures` 先恢复既有未终态 `FAIL_BROKER`；没有待恢复操作时，读取本机 `getLeaderTerm()` 的 Optional 任期并检查 revision、已提交业务 VOTER 角色与端点绑定。任期为空、非 Leader 或观察资格无效时作废冷却并跳过新建。
 4. `BrokerObservationState.advance(topology, leaderTerm, observedAt)` 是冷却的唯一资格入口。冷却满足且没有阻塞操作后，应用读取本机快照，并经 `fetchHealthReport` 并发拉取其他 voter 本轮报告；失败按空报告处理，不沿用旧票。
 5. 报告汇合后才调用 `confirmLeadership`，取得与起始标记相同任期的 quorum 证明，再核对角色和完整 Context。领域服务先选每个 reporter 的最新事实，同一时刻冲突不计票；只统计新鲜且覆盖稳定窗口的 UNHEALTHY，每个独立 voter 最多一票。
 6. 多数分母始终是完整当前 voter 集合，目标自报不计票；三 voter 需要另外两个独立报告。证据合格只允许尝试 Begin；聚合和共识接受后，故障推进另行取得 fencing quorum，再隔离旧 epoch、提交新拓扑和授权。最终 proof 与 Begin 之间仍有并发窗口，不宣称提交原子绑定该任期。
 
-采样 Context 当前为 `revision + BrokerClusterTopology`，ACTIVE 目标从拓扑取得；改变 Context 会清空旧样本。冷却只比较拓扑、任期及一致性背景，不因每个 revision 变化都重置。两者都只存在于本机，重启重新累计，不进入 Raft 快照。结构比较与异步两次检查见 [Architecture](../ARCHITECTURE.md#异步健康观察的两次-context-检查)。
+采样 Context 当前为 `revision + BrokerClusterTopology`，ACTIVE 目标从拓扑取得；改变 Context 会清空旧样本。冷却只比较业务拓扑、任期及观察资格背景，不因每个 revision 变化都重置。两者都只存在于本机，重启重新累计，不进入 Raft 快照。结构比较与异步两次检查见 [Architecture](../ARCHITECTURE.md#异步健康观察的两次-context-检查)。
 
 #### 报告字段与时间边界
 
-请求用 `callerBrokerId`、`receiverBrokerId` 区分调用者与接收者，报告查询的 `brokerIds` 是被观察集合；报告外层 `observerBrokerId` 表示实际观察者，行内 `brokerId` 表示被观察者，probe 响应仍用 `brokerId`。旧 target/reporter 字段不作别名，需同版本成组部署；RPC operation `fetchBrokerHealthReport` 和 Raft v2 格式不变。
+请求用 `callerBrokerId`、`receiverBrokerId` 区分调用者与接收者，报告查询的 `brokerIds` 是被观察集合；报告外层 `observerBrokerId` 表示实际观察者，行内 `brokerId` 表示被观察者，probe 响应仍用 `brokerId`。旧 target/reporter 字段不作别名，需同版本成组部署；RPC operation `fetchBrokerHealthReport` 不变；Raft 日志和快照仅接受 v3，拒绝 v1、v2 及其他不支持的格式版本。
 
 probe/report 不携带绝对请求期限，接收方允许晚到的只读查询。此处删除期限不影响 Lease、Gateway 快照、RouteLookup 或其他有副作用协议。全部 Peer、健康观察、Gateway 下行和 Gossip 均使用不可变 `BoltTarget` 与统一 `invoke`，不保留旧入口；连接/发送边界见 [im-bolt](../../im-plugin/im-bolt/README.md)。
 
@@ -278,7 +321,7 @@ Broker 只信任 Ops 服务身份，实际管理员授权与审计由 Ops/IAM/Au
 
 `im.broker.raft.data-directory` 保存 term、vote、log、snapshot、identity 和 `routing-fence.json`。每个生产 Broker 使用独立 PVC/磁盘，不可共享；正常重启复用相同 `cluster-id + node-id + endpoint + data-directory`。identity 不一致时启动失败，不得删除 marker 或挂载另一节点目录绕过校验。
 
-日志命令和快照均使用 v2，只接受版本 2，明确拒绝 v1 及其他不支持的格式版本，不支持字段别名、旧格式兼容或混合格式重放。不兼容目录须先停止节点并保全原目录，再显式换用新目录；程序不会自动迁移或删除数据，任何数据删除须另行确认。有业务状态的目录必须保全恢复与审计证据，不能直接删除。回调失败与恢复边界见[Raft 回调与持久格式](../ARCHITECTURE.md#raft-回调与持久格式)。
+日志命令和快照均使用 v3，只接受版本 3，明确拒绝 v1、v2 及其他不支持的格式版本，不支持字段别名、旧格式兼容或混合格式重放。不兼容目录须先停止节点并保全原目录，再显式换用新目录；程序不会自动迁移或删除数据，任何数据删除须另行确认。有业务状态的目录必须保全恢复与审计证据，不能直接删除。回调失败与恢复边界见[Raft 回调与持久格式](../ARCHITECTURE.md#raft-回调与持久格式)。
 
 备份优先采用存储卷一致性快照，先触发/确认 Raft snapshot；不要在线逐文件复制正在写入的 RocksDB、log 和 meta。恢复演练须验证 snapshot 加后续 log 重建相同 revision、epoch 与 operation。
 

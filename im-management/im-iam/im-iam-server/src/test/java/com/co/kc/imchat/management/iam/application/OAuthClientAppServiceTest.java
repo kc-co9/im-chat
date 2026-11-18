@@ -1,5 +1,7 @@
 package com.co.kc.imchat.management.iam.application;
 
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientType;
+
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.model.page.Paging;
 import com.co.kc.imchat.common.model.page.PagingResult;
@@ -32,6 +34,7 @@ import com.co.kc.imchat.management.iam.domain.session.repository.OAuthSessionRep
 import com.co.kc.imchat.management.iam.model.cqrs.dto.OAuthAdministratorTokenClaimsDTO;
 import com.co.kc.imchat.management.iam.model.cqrs.dto.OAuthApplicationTokenClaimsDTO;
 import com.co.kc.imchat.management.iam.model.cqrs.dto.OAuthClientRegistrationDTO;
+import com.co.kc.imchat.management.iam.model.cqrs.dto.OAuthClientDTO;
 import com.co.kc.imchat.management.iam.model.cqrs.dto.OAuthClientListDTO;
 import com.co.kc.imchat.management.iam.model.cqrs.query.OAuthAdministratorTokenClaimsQuery;
 import com.co.kc.imchat.management.iam.model.cqrs.query.OAuthApplicationTokenClaimsQuery;
@@ -112,7 +115,7 @@ class OAuthClientAppServiceTest {
         assertThat(result.total()).isEqualTo(2L);
         assertThat(result.records()).containsExactly(
                 new OAuthClientListDTO(
-                        "im-admin-web",
+                        "im-admin-web", OAuthClientType.CONFIDENTIAL,
                         1001L,
                         2001L,
                         "imAudit",
@@ -123,7 +126,7 @@ class OAuthClientAppServiceTest {
                         Set.of("https://admin.example.com/"),
                         OAuthClientStatus.ACTIVE),
                 new OAuthClientListDTO(
-                        "im-admin-machine",
+                        "im-admin-machine", OAuthClientType.CONFIDENTIAL,
                         1001L,
                         2001L,
                         "imAudit",
@@ -273,6 +276,32 @@ class OAuthClientAppServiceTest {
     }
 
     @Test
+    void registersPublicClientOnlyForOpsOwnerAndAudienceWithoutEncodingSecret() {
+        ApplicationRepository apps = mock(ApplicationRepository.class);
+        OAuthClientRepository clients = mock(OAuthClientRepository.class);
+        OAuthClientSecretService secrets = mock(OAuthClientSecretService.class);
+        when(apps.find(new AppKey("imOps"))).thenReturn(Optional.of(app(10004L, "imOps")));
+        when(apps.find(new AppId(10004L))).thenReturn(Optional.of(app(10004L, "imOps")));
+        when(apps.find(new AppKey("imAdmin"))).thenReturn(Optional.of(app(10003L, "imAdmin")));
+        when(apps.find(new AppId(10003L))).thenReturn(Optional.of(app(10003L, "imAdmin")));
+        OAuthClientAppService service = new OAuthClientAppService(apps, clients, secrets,
+                mock(AdministratorRepository.class), mock(AdministratorAuthorizationService.class), mock());
+        OAuthClientDTO result = service.register(new OAuthClientRegisterCmd("imOps", 10004L, "Ops CLI",
+                "im-ops-cli", OAuthClientType.PUBLIC, null, Set.of(OAuthGrantType.AUTHORIZATION_CODE),
+                Set.of("ops:broker:read"), Set.of("http://127.0.0.1:8765/oauth/callback"), Set.of()));
+        assertThat(result.clientType()).isEqualTo(OAuthClientType.PUBLIC);
+        verifyNoInteractions(secrets);
+        assertThatThrownBy(() -> service.register(new OAuthClientRegisterCmd("imAdmin", 10004L, "Ops CLI",
+                "wrong-owner", OAuthClientType.PUBLIC, null, Set.of(OAuthGrantType.AUTHORIZATION_CODE),
+                Set.of("ops:broker:read"), Set.of("http://127.0.0.1:8765/oauth/callback"), Set.of())))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("public client is restricted to Ops");
+        assertThatThrownBy(() -> service.register(new OAuthClientRegisterCmd("imOps", 10003L, "Ops CLI",
+                "wrong-audience", OAuthClientType.PUBLIC, null, Set.of(OAuthGrantType.AUTHORIZATION_CODE),
+                Set.of("ops:broker:read"), Set.of("http://127.0.0.1:8765/oauth/callback"), Set.of())))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("public client is restricted to Ops");
+    }
+
+    @Test
     void registersMachineClientUnderResolvedAppId() {
         ApplicationRepository apps = mock(ApplicationRepository.class);
         OAuthClientRepository clients = mock(OAuthClientRepository.class);
@@ -293,7 +322,7 @@ class OAuthClientAppServiceTest {
                 "imAdmin",
                 2001L,
                 "Audit Producer",
-                "im-audit-producer",
+                "im-audit-producer", OAuthClientType.CONFIDENTIAL,
                 "raw-client-secret-12345",
                 Set.of(OAuthGrantType.CLIENT_CREDENTIALS),
                 Set.of("audit:ingest"),
@@ -332,7 +361,7 @@ class OAuthClientAppServiceTest {
                 "imAdmin",
                 1001L,
                 "IM Admin Browser",
-                "im-admin-web",
+                "im-admin-web", OAuthClientType.CONFIDENTIAL,
                 "raw-client-secret-12345",
                 Set.of(OAuthGrantType.AUTHORIZATION_CODE, OAuthGrantType.REFRESH_TOKEN),
                 Set.of("openid", "profile"),

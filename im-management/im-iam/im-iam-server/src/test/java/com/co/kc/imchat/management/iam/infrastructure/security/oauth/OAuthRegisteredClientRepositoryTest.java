@@ -1,5 +1,7 @@
 package com.co.kc.imchat.management.iam.infrastructure.security.oauth;
 
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientType;
+
 import com.co.kc.imchat.management.iam.application.OAuthClientAppService;
 import com.co.kc.imchat.management.iam.domain.application.model.AppId;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClient;
@@ -77,7 +79,7 @@ class OAuthRegisteredClientRepositoryTest {
         when(appService.queryRegistration(
                 new OAuthClientRegistrationQuery(client.getClientId().value())))
                 .thenReturn(Optional.of(new OAuthClientRegistrationDTO(
-                        client.getClientId().value(),
+                        client.getClientId().value(), OAuthClientType.CONFIDENTIAL,
                         client.getClientSecret().value(),
                         client.getName().value(),
                         client.getGrantTypes(),

@@ -5,6 +5,7 @@ import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthScope;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthGrantType;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClient;
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientSecret;
 import com.co.kc.imchat.management.iam.domain.application.model.RedirectUri;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.entity.DbIamOAuthClient;
 import org.mapstruct.Mapper;
@@ -26,7 +27,7 @@ public interface OAuthClientDomainTransformer {
     @Mapping(target = "appId.value", source = "appId")
     @Mapping(target = "audienceAppId.value", source = "audienceAppId")
     @Mapping(target = "name.value", source = "name")
-    @Mapping(target = "clientSecret.value", source = "clientSecretHash")
+    @Mapping(target = "clientSecret", source = "clientSecretHash")
     OAuthClient oauthClientFieldsFrom(DbIamOAuthClient oauthClient);
 
     default OAuthClient oauthClientFrom(DbIamOAuthClient entity) {
@@ -50,6 +51,10 @@ public interface OAuthClientDomainTransformer {
     @Mapping(target = "updateTime", ignore = true)
     @Mapping(target = "isDeleted", ignore = true)
     DbIamOAuthClient dbOAuthClientFrom(OAuthClient oauthClient);
+
+    default OAuthClientSecret clientSecretFrom(String secretHash) {
+        return secretHash == null ? null : new OAuthClientSecret(secretHash);
+    }
 
     default Set<OAuthScope> scopesFrom(String scopes) {
         return Arrays.stream(scopes.split(" "))

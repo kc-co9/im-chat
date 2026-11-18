@@ -82,6 +82,12 @@ import static org.mockito.Mockito.when;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "IM_BOLT_SYNTHETIC_DATA=true",
+                "im.iam.enabled=false",
+                "im.audit.enabled=false",
+                "im.datasource.sharding.enabled=false",
+                "im.identity.snowflake.mode=STATIC",
+                "im.identity.snowflake.data-center-id=0",
+                "im.identity.snowflake.machine-id=1",
                 "im.bolt.server.host=127.0.0.1",
                 "im.dubbo.enabled=false",
                 "dubbo.enabled=false",
@@ -90,7 +96,11 @@ import static org.mockito.Mockito.when;
                 "jetcache.remote.default.type=mock",
                 "spring.autoconfigure.exclude=org.redisson.spring.starter.RedissonAutoConfigurationV2,"
                         + "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,"
-                        + "org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration",
+                        + "org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
+                        + "com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,"
+                        + "org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.nacos.config.enabled=false",
                 "spring.cloud.discovery.enabled=false"
@@ -207,6 +217,9 @@ class RealtimeMessagingE2ETest {
                 .initializers(context -> ((org.springframework.context.support.GenericApplicationContext) context).registerBean("e2eOwnedGatewayBoltServer", com.alipay.remoting.rpc.RpcServer.class,
                         () -> gatewayBoltServer, definition -> definition.setDestroyMethodName("")))
                 .run("--IM_BOLT_SYNTHETIC_DATA=true", "--jetcache.remote.default.type=mock", "--im.bolt.server.host=127.0.0.1",
+                        "--im.iam.enabled=false", "--im.audit.enabled=false", "--im.datasource.sharding.enabled=false",
+                        "--im.identity.snowflake.mode=STATIC", "--im.identity.snowflake.data-center-id=0",
+                        "--im.identity.snowflake.machine-id=2",
                         "--im.bolt.server.port=" + gatewayBoltPort, "--im.gateway.ws.port=" + webSocketPort,
                         "--im.gateway.ws.bind-host=127.0.0.1", "--im.gateway.ws.bolt.host=127.0.0.1",
                         "--im.gateway.ws.broker.allow-trusted-network-identity=true",
@@ -217,7 +230,9 @@ class RealtimeMessagingE2ETest {
                         "--spring.cloud.discovery.client.composite.enabled=false", "--im.dubbo.enabled=false", "--dubbo.enabled=false",
                         "--spring.autoconfigure.exclude=org.redisson.spring.starter.RedissonAutoConfigurationV2,"
                                 + "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,"
-                                + "org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration");
+                                + "org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration,"
+                                + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
+                                + "com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration");
         currentGatewayId = gatewayContext.getBean(GatewayInstanceIdentity.class).gatewayId();
         assertThat(gatewayContext.getBean(com.alipay.remoting.rpc.RpcClient.class))
                 .isInstanceOf(BoltControlledClient.class);

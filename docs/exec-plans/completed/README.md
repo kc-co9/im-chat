@@ -4,6 +4,10 @@ Completed plans are retained as implementation history. Move a plan here only af
 
 Completed plans:
 
+- [Broker 成员应用流程可读性](2026-11-09-broker-membership-flow-readability.md)：T1–T3 `passing`，冻结 full、真实 HA 与独立 quality Accept；原验收指纹、时间、历史 Block 和失败记录保留，群聊风险由独立设计草案跟踪。
+
+- [官方 JRaft 治理迁移与自有运维 CLI](2026-10-30-official-jraft-and-ops-cli.md)：T1–T12 `passing`；新冻结 full／真实 HA、独立完整 T11 Review、正式 quality Accept、合同回归与状态迁移 Review 均已完成；原验收时间、指纹、历史失败、旧 Revise 与 stale 保留。
+
 - [Bolt 包职责与 Broker 快照归位](2026-10-25-bolt-package-boundaries.md#attempt6-与复审-r1r52026-10-29)：Bolt 按职责拆包、Broker 快照归位及后续已批准调整完成；冻结 full attempt8 与独立 quality 复审 Accept 后归档。已知偏差与偶发失败见技术债 TD-01–TD-04，D9 延后；原验收时间、指纹、历史失败与 stale 保留。
 
 - [HA 证据时序与维护验收收尾](2026-10-24-ha-evidence-order-closeout.md)：日志采集早于场景映射，既有两文件维护及完整隔离验收通过，最终实现与正式 quality 均 Accept；保留条件 skip、原失败及非生产发布边界。

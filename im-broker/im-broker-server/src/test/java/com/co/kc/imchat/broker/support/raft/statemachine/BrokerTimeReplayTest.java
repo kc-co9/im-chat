@@ -54,7 +54,7 @@ class BrokerTimeReplayTest {
             """);
 
     @Test
-    void fixedV2LogsReplayIdenticallyAcrossIndependentMachinesAndSnapshotTail() {
+    void fixedV3LogsReplayIdenticallyAcrossIndependentMachinesAndSnapshotTail() {
         RaftBrokerClusterStateMachine first = machine();
         RaftBrokerClusterStateMachine second = machine();
         for (RaftBrokerClusterStateMachine machine : List.of(first, second)) {
@@ -123,13 +123,13 @@ class BrokerTimeReplayTest {
                 .createdAt(Instant.ofEpochMilli(1_000L))
                 .drainProgress(new DrainProgress(List.of(), EXPIRE_AT, null)).build();
         RaftBrokerClusterStateMachine machine = new RaftBrokerClusterStateMachine("cluster-fixed", state, 1000, Map.of());
-        machine.restore(new BrokerClusterSnapshot(2, "cluster-fixed", state, List.of(operation), null, Map.of()));
+        machine.restore(new BrokerClusterSnapshot(BrokerClusterSnapshot.CURRENT_FORMAT_VERSION, "cluster-fixed", state, List.of(operation), null, Map.of()));
         return machine;
     }
 
     private static byte[] envelope(String type, String payload) {
         String escaped = payload.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
-        return ("{\"formatVersion\":2,\"commandType\":\"" + type + "\",\"payload\":\"" + escaped + "\"}")
+        return ("{\"formatVersion\":3,\"commandType\":\"" + type + "\",\"payload\":\"" + escaped + "\"}")
                 .getBytes(StandardCharsets.UTF_8);
     }
 }

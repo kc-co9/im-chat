@@ -41,11 +41,11 @@ if [[ -n "$REPORTS_SINCE" ]]; then
   exit $?
 fi
 
-modules="$(ruby -rjson -e '
+modules="$(ruby -E UTF-8 -rjson -e '
   data = JSON.parse(File.read(ARGV.fetch(0)))
   puts data.fetch("applications").map { |entry| entry.fetch("module") }.uniq.join(",")
 ' "$MANIFEST")"
-application_count="$(ruby -rjson -e '
+application_count="$(ruby -E UTF-8 -rjson -e '
   puts JSON.parse(File.read(ARGV.fetch(0))).fetch("applications").length
 ' "$MANIFEST")"
 

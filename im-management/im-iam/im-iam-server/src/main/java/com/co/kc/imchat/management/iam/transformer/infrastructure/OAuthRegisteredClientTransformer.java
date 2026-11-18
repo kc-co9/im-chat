@@ -1,6 +1,7 @@
 package com.co.kc.imchat.management.iam.transformer.infrastructure;
 
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthGrantType;
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientType;
 import com.co.kc.imchat.management.iam.model.cqrs.dto.OAuthClientRegistrationDTO;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
@@ -28,13 +29,15 @@ public final class OAuthRegisteredClientTransformer {
      * 将应用层 OAuth Client 注册信息转换为 Spring 客户端。
      */
     public RegisteredClient registeredClientFrom(OAuthClientRegistrationDTO client) {
+        boolean publicClient = client.clientType() == OAuthClientType.PUBLIC;
         boolean browserClient = client.grantTypes()
                 .contains(OAuthGrantType.AUTHORIZATION_CODE);
         RegisteredClient.Builder builder = RegisteredClient.withId(client.clientId())
                 .clientId(client.clientId())
                 .clientSecret(client.encodedSecret())
                 .clientName(client.name())
-                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .clientAuthenticationMethod(publicClient ? ClientAuthenticationMethod.NONE
+                        : ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                 .clientSettings(ClientSettings.builder()
                         .requireProofKey(browserClient)
                         .requireAuthorizationConsent(false)
@@ -45,7 +48,7 @@ public final class OAuthRegisteredClientTransformer {
         client.postLogoutRedirectUris().forEach(builder::postLogoutRedirectUri);
 
         TokenSettings.Builder tokenSettings = TokenSettings.builder()
-                .accessTokenTimeToLive(ACCESS_TOKEN_TTL)
+                .accessTokenTimeToLive(publicClient ? Duration.ofMinutes(5) : ACCESS_TOKEN_TTL)
                 .accessTokenFormat(OAuth2TokenFormat.REFERENCE);
         if (browserClient) {
             tokenSettings.authorizationCodeTimeToLive(AUTHORIZATION_CODE_TTL)

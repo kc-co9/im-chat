@@ -12,14 +12,47 @@ public record CompleteLearnerSyncResult(
         String operationId,
         /* 本次处理状态，不以字符串传递共识状态。 */
         Status status,
-        /* 操作接受时的路由 epoch；尚未登记操作时为本次读取的 epoch。 */
-        long acceptedEpoch,
+        /* 操作接受或本次读取的路由 epoch；仅本地在途且未读事实时为空。 */
+        Long acceptedEpoch,
         /* 已关联操作的目标 epoch；尚未关联操作时为空。 */
         Long targetEpoch,
         /* 当前已知的 Leader 地址；未知时为空。 */
         String leaderEndpoint,
         /* 冲突、拒绝或不可用原因；没有附加说明时为空。 */
         String message) {
+
+    /** Leader generation 失效，当前执行尝试不能继续。 */
+    public static CompleteLearnerSyncResult notLeader(
+            ClusterOperationId operationId, RoutingEpoch epoch, String message) {
+        return new CompleteLearnerSyncResult(operationId.value(), Status.NOT_LEADER,
+                epoch.value(), null, null, message);
+    }
+
+    /** 当前 learner 流程无法可靠确定提交结果。 */
+    public static CompleteLearnerSyncResult unavailable(
+            ClusterOperationId operationId, RoutingEpoch epoch, String message) {
+        return new CompleteLearnerSyncResult(operationId.value(), Status.UNAVAILABLE,
+                epoch.value(), null, null, message);
+    }
+
+    /** 恢复请求不满足当前已提交事实。 */
+    public static CompleteLearnerSyncResult rejected(
+            ClusterOperationId operationId, RoutingEpoch epoch, String message) {
+        return new CompleteLearnerSyncResult(operationId.value(), Status.REJECTED,
+                epoch.value(), null, null, message);
+    }
+
+    /** 同一 operationId 已被不同内容的在途请求占用，保留本次请求的 epoch。 */
+    public static CompleteLearnerSyncResult inFlightConflict(ClusterOperationId operationId, RoutingEpoch expectedEpoch) {
+        return new CompleteLearnerSyncResult(operationId.value(), Status.REJECTED,
+                expectedEpoch.value(), null, null, "operationId is already bound to another in-flight request");
+    }
+
+    /** 相同请求仅在本地处理中，不声明已登记操作或已接受的 epoch。 */
+    public static CompleteLearnerSyncResult inProgress(ClusterOperationId operationId) {
+        return new CompleteLearnerSyncResult(operationId.value(), Status.IN_PROGRESS, null, null, null,
+                "request is in progress locally; registration is unconfirmed; retain the original operationId and query or resubmit later");
+    }
 
     /** 新请求与当前集群 epoch 冲突，不登记同步完成操作。 */
     public static CompleteLearnerSyncResult conflict(ClusterOperationId operationId, RoutingEpoch epoch) {

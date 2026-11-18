@@ -5,7 +5,6 @@ import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterTopology;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerHealthStatus;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterRevision;
-import com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerNode;
@@ -15,10 +14,8 @@ import com.co.kc.imchat.broker.domain.cluster.model.BrokerTrafficState;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,15 +27,15 @@ class BrokerHealthObservationContextTest {
     private final MembershipEndpoint endpointB = new MembershipEndpoint("BB:18120");
 
     @Test
-    void structuralEqualityIgnoresMapAndSetOrderAndPreservesSamples() {
+    void structuralEqualityIgnoresBindingMapOrderAndPreservesSamples() {
         Map<BrokerId, MembershipEndpoint> forward = new LinkedHashMap<>();
         forward.put(a, endpointA);
         forward.put(b, endpointB);
         Map<BrokerId, MembershipEndpoint> reverse = new LinkedHashMap<>();
         reverse.put(b, endpointB);
         reverse.put(a, endpointA);
-        BrokerHealthObservationContext first = context(forward, List.of(endpointA, endpointB));
-        BrokerHealthObservationContext reordered = context(reverse, List.of(endpointB, endpointA));
+        BrokerHealthObservationContext first = context(forward);
+        BrokerHealthObservationContext reordered = context(reverse);
         assertThat(reordered).isEqualTo(first).hasSameHashCodeAs(first);
 
         BrokerHealthObservationTracker tracker = new BrokerHealthObservationTracker(a, Duration.ofSeconds(10));
@@ -56,19 +53,17 @@ class BrokerHealthObservationContextTest {
 
     @Test
     void rejectsNullComponents() {
-        BrokerClusterTopology topology = context(Map.of(), List.of()).topology();
+        BrokerClusterTopology topology = context(Map.of()).topology();
         assertThatThrownBy(() -> new BrokerHealthObservationContext(null, topology))
                 .isInstanceOf(IllegalArgumentException.class).hasMessage("revision is required");
         assertThatThrownBy(() -> new BrokerHealthObservationContext(new ClusterRevision(1L), null))
                 .isInstanceOf(IllegalArgumentException.class).hasMessage("topology is required");
     }
 
-    private BrokerHealthObservationContext context(Map<BrokerId, MembershipEndpoint> endpoints,
-            List<MembershipEndpoint> voters) {
+    private BrokerHealthObservationContext context(Map<BrokerId, MembershipEndpoint> endpoints) {
         BrokerClusterTopology topology = new BrokerClusterTopology(new RoutingEpoch(1L), List.of(
                 new BrokerNode(a, new BrokerRouteEndpoint("a:18100"), BrokerMembershipRole.VOTER, BrokerTrafficState.ACTIVE),
-                new BrokerNode(b, new BrokerRouteEndpoint("b:18100"), BrokerMembershipRole.VOTER, BrokerTrafficState.ACTIVE)), endpoints,
-                new ConsensusMembership(new LinkedHashSet<>(voters), Set.of()));
+                new BrokerNode(b, new BrokerRouteEndpoint("b:18100"), BrokerMembershipRole.VOTER, BrokerTrafficState.ACTIVE)), endpoints);
         return new BrokerHealthObservationContext(new ClusterRevision(1L), topology);
     }
 }

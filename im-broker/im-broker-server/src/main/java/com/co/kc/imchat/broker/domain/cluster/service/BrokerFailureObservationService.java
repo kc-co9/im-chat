@@ -50,7 +50,7 @@ public final class BrokerFailureObservationService {
      * 调用方须另行满足这些处置条件，返回 eligible 不代表已经获准执行摘流。</p>
      *
      * @param brokerId 要判断故障证据的目标 Broker
-     * @param voterIds 当前已完成成员一致性检查的完整 voter 集合，不能仅传可达或已响应节点
+     * @param voterIds 同一 revision 已提交业务 VOTER 的完整集合，不是原生 JRaft quorum，不能仅传可达或已响应节点
      * @param observations 本轮汇集的观察记录，可为空集合；其中的元素须为合法、非空的领域对象
      * @param evaluatedAt 本次证据评估时刻，由调用方采样传入
      * @return 报告证据资格、所需票数、按 Broker ID 排序的有效报告者及不合格原因

@@ -1,8 +1,28 @@
 # Broker Architecture
 
+成员应用用例直接使用具体 `adapter.cluster.membership.BrokerMembershipExecutor`，不保留同形接口、Default实现或转发层。它拥有本机执行能力、唯一账本和线程生命周期，不负责Begin/Commit或成员资格决定。输入使用完整领域MembershipExecutionReport，确认返回MembershipConfirmationResult；SDK响应只在传输边界转换。技术准入MembershipExecutionAdmissionResult.ACCEPTED只表示投递，不表示共识应用；MembershipConfigurationResult保留原生状态、错误码和诊断。BrokerRaftAdapter同步进入原生方法，不再额外offload；following继续一次无锁采样。配置把同一实例注入角色监听、监控与AppService。
+
 `BrokerRaftAdapter` 提供本机集群查询与共识提交能力，供应用服务和调度入口使用。`adapter.cluster.consensus` 定义提交结果及状态，用于区分领域拒绝、重复、冲突及 Raft 技术失败。
 
 集群路由操作的完整生命周期由 `BrokerClusterAppService` 编排：`drain` 发起排空，`advanceDrain` 推进排空，`recoverRoutes` 推进故障摘流后的路由恢复，`forceDrain` 在显式风险确认后结束失败排空。定时入口调用对应业务方法；`forceDeactivate` 表示发起故障摘流。
+
+## 管理提示与纯拒绝边界
+
+领域实体 `MembershipOperationAttempt` 保存成员请求与身份保留事实，并判断回收资格；领域服务 `MembershipOperationService` 判定摘要冲突、在途共享及固定 4096 身份容量，已有 ID 的重试不受新身份满额限制。`MembershipOperationAttemptRepository` 由独立内存实现持有成员尝试表，领域 Attempt 绑定自有 MembershipOperationOutcome 的固定只读完成视图；没有第二张 Future 表或独立 completed 标志。统一服务在同一 monitor 内组合查找／容量／登记及条件释放，锁外通知完成；状态 Claim 区分 ACQUIRED／SHARED／CONFLICT／CAPACITY_EXCEEDED。AppService 只依赖统一服务，不再持有 Attempts 协调对象；MapStruct 将领域结果与共识边界结果双向保真映射，公开派生 Stage 不保证实例相同，取消不影响领域完成源。learner 的 `LearnerConfirmationIdentity`、`LearnerConfirmationAttempt`、`LearnerConfirmationClaim` 属于领域模型，统一领域服务 `MembershipOperationService` 的 claimLearnerConfirmation／releaseLearnerConfirmation 负责确认与恢复共用的唯一执行权和身份冲突规则，返回 ACQUIRED／IN_PROGRESS／CONFLICT 状态，不返回 CQRS 响应。领域资源库只提供原子 registerIfAbsent 与实例精确 removeIfSame；`InMemoryLearnerConfirmationAttemptRepository` 拥有唯一在途表，不保存 Future 或已提交状态。配置创建一个 MembershipOperationService Bean 并注入两张独立资源库，再注入 AppService；不共享容量或互斥范围；AppService 保留本轮局部完成信号、业务阶段和发布，Executor 保留永久预算和 generation。旧回调不能删除替换后的尝试。成员完成先按原规则释放确定未提交拒绝，再在锁外通知 Future。
+
+learner 在途表使用 `ConcurrentHashMap.putIfAbsent` 选定唯一执行者，只有登记者预留执行预算；同身份重复请求立即 IN_PROGRESS，不共享执行结果，不同内容 REJECTED。IN_PROGRESS 只表示本地占用，不证明共识登记，epochs 为空。预留失败精确移除本轮记录后直接返回不可用结果，不完成未外泄的内部信号。查询登记和精确删除不再使用应用层显式锁，Future 完成仍不持执行器锁。
+
+成员维护的未完成操作／同步 learner 判断与按成员端点查节点由 BrokerCluster 提供，节点查询返回副本；步骤查找和待确认 Permit 的完整结构扫描归 BrokerClusterOperation。MembershipOperationService 根据本机排空事实采样选择待确认步骤或最后一个本机一致的已确认步骤，拒绝任一步骤的已知矛盾；目标 voter 资格由聚合按 committed binding 判断。AppService 仍负责采样、选定后的本机结果读取以及发送前实时生命周期复验，不将采样视为授权。多种结构／事实错误同时存在时先报告结构问题；不删除顺序或唯一性检查。
+
+成员配置诊断的最近采样和 Gauge 注册由 `support.monitoring.MembershipDiagnosticMetrics` 持有。应用服务只通知比较结果或采样不可用，不保存指标字段或暴露指标 getter；维护准入仍使用本次读取与任期/revision 校验，不读取监控状态。
+
+成员操作由应用服务编排，`BrokerCluster.expectedMembership()` 统一从已提交角色和绑定端点计算期望配置，原生配置读取与诊断仍在应用服务。成员阶段执行器绑定首次准入的 generation，在 worker 消费阶段前复验；同 term stop/start 不能让旧 Begin 回调取得新代际许可。结果发布同样回到该 worker；fault/close 导致无法调度时保持 pending，不在 FSM 回调线程补发结果。
+
+Broker 初始化实际 Node 后，`BrokerRaftAdapter` 从 Runtime 读取完整 `PeerId.toString()`，在官方首次 Nacos registration 前通过 customizer 发布保留键 `raft-peer-id`。同值自定义键可保留，异值（包括空白）使装配失败；不用配置字符串代替实际 Node 身份。管理 origin 仍由显式 `management-host`／`management-port` 发布，不从 Raft 或 Bolt 地址推导。metadata 不授予 TLS 身份、committed 成员或执行权限。
+
+成员准入依次处理同 id 摘要冲突、既有在途共享、closed／永久 roleFault／总容量硬拒绝；仅剩 `roleStopped` 时，才读取 Runtime 的不可变 following 事件观察。有效且 generation 对齐时纯返回 `NOT_LEADER`，不创建 workflow、消耗永久预算、排队、pump、分配许可或调用 Node。无有效观察仍为 `UNAVAILABLE`。worker 首检及全部 generation／term／revision／许可／native 门禁保持不变，不能用 hint 授权。
+
+following 是路由观察，不证明实时角色、健康或 quorum。Runtime 在 `rolePublication` 内发布／失效；真实 listener 随后取得 executor mutex。caller 在 mutex 内只能原子无锁读取，不反向获取 `rolePublication`。角色 fault 与独立 FSM failure 均永久关闭观察，事件未消费前的延迟不能靠快照消除。事件判据与清除规则见 [im-raft README](../im-plugin/im-raft/README.md#跟随事件观察与本机身份)。
 
 ## Broker 运行概览
 
@@ -62,7 +82,7 @@ DDD 与协议机制解决的是不同维度。可以从「B2 应不应该停止�
 
 把这些角色串起来：Scheduler 触发 B1 的应用用例，应用读取 B1 本机观察、经 Peer Adapter 取回 B3 的观察，领域服务判断资格，聚合检查故障摘流意图，Raft Adapter 登记 operation；之后每个已提交命令在状态机中再次调用聚合行为。这样既不会把业务规则塞进网络回调，也不会要求纯领域对象认识 TLS、JRaft 或线程池。
 
-因此，Raft 不会替代 DDD，Gossip 也不会成为领域模型。Raft 的日志提交保证多个 Broker 对同一决定达成一致，但不保证这个决定本身符合业务规则；规则仍由聚合在状态机应用时校验。Gossip 的最终一致传播适合高频观察，但不能授权 Lease、推进 epoch 或把节点改成 `INACTIVE`。同样，`ACTIVE` 只是业务流量状态，不表示节点已经安装有效 Lease；Raft membership 的 voter 资格也不等于 ACTIVE 目标。原始 JRaft 1.4.1 的 Leader-only 成员列表 API 曾阻塞 Follower 完整已应用 membership 读取；当前本地私有候选已通过 Runtime 接入及原三项 Broker TLS HA，解除该范围内的行为阻塞。私有制品发布与可复现性仍属后续轨道；全仓验收与任务状态以 [PROGRESS](../PROGRESS.md)、[计划索引](../docs/exec-plans/active/README.md)及 Harness 当前指纹记录为准。不能把单元测试、结构整理或静态初始配置替代 HA 证明，也不能把 Gateway ACK 替代边界当作真实 Gateway E2E。
+因此，Raft 不会替代 DDD，Gossip 也不会成为领域模型。Raft 的日志提交保证多个 Broker 对同一决定达成一致，但不保证这个决定本身符合业务规则；规则仍由聚合在状态机应用时校验。Gossip 的最终一致传播适合高频观察，但不能授权 Lease、推进 epoch 或把节点改成 `INACTIVE`。同样，`ACTIVE` 只是业务流量状态，不表示节点已经安装有效 Lease；Raft membership 的 voter 资格也不等于 ACTIVE 目标。当前使用官方 JRaft 1.4.1，成员列表仅为 Leader 观察，不提供 Follower applied 配置。权威观察资格来自已提交业务状态；当前验证与任务状态以 [PROGRESS](../PROGRESS.md) 和[计划索引](../docs/exec-plans/active/README.md)为准，不用历史局部验证代替当前输入验收。
 
 ### 健康观察值对象的身份与时间
 
@@ -70,23 +90,23 @@ DDD 与协议机制解决的是不同维度。可以从「B2 应不应该停止�
 
 ### 观察背景与冷却的领域状态
 
-`domain/cluster/model/BrokerObservationState` 是本机观察背景与冷却进度的有状态领域对象；`BrokerClusterAppService` 持有唯一实例，通过 `advance` 更新事实并判断冷却是否满足，通过 `invalidate` 作废计时；冷却资格只由此状态对象判断，不再暴露无生产调用方的耗时查询。首次观察、Leader/任期/拓扑变化、成员不一致及恢复、主动失效或单调时间回退时重新计时；字段为 topology、leaderTerm、cooldownValid、cooldownAt、observedAt 及构造时固定的 cooldown，时间点使用 MonotonicTimestamp。advance 只在本机 Leader 任期可读且 voter 一致性检查通过后接收 topology、leaderTerm、observedAt 三项事实；空 voters 时应用先 invalidate 再返回。非 Leader 时同样直接 invalidate，不为冷却读取 membership 或构造 topology。它不读取时钟、配置或 Adapter，不保存健康样本或判断故障多数，不进入 Raft 快照，重启后重新冷却。应用层继续拥有事实读取、时间采样、轮次互斥与异步重验，领域服务 evaluate 只接收目标、当前 voter、观察集合、评估时刻四项事实，判断多数、freshness及稳定窗口，不再注入或重复判断冷却。eligible 仅表示报告证据合格；应用必须先通过 State.advance，再在汇合后重验任期/角色/Context，最终还需聚合与共识接受。状态对象的同步方法不替代外部事实重验或 quorum proof。
+`domain/cluster/model/BrokerObservationState` 是本机观察背景与冷却进度的有状态领域对象；`BrokerClusterAppService` 持有唯一实例，通过 `advance` 更新事实并判断冷却是否满足，通过 `invalidate` 作废计时；冷却资格只由此状态对象判断，不再暴露无生产调用方的耗时查询。首次观察、Leader/任期/业务拓扑变化、观察资格失效及恢复、主动失效或单调时间回退时重新计时；字段为 topology、leaderTerm、cooldownValid、cooldownAt、observedAt 及构造时固定的 cooldown，时间点使用 MonotonicTimestamp。advance 只在本机 Leader 任期可读且 业务 VOTER 观察资格检查通过后接收 topology、leaderTerm、observedAt 三项事实；空 voters 时应用先 invalidate 再返回。非 Leader 时同样直接 invalidate，不为冷却读取 membership 或构造 topology。它不读取时钟、配置或 Adapter，不保存健康样本或判断故障多数，不进入 Raft 快照，重启后重新冷却。应用层继续拥有事实读取、时间采样、轮次互斥与异步重验，领域服务 evaluate 只接收目标、当前 voter、观察集合、评估时刻四项事实，判断多数、freshness及稳定窗口，不再注入或重复判断冷却。eligible 仅表示报告证据合格；应用必须先通过 State.advance，再在汇合后重验任期/角色/Context，最终还需聚合与共识接受。状态对象的同步方法不替代外部事实重验或 quorum proof。
 
 ### 异步健康观察的两次 Context 检查
 
-健康探测是异步的，不能在发出请求时假定拓扑仍未变化。每轮开始时构造结构化 Context：`revision` 和 `BrokerClusterTopology`；ACTIVE 目标从拓扑派生。它们按 record 的结构相等比较；不拼接字符串签名，也不依赖 `Topology.toString()` 排序。目标自身的报告不计入有效故障票；多数阈值始终按完整当前 voter 集合计算，不因目标自身或报告不可达而缩小分母。冷却判断只比较拓扑、term、Leader 和一致性状态，不把每个 revision 变化都当成拓扑变化；Tracker 的采样 Context 另含 revision，因此能拒绝旧 revision 的迟到样本。
+健康探测是异步的，不能在发出请求时假定拓扑仍未变化。每轮开始时构造结构化 Context：`revision` 和 `BrokerClusterTopology`；ACTIVE 目标从拓扑派生。它们按 record 的结构相等比较；不拼接字符串签名，也不依赖 `Topology.toString()` 排序。目标自身的报告不计入有效故障票；多数阈值始终按完整当前 voter 集合计算，不因目标自身或报告不可达而缩小分母。冷却判断只比较业务拓扑、term、Leader 和观察资格状态，不把每个 revision 变化都当成拓扑变化；Tracker 的采样 Context 另含 revision，因此能拒绝旧 revision 的迟到样本。
 
 ```mermaid
 sequenceDiagram
     participant App as Application
     participant Tracker as Health Tracker
     participant Peer as Probe Peer
-    App->>App: 读取 committed cluster、membership、targets
+    App->>App: 读取 committed cluster 与 ACTIVE targets
     App->>App: 构造 Context(revision, topology)
     App->>Tracker: synchronize(context)
     App->>Peer: 异步 probe
     Peer-->>App: 返回探测状态
-    App->>App: 重读 cluster/membership 并比较发起 Context
+    App->>App: 重读 committed cluster 并比较发起 Context
     App->>Tracker: record(expected Context, status)
     Tracker->>Tracker: 同步锁内再次比较当前 Context
     Tracker-->>App: 匹配则写入，不匹配则丢弃
@@ -287,7 +307,7 @@ Registry 已发生事实位于 `model/cqrs/event`，由基础设施中的 Spring
 
 GossipSyncTracker 位于 `support/gossip`，只保留有界、非权威、可选的诊断历史与累计摘要，不参与业务决策，不拥有网络、运行资源或生命周期，不依赖 application、interfaces、infrastructure、配置、Adapter 或具体网络 client；领域不得依赖 support。运行态观察存储与合并仍由 `adapter/gossip/BrokerGossipAdapter` 负责。
 
-Broker 自动健康观察另行批准精确 `support.health`（不允许后代包），当前具体实现为 `BrokerHealthObservationTracker`，允许 Tracker 后缀，不建 Repository、port/实现对或兼容壳。它只维护按当前目标裁剪的有界采样 Context（`revision`、`BrokerClusterTopology`，目标从拓扑派生）、freshness 与快照；观察非权威，但属于安全决策输入，不是可选诊断。成员一致性由聚合 `BrokerCluster.findConsistentVoters` 判定，最新事实、多数与稳定窗口由领域服务 `BrokerFailureObservationService.evaluate` 判定，应用层编排。允许依赖领域 model、common 和 JDK 时间/集合；禁止 application、interfaces、infrastructure、config/configuration、lifecycle、Adapter、领域 service/repository、Spring、client/network、plugin 及运行资源拥有，domain 不得反向依赖 support。装配归配置、入口归 Handler/Application；此例外不放宽 Gossip、Monitoring 或其他 support。精确包和稳定依赖由生产/fixture 共用架构规则保护；有界性、无决策及实际完成回调语义由聚焦测试和 Review 保护，待可靠资源/决策数据流分析后自动化。
+Broker 自动健康观察另行批准精确 `support.health`（不允许后代包），当前具体实现为 `BrokerHealthObservationTracker`，允许 Tracker 后缀，不建 Repository、port/实现对或兼容壳。它只维护按当前目标裁剪的有界采样 Context（`revision`、`BrokerClusterTopology`，目标从拓扑派生）、freshness 与快照；观察非权威，但属于安全决策输入，不是可选诊断。观察资格由聚合 `BrokerCluster.findObservers` 按已提交业务角色与端点绑定判定，最新事实、多数与稳定窗口由领域服务 `BrokerFailureObservationService.evaluate` 判定，应用层编排。允许依赖领域 model、common 和 JDK 时间/集合；禁止 application、interfaces、infrastructure、config/configuration、lifecycle、Adapter、领域 service/repository、Spring、client/network、plugin 及运行资源拥有，domain 不得反向依赖 support。装配归配置、入口归 Handler/Application；此例外不放宽 Gossip、Monitoring 或其他 support。精确包和稳定依赖由生产/fixture 共用架构规则保护；有界性、无决策及实际完成回调语义由聚焦测试和 Review 保护，待可靠资源/决策数据流分析后自动化。
 
 跨层 CQRS 模型位于顶层 `model`，HTTP Request/Response 位于 `model/io`。
 
@@ -388,7 +408,7 @@ sequenceDiagram
     App->>App: 校验 expectedRevision 与操作幂等键
     App->>Repository: Begin 登记操作必要事实
     App->>Repository: 执行具体 membership 变更
-    Repository->>Membership: addLearner / addPeer / removePeer
+    Repository->>Membership: persisted full target / execution permit / changeConfiguration
     Membership-->>Repository: committed membership result
     alt membership 已提交
         App->>Repository: Commit 已登记操作
@@ -483,7 +503,7 @@ flowchart TD
 
 ### 自动处置的资格与授权顺序
 
-当前 voter 必须由实际 Raft membership endpoint 与已提交 Broker 角色/绑定一致解析；未终态成员操作或不一致使新故障操作暂停。`BrokerObservationState.advance` 先判断本机冷却，`BrokerFailureObservationService.evaluate` 只判断报告证据，二者都不直接授权拓扑修改。
+当前观察者来自同一 revision 的完整已提交业务 VOTER 集合，并校验角色与端点绑定，不与实际 Raft membership 求交；未终态成员操作、LEARNER_SYNCING 或业务绑定无效使新故障操作暂停。`BrokerObservationState.advance` 先判断本机冷却，`BrokerFailureObservationService.evaluate` 只判断报告证据，二者都不直接授权拓扑修改。
 
 | 阶段 | 依据与边界 |
 |---|---|
@@ -506,9 +526,9 @@ probe/report 不传输或校验绝对请求期限，允许晚到只读查询；�
 
 PROBE_BROKER/FETCH_BROKER_HEALTH_REPORT 使用严格观察准入：必须是真实 TLS 握手成功且证书 namespace 中唯一的 Broker URI SAN；Subject、首URI和可信网络回退不能贡献票。对端调用在同一池内连接核验响应身份，预算覆盖 serialization/acquire/TLS/RPC/decode 的结果接受性，不能承诺同步 DNS/共享连接 future 在固定墙钟期限返回。LOCAL预算耗尽、认证/协议/队列拒绝均为UNKNOWN；只有可归因的传输失败计入不可达。专用有界观察执行器不占 fence/Lease 队列，阻塞时自动观察可安全暂停，不创建额外连接池。未启用可证明的双向 TLS、缺少唯一 Broker URI SAN 或握手身份不明时，结果只能是 `UNKNOWN`，不能贡献故障票；这不代表普通本地开发链路不能启动。
 
-成员集合的相等性不依赖排列；本机观察 Context 直接比较 `revision` 和 `BrokerClusterTopology` 的结构内容，不需要为相等比较构造文本签名或另行排序。Map/Set 按内容比较，BrokerCluster 已排序的节点 List 仍保持原语义；Topology 构造和访问隔离可变 BrokerNode 副本。冷却拓扑比较仍不包含 revision，采样 Context 则包含 revision；真实成员变化仍使旧观察失效。无效交叠配置构造失败，不继续采样或自动摘流。
+成员集合的相等性不依赖排列；本机观察 Context 直接比较 `revision` 和 `BrokerClusterTopology` 的结构内容，不需要为相等比较构造文本签名或另行排序。Map/Set 按内容比较，BrokerCluster 已排序的节点 List 仍保持原语义；Topology 构造和访问隔离可变 BrokerNode 副本。冷却拓扑比较仍不包含 revision，采样 Context 则包含 revision；已提交业务角色或端点绑定变化使旧观察失效，原生成员变化不参与 Context 比较。原生成员容器的交叠校验仍保留在维护读取边界，不影响观察。
 
-内部报告使用 enum/Duration；SDK 年龄毫秒向上取整，失败持续时长向下取整，不跨节点比较 nanoTime。启动、换届、拓扑或实际 membership 变化、一致性恢复后重新冷却；冷却只约束新发起。自动用例使用稳定的 cluster/target/epoch 身份，复用 failure Intent/Begin/fence/授权链，不伪造人工 force 原因，不删除 voter，也不自动激活恢复节点。初次人工/自动故障推进与恢复 Scheduler 共用实际完成闸门；早期 fencing 按未终态 operation 查找，不要求当前 epoch 已等于 resultEpoch。
+内部报告使用 enum/Duration；SDK 年龄毫秒向上取整，失败持续时长向下取整，不跨节点比较 nanoTime。启动、换届、业务拓扑变化或观察资格恢复后重新冷却；冷却只约束新发起。自动用例使用稳定的 cluster/target/epoch 身份，复用 failure Intent/Begin/fence/授权链，不伪造人工 force 原因，不删除 voter，也不自动激活恢复节点。初次人工/自动故障推进与恢复 Scheduler 共用实际完成闸门；早期 fencing 按未终态 operation 查找，不要求当前 epoch 已等于 resultEpoch。
 
 
 FAIL_BROKER 不能通过通用阶段命令直接进入 VERIFYING/SUCCEEDED/DEGRADED；正常证据提交已进入验证阶段时直接提交完成，降级保留先保存证据、再登记原因、最后完成的恢复边界。
@@ -642,11 +662,13 @@ Raft 时间命令携带 `Instant changedAt`，由具名提交入口采样或复�
 
 ### membership 与 BrokerRoutingState
 
-当前本地私有候选通过 `RaftRuntime.membership()` 调用 `Node.getAppliedConfiguration(commandTimeoutMillis)`，读取 Leader、Follower 或 learner 本机已应用的 stable voters/learners，而非调用仅限 Leader 的成员列表 API。joint 配置失败关闭，不扁平化 old/new，也不回退初始配置或缓存；超时和中断保留 cause，中断恢复线程标志。该同步访问器禁止在 FSM callback 及其同步 continuation 内调用，需要读取成员的完成链必须明确切换线程边界，不能移除重入守卫。读取不提供 quorum/ReadIndex 证明，也不保证与另一次业务状态读取构成原子快照。
+当前使用官方 `com.alipay.sofa:jraft-core:1.4.1`。`readLeaderMembershipConfiguration` 使用 Leader-only `listPeers`／`listLearners`；两次读取非原子，不是 stable applied 配置、ReadIndex 或许可排空证明。`ConsensusMembership` 仍是业务完整目标与诊断的不可变 Set 模型，角色交叠构造拒绝；不再通过私有 `RaftMembership` 映射。
 
-本地候选已通过访问器 16 项、Runtime 22 项、Broker 聚焦 87 项及原三项真实 Broker TLS HA；后者日志为 `/tmp/follower-ha-three-final.log`，Gateway ACK 仍为替代边界，不是真实 Gateway E2E。本地 Follower 行为阻塞已解除，不等于生产采用通过：根 POM 的私有坐标仅在 `/tmp/jraft-artifact-m2` 安装，Registry 尚未发布，双构建与输入锁未完成。来源、复现性及发布边界见[私有制品设计](../docs/design-docs/2026-10-16-jraft-applied-membership-patched-artifact-design.md)，验收与计划状态通过[计划索引](../docs/exec-plans/active/README.md)定位，不以历史局部验证代替当前指纹证据。
+learner 显式确认只将 Leader learners 观察作为前置检查；保留已提交身份、绑定端点、expectedEpoch、同任期 quorum ReadIndex、认证目标 applied index 不小于该 index、Begin revision CAS 和 acceptedRevision 合同。新请求在有界 worker 上取证及复验角色／fault／close，历史 Begin 重放不重新取证或创建许可；业务路由状态不从列表观察推导。
 
-membership 是 Raft 的共识成员资格，`BrokerRoutingState` 是业务流量状态，两者正交。Runtime 的 `RaftMembership` 为按端点排序的不可变 String 列表技术快照；`BrokerRaftAdapter.getConsensusMembership` 通过 Transformer 一次转换为 Broker 领域 `ConsensusMembership`，元素为 common 的 `MembershipEndpoint`。领域容器的 voter/learner 为不可变 Set，同角色重复端点在转换时归一化，交叠在构造时拒绝；应用和准入直接把领域容器交给 `BrokerCluster.findConsistentVoters`，由聚合对照自身操作、角色和绑定校验，一致返回 voter BrokerId，不一致返回空集合；不将 RaftMembership/plugin 引入 domain。成员变更的 Broker 结果契约由 Adapter 定义。
+成员执行器位于 `adapter.cluster.membership`，独立拥有 worker、角色监听与许可／learner 尝试共享永久预算。`BrokerMembershipAppService` 通过领域 `MembershipOperationService` 和独立内存资源库管理在途 learner 请求；领域 `LearnerConfirmationAttempt` 只保存身份，不保存 Command、Future 或 CQRS 响应。相同在途请求立即返回 IN_PROGRESS，不同内容立即拒绝；执行者完成时精确移除本轮记录，再锁外通知局部 Future。完成后不缓存拒绝、重放或冲突结果，新请求重新准入并读取已提交 operation，身份一致的历史成功或未完成确认均直接返回 DUPLICATE 和原 epochs，不推进历史操作；DUPLICATE 表示已登记，终态由 operation 查询区分。现有 Scheduler 调用独立 learner resume 路径，在 worker 重读最新阶段：PENDING 沿用登记事实推进，RAFT_COMMITTED 只补终态，不回调确认入口或重取证。新确认的 Begin 返回 DUPLICATE 不接管恢复。确认与恢复共用在途互斥，不共享响应；确认先占表时恢复留待后续扫描，不承诺持续重发下的有界完成。未提交的拒绝允许下一轮重新检查；每次新尝试仍消耗永久预算，移除本地记录不归还预算。执行器返回绑定首次 generation 的标准 `Executor`，以永久计数和待执行队列维护预算与单 pending 约束，不保存历史槽位对象或业务结果。应用服务通过 CompletionStage 链编排，最终发布任务消费时校验代际，之后的角色切换不撤销已选结果。Future 在应用锁和执行器锁之外完成；发送结果同样在锁内固定完成源及结果、锁外通知。已准入成员 continuation 的待执行队列独立限制为 4096，永久槽耗尽不阻断其推进和收尾；新操作仍按永久槽及队列容量拒绝。fault/close 仍保留原有可能未完成的安全边界。
+
+观察应用和准入调用 `BrokerCluster.findObservers()`，只使用同一 revision 已提交业务状态中的完整 VOTER 集合，校验角色与端点绑定；存在未终态成员操作或 LEARNER_SYNCING、绑定缺失或 DISCOVERED 错绑时返回空集合。`BrokerClusterTopology` 与观察 Context 不含实际原生成员配置，原生配置漂移或读取失败不重置观察样本和冷却。业务观察多数始终按完整业务 VOTER 集合计算，目标自报不计票，报告缺失不缩小分母；原生 JRaft quorum 独立负责日志提交和同任期 ReadIndex 证明。观察仍保留完整 MTLS 身份绑定、revision/epoch 前后重验；Lease、fence、quarantine 与消息语义不变，不将 Plugin 或 principal 类型引入 domain。成员变更的 Broker 结果契约由 Adapter 定义。
 
 ```mermaid
 stateDiagram-v2
@@ -753,7 +775,7 @@ getClusterSnapshot 返回分离的本机已应用聚合快照，不隐式提供�
 - beginOperation 提交 Begin，登记意图和 operation 元数据，不修改节点。
 - commitOperation 与 Begin 成对，按已登记事实改变节点集合、成员角色或流量状态。Commit 不直接执行 Raft membership，也不表示 operation 成功终态。
 - Begin 与成功 Commit 各推进一次 revision；Commit 采用冻结 resultEpoch，重复 Commit 不推进 revision。
-- commitRoutingFence 提交 fence 日志，关闭旧 epoch 的新 Lease grant，不会自动撤销远端 Broker 已安装的 Lease，也不表示远端 Broker 已确认隔离。成员拒绝/完成由 failMembershipOperation/completeMembershipOperation 提交，载荷转换归 Raft Transformer。
+- commitRoutingFence 提交 fence 日志，关闭旧 epoch 的新 Lease grant，不会自动撤销远端 Broker 已安装的 Lease，也不表示远端 Broker 已确认隔离。原生成员结果通过许可排空确认持久化，全部步骤成功排空后才以当前 revision 提交业务拓扑；已提交成员操作由 completeMembershipOperation 写入成功终态，载荷转换归 Raft Transformer。
 
 acceptedEpoch 是接受时路由 epoch；resultEpoch 在 Begin 登记时冻结，表示应用后的 epoch，而非已经生效。路由集合未改变时两者相同。操作 JSON 使用 resultEpoch，CQRS 响应 targetEpoch 在 Transformer 边界映射。QuorumReadNonce 表达读取上下文，可复用 prepare nonce 或操作标识，独立读取使用新标识。
 
@@ -852,7 +874,7 @@ BrokerRaftAdapter 唯一拥有 RaftRuntime 及生命周期，注入 BrokerCluste
 
 RaftBrokerClusterStateMachine 实现类型化 RaftStateHandler，接收已解码命令、调用领域并恢复快照。snapshotState 返回完整快照投影，字节 snapshot 在与 Lease 共用的同步边界内编码。decode/apply 异常关闭状态机，拒绝两个 ReadIndex 入口及在途证明，不保证回滚部分内存修改。关闭后从有效快照/日志重建，不能跳过失败日志。
 
-日志命令与快照均使用 v2，只接受版本 2，明确拒绝 v1 及其他不支持的格式版本，不提供字段别名、旧格式兼容或混合格式重放。不兼容的数据目录必须停止节点并保全原目录后，显式换用新目录；程序不自动迁移或删除数据，任何数据删除须另行确认。有业务状态的目录必须保全恢复与审计证据，不能直接删除。
+日志命令与快照均使用 v3，只接受版本 3，明确拒绝 v1、v2 及其他不支持的格式版本，不提供字段别名、旧格式兼容或混合格式重放。不兼容的数据目录必须停止节点并保全原目录后，显式换用新目录；程序不自动迁移或删除数据，任何数据删除须另行确认。有业务状态的目录必须保全恢复与审计证据，不能直接删除。
 
 support.raft 是 Broker 专属技术接入边界，仅包含 codec、model、statemachine 三个精确职责包，不包含后代包。它们依赖领域、命令、结果、转换器和 Raft SPI，不依赖应用编排、入口、运行配置/生命周期、Runtime 或网络 client；domain 不反向依赖 support.raft。
 

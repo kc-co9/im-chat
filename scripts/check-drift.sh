@@ -65,7 +65,7 @@ tracked_generated="$(git ls-files | rg '(^|/)(target|node_modules|dist|\.idea)(/
 report_matches "Generated output or local metadata is tracked" "$tracked_generated"
 
 # 持久化基础契约：技术主键、业务 ID 和 version 的职责必须分离；公共 Service 不改变普通 MyBatis-Plus 更新结果语义。
-persistence_contract_violations="$(ruby -e '
+persistence_contract_violations="$(ruby -E UTF-8 -e '
   base_entity = "im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseEntity.java"
   base_service = "im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseMybatisService.java"
   if File.file?(base_entity)
@@ -95,8 +95,12 @@ report_matches "Test doubles must not live in production source sets" "$producti
 test_console_output="$(rg -n --glob '**/src/test/**/*.java' '(System\.(out|err)\.|printStackTrace\()' . || true)"
 report_matches "Tests must use assertions instead of console output" "$test_console_output"
 
-production_console_output="$(rg -n --glob '**/src/main/java/**/*.java' '(System\.(out|err)\.|printStackTrace\()' . || true)"
-report_matches "Production code must use the project logger instead of console output" "$production_console_output"
+production_stack_traces="$(rg -n --glob '**/src/main/java/**/*.java' 'printStackTrace\(' . || true)"
+report_matches "Production code must not print stack traces directly" "$production_stack_traces"
+
+# 仅批准的独立 CLI 生产根目录以标准流提供交互协议；服务诊断继续使用统一 Logger。
+production_console_output="$(rg -n --glob '**/src/main/java/**/*.java' --glob '!/im-management/im-ops-cli/src/main/java/**' 'System\.(out|err)\.' . || true)"
+report_matches "Production services must use the project logger instead of console output" "$production_console_output"
 
 manual_object_mapper="$(rg -n --glob '**/src/main/java/**/*.java' 'new[[:space:]]+ObjectMapper[[:space:]]*\(' . --glob '!im-common/src/main/java/com/co/kc/imchat/common/utils/JsonUtils.java' || true)"
 report_matches "Production code must use JsonUtils instead of creating ObjectMapper" "$manual_object_mapper"
@@ -147,7 +151,7 @@ report_matches "Required Harness documentation is missing" "$required_docs"
 # Feature catalog 只保存稳定覆盖关系；当前运行结果由 revision-bound report 维护。
 feature_catalog_violations=""
 if [[ -f docs/product-specs/FEATURES.md ]]; then
-  feature_catalog_violations="$(ruby -e '
+  feature_catalog_violations="$(ruby -E UTF-8 -e '# encoding: UTF-8
     required = ["ID", "Owner", "可观察行为", "验证入口", "覆盖状态", "证据边界"]
     allowed = %w[uncovered partial covered blocked]
     lines = File.readlines("docs/product-specs/FEATURES.md", encoding: "UTF-8")
@@ -218,7 +222,7 @@ fi
 report_matches "Active execution plan structure is incomplete" "$active_plan_structure"
 
 # 按 Markdown 表头定位任务状态列，只约束稳定枚举；目标、范围和证据内容仍由 Review 判断。
-invalid_plan_states="$(ruby -e '
+invalid_plan_states="$(ruby -E UTF-8 -e '# encoding: UTF-8
   allowed = %w[not_started active blocked passing]
   Dir.glob("docs/exec-plans/active/*.md").sort.each do |file|
     next if File.basename(file) == "README.md"
@@ -252,7 +256,7 @@ invalid_plan_states="$(ruby -e '
 report_matches "Active execution plan task state is invalid" "$invalid_plan_states"
 
 # 每个状态表任务必须有可勾选的详细步骤；passing 表示该任务的步骤已经全部完成。
-invalid_plan_details="$(ruby -e '
+invalid_plan_details="$(ruby -E UTF-8 -e '# encoding: UTF-8
   Dir.glob("docs/exec-plans/active/*.md").sort.each do |file|
     next if File.basename(file) == "README.md"
     lines = File.readlines(file, encoding: "UTF-8")
@@ -328,7 +332,7 @@ invalid_plan_details="$(ruby -e '
 report_matches "Active execution plan task detail is incomplete" "$invalid_plan_details"
 
 # Active plan 必须指向一个实际存在的设计或产品规格，避免实现决策只留在会话历史中。
-invalid_plan_fact_sources="$(ruby -e '
+invalid_plan_fact_sources="$(ruby -E UTF-8 -e '# encoding: UTF-8
   Dir.glob("docs/exec-plans/active/*.md").sort.each do |file|
     next if File.basename(file) == "README.md"
     lines = File.readlines(file, encoding: "UTF-8")
@@ -373,7 +377,7 @@ report_matches "PROGRESS.md current-work index is stale" "$progress_drift"
 legacy_docs="$([[ -e docs/superpowers ]] && printf '%s\n' docs/superpowers || true)"
 report_matches "Legacy documentation directories must not be reintroduced" "$legacy_docs"
 
-broken_links="$(ruby -e '
+broken_links="$(ruby -E UTF-8 -e '# encoding: UTF-8
   root = Dir.pwd
   begin
     git_output = IO.popen(["git", "ls-files", "-z", "--", "*.md"], &:read)

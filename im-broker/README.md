@@ -6,6 +6,8 @@
 
 Broker 不处理消息领域业务，不保存历史消息，也不持有 Gateway 的 Netty Channel。跨模块拓扑与一致性边界见 [Broker Architecture](ARCHITECTURE.md)，服务端配置和诊断入口见 [Broker Server README](im-broker-server/README.md)，调用契约见 [Broker SDK README](im-broker-sdk/README.md)。
 
+管理成员写可以先到 Follower；仅健康事件观察有效且准入无硬拒绝时，返回不创建工作流的 `NOT_LEADER`。Ops 按完整 PeerId 与可信管理 origin 配对后最多跟随一次；这不授予 Leader 或成员资格，不改变 worker 和 native 复验。注册顺序、故障失效及锁边界见 [Architecture](ARCHITECTURE.md#管理提示与纯拒绝边界)。
+
 ## 阅读路线
 
 首次接触实时链路，先沿下面的三 Broker 示例理解消息去向，再读本页的状态分工与拒绝重试。需要启动或排障时转到 [Server README](im-broker-server/README.md#构建与启动)；接入调用时读 [SDK README](im-broker-sdk/README.md#接入顺序)；修改规则或查找状态所有者时读 [Architecture](ARCHITECTURE.md#ddd-模型与边界)。
@@ -136,7 +138,7 @@ Gateway 确认与恢复证据持久化到 Raft，Leader 切换后可继续。优
 
 ### 自动故障观察
 
-每个当前 voter 主动探测其他 ACTIVE Broker，Leader 拉取本轮 voter 报告并合并本机采样。默认连续不可达 30 秒、报告仍新鲜且 60 秒冷却结束，才可能发起 `FAIL_BROKER`；目标自报不计票，不可达 reporter 不会缩小多数分母。实际 Raft 成员与 Broker 角色或端点绑定不一致时暂停新发起，恢复节点不自动 ACTIVE，摘流也不删除 Raft 成员。
+每个当前 voter 主动探测其他 ACTIVE Broker，Leader 拉取本轮 voter 报告并合并本机采样。默认连续不可达 30 秒、报告仍新鲜且 60 秒冷却结束，才可能发起 `FAIL_BROKER`；目标自报不计票，不可达 reporter 不会缩小多数分母。观察资格只取同一 revision 的完整已提交业务 VOTER 集合；未终态成员操作、LEARNER_SYNCING 或业务角色与端点绑定无效时暂停新发起，实际 Raft 配置漂移只阻止新的成员维护，不阻止自动路由接管；恢复节点不自动 ACTIVE，摘流也不删除 Raft 成员。
 
 只有可信身份下可归因于传输的失败计为 UNHEALTHY；本机预算、身份、协议和队列问题是 UNKNOWN。默认明文开发链路可以启动，但不能产生独立故障票。较慢轮次仍须通过报告新鲜度、最终同任期 quorum 和 Context 重验；观察证据不替代 fencing 的独立证明。配置、时间取舍和排障见 [Server 健康观察](im-broker-server/README.md#自动故障观察配置)。
 
@@ -144,7 +146,7 @@ Gateway 确认与恢复证据持久化到 Raft，Leader 切换后可继续。优
 
 Broker 内部用 `Instant` 表达绝对时刻、`Duration` 表达运行时长。SDK 的数字时间以 Unix epoch milliseconds 传递：请求期限为 `expireAtMs`，Gateway 分片/整轮 ACK 的更新期限为 `updateExpireAtMs`，排空 cleanup 的旧事件期限为 `oldEventExpireAtMs`；背压响应 `retryAfterMs` 是毫秒时长，不是绝对时刻。已有 SDK `Instant` 观察契约和 Lease 单调纳秒字段保持各自类型。
 
-管理 HTTP 的绝对时间为 `xxxAtMs`，耗时与运行时长为 `durationMs/uptimeMs`。Java Response 使用 Long，JSON 使用十进制字符串，可空时间为 null。Broker、SDK、Gateway 和 Ops 必须按同一契约部署，不支持旧字段别名或混合版本；Raft 日志和快照使用 v2，拒绝 v1，程序不删除数据。配置与数据目录操作见 [Server README](im-broker-server/README.md)，内部转换和重放边界见 [Broker Architecture](ARCHITECTURE.md)。
+管理 HTTP 的绝对时间为 `xxxAtMs`，耗时与运行时长为 `durationMs/uptimeMs`。Java Response 使用 Long，JSON 使用十进制字符串，可空时间为 null。Broker、SDK、Gateway 和 Ops 必须按同一契约部署，不支持旧字段别名或混合版本；Raft 日志和快照仅接受 v3，拒绝 v1、v2 及其他不支持的格式版本，程序不自动迁移、回退或删除数据。配置与数据目录操作见 [Server README](im-broker-server/README.md)，内部转换和重放边界见 [Broker Architecture](ARCHITECTURE.md)。
 
 ## RPC 边界
 
@@ -177,3 +179,5 @@ Leader 定时恢复已登记的成员变更、推进排空和故障恢复，并�
 ```bash
 mvn -q -pl im-broker/im-broker-sdk,im-broker/im-broker-server -am test
 ```
+
+官方 JRaft 依赖为 `com.alipay.sofa:jraft-core:1.4.1`，私有 applied-membership 配方已退役。Leader 列表观察非原子且不证明 applied 配置；业务观察资格来自已提交状态，learner 确认仍需身份、epoch/revision、同任期 ReadIndex 与认证目标应用进度证据。原本地数据与 Maven 制品不自动清理，当前验收状态以 active plan 为准。

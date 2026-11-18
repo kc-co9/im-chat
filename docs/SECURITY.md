@@ -19,7 +19,7 @@
   Broker 身份；稳定 delivery/operation 标识负责防止 timeout、丢响应和跨 epoch 重试重复执行。
 - IAM 保护的 RPC 只通过 `im-dubbo` 保留 Attachment 携带 Access Token。Provider 必须在业务 Adapter 前完成认证与 Scope 检查；认证身份来自 Spring Security，不来自 RPC Params。Filter 每次调用后恢复 Attachment 和安全上下文，不记录 Token 值。
 - Broker management HTTP 只服务运维。默认监听 loopback，只能向 `im-ops` 所在运维网络开放；浏览器必须通过 `im-ops` 访问。写请求额外校验 Ops 服务凭证、`im-broker-management` audience 和操作 scope，管理员身份与 Audit 由 Ops 边界负责。
-- `im-iam-server` 是管理凭证和 RBAC 的唯一权威。Admin 与 Ops 只接受 IAM 支持的 BFF Session，不接受普通 Account Token。
+- `im-iam-server` 是管理凭证和 RBAC 的唯一权威。Admin 与 Ops 浏览器入口只接受 IAM 支持的 BFF Session；Ops 独立 CLI 入口接受受信管理员 Bearer，均不接受普通 Account Token。
 - `im-audit-server` 是管理 Audit 持久化的唯一权威。浏览器 API 使用 IAM BFF Session；内部 HTTP 接收仅接受具有 `audit:ingest` 的专用 Client Credentials Token。
 - Service Facade 与 SDK 定义传输契约，敏感领域模型或持久化模型不得通过这些边界泄漏。
 
@@ -54,6 +54,7 @@
 - 管理应用 Session ID 使用 `HttpOnly + Secure + SameSite` Cookie；命令还要求与 Session 绑定的 CSRF Cookie/Header。可用 OAuth2 Token 在写入 Redis 前使用 AES-GCM 加密。
 - IAM 管理员暴力破解防护是带原子失败计数与 TTL 的 Redis 临时状态，不是管理员业务状态。Redis 失败时 fail closed；认证成功或管理员安全属性变化时清除临时状态。
 - IAM Access Token 为不透明 Token，有效期 15 分钟；轮换 Refresh Token 有效期 8 小时。本地开发可使用仓库公开的 classpath PKCS12 和 loopback HTTP issuer；生产必须覆盖为 HTTPS issuer、外部挂载 PKCS12 和部署侧密钥，密钥材料无效时 fail closed。
+- OAuth `client_secret_basic` 必须先分别对 Client ID 和 Secret 做 UTF-8 `application/x-www-form-urlencoded` 编码，再构造 HTTP Basic 凭证；不能直接对原始凭证做 Basic 编码，否则 `+` 等字符会在服务端表单解码时改变。Introspection 出站编码由 IAM SDK 的确定性 HTTP 契约测试保护，不通过限制随机 Secret 字符集规避协议错误。
 - IAM OAuth Client 区分所属应用和唯一目标应用。Access Token metadata 用 `appKey` 暴露所属应用，用标准 `aud` 表达目标；资源服务必须拒绝 audience 不包含自身应用 Key 的 Introspection 结果。
 - Spring Authorization Server 负责 Authorization Code 单次使用和 Refresh Token 轮换。复用或未知凭证返回 `invalid_grant`；IAM 不保存历史 Refresh Token 索引，也不额外实现 authorization-family replay 撤销。
 - IAM SSO 到达绝对过期时间时，必须在当前请求加载 SecurityContext 前使 Session 失效。管理员认证对已知和未知邮箱执行等量 BCrypt 校验工作。
@@ -67,6 +68,30 @@
 - 内置角色不可修改或删除。角色和管理员变化会撤销受影响的管理员 Session，最后一个活跃超级管理员不可禁用。
 - 管理审计注解和显式认证/协议 Publisher 不序列化参数、Body、返回值、凭证、Cookie、Session/CSRF 标识、Token、SQL 或异常堆栈。Audit 投递失败与原业务结果隔离。
 - Audit 传输 Payload 不声明 `sourceApp`。HTTP 接收根据已认证机器 Client 推导，Kafka 接收由来源专属 Binding 注入；Producer 控制的 Payload 不能覆盖这一可信事实。
+
+## Ops 可信 Leader 提示
+
+Ops 出站管理凭据只能发给可信发现中的受支持管理 origin。具名 `NOT_LEADER` 最多跟随一次，原 operationId／expectedEpoch／payload／scope 不变；旧 HTTP hint 保留精确 origin 匹配，Raft hint 则按完整不透明 PeerId 在原始实例列表中唯一配对，歧义必须在去重前拒绝。不得解析地址、猜管理端口、归一化或以文本别名 fallback；缺失、非法或冲突配对零 follow。CLI 不向终端暴露内部 hint，审计不记录 hint／凭据。
+
+Broker 通过官方注册 customizer 在首次注册前发布已初始化 Node 的实际完整 `raft-peer-id`；同值保留，异值或空白保留键冲突失败关闭，初始化失败不注册。`management-host`／`management-port` 独立显式配置。注册中心及 metadata 写权限必须可信；此配对不是 TLS 身份、committed topology／membership 或管理员授权。多 customizer／热更新中的保留键后续写者仍需 Review，不能从首次注册测试推导永久不可篡改。
+
+Follower 的 H7／H8 事件快照只支持无副作用拒绝，不能授予新 workflow、预算或 native 权限；close、roleFault 与独立 FSM failure 均阻断可见提示，事件延迟仍可能产生过时 hint。实际角色与副作用授权仍由 worker／native 复验。精确合同见[批准设计](design-docs/2026-11-02-ops-trusted-leader-hint-mapping-design.md)。
+
+## Ops PUBLIC Client 安全边界
+
+- PUBLIC Client 仅属 Ops 且 audience 为 `imOps`，使用 `NONE`、授权码与强制 PKCE `S256`，不接受 Secret、机器 grant 或 Refresh Token。单一精确 redirect 为 HTTP `127.0.0.1`、固定部署端口与 `/oauth/callback`，不启用框架 loopback 任意端口例外。
+- 独立 CLI 仅访问显式配置的 IAM／Ops HTTPS origin，拒绝不受信证书、hostname 不匹配及 HTTP 重定向，不提供跳过 TLS 校验或 Cookie／Token 导出。先绑定固定 IPv4 loopback 回调再打开浏览器；state、授权码、verifier、Token 均不得进入日志或请求记录。请求记录只能包含环境、operation 身份及原业务语义，以 owner-only 权限在首次发送前创建，不能作为管理员身份或授权依据。
+- PUBLIC opaque Access Token 有效期五分钟。IAM 生成可信 `principal_type=ADMINISTRATOR/MACHINE`，标准 Introspection 同时提供 `active`、`exp`、`aud`、`client_id`、`sub`、`scope`、`authorities`；调用方自报字段不是身份或权限依据。
+- Ops 以 order1 精确匹配 `/api/cli` 与 `/api/cli/**`，order2 显式装配原 BFF 兜底链；两种 Filter 禁止 Servlet 自动注册，BFF Filter 也跳过 CLI。CLI 只接受 Bearer，拒绝 Session Cookie 及 Cookie／Bearer 混用；仅 CLI 链不使用 CSRF，原 BFF 的 CSRF、Client 绑定及 stale-if-error 不变。
+- CLI 每请求直接 Introspection，不使用正向身份缓存或 stale-if-error。仅接受 ADMINISTRATOR、目标 audience、精确 Client 白名单、有效期及允许的非空 scope；缺少必需字段、错误 JSON 类型和极端无效 exp 均关闭认证。缺 authorities 不可默认为空集后放行。IAM 不可用返回结构化 HTTP 401，权限不足返回 HTTP 403，不回退 BFF、不重定向登录页；可信管理员 ID、Client 和 scope 保留供用例授权与审计，认证不替代 scope／RBAC 交集检查。
+- PUBLIC revoke 按受信 `client_id` 校验 Token ownership，只撤销当前 authorization；未知 Token 幂等，数据库写失败不得返回成功。Access Token invalidated 映射为授权撤销，正常授权码消费不映射为撤销。REVOKED 行不可被迟到 ACTIVE／Token 写入恢复。
+- Client 禁用／访问配置修改、管理员停用、角色／权限撤回与受影响授权失效在同一事务提交；权限目录撤回保守失效该 audience 的管理员授权。提交后新开始的 Introspection 拒绝旧授权，不追溯取消此前已准入请求或 Broker operation。真实 MySQL 锁、回滚、故障注入与 HTTP Introspection 证据由 IAM 专属测试覆盖，不以 H2 或 mock 替代。
+
+### 既有 BFF CSRF 表示限制
+
+T8 保留原 BFF CSRF 策略，不代表真实 UI 写链已经验证正常。当前 Ops UI 将原始 CSRF Cookie 值放入 `X-XSRF-TOKEN`，SDK 默认链仍使用 Spring Security 的 XOR 请求 handler，两者表示不兼容，合法写入或退出可能被拒绝；未发现因此绕过认证或 CSRF。后端 XOR fixture 仅证明旧防护语义保持，不是实际浏览器契约的通过证据。
+
+该问题仍未关闭，由 IAM SDK 的 CSRF 请求处理与 Ops UI 的 Cookie-to-Header 契约共同负责。修复需单独明确窄行为范围并取得真实客户端表示的 RED／GREEN，不静默扩展 T8，也不据此宣称整个浏览器管理流程可交付；最终独立验收必须保留此限制。其他管理 UI 是否存在相同问题须分别验证，不能从 Ops 推断全部已验证。
 
 ## Session 撤销
 

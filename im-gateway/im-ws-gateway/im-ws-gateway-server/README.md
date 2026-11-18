@@ -179,7 +179,7 @@ Gateway 调用 Broker 时，Broker 仅从握手成功后的严格 namespace 唯�
 - 所有目标分片应用后发送一次整轮 ACK，包含 epoch、routeRevision、全量用户数与 checksum；任一分片
   `ROUTE_MOVED` 时不确认旧 epoch，而是刷新 state、完整重发后再确认。
 - 分片发送使用有界并发和确定性 jitter；Broker 背压时最多退避重试三次，`ROUTE_MOVED` 时刷新 committed
-  state 并完整重发一次，不把失败分片广播给其他 Broker。
+  state 并完整重发一次，不把失败分片广播给其他 Broker。任一分片发送异常时，等待本轮已提交的分片全部结束，再返回失败，不发送整轮 ACK。
 - 下行写入逐连接返回状态，调用方可以区分已接受和失败连接。
 - `im.gateway.frame.write` 记录 Gateway 本机 Channel 写入处理的次数、失败和 duration；不携带用户、连接、消息等高基数标签，且不把 Netty 接受写入解释为客户端 ACK。
 

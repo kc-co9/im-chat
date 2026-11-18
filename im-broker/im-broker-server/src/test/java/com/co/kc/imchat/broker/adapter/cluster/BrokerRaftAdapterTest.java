@@ -1,8 +1,12 @@
 package com.co.kc.imchat.broker.adapter.cluster;
 
+import com.co.kc.imchat.broker.domain.cluster.service.MembershipOperationService;
+import com.co.kc.imchat.broker.infrastructure.domain.repository.InMemoryMembershipOperationAttemptRepository;
+import com.co.kc.imchat.broker.infrastructure.domain.repository.InMemoryLearnerConfirmationAttemptRepository;
+
+import com.co.kc.imchat.broker.model.cqrs.command.AcceptMembershipPermitDrainedCommand;
 import java.util.OptionalLong;
 import java.util.Map;
-import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerConsensusMembershipResult;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterRevision;
 import com.co.kc.imchat.broker.domain.cluster.model.OperationFailureReason;
 import com.co.kc.imchat.broker.model.cqrs.command.BeginBrokerClusterOperationCommand;
@@ -10,7 +14,6 @@ import com.co.kc.imchat.broker.model.cqrs.command.CommitBrokerOperationCommand;
 import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterRaftTransformer;
 import com.co.kc.imchat.common.utils.JsonUtils;
 import com.co.kc.imchat.plugin.raft.core.RaftRuntime;
-import com.co.kc.imchat.plugin.raft.model.RaftMembership;
 import com.co.kc.imchat.broker.domain.cluster.model.LeaderTerm;
 import com.co.kc.imchat.plugin.raft.model.RaftResult;
 import java.util.Optional;
@@ -77,6 +80,8 @@ import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.net.ServerSocket;
@@ -89,6 +94,38 @@ import java.util.List;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
+import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipExecutor;
+import com.co.kc.imchat.broker.application.cluster.BrokerMembershipAppService;
+import com.co.kc.imchat.broker.application.cluster.BrokerClusterAppService;
+import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
+import com.co.kc.imchat.broker.sdk.model.params.ConfirmMembershipPermitDrainedParams;
+import com.co.kc.imchat.broker.domain.cluster.model.MembershipConfirmationResult;
+import com.co.kc.imchat.broker.domain.cluster.model.MinimumVoterCount;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipPermit;
+import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry;
+import com.co.kc.imchat.broker.transformer.interfaces.BrokerManagementHttpTransformer;
+import com.co.kc.imchat.broker.model.cqrs.command.RemoveBrokerCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.DemoteVoterCommand;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import com.alipay.sofa.jraft.Node;
+import com.alipay.sofa.jraft.RaftServiceFactory;
+import com.alipay.sofa.jraft.StateMachine;
+import com.alipay.sofa.jraft.option.NodeOptions;
+import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipPermitDrain;
+import org.mockito.MockedStatic;
+import org.mockito.AdditionalAnswers;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -131,87 +168,28 @@ class BrokerRaftAdapterTest {
 
     @Test
     @SuppressWarnings({"rawtypes", "unchecked"})
-    void staleAdapterMembershipReadCanReachRuntimeBoundaryAfterExternalRemoval() throws Exception {
-        String voter = "127.0.0.1:19000";
-        MembershipEndpoint endpoint = new MembershipEndpoint("127.0.0.1:19001");
-        CountDownLatch runtimeEntered = new CountDownLatch(1);
-        CountDownLatch releaseRuntime = new CountDownLatch(1);
-        java.util.concurrent.atomic.AtomicReference<RaftMembership> membership =
-                new java.util.concurrent.atomic.AtomicReference<>(new RaftMembership(List.of(voter), List.of()));
-        java.util.concurrent.atomic.AtomicInteger additions = new java.util.concurrent.atomic.AtomicInteger();
-        List<String> events = java.util.Collections.synchronizedList(new ArrayList<>());
-        try (MockedConstruction<RaftRuntime> runtimes = Mockito.mockConstruction(
-                RaftRuntime.class, (runtime, context) -> {
-                    when(runtime.nodeId()).thenReturn("broker-a");
-                    when(runtime.membership()).thenAnswer(ignored -> membership.get());
-                    when(runtime.addLearner(endpoint.value())).thenAnswer(ignored -> {
-                        int attempt = additions.incrementAndGet();
-                        events.add("add-" + attempt + "-entered");
-                        if (attempt == 1) {
-                            runtimeEntered.countDown();
-                            if (!releaseRuntime.await(5, TimeUnit.SECONDS)) {
-                                throw new IllegalStateException("test release timed out");
-                            }
-                        }
-                        // 仅模拟 Runtime 边界之后的动作，不代表真实 JRaft 接受或提交。
-                        membership.set(new RaftMembership(List.of(voter), List.of(endpoint.value())));
-                        events.add("add-" + attempt + "-applied");
-                        return CompletableFuture.completedFuture(new RaftResult<>(
-                                RaftResult.Status.APPLIED, null, null, null));
-                    });
-                    when(runtime.removeLearner(endpoint.value())).thenAnswer(ignored -> {
-                        assertThat(membership.get().learners()).containsExactly(endpoint.value());
-                        membership.set(new RaftMembership(List.of(voter), List.of()));
-                        events.add("remove-applied");
-                        return CompletableFuture.completedFuture(new RaftResult<>(
-                                RaftResult.Status.APPLIED, null, null, null));
-                    });
-                });
-             BrokerRaftAdapter adapter = createAdapter(properties("broker-a", 19000,
-                     temporaryDirectory.resolve("stale-adapter"), List.of(voter)),
+    void membershipConfigurationEntersRuntimeSynchronouslyOnCallingThread() throws Exception {
+        Thread caller = Thread.currentThread();
+        CompletableFuture<Thread> entered = new CompletableFuture<>();
+        CompletableFuture<com.co.kc.imchat.plugin.raft.model.RaftConfigurationResult> nativeCompletion =
+                new CompletableFuture<>();
+        try (MockedConstruction<RaftRuntime> runtimes = Mockito.mockConstruction(RaftRuntime.class,
+                (runtime, context) -> when(runtime.changeConfiguration(any())).thenAnswer(invocation -> {
+                    entered.complete(Thread.currentThread());
+                    return nativeCompletion.minimalCompletionStage();
+                }));
+             BrokerRaftAdapter adapter = createAdapter(properties("broker-a", 18021,
+                     temporaryDirectory.resolve("synchronous-entry"), List.of(endpoint(18021))),
                      state(0L, 0L, active("broker-a")))) {
-            RaftRuntime runtime = runtimes.constructed().getFirst();
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-            try {
-                java.util.concurrent.Future<BrokerConsensusMembershipResult> stale = executor.submit(
-                        () -> adapter.addLearner(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS));
-                assertThat(runtimeEntered.await(5, TimeUnit.SECONDS)).isTrue();
-                assertThat(membership.get().learners()).isEmpty();
-                assertThat(stale.isDone()).isFalse();
+            CompletionStage<?> result = adapter.changeMembershipConfiguration(
+                    new com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership(
+                            Set.of(new MembershipEndpoint(endpoint(18021))), Set.of()));
 
-                assertThat(adapter.addLearner(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
-                        .isEqualTo(BrokerConsensusMembershipResult.Status.APPLIED);
-                assertThat(membership.get().learners()).containsExactly(endpoint.value());
-                assertThat(adapter.addLearner(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
-                        .isEqualTo(BrokerConsensusMembershipResult.Status.DUPLICATE);
-                assertThat(adapter.addLearner(new MembershipEndpoint(voter))
-                        .toCompletableFuture().get(5, TimeUnit.SECONDS).status())
-                        .isEqualTo(BrokerConsensusMembershipResult.Status.REJECTED);
-                verify(runtime, times(2)).addLearner(endpoint.value());
-                verify(runtime, Mockito.never()).addLearner(voter);
-
-                assertThat(adapter.removeMember(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
-                        .isEqualTo(BrokerConsensusMembershipResult.Status.APPLIED);
-                assertThat(membership.get().learners()).isEmpty();
-                assertThat(adapter.removeMember(endpoint).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
-                        .isEqualTo(BrokerConsensusMembershipResult.Status.DUPLICATE);
-                verify(runtime, times(1)).removeLearner(endpoint.value());
-                assertThat(events).containsExactly("add-1-entered", "add-2-entered",
-                        "add-2-applied", "remove-applied");
-
-                releaseRuntime.countDown();
-                assertThat(stale.get(5, TimeUnit.SECONDS).status())
-                        .isEqualTo(BrokerConsensusMembershipResult.Status.APPLIED);
-                assertThat(membership.get().learners()).containsExactly(endpoint.value());
-                assertThat(events).containsExactly("add-1-entered", "add-2-entered",
-                        "add-2-applied", "remove-applied", "add-1-applied");
-                verify(runtime, times(2)).addLearner(endpoint.value());
-                verify(runtime, times(1)).removeLearner(endpoint.value());
-            } finally {
-                releaseRuntime.countDown();
-                executor.shutdownNow();
-                assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
-            }
+            assertThat(entered.get(5, TimeUnit.SECONDS)).isSameAs(caller);
+            assertThat(result.toCompletableFuture()).isNotDone();
+            nativeCompletion.complete(new com.co.kc.imchat.plugin.raft.model.RaftConfigurationResult(
+                    com.co.kc.imchat.plugin.raft.model.RaftConfigurationResult.Status.APPLIED, 0, null, null));
+            assertThat(result.toCompletableFuture().get(5, TimeUnit.SECONDS)).isNotNull();
         }
     }
 
@@ -260,10 +238,6 @@ class BrokerRaftAdapterTest {
             long before = Instant.now().toEpochMilli();
             adapter.beginOperation(operation).toCompletableFuture().join();
             adapter.commitOperation(operation).toCompletableFuture().join();
-            adapter.failMembershipOperation(operation,
-                    new BrokerConsensusMembershipResult(
-                            BrokerConsensusMembershipResult.Status.REJECTED,
-                            null, "rejected")).toCompletableFuture().join();
             adapter.completeMembershipOperation(operation).toCompletableFuture().join();
             com.co.kc.imchat.broker.domain.cluster.model.DrainProgressUpdate confirmation =
                     com.co.kc.imchat.broker.domain.cluster.model.DrainProgressUpdate.confirmGateway(
@@ -301,8 +275,6 @@ class BrokerRaftAdapterTest {
             List<BrokerClusterConsensusCommand> expected = List.of(
                     mapper.beginCommandFrom(operation),
                     mapper.commitCommandFrom(operation, changedAt),
-                    mapper.operationPhaseCommandFrom(operation, BrokerClusterOperationPhase.PENDING,
-                            BrokerClusterOperationPhase.FAILED, reason, changedAt),
                     mapper.operationPhaseCommandFrom(operation, BrokerClusterOperationPhase.RAFT_COMMITTED,
                             BrokerClusterOperationPhase.SUCCEEDED, null, changedAt),
                     mapper.gatewayConfirmationCommandFrom(operation, confirmation, changedAt),
@@ -321,11 +293,11 @@ class BrokerRaftAdapterTest {
                 assertThat(submitted.get(index)).isInstanceOf(expected.get(index).getClass());
                 com.fasterxml.jackson.databind.node.ObjectNode actualPayload = JsonUtils.getMapper().valueToTree(submitted.get(index));
                 com.fasterxml.jackson.databind.node.ObjectNode expectedPayload = JsonUtils.getMapper().valueToTree(expected.get(index));
-                if (index == 12) {
+                if (index == 11) {
                     assertThat(((com.co.kc.imchat.broker.model.cqrs.command.CompleteRouteRecoveryCommand)
                             submitted.get(index)).changedAt().toEpochMilli()).isBetween(before, after);
                     expectedPayload.set("changedAt", actualPayload.get("changedAt"));
-                } else if (List.of(1, 2, 3, 4, 6, 7, 8, 9).contains(index)) {
+                } else if (List.of(1, 2, 3, 5, 6, 7, 8).contains(index)) {
                     assertThat(JsonUtils.getMapper().convertValue(actualPayload.get("changedAt"), Instant.class).toEpochMilli()).isBetween(before, after);
                     expectedPayload.set("changedAt", actualPayload.get("changedAt"));
                 }
@@ -475,6 +447,549 @@ class BrokerRaftAdapterTest {
     }
 
     @Test
+    void nodeLeadershipBeforeRolePublicationRejectsDrainConfirmation() throws Exception {
+        CountDownLatch callbackEntered = new CountDownLatch(1);
+        CountDownLatch releaseCallback = new CountDownLatch(1);
+        AtomicBoolean armed = new AtomicBoolean(true);
+        AtomicBoolean gateExpired = new AtomicBoolean();
+        AtomicLong callbackTerm = new AtomicLong();
+        BrokerRaftAdapter adapter = null;
+        try {
+            try (MockedStatic<RaftServiceFactory> factory = Mockito.mockStatic(
+                    RaftServiceFactory.class, Mockito.CALLS_REAL_METHODS)) {
+                factory.when(() -> RaftServiceFactory.createRaftNode(Mockito.anyString(), Mockito.any()))
+                        .thenAnswer(creation -> {
+                            Node realNode = (Node) creation.callRealMethod();
+                            Node node = Mockito.mock(Node.class, AdditionalAnswers.delegatesTo(realNode));
+                            Mockito.doAnswer(initialization -> {
+                                NodeOptions options = initialization.getArgument(0);
+                                StateMachine machine = Mockito.spy(options.getFsm());
+                                Mockito.doAnswer(callback -> {
+                                    if (armed.compareAndSet(true, false)) {
+                                        callbackTerm.set(callback.getArgument(0));
+                                        callbackEntered.countDown();
+                                        try {
+                                            if (!releaseCallback.await(10, TimeUnit.SECONDS)) {
+                                                gateExpired.set(true);
+                                            }
+                                        } catch (InterruptedException interrupted) {
+                                            gateExpired.set(true);
+                                            Thread.currentThread().interrupt();
+                                        }
+                                    }
+                                    return callback.callRealMethod();
+                                }).when(machine).onLeaderStart(Mockito.anyLong());
+                                options.setFsm(machine);
+                                return realNode.init(options);
+                            }).when(node).init(Mockito.any(NodeOptions.class));
+                            return node;
+                        });
+                int port = availablePort();
+                adapter = createAdapter(properties("broker-a", port,
+                        temporaryDirectory.resolve("role-window"), List.of(endpoint(port))),
+                        state(0L, 0L, active("broker-a")));
+            }
+            assertThat(callbackEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(gateExpired.get()).isFalse();
+            assertThat(adapter.getLocalBroker().isLeader()).isTrue();
+            assertThat(adapter.getLocalBroker().getLeaderTerm()).isEmpty();
+            CompletionStage<BrokerMembershipPermitDrain> rejected = adapter.confirmMembershipPermitDrain(
+                    new QuorumReadNonce("role-window-before-publication"));
+            assertThatThrownBy(() -> rejected.toCompletableFuture().get(5, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(IllegalStateException.class)
+                    .hasRootCauseMessage("drain confirmation has no current role");
+            assertThat(gateExpired.get()).isFalse();
+            releaseCallback.countDown();
+            BrokerRaftAdapter running = adapter;
+            await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(
+                    running.getLocalBroker().getLeaderTerm()).contains(new LeaderTerm(callbackTerm.get())));
+            BrokerMembershipPermitDrain proof = adapter.confirmMembershipPermitDrain(
+                    new QuorumReadNonce("role-window-after-publication"))
+                    .toCompletableFuture().get(5, TimeUnit.SECONDS);
+            assertThat(proof.leaderTerm()).isEqualTo(new LeaderTerm(callbackTerm.get()));
+            assertThat(adapter.isMembershipPermitDrainCurrent(proof)).isTrue();
+            assertThat(gateExpired.get()).isFalse();
+        } finally {
+            releaseCallback.countDown();
+            if (adapter != null) {
+                adapter.close();
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rolePublicationWindowMakesDrainedRetransmissionUnknown(boolean remove) throws Exception {
+        List<Integer> ports = List.of(availablePort(), availablePort(), availablePort());
+        List<String> voters = ports.stream().map(this::endpoint).toList();
+        List<BrokerRaftAdapter> adapters = new ArrayList<>();
+        List<BrokerMembershipExecutor> executors = new ArrayList<>();
+        List<BrokerMembershipAppService> services = new ArrayList<>();
+        List<BrokerPeerAdapter> peers = new ArrayList<>();
+        Map<String, AtomicInteger> nativeCalls = new ConcurrentHashMap<>();
+        List<ConfirmMembershipPermitDrainedParams> forwarded =
+                new CopyOnWriteArrayList<>();
+        Map<String, String> drainDiagnostics = new ConcurrentHashMap<>();
+        BiConsumer<String, CompletionStage<?>> observeDrain = (stage, result) -> {
+            drainDiagnostics.put(stage, "started");
+            result.whenComplete((value, failure) -> drainDiagnostics.put(stage,
+                    "result=" + value + ", failure=" + failure
+                            + ", cause=" + (failure == null ? null : failure.getCause())));
+        };
+        CountDownLatch callbackEntered = new CountDownLatch(1);
+        CountDownLatch releaseCallback = new CountDownLatch(1);
+        AtomicBoolean armed = new AtomicBoolean();
+        AtomicBoolean gateExpired = new AtomicBoolean();
+        AtomicLong callbackTerm = new AtomicLong();
+        AtomicReference<String> oldHolder = new AtomicReference<>();
+        AtomicReference<String> gatedNode = new AtomicReference<>();
+        AtomicReference<BrokerMembershipPermit> exactPermit = new AtomicReference<>();
+        AtomicReference<Throwable> proofFailure = new AtomicReference<>();
+        AtomicInteger explicitAttempt = new AtomicInteger();
+        AtomicInteger proofCalls = new AtomicInteger();
+        AtomicInteger readCalls = new AtomicInteger();
+        AtomicInteger submitCalls = new AtomicInteger();
+        try {
+            BrokerClusterState initial = state(0L, 0L, active("broker-a"), active("broker-b"), active("broker-c"));
+            for (int i = 0; i < ports.size(); i++) {
+                String id = "broker-" + (char) ('a' + i);
+                ThreadPoolExecutor worker = new ThreadPoolExecutor(
+                        1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1),
+                        Thread.ofPlatform().daemon().name("t5-real-" + id).factory(),
+                        new ThreadPoolExecutor.AbortPolicy());
+                BrokerMembershipExecutor executor =
+                        new BrokerMembershipExecutor(new BrokerId(id), worker);
+                executors.add(executor);
+                BrokerRaftProperties settings = properties(id, ports.get(i),
+                        temporaryDirectory.resolve("self-" + remove + "-" + i), voters);
+                BrokerRaftAdapter adapter;
+                try (MockedStatic<RaftServiceFactory> factory = Mockito.mockStatic(
+                        RaftServiceFactory.class, Mockito.CALLS_REAL_METHODS)) {
+                    factory.when(() -> RaftServiceFactory.createRaftNode(Mockito.anyString(), Mockito.any()))
+                            .thenAnswer(creation -> {
+                                Node realNode = (Node) creation.callRealMethod();
+                                Node node = Mockito.mock(Node.class, AdditionalAnswers.delegatesTo(realNode));
+                                Mockito.doAnswer(initialization -> {
+                                    NodeOptions options = initialization.getArgument(0);
+                                    StateMachine machine = Mockito.spy(options.getFsm());
+                                    Mockito.doAnswer(callback -> {
+                                        if (!id.equals(oldHolder.get()) && armed.compareAndSet(true, false)) {
+                                            gatedNode.set(id);
+                                            callbackTerm.set(callback.getArgument(0));
+                                            callbackEntered.countDown();
+                                            try {
+                                                if (!releaseCallback.await(10, TimeUnit.SECONDS)) {
+                                                    gateExpired.set(true);
+                                                }
+                                            } catch (InterruptedException interrupted) {
+                                                gateExpired.set(true);
+                                                Thread.currentThread().interrupt();
+                                            }
+                                        }
+                                        return callback.callRealMethod();
+                                    }).when(machine).onLeaderStart(Mockito.anyLong());
+                                    options.setFsm(machine);
+                                    return realNode.init(options);
+                                }).when(node).init(Mockito.any(NodeOptions.class));
+                                return node;
+                            });
+                    adapter = Mockito.spy(new BrokerRaftAdapter(settings, initial,
+                            new RoutingLeaseGrantService(Duration.ofSeconds(1)), executor));
+                }
+                adapters.add(adapter);
+                Mockito.doAnswer(call -> {
+                    drainDiagnostics.put(id + ":confirm-role", "nodeLeader=" + adapter.getLocalBroker().isLeader()
+                            + ", callbackLeaderTerm=" + adapter.getLocalBroker().getLeaderTerm()
+                            + ", revision=" + adapter.getCommittedState().revision());
+                    CompletionStage<?> result = (CompletionStage<?>) call.callRealMethod();
+                    if (explicitAttempt.get() == 1 && id.equals(gatedNode.get())) {
+                        proofCalls.incrementAndGet();
+                        result.whenComplete((value, failure) -> proofFailure.set(failure));
+                    }
+                    observeDrain.accept(id + ":confirm-drain", result);
+                    return result;
+                }).when(adapter).confirmMembershipPermitDrain(Mockito.any());
+                Mockito.doAnswer(call -> {
+                    CompletionStage<?> result = (CompletionStage<?>) call.callRealMethod();
+                    if (explicitAttempt.get() == 1 && id.equals(gatedNode.get())) { readCalls.incrementAndGet(); }
+                    observeDrain.accept(id + ":fetch-read-index", result);
+                    return result;
+                }).when(adapter).fetchQuorumReadIndex();
+                Mockito.doAnswer(call -> {
+                    CompletionStage<?> result = (CompletionStage<?>) call.callRealMethod();
+                    if (explicitAttempt.get() == 1 && id.equals(gatedNode.get())) { submitCalls.incrementAndGet(); }
+                    observeDrain.accept(id + ":submit-drained", result);
+                    return result;
+                }).when(adapter).confirmMembershipPermitDrained(Mockito.any());
+                AtomicInteger count = new AtomicInteger();
+                nativeCalls.put(id, count);
+                Mockito.doAnswer(call -> {
+                    assertThat(Thread.currentThread().getName()).isEqualTo("t5-real-" + id);
+                    count.incrementAndGet();
+                    if (id.equals(oldHolder.get()) && exactPermit.get() == null) {
+                        BrokerMembershipPermit permit = adapter.findOperation(new ClusterOperationId("self-change"))
+                                .orElseThrow().membershipSteps().getFirst().currentPermit();
+                        assertThat(permit).isNotNull();
+                        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                            for (BrokerRaftAdapter candidate : adapters) {
+                                if (candidate != adapter) {
+                                    assertThat(candidate.findOperation(new ClusterOperationId("self-change"))
+                                            .orElseThrow().membershipSteps().getFirst().currentPermit()).isEqualTo(permit);
+                                }
+                            }
+                        });
+                        exactPermit.set(permit);
+                        armed.set(true);
+                    }
+                    return call.callRealMethod();
+                }).when(adapter).changeMembershipConfiguration(Mockito.any());
+                BrokerPeerAdapter peer = Mockito.mock(BrokerPeerAdapter.class);
+                peers.add(peer);
+                services.add(new BrokerMembershipAppService(
+                        adapter, peer, new MinimumVoterCount(1), executor, new com.co.kc.imchat.broker.support.monitoring.MembershipDiagnosticMetrics(),
+                        new MembershipOperationService(new InMemoryLearnerConfirmationAttemptRepository(), new InMemoryMembershipOperationAttemptRepository())));
+            }
+            // 仅替换 peer 传输；实际应用校验、专用 drain ReadIndex、FSM CAS 和 JRaft 网络保持真实。
+            for (int i = 0; i < peers.size(); i++) {
+                String caller = "broker-" + (char) ('a' + i);
+                Mockito.when(peers.get(i).confirmMembershipPermitDrained(Mockito.any(), Mockito.any())).thenAnswer(call -> {
+                    ConfirmMembershipPermitDrainedParams request = call.getArgument(1);
+                    assertThat(explicitAttempt.get()).as("automatic forwarding would make the experiment ambiguous").isPositive();
+                    forwarded.add(request);
+                    int receiver = request.receiverBrokerId().charAt(request.receiverBrokerId().length() - 1) - 'a';
+                    CompletionStage<com.co.kc.imchat.broker.domain.cluster.model.MembershipConfirmationResult> result = services.get(receiver)
+                            .confirmExecution(acceptedFact(request, caller));
+                    observeDrain.accept(caller + ":receiver-" + receiver, result);
+                    return result.thenApply(com.co.kc.imchat.broker.transformer.adapter.BrokerMembershipTransformer.INSTANCE::membershipPermitDrainedResponseFrom);
+                });
+            }
+            BrokerRaftAdapter oldLeader = awaitLeader(adapters);
+            int oldIndex = adapters.indexOf(oldLeader);
+            String oldId = "broker-" + (char) ('a' + oldIndex);
+            String oldEndpoint = voters.get(oldIndex);
+            oldHolder.set(oldId);
+            // 当前Leader的业务节点先显式变为INACTIVE；Raft voter资格仍保留。
+            BrokerClusterAppService routing =
+                    Mockito.spy(new BrokerClusterAppService(oldLeader, peers.get(oldIndex),
+                            new InMemoryGatewayRegistry(),
+                            Duration.ofMillis(1), Duration.ofMillis(1),
+                            Mockito.mock(ScheduledExecutorService.class), Duration.ofSeconds(10),
+                            null, null, Duration.ofSeconds(60)));
+            Mockito.doReturn(CompletableFuture.completedFuture(true)).when(routing).activateLease(Mockito.any());
+            Mockito.when(peers.get(oldIndex).fence(Mockito.any(), Mockito.any())).thenAnswer(call -> {
+                com.co.kc.imchat.broker.domain.cluster.model.BrokerNode broker = call.getArgument(0);
+                RoutingEpochFence fence = call.getArgument(1);
+                return CompletableFuture.completedFuture(FenceAck.builder()
+                        .brokerId(broker.id()).routingEpoch(fence.epoch()).leaderTerm(fence.leaderTerm())
+                        .fencedLeaseSequence(leaseSequence(1L))
+                        .operationId(fence.operationId()).build());
+            });
+            routing.forceDeactivate(BrokerManagementHttpTransformer.INSTANCE
+                    .forceDeactivateCommand("self-inactive", oldId, 0L, "controlled self maintenance"))
+                    .toCompletableFuture().get(10, TimeUnit.SECONDS);
+            assertThat(oldLeader.getClusterSnapshot().findNode(new BrokerId(oldId)).orElseThrow().trafficState().name())
+                    .isEqualTo("INACTIVE");
+            BrokerClusterOperation deactivation = oldLeader.findOperation(new ClusterOperationId("self-inactive")).orElseThrow();
+            assertThat(oldLeader.saveRecoveryEvidence(deactivation, summary(0, 0, 0, true), Instant.now())
+                    .toCompletableFuture().get(5, TimeUnit.SECONDS).accepted()).isTrue();
+            assertThat(oldLeader.verifyRouteRecovery(deactivation, Duration.ofSeconds(10),
+                    Instant.now()).toCompletableFuture().get(5, TimeUnit.SECONDS).accepted()).isTrue();
+            assertThat(oldLeader.completeRouteRecovery(deactivation).toCompletableFuture().get(5, TimeUnit.SECONDS).accepted()).isTrue();
+            long epoch = oldLeader.getCommittedState().epoch();
+            CompletionStage<?> original = remove
+                    ? services.get(oldIndex).removeBroker(new RemoveBrokerCommand(
+                            "self-change", oldId, epoch, oldEndpoint))
+                    : services.get(oldIndex).demoteVoter(new DemoteVoterCommand(
+                            "self-change", oldId, epoch, oldEndpoint));
+            List<BrokerRaftAdapter> remaining = adapters.stream().filter(adapter -> adapter != oldLeader).toList();
+            BrokerRaftAdapter newLeader = awaitLeader(remaining);
+            assertThat(executors.get(oldIndex).undrainedPermitCount()).isZero();
+            assertThat(oldLeader.getLeaderEndpoint()).isNull();
+            original.toCompletableFuture().get(5, TimeUnit.SECONDS);
+            assertThat(callbackEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(gateExpired.get()).isFalse();
+            assertThat(newLeader.getLocalBroker().getId().value()).isEqualTo(gatedNode.get());
+            assertThat(newLeader.getLocalBroker().isLeader()).isTrue();
+            assertThat(newLeader.getLocalBroker().getLeaderTerm()).isEmpty();
+            assertThat(newLeader.findOperation(new ClusterOperationId("self-change")).orElseThrow()
+                    .membershipSteps().getFirst().currentPermit()).isEqualTo(exactPermit.get());
+            assertThat(forwarded).isEmpty();
+            Map<String, Integer> nativeBefore = new HashMap<>();
+            nativeCalls.forEach((id, count) -> nativeBefore.put(id, count.get()));
+            explicitAttempt.set(1);
+            MembershipConfirmationResult unknown = services.get(oldIndex)
+                    .sendExecutionResult(new ClusterOperationId("self-change"), newLeader.getLocalBroker().getId())
+                    .toCompletableFuture().get(10, TimeUnit.SECONDS);
+            assertThat(unknown.status()).withFailMessage("response=%s, stages=%s", unknown, drainDiagnostics)
+                    .isEqualTo(MembershipConfirmationResult.Status.UNKNOWN);
+            assertThat(unknown.message()).isEqualTo("confirmation outcome is unknown");
+            assertThat(forwarded).hasSize(1);
+            assertThat(proofCalls.get()).isEqualTo(1);
+            assertThat(proofFailure.get()).isInstanceOf(CompletionException.class)
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasRootCauseMessage("drain confirmation has no current role");
+            assertThat(readCalls.get()).isZero();
+            assertThat(submitCalls.get()).isZero();
+            assertThat(newLeader.findOperation(new ClusterOperationId("self-change")).orElseThrow()
+                    .membershipSteps().getFirst().hasUndrainedPermit()).isTrue();
+            assertThat(gateExpired.get()).isFalse();
+            releaseCallback.countDown();
+            await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(
+                    newLeader.getLocalBroker().getLeaderTerm()).contains(new LeaderTerm(callbackTerm.get())));
+            explicitAttempt.set(2);
+            MembershipConfirmationResult forwardedResult = services.get(oldIndex)
+                    .sendExecutionResult(new ClusterOperationId("self-change"), newLeader.getLocalBroker().getId())
+                    .toCompletableFuture().get(10, TimeUnit.SECONDS);
+            assertThat(forwardedResult.status()).withFailMessage("response=%s, stages=%s", forwardedResult, drainDiagnostics)
+                    .isIn(MembershipConfirmationResult.Status.COMMITTED, MembershipConfirmationResult.Status.DUPLICATE);
+            assertThat(forwarded).hasSize(2);
+            assertThat(forwarded.get(1)).isEqualTo(forwarded.getFirst());
+            assertThat(forwarded.getFirst().permitId()).isEqualTo(exactPermit.get().permitId());
+            nativeCalls.forEach((id, count) -> assertThat(count.get()).isEqualTo(nativeBefore.get(id)));
+            assertThat(gateExpired.get()).isFalse();
+            await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
+                assertThat(forwarded).isNotEmpty();
+                BrokerClusterOperation operation = newLeader.findOperation(new ClusterOperationId("self-change")).orElseThrow();
+                assertThat(operation.membershipSteps().getFirst().successful()).isTrue();
+                assertThat(operation.membershipSteps().getFirst().hasUndrainedPermit()).isFalse();
+            });
+            ConfirmMembershipPermitDrainedParams drain = forwarded.getFirst();
+            BrokerClusterOperation firstDrained = newLeader.findOperation(new ClusterOperationId("self-change")).orElseThrow();
+            assertThat(drain.permitId()).isEqualTo(firstDrained.membershipSteps().getFirst().currentPermit().permitId());
+            assertThat(drain.executorBrokerId()).isEqualTo(oldId);
+            assertThat(drain.receiverBrokerId()).isEqualTo(newLeader.getLocalBroker().getId().value());
+            assertThat(newLeader.readLeaderMembershipConfiguration().voters()).doesNotContain(new MembershipEndpoint(oldEndpoint));
+            int newIndex = adapters.indexOf(newLeader);
+            services.get(newIndex).resume(new ClusterOperationId("self-change")).toCompletableFuture().get(15, TimeUnit.SECONDS);
+            await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(newLeader
+                    .findOperation(new ClusterOperationId("self-change")).orElseThrow().phase())
+                    .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED));
+            Set<MembershipEndpoint> expectedVoters = voters.stream().filter(value -> !value.equals(oldEndpoint))
+                    .map(MembershipEndpoint::new).collect(Collectors.toSet());
+            assertThat(newLeader.readLeaderMembershipConfiguration().voters()).isEqualTo(expectedVoters);
+            assertThat(newLeader.readLeaderMembershipConfiguration().learners()).isEqualTo(remove ? Set.of()
+                    : Set.of(new MembershipEndpoint(oldEndpoint)));
+            int beforeLate = nativeCalls.get(oldId).get();
+            original.toCompletableFuture().get(10, TimeUnit.SECONDS);
+            services.get(oldIndex).resume(new ClusterOperationId("self-change")).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            assertThat(nativeCalls.get(oldId).get()).isEqualTo(beforeLate);
+            assertThat(newLeader.readLeaderMembershipConfiguration().voters()).isEqualTo(expectedVoters);
+            if (!remove) {
+                await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(oldLeader
+                        .findOperation(new ClusterOperationId("self-change")).orElseThrow().phase())
+                        .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED));
+            }
+            BrokerClusterOperationProposal write = BrokerClusterCommandFixture.topology("post-self-write", "write",
+                    newLeader.getCommittedState().revision(), "ADD_BROKER", "broker-new",
+                    Stream.concat(newLeader.getCommittedState().brokers().stream(),
+                            Stream.of(discovered("broker-new"))).toList(), 2_000L);
+            assertThat(submitTopologyChange(newLeader, write).accepted()).isTrue();
+            if (!remove) {
+                await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(oldLeader.getCommittedState().revision())
+                        .isEqualTo(newLeader.getCommittedState().revision()));
+            }
+        } finally {
+            releaseCallback.countDown();
+            for (BrokerRaftAdapter adapter : adapters) { adapter.close(); }
+            executors.forEach(BrokerMembershipExecutor::close);
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void selfReductionDrainsExactOldPermitOnNewLeaderWithoutLateConfigurationRollback(boolean remove) throws Exception {
+        List<Integer> ports = List.of(availablePort(), availablePort(), availablePort());
+        List<String> voters = ports.stream().map(this::endpoint).toList();
+        List<BrokerRaftAdapter> adapters = new ArrayList<>();
+        List<com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipExecutor> executors = new ArrayList<>();
+        List<com.co.kc.imchat.broker.application.cluster.BrokerMembershipAppService> services = new ArrayList<>();
+        List<com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter> peers = new ArrayList<>();
+        Map<String, java.util.concurrent.atomic.AtomicInteger> nativeCalls = new java.util.concurrent.ConcurrentHashMap<>();
+        List<com.co.kc.imchat.broker.sdk.model.params.ConfirmMembershipPermitDrainedParams> forwarded =
+                new java.util.concurrent.CopyOnWriteArrayList<>();
+        Map<String, String> drainDiagnostics = new ConcurrentHashMap<>();
+        BiConsumer<String, CompletionStage<?>> observeDrain = (stage, result) -> {
+            drainDiagnostics.put(stage, "started");
+            result.whenComplete((value, failure) -> drainDiagnostics.put(stage,
+                    "result=" + value + ", failure=" + failure
+                            + ", cause=" + (failure == null ? null : failure.getCause())));
+        };
+        try {
+            BrokerClusterState initial = state(0L, 0L, active("broker-a"), active("broker-b"), active("broker-c"));
+            for (int i = 0; i < ports.size(); i++) {
+                String id = "broker-" + (char) ('a' + i);
+                java.util.concurrent.ThreadPoolExecutor worker = new java.util.concurrent.ThreadPoolExecutor(
+                        1, 1, 0L, TimeUnit.MILLISECONDS, new java.util.concurrent.ArrayBlockingQueue<>(1),
+                        Thread.ofPlatform().daemon().name("t5-real-" + id).factory(),
+                        new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+                com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipExecutor executor =
+                        new com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipExecutor(new BrokerId(id), worker);
+                executors.add(executor);
+                BrokerRaftProperties settings = properties(id, ports.get(i),
+                        temporaryDirectory.resolve("self-" + remove + "-" + i), voters);
+                BrokerRaftAdapter adapter = Mockito.spy(new BrokerRaftAdapter(settings, initial,
+                        new RoutingLeaseGrantService(Duration.ofSeconds(1)), executor));
+                adapters.add(adapter);
+                Mockito.doAnswer(call -> {
+                    drainDiagnostics.put(id + ":confirm-role", "nodeLeader=" + adapter.getLocalBroker().isLeader()
+                            + ", callbackLeaderTerm=" + adapter.getLocalBroker().getLeaderTerm()
+                            + ", revision=" + adapter.getCommittedState().revision());
+                    CompletionStage<?> result = (CompletionStage<?>) call.callRealMethod();
+                    observeDrain.accept(id + ":confirm-drain", result);
+                    return result;
+                }).when(adapter).confirmMembershipPermitDrain(Mockito.any());
+                Mockito.doAnswer(call -> {
+                    CompletionStage<?> result = (CompletionStage<?>) call.callRealMethod();
+                    observeDrain.accept(id + ":fetch-read-index", result);
+                    return result;
+                }).when(adapter).fetchQuorumReadIndex();
+                Mockito.doAnswer(call -> {
+                    CompletionStage<?> result = (CompletionStage<?>) call.callRealMethod();
+                    observeDrain.accept(id + ":submit-drained", result);
+                    return result;
+                }).when(adapter).confirmMembershipPermitDrained(Mockito.any());
+                java.util.concurrent.atomic.AtomicInteger count = new java.util.concurrent.atomic.AtomicInteger();
+                nativeCalls.put(id, count);
+                Mockito.doAnswer(call -> {
+                    assertThat(Thread.currentThread().getName()).isEqualTo("t5-real-" + id);
+                    count.incrementAndGet();
+                    return call.callRealMethod();
+                }).when(adapter).changeMembershipConfiguration(Mockito.any());
+                BrokerPeerAdapter peer = Mockito.mock(BrokerPeerAdapter.class);
+                peers.add(peer);
+                services.add(new com.co.kc.imchat.broker.application.cluster.BrokerMembershipAppService(
+                        adapter, peer, new com.co.kc.imchat.broker.domain.cluster.model.MinimumVoterCount(1), executor,
+                        new com.co.kc.imchat.broker.support.monitoring.MembershipDiagnosticMetrics(),
+                        new MembershipOperationService(new InMemoryLearnerConfirmationAttemptRepository(), new InMemoryMembershipOperationAttemptRepository())));
+            }
+            // 仅替换 peer 传输；实际应用校验、专用 drain ReadIndex、FSM CAS 和 JRaft 网络保持真实。
+            for (int i = 0; i < peers.size(); i++) {
+                String caller = "broker-" + (char) ('a' + i);
+                Mockito.when(peers.get(i).confirmMembershipPermitDrained(Mockito.any(), Mockito.any())).thenAnswer(call -> {
+                    com.co.kc.imchat.broker.sdk.model.params.ConfirmMembershipPermitDrainedParams request = call.getArgument(1);
+                    forwarded.add(request);
+                    int receiver = request.receiverBrokerId().charAt(request.receiverBrokerId().length() - 1) - 'a';
+                    CompletionStage<com.co.kc.imchat.broker.domain.cluster.model.MembershipConfirmationResult> result = services.get(receiver)
+                            .confirmExecution(acceptedFact(request, caller));
+                    observeDrain.accept(caller + ":receiver-" + receiver, result);
+                    return result.thenApply(com.co.kc.imchat.broker.transformer.adapter.BrokerMembershipTransformer.INSTANCE::membershipPermitDrainedResponseFrom);
+                });
+            }
+            BrokerRaftAdapter oldLeader = awaitLeader(adapters);
+            int oldIndex = adapters.indexOf(oldLeader);
+            String oldId = "broker-" + (char) ('a' + oldIndex);
+            String oldEndpoint = voters.get(oldIndex);
+            // 当前Leader的业务节点先显式变为INACTIVE；Raft voter资格仍保留。
+            com.co.kc.imchat.broker.application.cluster.BrokerClusterAppService routing =
+                    Mockito.spy(new com.co.kc.imchat.broker.application.cluster.BrokerClusterAppService(oldLeader, peers.get(oldIndex),
+                            new com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry(),
+                            Duration.ofMillis(1), Duration.ofMillis(1),
+                            Mockito.mock(java.util.concurrent.ScheduledExecutorService.class), Duration.ofSeconds(10),
+                            null, null, Duration.ofSeconds(60)));
+            Mockito.doReturn(CompletableFuture.completedFuture(true)).when(routing).activateLease(Mockito.any());
+            Mockito.when(peers.get(oldIndex).fence(Mockito.any(), Mockito.any())).thenAnswer(call -> {
+                com.co.kc.imchat.broker.domain.cluster.model.BrokerNode broker = call.getArgument(0);
+                RoutingEpochFence fence = call.getArgument(1);
+                return CompletableFuture.completedFuture(com.co.kc.imchat.broker.domain.authority.model.FenceAck.builder()
+                        .brokerId(broker.id()).routingEpoch(fence.epoch()).leaderTerm(fence.leaderTerm())
+                        .fencedLeaseSequence(com.co.kc.imchat.broker.support.BrokerDomainValues.leaseSequence(1L))
+                        .operationId(fence.operationId()).build());
+            });
+            routing.forceDeactivate(com.co.kc.imchat.broker.transformer.interfaces.BrokerManagementHttpTransformer.INSTANCE
+                    .forceDeactivateCommand("self-inactive", oldId, 0L, "controlled self maintenance"))
+                    .toCompletableFuture().get(10, TimeUnit.SECONDS);
+            assertThat(oldLeader.getClusterSnapshot().findNode(new BrokerId(oldId)).orElseThrow().trafficState().name())
+                    .isEqualTo("INACTIVE");
+            BrokerClusterOperation deactivation = oldLeader.findOperation(new ClusterOperationId("self-inactive")).orElseThrow();
+            assertThat(oldLeader.saveRecoveryEvidence(deactivation, summary(0, 0, 0, true), Instant.now())
+                    .toCompletableFuture().get(5, TimeUnit.SECONDS).accepted()).isTrue();
+            assertThat(oldLeader.verifyRouteRecovery(deactivation, Duration.ofSeconds(10),
+                    Instant.now()).toCompletableFuture().get(5, TimeUnit.SECONDS).accepted()).isTrue();
+            assertThat(oldLeader.completeRouteRecovery(deactivation).toCompletableFuture().get(5, TimeUnit.SECONDS).accepted()).isTrue();
+            long epoch = oldLeader.getCommittedState().epoch();
+            java.util.concurrent.CompletionStage<?> original = remove
+                    ? services.get(oldIndex).removeBroker(new com.co.kc.imchat.broker.model.cqrs.command.RemoveBrokerCommand(
+                            "self-change", oldId, epoch, oldEndpoint))
+                    : services.get(oldIndex).demoteVoter(new com.co.kc.imchat.broker.model.cqrs.command.DemoteVoterCommand(
+                            "self-change", oldId, epoch, oldEndpoint));
+            List<BrokerRaftAdapter> remaining = adapters.stream().filter(adapter -> adapter != oldLeader).toList();
+            BrokerRaftAdapter newLeader = awaitLeader(remaining);
+            assertThat(executors.get(oldIndex).undrainedPermitCount()).isZero();
+            assertThat(oldLeader.getLeaderEndpoint()).isNull();
+            original.toCompletableFuture().get(5, TimeUnit.SECONDS);
+            await().atMost(Duration.ofSeconds(15)).until(() -> newLeader.getLocalBroker().getLeaderTerm().isPresent());
+            LeaderTerm publishedTerm = newLeader.getLocalBroker().getLeaderTerm().orElseThrow();
+            BrokerMembershipPermitDrain readyProof = newLeader.confirmMembershipPermitDrain(
+                    new QuorumReadNonce("self-reduction-retransmit-readiness"))
+                    .toCompletableFuture().get(5, TimeUnit.SECONDS);
+            long appliedReadIndex = newLeader.fetchQuorumReadIndex().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            assertThat(appliedReadIndex).isGreaterThanOrEqualTo(readyProof.readIndex().value());
+            assertThat(readyProof.leaderTerm()).isEqualTo(publishedTerm);
+            assertThat(newLeader.isMembershipPermitDrainCurrent(readyProof)).isTrue();
+            assertThat(newLeader.getLocalBroker().getLeaderTerm()).contains(publishedTerm);
+            String beforeForward = "nodeLeader=" + newLeader.getLocalBroker().isLeader()
+                    + ", callbackLeaderTerm=" + newLeader.getLocalBroker().getLeaderTerm()
+                    + ", revision=" + newLeader.getCommittedState().revision();
+            com.co.kc.imchat.broker.domain.cluster.model.MembershipConfirmationResult forwardedResult = services.get(oldIndex)
+                    .sendExecutionResult(new ClusterOperationId("self-change"), newLeader.getLocalBroker().getId())
+                    .toCompletableFuture().get(10, TimeUnit.SECONDS);
+            String afterForward = "nodeLeader=" + newLeader.getLocalBroker().isLeader()
+                    + ", callbackLeaderTerm=" + newLeader.getLocalBroker().getLeaderTerm()
+                    + ", revision=" + newLeader.getCommittedState().revision();
+            assertThat(forwardedResult.status()).withFailMessage(
+                    "remove=%s, oldHolder=%s, newLeader=%s, forwardedResult=%s, before={%s}, after={%s}, stages=%s",
+                    remove, oldId, newLeader.getLocalBroker().getId(), forwardedResult,
+                    beforeForward, afterForward, drainDiagnostics).isIn(
+                    com.co.kc.imchat.broker.domain.cluster.model.MembershipConfirmationResult.Status.COMMITTED,
+                    com.co.kc.imchat.broker.domain.cluster.model.MembershipConfirmationResult.Status.DUPLICATE);
+            await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
+                assertThat(forwarded).isNotEmpty();
+                BrokerClusterOperation operation = newLeader.findOperation(new ClusterOperationId("self-change")).orElseThrow();
+                assertThat(operation.membershipSteps().getFirst().successful()).isTrue();
+                assertThat(operation.membershipSteps().getFirst().hasUndrainedPermit()).isFalse();
+            });
+            com.co.kc.imchat.broker.sdk.model.params.ConfirmMembershipPermitDrainedParams drain = forwarded.getFirst();
+            BrokerClusterOperation firstDrained = newLeader.findOperation(new ClusterOperationId("self-change")).orElseThrow();
+            assertThat(drain.permitId()).isEqualTo(firstDrained.membershipSteps().getFirst().currentPermit().permitId());
+            assertThat(drain.executorBrokerId()).isEqualTo(oldId);
+            assertThat(drain.receiverBrokerId()).isEqualTo(newLeader.getLocalBroker().getId().value());
+            assertThat(newLeader.readLeaderMembershipConfiguration().voters()).doesNotContain(new MembershipEndpoint(oldEndpoint));
+            int newIndex = adapters.indexOf(newLeader);
+            services.get(newIndex).resume(new ClusterOperationId("self-change")).toCompletableFuture().get(15, TimeUnit.SECONDS);
+            await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(newLeader
+                    .findOperation(new ClusterOperationId("self-change")).orElseThrow().phase())
+                    .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED));
+            Set<MembershipEndpoint> expectedVoters = voters.stream().filter(value -> !value.equals(oldEndpoint))
+                    .map(MembershipEndpoint::new).collect(java.util.stream.Collectors.toSet());
+            assertThat(newLeader.readLeaderMembershipConfiguration().voters()).isEqualTo(expectedVoters);
+            assertThat(newLeader.readLeaderMembershipConfiguration().learners()).isEqualTo(remove ? Set.of()
+                    : Set.of(new MembershipEndpoint(oldEndpoint)));
+            int beforeLate = nativeCalls.get(oldId).get();
+            original.toCompletableFuture().get(10, TimeUnit.SECONDS);
+            services.get(oldIndex).resume(new ClusterOperationId("self-change")).toCompletableFuture().get(5, TimeUnit.SECONDS);
+            assertThat(nativeCalls.get(oldId).get()).isEqualTo(beforeLate);
+            assertThat(newLeader.readLeaderMembershipConfiguration().voters()).isEqualTo(expectedVoters);
+            if (!remove) {
+                await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(oldLeader
+                        .findOperation(new ClusterOperationId("self-change")).orElseThrow().phase())
+                        .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED));
+            }
+            BrokerClusterOperationProposal write = BrokerClusterCommandFixture.topology("post-self-write", "write",
+                    newLeader.getCommittedState().revision(), "ADD_BROKER", "broker-new",
+                    java.util.stream.Stream.concat(newLeader.getCommittedState().brokers().stream(),
+                            java.util.stream.Stream.of(discovered("broker-new"))).toList(), 2_000L);
+            assertThat(submitTopologyChange(newLeader, write).accepted()).isTrue();
+            if (!remove) {
+                await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(oldLeader.getCommittedState().revision())
+                        .isEqualTo(newLeader.getCommittedState().revision()));
+            }
+        } finally {
+            for (BrokerRaftAdapter adapter : adapters) { adapter.close(); }
+            executors.forEach(com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipExecutor::close);
+        }
+    }
+
+    @Test
     void threeVotersReplicateButMinorityCannotCommit() throws Exception {
         List<Integer> ports = List.of(availablePort(), availablePort(), availablePort());
         List<String> voters = ports.stream().map(this::endpoint).toList();
@@ -523,90 +1038,6 @@ class BrokerRaftAdapterTest {
             }
             assertThat(leader.getCommittedState().revision()).isEqualTo(2L);
             assertThat(leader.findOperation(new ClusterOperationId("operation-2"))).isEmpty();
-        } finally {
-            for (BrokerRaftAdapter repository : repositories) {
-                repository.close();
-            }
-        }
-    }
-
-    @Test
-    void learnerCatchesUpAndCanBePromotedDemotedAndRemoved() throws Exception {
-        List<Integer> voterPorts = List.of(availablePort(), availablePort(), availablePort());
-        int learnerPort = availablePort();
-        List<String> voters = voterPorts.stream().map(this::endpoint).toList();
-        String learnerEndpoint = endpoint(learnerPort);
-        BrokerClusterState initialState = state(0L, 0L,
-                active("broker-a"), active("broker-b"), active("broker-c"));
-        List<BrokerRaftAdapter> repositories = new ArrayList<>();
-        try {
-            for (int index = 0; index < voterPorts.size(); index++) {
-                repositories.add(createAdapter(
-                        properties("broker-" + index, voterPorts.get(index),
-                                temporaryDirectory.resolve("membership-voter-" + index), voters),
-                        initialState));
-            }
-            BrokerRaftProperties learnerProperties = properties("broker-learner", learnerPort,
-                    temporaryDirectory.resolve("membership-learner"), voters);
-            learnerProperties.setInitialLearners(List.of(learnerEndpoint));
-            learnerProperties.setBootstrapBrokers(List.of());
-            BrokerRaftAdapter learner =
-                    createAdapter(learnerProperties, initialState);
-            repositories.add(learner);
-
-            BrokerRaftAdapter leader = awaitLeader(repositories);
-            await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
-                    assertThat(leader.addLearner(new MembershipEndpoint(learnerEndpoint))
-                            .toCompletableFuture().join().accepted()).isTrue());
-            BrokerClusterConsensusResult committed = submitTopologyChange(leader,
-                    BrokerClusterCommandFixture.topology(
-                            "operation-1", "digest-1", 0L, "ADD_BROKER", "broker-d",
-                            List.of(active("broker-a"), active("broker-b"), active("broker-c"),
-                                    discovered("broker-d")), 1_000L));
-            assertThat(committed.accepted()).isTrue();
-            await().atMost(Duration.ofSeconds(10))
-                    .untilAsserted(() -> assertThat(learner.getCommittedState().revision()).isEqualTo(2L));
-
-            long quorumReadIndex = leader.confirmLeadership(new QuorumReadNonce("learner-catch-up-proof"))
-                    .toCompletableFuture().get(5, TimeUnit.SECONDS).readIndex().value();
-            long learnerAppliedIndex = learner.fetchQuorumReadIndex().toCompletableFuture().get(5, TimeUnit.SECONDS);
-            assertThat(learnerAppliedIndex).isGreaterThanOrEqualTo(quorumReadIndex);
-
-            assertThat(leader.addLearner(new MembershipEndpoint(learnerEndpoint)).toCompletableFuture().join().status())
-                    .isEqualTo(BrokerConsensusMembershipResult.Status.DUPLICATE);
-            assertThat(leader.addLearner(new MembershipEndpoint(voters.getFirst())).toCompletableFuture().join().status())
-                    .isEqualTo(BrokerConsensusMembershipResult.Status.REJECTED);
-            Set<MembershipEndpoint> voterSnapshot = leader.getConsensusMembership().voters();
-            Set<MembershipEndpoint> learnerSnapshot = leader.getConsensusMembership().learners();
-            assertThat(voterSnapshot).containsExactlyInAnyOrderElementsOf(voters.stream().map(MembershipEndpoint::new).toList());
-            assertThat(learnerSnapshot).containsExactly(new MembershipEndpoint(learnerEndpoint));
-            assertThatThrownBy(() -> voterSnapshot.add(new MembershipEndpoint(learnerEndpoint)))
-                    .isInstanceOf(UnsupportedOperationException.class);
-            assertThatThrownBy(learnerSnapshot::clear)
-                    .isInstanceOf(UnsupportedOperationException.class);
-
-            assertThat(leader.promoteLearner(new MembershipEndpoint(learnerEndpoint)).toCompletableFuture().join().accepted())
-                    .isTrue();
-            List<String> promotedVoters = new ArrayList<>(voters);
-            promotedVoters.add(learnerEndpoint);
-            assertThat(leader.getConsensusMembership().voters())
-                    .containsExactlyInAnyOrderElementsOf(promotedVoters.stream().map(MembershipEndpoint::new).toList());
-            assertThat(leader.getConsensusMembership().learners()).isEmpty();
-            assertThat(leader.promoteLearner(new MembershipEndpoint(learnerEndpoint)).toCompletableFuture().join().status())
-                    .isEqualTo(BrokerConsensusMembershipResult.Status.DUPLICATE);
-            assertThat(voterSnapshot).containsExactlyInAnyOrderElementsOf(voters.stream().map(MembershipEndpoint::new).toList());
-            assertThat(learnerSnapshot).containsExactly(new MembershipEndpoint(learnerEndpoint));
-            assertThat(leader.demoteVoter(new MembershipEndpoint(learnerEndpoint)).toCompletableFuture().join().accepted())
-                    .isTrue();
-            assertThat(leader.getConsensusMembership().learners()).contains(new MembershipEndpoint(learnerEndpoint));
-            assertThat(leader.demoteVoter(new MembershipEndpoint(learnerEndpoint)).toCompletableFuture().join().status())
-                    .isEqualTo(BrokerConsensusMembershipResult.Status.DUPLICATE);
-            assertThat(leader.removeMember(new MembershipEndpoint(learnerEndpoint)).toCompletableFuture().join().accepted())
-                    .isTrue();
-            assertThat(leader.getConsensusMembership().voters()).doesNotContain(new MembershipEndpoint(learnerEndpoint));
-            assertThat(leader.getConsensusMembership().learners()).doesNotContain(new MembershipEndpoint(learnerEndpoint));
-            assertThat(leader.removeMember(new MembershipEndpoint(learnerEndpoint)).toCompletableFuture().join().status())
-                    .isEqualTo(BrokerConsensusMembershipResult.Status.DUPLICATE);
         } finally {
             for (BrokerRaftAdapter repository : repositories) {
                 repository.close();
@@ -882,10 +1313,34 @@ class BrokerRaftAdapterTest {
                 BrokerMembershipRole.VOTER, BrokerRoutingState.DRAINING);
     }
 
+    @Test
+    void localRaftPeerIdPreservesInitializedNodeIndexAndPriority() throws Exception {
+        int port = availablePort();
+        String configured = endpoint(port) + ":2:10";
+        BrokerRaftProperties settings = properties("broker-a", port,
+                temporaryDirectory.resolve("local-peer-id"), List.of(configured));
+        settings.setEndpoint(configured);
+        try (BrokerRaftAdapter adapter = createAdapter(settings,
+                settings.initialClusterState(BrokerSelectionAlgorithm.RENDEZVOUS_HASH))) {
+            assertThat(adapter.getLocalRaftPeerId()).isEqualTo(endpoint(port) + ":2");
+            assertThat(adapter.getLocalRaftPeerId()).isNotEqualTo(configured);
+        }
+    }
+
     private BrokerRaftAdapter createAdapter(BrokerRaftProperties properties, BrokerClusterState state)
             throws IOException {
         return new BrokerRaftAdapter(properties, state,
-                new RoutingLeaseGrantService(Duration.ofSeconds(1)));
+                new RoutingLeaseGrantService(Duration.ofSeconds(1)), new com.co.kc.imchat.plugin.raft.spi.RaftRoleListener() {
+                    private final FaultLatch fault = new FaultLatch();
+                    private long generation;
+                    @Override
+                    public FaultLatch faultLatch() { return fault; }
+                    @Override
+                    public void onRoleChanged(long term, long nextGeneration) {
+                        assertThat(nextGeneration).isGreaterThan(generation);
+                        generation = nextGeneration;
+                    }
+                });
     }
 
     private BrokerRaftProperties properties(String nodeId, int port, Path dataDirectory,
@@ -939,4 +1394,13 @@ class BrokerRaftAdapterTest {
         });
         return leader.get();
     }
+    private static AcceptMembershipPermitDrainedCommand acceptedFact(
+            com.co.kc.imchat.broker.sdk.model.params.ConfirmMembershipPermitDrainedParams request,
+            String authenticatedExecutorBrokerId) {
+        return new AcceptMembershipPermitDrainedCommand(request.clusterId(), request.callerBrokerId(),
+                request.receiverBrokerId(), request.operationId(), request.stepId(), request.permitId(),
+                request.executorBrokerId(), request.executorIncarnation(), request.targetDigest(),
+                AcceptMembershipPermitDrainedCommand.Result.valueOf(request.result().name()), authenticatedExecutorBrokerId);
+    }
+
 }

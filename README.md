@@ -12,6 +12,7 @@
 - 私聊与群聊会话的打开、退出、隐藏和列表查询。
 - 私聊与群聊消息的发送、接收、已读、撤回和历史查询。
 - WebSocket 认证、在线路由、跨 Gateway 投递和客户端回执重试。
+- Ops 成员写保留原命令身份，按可信发现映射 Leader 提示且最多跟随一次；地址配对不替代 Broker 的共识与权限校验，合同见 [Ops README](im-management/im-ops/README.md)。
 
 ## 领域上下文
 
@@ -73,6 +74,8 @@ im-common           -> no business/runtime module dependencies
 HTTP 请求和 WebSocket 握手都通过 Account Facade 校验 Access Token 和当前 Session version。Access Token 默认有效期为 2 小时，Refresh Token 默认有效期为 30 天并在刷新时轮换。登出或再次登录会更新账号 Session；Broker 只负责把关闭控制路由到目标 Gateway，不持有 Token 或 Gateway 本地连接 ID。
 
 认证设计见[集中式会话认证](docs/design-docs/2026-08-14-centralized-session-authentication-design.md)，安全保证见 [SECURITY.md](docs/SECURITY.md)。
+
+管理身份不复用普通 Account Token。运维浏览器通过 IAM BFF 登录，独立 [im-ops-cli](im-management/im-ops-cli/README.md) 通过浏览器 Authorization Code + PKCE 登录后，仅在前台内存持有五分钟用户 Token，经 Ops HTTPS 固定用例访问 Broker；不直接连接 JRaft 或持有 Broker 服务凭证。CLI 启动、固定回调配置、请求记录和 UNKNOWN 恢复见模块 README；客户端范围验收不代表真实跨服务旅程或生产部署已验收，当前执行状态由 [PROGRESS.md](PROGRESS.md) 与活跃计划拥有。
 
 ### 消息与通知链路
 
@@ -212,7 +215,7 @@ Harness 将高确定性规则自动化，同时把需要业务判断的 DDD 语�
 
 Harness 是持续演进的工程能力，不追求一次性把所有约定都变成自动检查。只有形成稳定需求、明确维护者和验证方式时才增加新规则或专题入口，避免出现无人维护的文档和高误报门禁。
 
-日常迭代可用 `./scripts/verify.sh quick`，完整验收入口为 `./scripts/verify.sh full`。后者依次执行 readiness/clean、一次父 Harness 自测、一次完整 Maven reactor、同轮报告校验和一次真实 HA。Architecture、启动映射/Nacos 隔离、behavior 与 E2E 的实际报告经校验后记录来源；HA 复用同轮报告与制品证明，但仍实际运行容器拓扑、故障恢复和清理。独立验证入口继续用于定位，无需在同一成功 full 前后重复执行。
+日常迭代先选择最窄的适用入口：单模块使用聚焦测试，混合 Java 改动使用 `./scripts/verify.sh affected`，Harness 脚本使用对应的 `scripts/test-*-harness.sh`。`./scripts/verify.sh quick` 包含全部 Harness 自测和 architecture，并非每次小修的默认入口，也不是 full 的前置条件。验证范围扩大前须先修复或明确归因窄层失败；聚焦通过不替代最终验收。完整验收入口为 `./scripts/verify.sh full`。后者依次执行 readiness/clean、一次父 Harness 自测、一次完整 Maven reactor、同轮报告校验和一次真实 HA。Architecture、启动映射/Nacos 隔离、behavior 与 E2E 的实际报告经校验后记录来源；HA 复用同轮报告与制品证明，但仍实际运行容器拓扑、故障恢复和清理。独立验证入口继续用于定位，无需在同一成功 full 前后重复执行。
 
 当前不提供阶段恢复、跨运行缓存或归档审计命令。实现验收与纯状态归档分开处理，旧证据的时间、指纹及 freshness 不改写；边界见 [Harness Guide](docs/references/HARNESS_GUIDE.md#完整验收与状态归档)。去重实现尚待真实 full 验收，不承诺实际耗时收益。
 
@@ -361,3 +364,5 @@ mvn clean package
 ## 许可证
 
 本项目基于 GNU General Public License v3.0 only，详情见 [LICENSE](LICENSE)。
+
+官方 JRaft 依赖为 `com.alipay.sofa:jraft-core:1.4.1`，私有 applied-membership 配方已退役。Leader 列表观察非原子且不证明 applied 配置；业务观察资格来自已提交状态，learner 确认仍需身份、epoch/revision、同任期 ReadIndex 与认证目标应用进度证据。原本地数据与 Maven 制品不自动清理，当前验收状态以 active plan 为准。

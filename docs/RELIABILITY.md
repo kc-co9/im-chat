@@ -15,6 +15,14 @@
 - Broker 诊断历史是有界内存观测，重启后有意丢失，不参与路由、Gossip、迁移或持久消息决策。
 - IAM MySQL 是管理身份、浏览器应用、机器 Client、应用级角色、授权和元数据的权威。Audit MySQL 是不可变管理审计事实的唯一权威。普通用户管理仅在 Account Admin Facade 可达时提供，不得回退为直接访问 Account 数据库。
 
+## 管理 Leader 提示的可用性边界
+
+Broker 首次注册发布实际初始化 Node 的完整 PeerId，Ops 从同一可信原始发现记录取得显式管理 origin；完整文本不一致、发现滞后、缺失／非法 metadata 或歧义均拒绝 PeerId 跟随，即使目标实际可达也不降级猜测。普通诊断、首次接收者选择与旧 HTTP 精确可信提示路径不因此改义。仅具名 `NOT_LEADER` 至多一次原命令跟随，首次异常／超时不换普通节点，解析失败的 `UNKNOWN` 不能作为未执行证明。
+
+H7／H8 following 是已消费事件的本机观察，不证明实时健康、当前领导权或 quorum。generation 0 与非 OK `ENEWLEADER` START 合法；STOP、角色发布、close、FSM error／apply failure 使观察失效，roleFault 与 stateMachineFailed 独立且永久封闭迟到 START。Node 状态变化到 FSM 消费的延迟不可消除，generation 也不是跨 Node 的原子 CAS。锁序保持 `rolePublication → listener → executor mutex`，caller getter 原子无锁且无 Node；仅纯拒绝可用，冲突／共享及 closed／fault／满额优先，worker 首检、永久预算和全部 native 门禁不变。
+
+正式三 voter CLI 成功与缺失／冲突零 follow 已有局部集成证据，官方首次注册测试使用受控 NamingService；均不证明真实 Nacos 网络健康、生产部署可信写权限或整体 T11 验收。稳定合同由[批准设计](design-docs/2026-11-02-ops-trusted-leader-hint-mapping-design.md)拥有，当前证据由活跃计划拥有。
+
 ## 运行要求
 
 - 启动失败必须指出缺失依赖或非法配置，不能静默降级关键路径。
@@ -53,7 +61,8 @@
 - Management Producer 提交已完成 Audit 事实，不改变原业务结果或异常。事务成功只在 Commit 后提交；Rollback 不发成功事实，失败时保留并重新抛出原异常。
 - Kafka 至少投递一次，Audit 按 `auditId` 幂等写入。Source Consumer 持久化失败最多重试三次，再进入独立 DLQ。HTTP 只重试 Timeout 和 `5xx`，`4xx` 为最终结果。Kafka 与 HTTP 独立选择，不静默互相回退。
 - Audit 导出要求不超过 31 天的有界时间范围，以每页 100 行流式写入 Workbook。
-- IAM 健康时，Admin 和 Ops 对每个受保护请求实时执行 IAM Introspection。只有连接失败、Timeout 和 IAM `5xx` 可以使用最后一次 `active=true` 结果，最多保留五分钟且不得超过 Access Token 过期时间；显式拒绝永不回退。
+- IAM 健康时，Admin 和 Ops 浏览器 BFF 对每个受保护请求实时执行 IAM Introspection。仅 BFF 在连接失败、Timeout 和 IAM `5xx` 时可以使用最后一次 `active=true` 结果，最多保留五分钟且不得超过 Access Token 过期时间；显式拒绝永不回退。Ops `/api/cli/**` 每次直接 Introspection，不使用正向身份缓存或 stale-if-error；IAM 不可用即拒绝，不登记业务操作。
+- 独立 CLI 登录预算为 120 秒，Access Token 最长五分钟且仅驻留前台内存，无 Refresh Token。HTTP 最多一个在途请求，单请求预算十秒；超时、断连或查询失败只表示 UNKNOWN，不证明请求未提交。首次写入必须先完成 owner-only 非敏感请求记录，恢复需显式使用同一 operationId、expectedEpoch 和原语义；重新登录不自动重放写操作，具有当前权限的另一管理员可显式接续，审计记录本次实际调用者。退出尝试撤销，失败须报告远端结果未确认，不能声称 Token 已失效。
 - IAM SSO 使用 8 小时 Idle Limit 和 24 小时 Absolute Limit。应用登出只移除对应 BFF Session；平台或全设备撤销使相关 IAM Authorization 失效。
 
 ## 已知可靠性债务
@@ -90,6 +99,12 @@ probe/report 的请求与响应不携带 expireAt/expireAtMs，接收方不按�
 
 故障处理、状态权威、重试策略或运行保证变化时必须同步更新本文。
 
+## Learner 确认与后台恢复
+
+learner 确认与恢复的同身份在途重复立即返回 `IN_PROGRESS`，不共享最终响应、不再次取证或消耗预算；内容冲突仍拒绝。该状态只证明本地占用，不证明 Begin 已提交，acceptedEpoch/targetEpoch 为空；保留原记录和 ID，稍后查询或原语义重发，取证期间查询可能找不到 operation。取消调用方 Future 不移除占用或取消执行，fault/close 既有 pending 边界不变。Broker/Ops/CLI 需同版本部署，旧 Ops 的 primitive epoch 不保证接纳 null，旧 CLI 将未知新状态保守视为 UNKNOWN。
+
+`confirmLearner` 只为新操作读取追赶证据并提交；相同身份的已登记请求返回 `DUPLICATE`，包括尚未完成的操作。该状态只证明登记，不代表 READY 或终态，调用方保留原 ID 并查询。未完成操作由既有 Leader Scheduler 调用 `resume`，按最新已提交阶段恢复，不依赖重发确认主动推进，也不新增恢复 HTTP 接口。原记录重发不刷新 epoch 或端点，不生成替代 ID；查询投影不是线性一致的未提交证明。恢复继续受共享永久预算、worker、generation 和任期约束，预算耗尽或持续重发下不承诺有界完成。
+
 ## Bolt 预算与生命周期
 
 全部 SDK/Peer/Gossip 调用采用不可变 typed 目标；连接层认证失败不回退地址池、其他身份或明文。共享创建预算与单 caller 单调结果接受预算分离，短 caller 超时不 cancel 共享 future。序列化前计时，池等待、gate 和解码后重验；迟到不发送新请求、不接受迟到成功。同步 DNS/原生调用可能仍未结束，不能承诺硬返回期限。
@@ -101,3 +116,5 @@ probe/report 的请求与响应不携带 expireAt/expireAtMs，接收方不按�
 创建执行器和池归 manager/client，未交付候选归失败工厂，Spring 默认装配负责初始化/关闭；外部受控 Bean 归提供方。到期 Channel 持续拒绝新发送，在途直到原生响应、原 RPC 超时或原生失败 terminal 后排空关闭，caller 放弃等待不能提前释放共享资源。关闭与最后完成并发时，拒绝状态保持至物理 closeFuture 完成；不把 native future 已登记误当业务已准入。
 
 D14 沿原生 TLS 读文件：旧 Channel 不随替换换 session，新 Channel 可能读取新材料，不保证 watcher/每次 reload。建议到期前完整原子交付、按旧 → 双信任 → 新叶 → 撤旧 CA 验证并滚动重启；不是 only-restart 门禁或无中断保证。无效材料失败关闭，不复制私钥补固定字节保证；正式证书运维、在线吊销和生产容量不属于本次交付。
+
+官方 JRaft 依赖为 `com.alipay.sofa:jraft-core:1.4.1`，私有 applied-membership 配方已退役。Leader 列表观察非原子且不证明 applied 配置；业务观察资格来自已提交状态，learner 确认仍需身份、epoch/revision、同任期 ReadIndex 与认证目标应用进度证据。原本地数据与 Maven 制品不自动清理，当前验收状态以 active plan 为准。

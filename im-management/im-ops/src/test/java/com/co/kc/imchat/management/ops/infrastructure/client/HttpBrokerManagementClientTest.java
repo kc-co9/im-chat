@@ -20,6 +20,62 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class HttpBrokerManagementClientTest {
 
     @Test
+    void inProgressDoesNotInventAcceptedEpoch() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        HttpBrokerManagementClient client = client(builder);
+        server.expect(requestTo("http://127.0.0.1:12201/management/cluster-state/brokers/broker-1/complete-learner-sync"))
+                .andRespond(withSuccess("""
+                        {"code":0,"data":{"operationId":"sync","status":"IN_PROGRESS",
+                        "acceptedEpoch":null,"targetEpoch":null,"message":"in progress locally"}}
+                        """, MediaType.APPLICATION_JSON));
+        com.co.kc.imchat.management.ops.infrastructure.client.model.BrokerOperationPayload result = client.operate(
+                endpoint(), new BrokerClusterOperationCommand("broker-1", "complete-learner-sync", "sync", 7L,
+                        "broker-1:18120", null, "scope"), "scope");
+        assertThat(result.status()).isEqualTo("IN_PROGRESS");
+        assertThat(result.acceptedEpoch()).isNull();
+        assertThat(result.targetEpoch()).isNull();
+        server.verify();
+    }
+
+    @Test
+    void missingOperationResponseIsNotAnUnsubmittedOperation() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        HttpBrokerManagementClient client = client(builder);
+        server.expect(requestTo("http://127.0.0.1:12201/management/cluster-state/operations/operation-absent"))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
+                        .withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
+
+        assertThatThrownBy(() -> client.queryOperation(endpoint(), "operation-absent"))
+                .isInstanceOf(BrokerManagementClientException.class);
+        server.verify();
+    }
+
+    @Test
+    void queriesStoredOperationWithoutConflatingSubmissionStatus() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        HttpBrokerManagementClient client = client(builder);
+        server.expect(requestTo("http://127.0.0.1:12201/management/cluster-state/operations/operation-26"))
+                .andRespond(withSuccess("""
+                        {"code":0,"data":{"operationId":"operation-26","type":"PROMOTE_LEARNER",
+                        "targetBrokerId":"broker-2","phase":"APPLIED","acceptedEpoch":12,
+                        "resultEpoch":13,"createdAtMs":1793491200000,"completedAtMs":1793491201000}}
+                        """, MediaType.APPLICATION_JSON));
+
+        com.co.kc.imchat.management.ops.infrastructure.client.model.BrokerOperationPayload.Query result =
+                client.queryOperation(endpoint(), "operation-26");
+
+        assertThat(result.operationId()).isEqualTo("operation-26");
+        assertThat(result.phase()).isEqualTo("APPLIED");
+        assertThat(result.acceptedEpoch()).isEqualTo(12L);
+        assertThat(result.resultEpoch()).isEqualTo(13L);
+        assertThat(result.completedAtMs()).isEqualTo(1793491201000L);
+        server.verify();
+    }
+
+    @Test
     void readsLeaderEndpointFromBrokerOperationResponse() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

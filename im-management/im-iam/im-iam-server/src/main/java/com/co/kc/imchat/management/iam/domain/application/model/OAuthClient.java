@@ -6,6 +6,7 @@ import com.co.kc.imchat.common.utils.AssertUtils;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
+import java.net.URI;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Set;
@@ -17,6 +18,8 @@ public class OAuthClient extends Identification implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
+    /** 客户端类型；历史数据默认按机密客户端解释。 */
+    private OAuthClientType clientType = OAuthClientType.CONFIDENTIAL;
     private OAuthClientId clientId;
     private AppId appId;
     private AppId audienceAppId;
@@ -38,10 +41,15 @@ public class OAuthClient extends Identification implements Serializable {
     private void validate() {
         AssertUtils.allDomainPropNotNull(
                 "oauth client required properties must not be null",
-                clientId, appId, audienceAppId, name, clientSecret, grantTypes, scopes,
+                clientId, appId, audienceAppId, name, clientType, grantTypes, scopes,
                 redirectUris, postLogoutRedirectUris, status);
         AssertUtils.domainPropNotEmpty("oauth client grant types must not be empty", grantTypes);
         AssertUtils.domainPropNotEmpty("oauth client scopes must not be empty", scopes);
+        if (clientType == OAuthClientType.CONFIDENTIAL) {
+            AssertUtils.domainPropNotNull("confidential client requires secret", clientSecret);
+        } else {
+            AssertUtils.domainPropTrue("public client must not have secret", clientSecret == null);
+        }
         validateAccess(scopes, redirectUris, postLogoutRedirectUris);
         grantTypes = Set.copyOf(grantTypes);
         scopes = Set.copyOf(scopes);
@@ -55,6 +63,20 @@ public class OAuthClient extends Identification implements Serializable {
             Set<RedirectUri> postLogoutRedirectUris
     ) {
         AssertUtils.domainPropNotEmpty("oauth client scopes must not be empty", scopes);
+        if (clientType == OAuthClientType.PUBLIC) {
+            AssertUtils.domainPropTrue("public client requires only authorization code",
+                    grantTypes.equals(Set.of(OAuthGrantType.AUTHORIZATION_CODE)));
+            AssertUtils.domainPropTrue("public client requires one exact loopback callback", redirectUris.size() == 1);
+            URI uri = URI.create(redirectUris.iterator().next().stringValue());
+            AssertUtils.domainPropTrue("public client callback must be fixed loopback HTTP",
+                    "http".equals(uri.getScheme()) && "127.0.0.1".equals(uri.getHost())
+                            && uri.getPort() > 0 && "/oauth/callback".equals(uri.getRawPath())
+                            && uri.getRawQuery() == null && uri.getRawFragment() == null
+                            && uri.getRawUserInfo() == null);
+            AssertUtils.domainPropTrue("public client has no logout redirects", postLogoutRedirectUris.isEmpty());
+            AssertUtils.domainPropTrue("public client only permits Ops CLI scopes",
+                    scopes.stream().allMatch(scope -> Set.of("ops:broker:read", "ops:broker:raft:write").contains(scope.value())));
+        }
         boolean browserClient = grantTypes.contains(OAuthGrantType.AUTHORIZATION_CODE);
         boolean machineClient = grantTypes.contains(OAuthGrantType.CLIENT_CREDENTIALS);
         if (browserClient && machineClient) {
@@ -74,6 +96,11 @@ public class OAuthClient extends Identification implements Serializable {
     /** 创建并校验 OAuth 客户端。 */
     public static final class Builder {
         private final OAuthClient client = new OAuthClient();
+
+        public Builder clientType(OAuthClientType clientType) {
+            client.clientType = clientType;
+            return this;
+        }
 
         public Builder clientId(OAuthClientId clientId) {
             client.clientId = clientId;
@@ -157,8 +184,8 @@ public class OAuthClient extends Identification implements Serializable {
     /** 使用已加密的新密钥摘要替换当前密钥。 */
     public void rotateSecret(OAuthClientSecret secret) {
         AssertUtils.domainPropNotNull("stored client secret must not be null", secret);
-        if (status != OAuthClientStatus.ACTIVE) {
-            throw new TransitionException("已停用 OAuth 客户端不能轮换密钥");
+        if (status != OAuthClientStatus.ACTIVE || clientType == OAuthClientType.PUBLIC) {
+            throw new TransitionException("当前 OAuth 客户端不能轮换密钥");
         }
         clientSecret = secret;
     }

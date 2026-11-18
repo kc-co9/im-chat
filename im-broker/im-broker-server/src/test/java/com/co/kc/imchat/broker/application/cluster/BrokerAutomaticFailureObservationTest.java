@@ -64,7 +64,6 @@ class BrokerAutomaticFailureObservationTest {
         when(localBroker.getId()).thenReturn(new BrokerId("a"));
         BrokerCluster cluster = cluster();
         when(adapter.getClusterSnapshot()).thenReturn(cluster);
-        when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120"), new MembershipEndpoint("c:18120")), Set.of()));
         BrokerHealthObservationTracker store = new BrokerHealthObservationTracker(new BrokerId("a"), Duration.ofSeconds(10));
         when(adapter.getClusterId()).thenReturn(new BrokerClusterId("cluster-a"));
         BrokerClusterAppService service = new BrokerClusterAppService(adapter, null, null,
@@ -74,7 +73,7 @@ class BrokerAutomaticFailureObservationTest {
         BrokerHealthReportQuery lateReport = new BrokerHealthReportQuery("cluster-a", "b", "a", 0L, 0L,
                 "late-report", List.of("a", "b", "c"));
         BrokerHealthObservationContext context = new BrokerHealthObservationContext(
-                cluster.revision(), cluster.topology(adapter.getConsensusMembership()));
+                cluster.revision(), cluster.topology());
         store.synchronize(context);
         store.record(context, new BrokerId("b"), BrokerHealthStatus.UNHEALTHY, new MonotonicTimestamp(0L));
         nanos.set(Duration.ofSeconds(1).toNanos());
@@ -115,9 +114,6 @@ class BrokerAutomaticFailureObservationTest {
         when(adapter.getLocalBroker()).thenReturn(localBroker);
         when(localBroker.getId()).thenReturn(new BrokerId("a"));
         when(adapter.getClusterSnapshot()).thenReturn(cluster());
-        when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(
-                new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120"),
-                new MembershipEndpoint("c:18120")), Set.of()));
         when(adapter.getClusterId()).thenReturn(new BrokerClusterId("cluster-a"));
         BrokerClusterAppService service = new BrokerClusterAppService(adapter, null, null,
                 Duration.ofMillis(1), Duration.ofMillis(1), null, Duration.ofSeconds(1),
@@ -167,7 +163,6 @@ class BrokerAutomaticFailureObservationTest {
         when(adapter.getLocalBroker()).thenReturn(localBroker);
         when(localBroker.getId()).thenReturn(new BrokerId("a"));
         when(adapter.getClusterSnapshot()).thenReturn(cluster());
-        when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120"), new MembershipEndpoint("c:18120")), Set.of()));
         BrokerPeerAdapter peer = mock(BrokerPeerAdapter.class);
         CompletableFuture<BrokerHealthStatus> pending = new CompletableFuture<>();
         when(peer.probe(any(), any(), any(), any())).thenReturn(pending);
@@ -180,8 +175,7 @@ class BrokerAutomaticFailureObservationTest {
         service.probeFailures();
         verify(peer, times(2)).probe(any(), any(), any(), any());
         assertThat(store.snapshot(new BrokerHealthObservationContext(new ClusterRevision(999L),
-                        new BrokerClusterTopology(new RoutingEpoch(999L), List.of(), Map.of(),
-                                new ConsensusMembership(Set.of(), Set.of()))),
+                        new BrokerClusterTopology(new RoutingEpoch(999L), List.of(), Map.of())),
                 Instant.EPOCH, new MonotonicTimestamp(nanos.get()))).isEmpty();
         pending.complete(BrokerHealthStatus.UNHEALTHY);
         service.probeFailures();

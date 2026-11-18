@@ -2,6 +2,8 @@ package com.co.kc.imchat.broker.support.raft.codec;
 
 import com.co.kc.imchat.broker.model.cqrs.command.AdvanceClusterOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.RegisterMembershipPermitCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.ConfirmMembershipPermitDrainedCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.BeginBrokerClusterOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.CommitBrokerOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.CompleteBrokerDrainCommand;
@@ -21,10 +23,13 @@ public final class BrokerClusterCommandCodec implements RaftCommandCodec<BrokerC
 
     public static final BrokerClusterCommandCodec INSTANCE = new BrokerClusterCommandCodec();
 
-    private static final int CURRENT_FORMAT_VERSION = 2;
+    /** 当前共识命令封套格式版本；变更后旧日志必须显式拒绝。 */
+    private static final int CURRENT_FORMAT_VERSION = 3;
 
     /* 唯一的稳定协议白名单，同时驱动编码与解码；不允许按输入加载 Class。 */
     private static final Map<String, Class<? extends BrokerClusterConsensusCommand>> COMMAND_TYPES = Map.ofEntries(
+            Map.entry("REGISTER_MEMBERSHIP_PERMIT", RegisterMembershipPermitCommand.class),
+            Map.entry("CONFIRM_MEMBERSHIP_PERMIT_DRAINED", ConfirmMembershipPermitDrainedCommand.class),
             Map.entry("BEGIN_BROKER_CLUSTER_OPERATION", BeginBrokerClusterOperationCommand.class),
             Map.entry("COMMIT_BROKER_OPERATION", CommitBrokerOperationCommand.class),
             Map.entry("ADVANCE_CLUSTER_OPERATION", AdvanceClusterOperationCommand.class),

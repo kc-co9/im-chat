@@ -537,10 +537,17 @@ class BoltOutboundOriginsGateTest {
             assertThat(ack.await(5000)).isTrue();
             assertThat(ack.isSuccess()).as("native ACK write succeeds").isTrue();
             HeartbeatAckCommand received = endpoint.ackReceived.get(5, TimeUnit.SECONDS);
+            // 原生 timeout 也会移除 future，必须核对原始完成对象实际收到同一 ACK。
+            InvokeFuture heartbeatFuture = endpoint.heartbeatFuture.get(5, TimeUnit.SECONDS);
+            assertThat(heartbeatFuture.waitResponse(5000)).isSameAs(received);
             endpoint.barrier();
             assertThat(received.getId()).isEqualTo(endpoint.heartbeatId);
-            assertThat(endpoint.connection.getInvokeFuture(received.getId())).as("native ACK processor consumed future").isNull();
-            assertThat(endpoint.channel().attr(Connection.HEARTBEAT_COUNT).get()).isZero();
+            // 入站探针与 EventLoop barrier 不等待原生 processor 的独立执行器。
+            org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() -> {
+                assertThat(endpoint.connection.getInvokeFuture(received.getId()))
+                        .as("native ACK processor consumed future").isNull();
+                assertThat(endpoint.channel().attr(Connection.HEARTBEAT_COUNT).get()).isZero();
+            });
             assertThat(endpoint.attempted.get()).isZero();
             assertThat(endpoint.forwarded.get()).isZero();
             assertThat(endpoint.handled.get()).isZero();
@@ -816,6 +823,7 @@ class BoltOutboundOriginsGateTest {
         final List<Admission> deniedCommands = new CopyOnWriteArrayList<>();
         CompletableFuture<Runnable> held = new CompletableFuture<>();
         final CompletableFuture<ChannelPromise> heartbeatWrite = new CompletableFuture<>();
+        final CompletableFuture<InvokeFuture> heartbeatFuture = new CompletableFuture<>();
         final CompletableFuture<ChannelPromise> ackWrite = new CompletableFuture<>();
         final CompletableFuture<HeartbeatAckCommand> ackReceived = new CompletableFuture<>();
         final BlockingQueue<RpcResponseCommand> responses = new LinkedBlockingQueue<>();
@@ -1383,6 +1391,8 @@ class BoltOutboundOriginsGateTest {
                     forwarded.incrementAndGet();
                 } else if (msg instanceof HeartbeatCommand heartbeat) {
                     heartbeatId = heartbeat.getId();
+                    heartbeatFuture.complete(ctx.channel().attr(Connection.CONNECTION).get()
+                            .getInvokeFuture(heartbeatId));
                     heartbeatWrite.complete(promise);
                 } else if (!(msg instanceof HeartbeatAckCommand) && !(msg instanceof RpcResponseCommand)) {
                     reject(promise, "unsupported outbound command");

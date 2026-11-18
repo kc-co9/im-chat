@@ -33,7 +33,7 @@ fi
 if [[ -d "$load_test_root" ]]; then
   state_file="$load_test_root/runtime-state.jsonl"
   if [[ -f "$state_file" ]]; then
-    load_state="$(ruby -rjson -e '
+    load_state="$(ruby -E UTF-8 -rjson -e '
       lines = File.readlines(ARGV.fetch(0)).map(&:strip).reject(&:empty?)
       abort "empty state journal" if lines.empty?
       value = JSON.parse(lines.last)

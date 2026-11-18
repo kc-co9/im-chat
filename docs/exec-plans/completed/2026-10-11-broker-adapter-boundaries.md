@@ -26,7 +26,7 @@
 | Transformer 与 Monitoring | [结构归属设计](../../design-docs/2026-10-15-broker-transformer-monitoring-boundaries-design.md) |
 | 自动故障观察 | [自动故障观察设计](../../design-docs/2026-10-16-broker-automatic-failure-observation-design.md)，按最新批准决定解释历史步骤 |
 | 成员边界 | [共识成员边界设计](../../design-docs/2026-10-16-consensus-membership-boundary-design.md)、[共享成员端点设计](../../design-docs/2026-10-16-shared-membership-endpoint-design.md) |
-| Follower 本地候选与发布边界 | [JRaft 私有制品设计](../../design-docs/2026-10-16-jraft-applied-membership-patched-artifact-design.md) |
+| Follower 本地候选与发布边界 | 官方 JRaft 治理迁移设计与历史执行记录 |
 | 本机锁 | [本机锁设计](../../design-docs/2026-10-17-local-lock-design.md)，最终命名为 `MutexLock` |
 | 认证原型与未来设计 | [连接层认证原型](../../design-docs/2026-10-20-bolt-connection-authentication-spike-design.md)、[统一 invoke 生产设计](../../design-docs/2026-10-20-bolt-unified-invoke-design.md)；后者仅为后续设计基线 |
 | 当前模块事实 | [Broker Architecture](../../../im-broker/ARCHITECTURE.md)、[Broker README](../../../im-broker/README.md)、[Server README](../../../im-broker/im-broker-server/README.md)、[SDK README](../../../im-broker/im-broker-sdk/README.md) |

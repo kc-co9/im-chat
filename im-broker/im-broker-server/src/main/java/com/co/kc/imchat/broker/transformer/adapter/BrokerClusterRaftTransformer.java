@@ -1,5 +1,10 @@
 package com.co.kc.imchat.broker.transformer.adapter;
 
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipPermit;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipStep;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
+import com.co.kc.imchat.broker.model.cqrs.command.ConfirmMembershipPermitDrainedCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.RegisterMembershipPermitCommand;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationProposal;
 import com.co.kc.imchat.broker.domain.cluster.model.OperationFailureReason;
@@ -17,7 +22,6 @@ import com.co.kc.imchat.broker.domain.cluster.model.DrainProgressUpdate;
 import com.co.kc.imchat.broker.model.cqrs.command.CommitBrokerOperationCommand;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
-import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerConsensusMembershipResult;
 import com.co.kc.imchat.plugin.raft.model.RaftResult;
 
 import java.time.Instant;
@@ -30,26 +34,6 @@ public final class BrokerClusterRaftTransformer {
     public static final BrokerClusterRaftTransformer INSTANCE = new BrokerClusterRaftTransformer();
 
     private BrokerClusterRaftTransformer() {
-    }
-
-    /**
-     * 映射成员拒绝的失败命令，原样转换调用方提供的毫秒时间，不修正异常时间。
-     */
-    public AdvanceClusterOperationCommand membershipFailureCommandFrom(
-            BrokerClusterOperation operation, BrokerConsensusMembershipResult membership,
-            Instant changedAt) {
-        String reason = membership.message();
-        if (reason == null || reason.isBlank()) {
-            reason = "membership rejected";
-        }
-        return AdvanceClusterOperationCommand.builder()
-                .operationId(operation.id())
-                .commandDigest(operation.commandDigest().value())
-                .expectedPhase(BrokerClusterOperationPhase.PENDING)
-                .nextPhase(BrokerClusterOperationPhase.FAILED)
-                .error(reason)
-                .changedAt(changedAt)
-                .build();
     }
 
     /**
@@ -136,25 +120,41 @@ public final class BrokerClusterRaftTransformer {
         return new BrokerClusterConsensusResult(status, null, source.leaderEndpoint(), source.message());
     }
 
-    /** 转换 Raft 成员变更返回值，保留处理状态、Leader 端点和原因，不附带配置快照。 */
-    public BrokerConsensusMembershipResult membershipResultFrom(
-            RaftResult<Void> source) {
-        BrokerConsensusMembershipResult.Status status = switch (source.status()) {
-            case APPLIED -> BrokerConsensusMembershipResult.Status.APPLIED;
-            case NOT_LEADER -> BrokerConsensusMembershipResult.Status.NOT_LEADER;
-            case UNAVAILABLE -> BrokerConsensusMembershipResult.Status.UNAVAILABLE;
-        };
-        return new BrokerConsensusMembershipResult(status, source.leaderEndpoint(), source.message());
-    }
-
     /** 生成只引用 Begin 已登记操作的 Commit 命令。 */
     public CommitBrokerOperationCommand commitCommandFrom(
             BrokerClusterOperation operation, Instant changedAt) {
+        if (operation.nativeMembershipChange()) {
+            throw new IllegalArgumentException("native membership commit requires current revision");
+        }
         return new CommitBrokerOperationCommand(
                 operation.id(),
                 operation.commandDigest().value(),
                 operation.acceptedRevision(),
                 changedAt);
+    }
+
+    /** 成员业务提交显式绑定调用方读取的当前 revision，非原生分支保留原规则。 */
+    public CommitBrokerOperationCommand commitCommandFrom(
+            BrokerClusterOperation operation, ClusterRevision currentRevision, Instant changedAt) {
+        return new CommitBrokerOperationCommand(operation.id(), operation.commandDigest().value(),
+                operation.nativeMembershipChange() ? currentRevision : operation.acceptedRevision(), changedAt);
+    }
+
+    public RegisterMembershipPermitCommand registerPermitCommandFrom(
+            BrokerClusterOperation operation, String permitId,
+            BrokerId executorBrokerId,
+            String executorIncarnation, ClusterRevision currentRevision) {
+        return new RegisterMembershipPermitCommand(operation.id(),
+                operation.currentMembershipStep().stepId(), permitId, executorBrokerId, executorIncarnation, currentRevision);
+    }
+
+    public ConfirmMembershipPermitDrainedCommand confirmPermitCommandFrom(
+            BrokerMembershipStep step,
+            BrokerMembershipPermit permit,
+            BrokerMembershipPermit.Result result) {
+        return new ConfirmMembershipPermitDrainedCommand(permit.operationId(),
+                permit.stepId(), permit.permitId(), permit.executorBrokerId(), permit.executorIncarnation(),
+                step.targetDigest(), result);
     }
 
     /** 将已登记操作转换为 Begin 命令，保留全部提议事实。 */

@@ -62,10 +62,11 @@ class BrokerObservationAdmissionTest {
         rejects(new Object());
     }
     @Test
-    void emptyConsistentVoterResolutionFailsClosedBeforeHandler() {
+    void committedObserverAdmissionDoesNotReadNativeConfiguration() throws Exception {
         configure();
-        when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(new MembershipEndpoint("unknown:18120")), Set.of()));
-        rejects(probe("a", "b", 1L, 7L));
+        assertThat(interceptor.intercept(invocation(probe("a", "b", 1L, 7L)), ignored -> "accepted"))
+                .isEqualTo("accepted");
+        org.mockito.Mockito.verify(adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
     @Test
     void wrongClusterAndNonVoterIdentityRejectBeforeHandler() {
@@ -119,16 +120,11 @@ class BrokerObservationAdmissionTest {
     }
 
     @Test
-    void overlappingMembershipConstructionFailureNeverDelegatesAdmission() {
+    void observationAdmissionUsesOnlyCommittedBusinessState() throws Exception {
         configure();
-        when(adapter.getConsensusMembership()).thenAnswer(ignored -> new ConsensusMembership(
-                Set.of(new MembershipEndpoint("a:18120")), Set.of(new MembershipEndpoint("a:18120"))));
-        AtomicBoolean delegated = new AtomicBoolean();
-        assertThatThrownBy(() -> interceptor.intercept(invocation(probe("a", "b", 1L, 7L)), ignored -> {
-            delegated.set(true);
-            return null;
-        })).isInstanceOf(IllegalStateException.class).hasMessageContaining("overlap");
-        assertThat(delegated).isFalse();
+        assertThat(interceptor.intercept(invocation(probe("a", "b", 1L, 7L)), ignored -> "accepted"))
+                .isEqualTo("accepted");
+        org.mockito.Mockito.verify(adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
 
     private void configure() {
@@ -142,13 +138,6 @@ class BrokerObservationAdmissionTest {
         BrokerCluster cluster = BrokerClusterStateTransformer.INSTANCE.brokerClusterFrom(state, List.of(), null, 10,
                 Map.of("a", "a:18120", "b", "b:18120"));
         when(adapter.getClusterSnapshot()).thenReturn(cluster);
-        when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(
-                aRole == bRole ? Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120"))
-                        : aRole == BrokerMembershipRole.VOTER ? Set.of(new MembershipEndpoint("a:18120"))
-                        : Set.of(new MembershipEndpoint("b:18120")),
-                aRole == bRole ? Set.of()
-                        : aRole == BrokerMembershipRole.LEARNER ? Set.of(new MembershipEndpoint("a:18120"))
-                        : Set.of(new MembershipEndpoint("b:18120"))));
     }
     private BrokerProbeParams probe(String caller, String target, Long revision, Long epoch) {
         return new BrokerProbeParams("cluster", caller, target, revision, epoch, "nonce");

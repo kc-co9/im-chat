@@ -89,7 +89,7 @@ class BrokerFailureProbeTest {
     }
 
     @Test
-    void reorderedMembershipPreservesFailureSamplingAndChangedMembershipInvalidatesIt() {
+    void businessSamplingPreservesDurationWithoutNativeConfigurationObservation() {
         Fixture fixture = new Fixture();
         MembershipEndpoint a = new MembershipEndpoint("Aa:18120");
         MembershipEndpoint b = new MembershipEndpoint("BB:18120");
@@ -99,47 +99,31 @@ class BrokerFailureProbeTest {
                 .algorithm(initial.algorithm()).brokers(initial.brokers()).operations(List.of())
                 .membershipEndpoints(java.util.Map.of(new BrokerId("a"), a, new BrokerId("b"), b, new BrokerId("c"), c))
                 .operationHistoryCapacity(new OperationHistoryCapacity(100)).build();
-        when(fixture.adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(
-                new java.util.LinkedHashSet<>(List.of(a, b, c)), Set.of()));
         when(fixture.peer.probe(any(), any(), any(), any())).thenReturn(CompletableFuture.completedFuture(BrokerHealthStatus.UNHEALTHY));
         fixture.app.probeFailures().toCompletableFuture().join();
         fixture.nanos.set(Duration.ofSeconds(5).toNanos());
-        when(fixture.adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(
-                new java.util.LinkedHashSet<>(List.of(c, b, a)), Set.of()));
         fixture.app.probeFailures().toCompletableFuture().join();
         assertThat(fixture.row().unreachableDuration()).isEqualTo(Duration.ofSeconds(5));
-        when(fixture.adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(a, b), Set.of(c)));
         fixture.app.probeFailures().toCompletableFuture().join();
-        when(fixture.adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(a, b, c), Set.of()));
-        assertThat(fixture.row().status()).isEqualTo(BrokerHealthStatus.UNKNOWN);
-        assertThat(fixture.row().unreachableDuration()).isZero();
+        assertThat(fixture.row().status()).isEqualTo(BrokerHealthStatus.UNHEALTHY);
+        assertThat(fixture.row().unreachableDuration()).isEqualTo(Duration.ofSeconds(5));
+        org.mockito.Mockito.verify(fixture.adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
 
     @Test
-    void overlappingMembershipInitialAndAsyncReadsReleaseProbeGateWithoutInvalidSample() {
+    void probeCompletesAndReleasesGateWithoutNativeConfigurationObservation() {
         Fixture fixture = new Fixture();
-        ConsensusMembership valid = fixture.adapter.getConsensusMembership();
-        when(fixture.adapter.getConsensusMembership()).thenAnswer(ignored -> new ConsensusMembership(
-                Set.of(new MembershipEndpoint("a:18120")), Set.of(new MembershipEndpoint("a:18120"))));
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> fixture.app.probeFailures())
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("overlap");
-        verifyNoInteractions(fixture.peer);
-        doReturn(valid).when(fixture.adapter).getConsensusMembership();
         CompletableFuture<BrokerHealthStatus> pending = new CompletableFuture<>();
         when(fixture.peer.probe(any(), any(), any(), any())).thenReturn(pending);
         CompletableFuture<Void> probe = fixture.app.probeFailures().toCompletableFuture();
-        when(fixture.adapter.getConsensusMembership()).thenAnswer(ignored -> new ConsensusMembership(
-                Set.of(new MembershipEndpoint("a:18120")), Set.of(new MembershipEndpoint("a:18120"))));
         pending.complete(BrokerHealthStatus.UNHEALTHY);
-        org.assertj.core.api.Assertions.assertThatThrownBy(probe::join)
-                .hasCauseInstanceOf(IllegalStateException.class);
-        doReturn(valid).when(fixture.adapter).getConsensusMembership();
-        assertThat(fixture.row().status()).isEqualTo(BrokerHealthStatus.UNKNOWN);
+        probe.join();
+        assertThat(fixture.row().status()).isEqualTo(BrokerHealthStatus.UNHEALTHY);
         when(fixture.peer.probe(any(), any(), any(), any())).thenReturn(CompletableFuture.completedFuture(BrokerHealthStatus.UNHEALTHY));
         fixture.app.probeFailures().toCompletableFuture().join();
         verify(fixture.peer, times(4)).probe(any(), any(), any(), any());
-        assertThat(fixture.row().status()).isEqualTo(BrokerHealthStatus.UNHEALTHY);
         verify(fixture.adapter, never()).beginOperation(any());
+        org.mockito.Mockito.verify(fixture.adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
 
     @Test
@@ -246,7 +230,6 @@ class BrokerFailureProbeTest {
             when(localBroker.getId()).thenReturn(new BrokerId("a"));
             when(adapter.getClusterId()).thenReturn(new BrokerClusterId("cluster-a"));
             when(adapter.getClusterSnapshot()).thenAnswer(ignored -> cluster);
-            when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120"), new MembershipEndpoint("c:18120")), Set.of()));
             app = new BrokerClusterAppService(adapter, peer, null, Duration.ofMillis(1), Duration.ofMillis(1), null,
                     Duration.ofSeconds(10),
                     new BrokerHealthObservationTracker(new BrokerId("a"), Duration.ofSeconds(10)),

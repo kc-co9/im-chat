@@ -20,7 +20,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -112,6 +119,51 @@ class GatewayRouteSnapshotCoordinatorTest {
         assertThat(client.maxConcurrentSends.get()).isEqualTo(2);
         assertThat(delays).hasSize(3).allMatch(duration -> !duration.isNegative()
                 && duration.toMillis() <= 20L);
+    }
+
+    @Test
+    void waitsForInFlightShardBeforePropagatingSiblingFailure() throws InterruptedException {
+        BrokerClusterState state = state(3L, "broker-a", "broker-b");
+        CapturingClient client = new CapturingClient(state);
+        CountDownLatch siblingStarted = new CountDownLatch(1);
+        CountDownLatch failedShard = new CountDownLatch(1);
+        CountDownLatch releaseSibling = new CountDownLatch(1);
+        IllegalStateException failure = new IllegalStateException("shard send failed");
+        client.sendOverride = params -> {
+            if (params.routeBrokerId().equals("broker-a")) {
+                awaitSignal(siblingStarted);
+                failedShard.countDown();
+                throw failure;
+            }
+            siblingStarted.countDown();
+            awaitSignal(releaseSibling);
+            return AcceptGatewayRoutesResult.applied(params.routingEpoch());
+        };
+
+        try (GatewayRouteSnapshotCoordinator coordinator = coordinator(
+                registryWithOneUserPerBroker(state), client, 10, 2, ignored -> { });
+             ExecutorService caller = Executors.newSingleThreadExecutor()) {
+            Future<?> cycle = caller.submit(coordinator::synchronize);
+            try {
+                assertThat(failedShard.await(5L, TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(() -> cycle.get(250L, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                assertThat(client.acks).isEmpty();
+            } finally {
+                releaseSibling.countDown();
+            }
+            assertThatThrownBy(() -> cycle.get(5L, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class).hasCause(failure);
+        }
+        assertThat(client.acks).isEmpty();
+    }
+
+    private static void awaitSignal(CountDownLatch signal) {
+        try {
+            assertThat(signal.await(5L, TimeUnit.SECONDS)).isTrue();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
     }
 
     @Test
@@ -214,6 +266,7 @@ class GatewayRouteSnapshotCoordinatorTest {
         private boolean moveFirstRequest;
         private boolean retryFirstRequest;
         private int releaseAtConcurrentSends;
+        private Function<GatewayRouteSnapshotParams, AcceptGatewayRoutesResult> sendOverride;
 
         private CapturingClient(BrokerClusterState state) {
             this.state = state;
@@ -238,6 +291,9 @@ class GatewayRouteSnapshotCoordinatorTest {
             int active = concurrentSends.incrementAndGet();
             maxConcurrentSends.accumulateAndGet(active, Math::max);
             try {
+                if (sendOverride != null) {
+                    return sendOverride.apply(params);
+                }
                 if (releaseAtConcurrentSends > 0) {
                     if (active >= releaseAtConcurrentSends) {
                         concurrentSendGate.countDown();

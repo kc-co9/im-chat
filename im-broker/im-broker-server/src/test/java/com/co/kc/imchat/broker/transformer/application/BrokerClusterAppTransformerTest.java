@@ -1,7 +1,6 @@
 package com.co.kc.imchat.broker.transformer.application;
 
 import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterRaftTransformer;
-import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerConsensusMembershipResult;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
 import com.co.kc.imchat.broker.model.cqrs.result.AddLearnerResult;
@@ -24,7 +23,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.co.kc.imchat.broker.model.cqrs.command.AdvanceClusterOperationCommand;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -136,35 +134,6 @@ class BrokerClusterAppTransformerTest {
         assertThat(command.changedAt()).isEqualTo(Instant.EPOCH);
     }
 
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", " "})
-    void failureCommandDefaultsReasonWithoutChangingCallerTime(String message) {
-        BrokerClusterOperation operation = pendingOperation();
-        BrokerConsensusMembershipResult result = new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, message);
-
-        AdvanceClusterOperationCommand command = BrokerClusterRaftTransformer.INSTANCE
-                .membershipFailureCommandFrom(operation, result, Instant.EPOCH);
-
-        assertThat(command.operationId()).isEqualTo(operation.id());
-        assertThat(command.commandDigest()).isEqualTo(operation.commandDigest().value());
-        assertThat(command.expectedPhase()).isEqualTo(BrokerClusterOperationPhase.PENDING);
-        assertThat(command.nextPhase()).isEqualTo(BrokerClusterOperationPhase.FAILED);
-        assertThat(command.error()).isEqualTo("membership rejected");
-        assertThat(command.changedAt()).isEqualTo(Instant.EPOCH);
-    }
-
-    @Test
-    void failureCommandKeepsGivenReasonAndLaterTime() {
-        BrokerConsensusMembershipResult result = new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, "peer rejected");
-
-        AdvanceClusterOperationCommand command = BrokerClusterRaftTransformer.INSTANCE
-                .membershipFailureCommandFrom(pendingOperation(), result, Instant.ofEpochMilli(2_000L));
-
-        assertThat(command.error()).isEqualTo("peer rejected");
-        assertThat(command.changedAt()).isEqualTo(Instant.ofEpochMilli(2_000L));
-    }
-
     @Test
     void operationUsesMillisAndAllowsCompletionInCreationMillisecond() {
         BrokerClusterOperation operation = pendingOperation();
@@ -193,13 +162,8 @@ class BrokerClusterAppTransformerTest {
     @Test
     void earlierCompletionIsNotRepairedAndIsRejectedByOperation() {
         BrokerClusterOperation operation = pendingOperation();
-        AdvanceClusterOperationCommand command = BrokerClusterRaftTransformer.INSTANCE
-                .membershipFailureCommandFrom(operation,
-                        new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, "rejected"), Instant.ofEpochMilli(999L));
-
-        assertThat(command.changedAt()).isEqualTo(Instant.ofEpochMilli(999L));
-        assertThatThrownBy(() -> operation.advance(command.nextPhase(),
-                new OperationFailureReason(command.error()), command.changedAt()))
+        assertThatThrownBy(() -> operation.advance(BrokerClusterOperationPhase.FAILED,
+                new OperationFailureReason("rejected"), Instant.ofEpochMilli(999L)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("operation completion precedes creation");
         assertThat(operation.phase()).isEqualTo(BrokerClusterOperationPhase.PENDING);

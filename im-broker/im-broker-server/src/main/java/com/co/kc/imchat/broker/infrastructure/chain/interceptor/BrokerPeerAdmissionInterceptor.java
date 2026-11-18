@@ -1,9 +1,13 @@
 package com.co.kc.imchat.broker.infrastructure.chain.interceptor;
 
+import com.co.kc.imchat.broker.sdk.model.params.ConfirmMembershipPermitDrainedParams;
+import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipStep;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipPermit;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import static com.co.kc.imchat.common.constant.PeerIdentityConstants.BROKER_URI_PREFIX;
 
 import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
-import com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerCluster;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.infrastructure.chain.BrokerRequestChain;
@@ -51,6 +55,10 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
     @Override
     public Object intercept(BrokerRequestInvocation<?> invocation,
             BrokerRequestChain chain) throws Exception {
+        if (invocation.operation() == BrokerBoltOperation.CONFIRM_MEMBERSHIP_PERMIT_DRAINED) {
+            validatePermitConfirmation(invocation);
+            return chain.proceed(invocation);
+        }
         BrokerAdmissionType profile = invocation.operation().admissionType();
         if (profile == BrokerAdmissionType.BROKER_OBSERVATION) {
             validateObservation(invocation);
@@ -73,6 +81,36 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
             validatePeer(invocation, callerBrokerId);
         }
         return chain.proceed(invocation);
+    }
+
+    /** 校验许可确认请求的 MTLS 身份、调用方、执行者和接收方绑定。 */
+    private void validatePermitConfirmation(BrokerRequestInvocation<?> invocation) {
+        BrokerCallerPrincipal principal = invocation.principal();
+        if (principal == null || principal.callerRole() != BrokerCallerRole.BROKER
+                || invocation.context() == null || !invocation.context().tlsVerified()
+                || invocation.context().developmentPlaintext()
+                || !invocation.context().peerUriIdentities().contains(principal.callerIdentity())
+                || invocation.context().peerUriIdentities().stream().filter(uri -> uri.startsWith(BROKER_URI_PREFIX)).count() != 1
+                || !(invocation.request() instanceof ConfirmMembershipPermitDrainedParams request)) {
+            throw new SecurityException("membership permit confirmation requires MTLS Broker identity");
+        }
+        String caller = callerBrokerId(principal);
+        if (!caller.equals(request.callerBrokerId()) || !caller.equals(request.executorBrokerId())
+                || !clusterId.equals(request.clusterId()) || !localBrokerId.equals(request.receiverBrokerId())) {
+            throw new SecurityException("membership permit confirmation caller or receiver mismatch");
+        }
+        BrokerCluster cluster = brokerRaftAdapter.getClusterSnapshot();
+        BrokerClusterOperation operation = cluster.findOperation(
+                new ClusterOperationId(request.operationId())).orElse(null);
+        BrokerMembershipStep step = operation == null ? null
+                : operation.membershipSteps().stream().filter(value -> value.stepId().equals(request.stepId())).findFirst().orElse(null);
+        BrokerMembershipPermit permit = step == null ? null : step.currentPermit();
+        if (permit == null || !permit.permitId().equals(request.permitId())
+                || !permit.executorBrokerId().value().equals(caller)
+                || !permit.executorIncarnation().equals(request.executorIncarnation())
+                || !permit.target().equals(step.target()) || !step.targetDigest().equals(request.targetDigest())) {
+            throw new SecurityException("membership permit confirmation does not match stored executor and target");
+        }
     }
 
     private void validateObservation(BrokerRequestInvocation<?> invocation) {
@@ -101,8 +139,7 @@ public final class BrokerPeerAdmissionInterceptor implements BrokerRequestInterc
                 || !request.epoch().equals(cluster.epoch().value())) {
             throw new SecurityException("Broker observation context does not match");
         }
-        ConsensusMembership membership = brokerRaftAdapter.getConsensusMembership();
-        Set<BrokerId> currentVoters = brokerRaftAdapter.getClusterSnapshot().findConsistentVoters(membership);
+        Set<BrokerId> currentVoters = cluster.findObservers();
         BrokerCluster currentCluster = brokerRaftAdapter.getClusterSnapshot();
         if (!cluster.revision().equals(currentCluster.revision()) || !cluster.epoch().equals(currentCluster.epoch())) {
             throw new SecurityException("Broker observation context changed during admission");

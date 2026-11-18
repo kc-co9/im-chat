@@ -1,9 +1,14 @@
 package com.co.kc.imchat.broker.application.cluster;
 
+import com.co.kc.imchat.broker.domain.cluster.service.MembershipOperationService;
+import com.co.kc.imchat.broker.infrastructure.domain.repository.InMemoryMembershipOperationAttemptRepository;
+import com.co.kc.imchat.broker.infrastructure.domain.repository.InMemoryLearnerConfirmationAttemptRepository;
+
+import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipExecutor;
+
 import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
-import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerConsensusMembershipResult;
 import com.co.kc.imchat.broker.domain.authority.model.FenceAck;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerCluster;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterDecision;
@@ -35,7 +40,6 @@ import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerRoutingState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerSelectionAlgorithm;
 import com.co.kc.imchat.broker.support.StatefulClusterAdapterFixture;
-import com.co.kc.imchat.broker.support.raft.model.BrokerClusterSnapshot;
 import com.co.kc.imchat.broker.support.raft.model.BrokerClusterSnapshot;
 import com.co.kc.imchat.broker.support.raft.statemachine.RaftBrokerClusterStateMachine;
 import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterRaftTransformer;
@@ -151,10 +155,7 @@ class BrokerClusterAppServiceChangeTest {
         assertThat(fixture.stateMachine.getCluster().operations()).isEmpty();
         verify(fixture.adapter, never()).getCommittedState();
         verify(fixture.adapter, never()).beginOperation(any());
-        verify(fixture.adapter, never()).addLearner(any());
-        verify(fixture.adapter, never()).promoteLearner(any());
-        verify(fixture.adapter, never()).demoteVoter(any());
-        verify(fixture.adapter, never()).removeMember(any());
+        verify(fixture.adapter, never()).changeMembershipConfiguration(any());
     }
 
     @Test
@@ -167,7 +168,7 @@ class BrokerClusterAppServiceChangeTest {
         assertThat(fixture.stateMachine.getCluster().operations()).isEmpty();
         verify(fixture.adapter, never()).getCommittedState();
         verify(fixture.adapter, never()).beginOperation(any());
-        verify(fixture.adapter, never()).addLearner(any());
+        verify(fixture.adapter, never()).changeMembershipConfiguration(any());
     }
 
     @Test
@@ -177,8 +178,9 @@ class BrokerClusterAppServiceChangeTest {
                         BrokerRoutingState.INACTIVE));
         MembershipEndpoint endpoint = new MembershipEndpoint("127.0.0.1:19001");
         fixture.stateMachine.restore(new BrokerClusterSnapshot(BrokerClusterSnapshot.CURRENT_FORMAT_VERSION,
-                "cluster-a", fixture.stateMachine.committedState(), List.of(), null, Map.of("broker-b", endpoint.value())));
+                "cluster-a", fixture.stateMachine.committedState(), List.of(), null, bindings(fixture, "broker-b", endpoint.value())));
         fixture.learners.add(endpoint.value());
+        fixture.learners.remove("broker-b.example:18120");
         BrokerMembershipAppService service = membership(fixture, 1);
         RemoveBrokerCommand command = new RemoveBrokerCommand(
                 "remove", "broker-b", 0L, endpoint.value());
@@ -187,12 +189,12 @@ class BrokerClusterAppServiceChangeTest {
         assertThat(fixture.stateMachine.getCluster().membershipEndpoints()).doesNotContainKey(new BrokerId("broker-b"));
         long revision = fixture.stateMachine.committedState().revision();
         assertThat(service.removeBroker(command).toCompletableFuture().join().status()).isEqualTo("DUPLICATE");
-        verify(fixture.adapter, times(1)).removeMember(endpoint);
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
         assertThat(fixture.stateMachine.committedState().revision()).isEqualTo(revision);
         assertThat(service.removeBroker(new RemoveBrokerCommand(
                 "remove", "broker-b", 0L, "127.0.0.1:19002"))
                 .toCompletableFuture().join().status()).isEqualTo("REJECTED");
-        verify(fixture.adapter, times(1)).removeMember(any(MembershipEndpoint.class));
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
     }
 
     @Test
@@ -232,13 +234,15 @@ class BrokerClusterAppServiceChangeTest {
                 "join", "broker-b", 0L, endpoint)).toCompletableFuture().join();
         Mockito.when(fixture.adapter.getLocalBroker().isLeader()).thenReturn(false);
         doReturn("127.0.0.1:18121").when(fixture.adapter).getLeaderEndpoint();
+        // Exclude the completed leader-side join setup, not any interaction of the follower request.
+        Mockito.clearInvocations(fixture.adapter);
 
         CompleteLearnerSyncResult result = service.confirmLearner(new ConfirmLearnerCommand(
                 "sync", "broker-b", 0L, endpoint)).toCompletableFuture().join();
 
         assertThat(result.status()).isEqualTo(Status.NOT_LEADER);
         assertThat(result.leaderEndpoint()).isEqualTo("127.0.0.1:18121");
-        verify(fixture.adapter, never()).getConsensusMembership();
+        verify(fixture.adapter, never()).readLeaderMembershipConfiguration();
         assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("sync"))).isEmpty();
     }
 
@@ -252,13 +256,14 @@ class BrokerClusterAppServiceChangeTest {
         service.confirmLearner(new ConfirmLearnerCommand(
                 "sync", "broker-b", 0L, endpoint)).toCompletableFuture().join();
 
+        Mockito.clearInvocations(fixture.adapter);
         CompleteLearnerSyncResult result = service.confirmLearner(
                 new ConfirmLearnerCommand(
                         "another-sync", "broker-b", 0L, endpoint)).toCompletableFuture().join();
 
         assertThat(result.status()).isEqualTo(Status.REJECTED);
-        verify(fixture.adapter, times(1)).getConsensusMembership();
-        verify(fixture.adapter, times(1)).confirmLeadership(any());
+        verify(fixture.adapter, never()).readLeaderMembershipConfiguration();
+        verify(fixture.adapter, never()).confirmLeadership(any());
         assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("another-sync"))).isEmpty();
     }
 
@@ -276,35 +281,35 @@ class BrokerClusterAppServiceChangeTest {
         }).when(fixture.adapter).confirmLeadership(any());
         doReturn("127.0.0.1:18121").when(fixture.adapter).getLeaderEndpoint();
 
-        assertThatThrownBy(() -> service.confirmLearner(
-                new ConfirmLearnerCommand(
-                        "sync", "broker-b", 0L, endpoint)).toCompletableFuture().join())
-                .hasRootCauseMessage("quorum read unavailable");
+        CompleteLearnerSyncResult result = service.confirmLearner(new ConfirmLearnerCommand(
+                "sync", "broker-b", 0L, endpoint)).toCompletableFuture().join();
+        assertThat(result.status()).isEqualTo(Status.UNAVAILABLE);
         assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("sync"))).isEmpty();
     }
 
     @Test
-    void pendingMembershipRejectsAnotherChangeBeforeExternalSideEffects() {
+    void pendingMembershipRejectsAnotherChangeBeforeExternalSideEffects() throws Exception {
         StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"), discovered("broker-c"));
-        MembershipEndpoint firstEndpoint = new MembershipEndpoint("127.0.0.1:19001");
-        MembershipEndpoint secondEndpoint = new MembershipEndpoint("127.0.0.1:19002");
-        doReturn(CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.UNAVAILABLE, null, "unknown result")))
-                .when(fixture.adapter).addLearner(firstEndpoint);
         BrokerMembershipAppService service = membership(fixture, 1);
-        assertThat(service.addLearner(BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand(
-                "join-1", "broker-b", 0L, firstEndpoint.value())).toCompletableFuture().join().status())
-                .isEqualTo(Status.UNAVAILABLE);
-
-        assertThat(service.addLearner(BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand(
-                "join-2", "broker-c", 0L, secondEndpoint.value())).toCompletableFuture().join())
-                .satisfies(result -> {
-                    assertThat(result.status()).isEqualTo(Status.CONFLICT);
-                    assertThat(result.message()).contains("another cluster change");
-                });
-        verify(fixture.adapter, never()).addLearner(secondEndpoint);
-        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("join-2"))).isEmpty();
-        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("join-1")).orElseThrow().phase())
-                .isEqualTo(BrokerClusterOperationPhase.PENDING);
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call -> {
+            entered.countDown();
+            return CompletableFuture.completedFuture(new com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult(
+                    com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult.Status.UNAVAILABLE, 1, null, "unknown native outcome"));
+        }).when(fixture.adapter).changeMembershipConfiguration(any());
+        CompletionStage<AddLearnerResult> first = service.addLearner(new AddLearnerCommand(
+                "join-1", "broker-b", 0L, "127.0.0.1:19001"));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(first.toCompletableFuture()).isNotDone();
+        BrokerClusterOperation pending = fixture.stateMachine.findOperation(new ClusterOperationId("join-1")).orElseThrow();
+        assertThat(pending.phase()).isEqualTo(BrokerClusterOperationPhase.PENDING);
+        assertThat(pending.currentMembershipStep().hasUndrainedPermit()).isTrue();
+        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b")).orElseThrow().membershipRole().name())
+                .isEqualTo("DISCOVERED");
+        assertThat(service.addLearner(new AddLearnerCommand("join-2", "broker-c", 0L, "127.0.0.1:19002"))
+                .toCompletableFuture().get(5, TimeUnit.SECONDS).status()).isEqualTo(Status.CONFLICT);
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
+        verify(fixture.adapter, never()).commitOperation(any(), any());
     }
 
     @Test
@@ -329,61 +334,76 @@ class BrokerClusterAppServiceChangeTest {
     }
 
     @Test
-    void removalRejectionFailsOperationWithoutRemovingDomainNode() {
+    void removalUnknownRetainsPermitAndDomainNode() throws Exception {
         StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"),
-                new BrokerNode("broker-b", "broker-b.example:18020", BrokerMembershipRole.LEARNER,
-                        BrokerRoutingState.INACTIVE));
-        MembershipEndpoint endpoint = new MembershipEndpoint("127.0.0.1:19001");
-        fixture.stateMachine.restore(new BrokerClusterSnapshot(BrokerClusterSnapshot.CURRENT_FORMAT_VERSION,
-                "cluster-a", fixture.stateMachine.committedState(), List.of(), null, Map.of("broker-b", endpoint.value())));
-        doReturn(CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, "removal rejected")))
-                .when(fixture.adapter).removeMember(endpoint);
-
-        assertThat(membership(fixture, 1).removeBroker(new RemoveBrokerCommand(
-                "remove", "broker-b", 0L, endpoint.value())).toCompletableFuture().join().status())
-                .isEqualTo("REJECTED");
-        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("remove")).orElseThrow().phase())
-                .isEqualTo(BrokerClusterOperationPhase.FAILED);
-        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b"))).isPresent();
-    }
-
-    @Test
-    void demotionRejectionRetainsPendingOperationAndVoterState() {
-        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"));
+                new BrokerNode("broker-b", "broker-b.example:18020", BrokerMembershipRole.LEARNER, BrokerRoutingState.INACTIVE));
         BrokerMembershipAppService service = membership(fixture, 1);
-        String endpoint = "127.0.0.1:19001";
-        service.addLearner(BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand(
-                "join", "broker-b", 0L, endpoint)).toCompletableFuture().join();
-        service.confirmLearner(new ConfirmLearnerCommand(
-                "sync", "broker-b", 0L, endpoint)).toCompletableFuture().join();
-        service.promoteLearner(new PromoteLearnerCommand(
-                "promote", "broker-b", 0L, endpoint)).toCompletableFuture().join();
-        doReturn(CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, "learner add rejected")))
-                .when(fixture.adapter).demoteVoter(new MembershipEndpoint(endpoint));
-
-        assertThat(service.demoteVoter(new DemoteVoterCommand(
-                "demote", "broker-b", 0L, endpoint)).toCompletableFuture().join().status()).isEqualTo("REJECTED");
-        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("demote")).orElseThrow().phase())
-                .isEqualTo(BrokerClusterOperationPhase.PENDING);
-        assertThat(fixture.stateMachine.committedState().brokers().stream()
-                .filter(node -> node.brokerId().equals("broker-b")).findFirst().orElseThrow().membershipRole())
-                .isEqualTo(BrokerMembershipRole.VOTER);
+        String endpoint = "broker-b.example:18120";
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call -> {
+            entered.countDown();
+            return CompletableFuture.completedFuture(new com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult(
+                    com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult.Status.UNAVAILABLE, 1, null, "unknown"));
+        }).when(fixture.adapter).changeMembershipConfiguration(any());
+        CompletionStage<?> result = service.removeBroker(new RemoveBrokerCommand("change", "broker-b", 0L, endpoint));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(result.toCompletableFuture()).isNotDone();
+        BrokerClusterOperation operation = fixture.stateMachine.findOperation(new ClusterOperationId("change")).orElseThrow();
+        assertThat(operation.phase()).isEqualTo(BrokerClusterOperationPhase.PENDING);
+        assertThat(operation.currentMembershipStep().hasUndrainedPermit()).isTrue();
+        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b")).orElseThrow().membershipRole().name())
+                .isEqualTo("LEARNER");
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
+        verify(fixture.adapter, never()).commitOperation(any(), any());
     }
 
     @Test
-    void unavailableFailureRecordingIsReturnedAndLeavesOperationPending() {
-        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"));
-        MembershipEndpoint endpoint = new MembershipEndpoint("127.0.0.1:19001");
-        doReturn(CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, "peer rejected")))
-                .when(fixture.adapter).addLearner(endpoint);
-        doAnswer(ignored -> CompletableFuture.completedFuture(new BrokerClusterConsensusResult(Status.UNAVAILABLE, null, null, "failure record unavailable")))
-                .when(fixture.adapter).failMembershipOperation(any(), any());
+    void demotionRejectionRetainsPendingOperationAndVoterState() throws Exception {
+        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"),
+                new BrokerNode("broker-b", "broker-b.example:18020", BrokerMembershipRole.VOTER, BrokerRoutingState.INACTIVE));
+        BrokerMembershipAppService service = membership(fixture, 1);
+        String endpoint = "broker-b.example:18120";
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call -> {
+            entered.countDown();
+            return CompletableFuture.completedFuture(new com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult(
+                    com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult.Status.UNAVAILABLE, 1, null, "unknown"));
+        }).when(fixture.adapter).changeMembershipConfiguration(any());
+        CompletionStage<?> result = service.demoteVoter(new DemoteVoterCommand("change", "broker-b", 0L, endpoint));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(result.toCompletableFuture()).isNotDone();
+        BrokerClusterOperation operation = fixture.stateMachine.findOperation(new ClusterOperationId("change")).orElseThrow();
+        assertThat(operation.phase()).isEqualTo(BrokerClusterOperationPhase.PENDING);
+        assertThat(operation.currentMembershipStep().hasUndrainedPermit()).isTrue();
+        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b")).orElseThrow().membershipRole().name())
+                .isEqualTo("VOTER");
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
+        verify(fixture.adapter, never()).commitOperation(any(), any());
+    }
 
-        assertThat(membership(fixture, 1).addLearner(BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand(
-                "join", "broker-b", 0L, endpoint.value())).toCompletableFuture().join().status())
-                .isEqualTo(Status.UNAVAILABLE);
-        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("join")).orElseThrow().phase())
-                .isEqualTo(BrokerClusterOperationPhase.PENDING);
+    @Test
+    void unknownNativeOutcomeCannotBeReleasedByFailureRecording() throws Exception {
+        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"), discovered("broker-c"));
+        BrokerMembershipAppService service = membership(fixture, 1);
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call -> {
+            entered.countDown();
+            return CompletableFuture.completedFuture(new com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult(
+                    com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult.Status.BUSY, 1, null, "unknown native outcome"));
+        }).when(fixture.adapter).changeMembershipConfiguration(any());
+        CompletionStage<AddLearnerResult> first = service.addLearner(new AddLearnerCommand(
+                "join-1", "broker-b", 0L, "127.0.0.1:19001"));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(first.toCompletableFuture()).isNotDone();
+        BrokerClusterOperation pending = fixture.stateMachine.findOperation(new ClusterOperationId("join-1")).orElseThrow();
+        assertThat(pending.phase()).isEqualTo(BrokerClusterOperationPhase.PENDING);
+        assertThat(pending.currentMembershipStep().hasUndrainedPermit()).isTrue();
+        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b")).orElseThrow().membershipRole().name())
+                .isEqualTo("DISCOVERED");
+        assertThat(service.addLearner(new AddLearnerCommand("join-2", "broker-c", 0L, "127.0.0.1:19002"))
+                .toCompletableFuture().get(5, TimeUnit.SECONDS).status()).isEqualTo(Status.CONFLICT);
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
+        verify(fixture.adapter, never()).commitOperation(any(), any());
     }
 
     @ParameterizedTest
@@ -394,7 +414,7 @@ class BrokerClusterAppServiceChangeTest {
                 new BrokerNode("broker-b", "broker-b.example:18020", BrokerMembershipRole.VOTER,
                         BrokerRoutingState.INACTIVE), voter("broker-c"));
         first.stateMachine.restore(new BrokerClusterSnapshot(BrokerClusterSnapshot.CURRENT_FORMAT_VERSION,
-                "cluster-a", first.stateMachine.committedState(), List.of(), null, Map.of("broker-b", endpoint)));
+                "cluster-a", first.stateMachine.committedState(), List.of(), null, bindings(first, "broker-b", endpoint)));
         BrokerManagementCommand command = type.equals("DEMOTE_VOTER")
                 ? new DemoteVoterCommand("reduce-1", "broker-b", 0L, endpoint)
                 : new RemoveBrokerCommand("reduce-1", "broker-b", 0L, endpoint);
@@ -407,7 +427,7 @@ class BrokerClusterAppServiceChangeTest {
                 .commandDigest(command.digest()).expectedRevision(cluster.revision()).brokerId(new BrokerId(command.brokerId()))
                 .minimumVoterCount(new MinimumVoterCount(1)).changedAt(Instant.now()).build()).operation();
         assertThat(first.stateMachine.apply(BrokerClusterRaftTransformer.INSTANCE.beginCommandFrom(operation)).accepted()).isTrue();
-        StatefulClusterAdapterFixture recovered = new StatefulClusterAdapterFixture(first.stateMachine.committedState());
+        StatefulClusterAdapterFixture recovered = fixture(first.stateMachine.committedState().brokers().toArray(BrokerNode[]::new));
         recovered.stateMachine.restore(BrokerClusterSnapshot.decode(
                 BrokerClusterSnapshot.encode(first.stateMachine.snapshotState())));
         recovered.voters.addAll(List.of("broker-a.example:18120", endpoint, "broker-c.example:18120"));
@@ -420,83 +440,98 @@ class BrokerClusterAppServiceChangeTest {
         assertThat(recovered.voters).doesNotContain(endpoint);
     }
     @Test
-    void definitiveMembershipRejectionFailsPendingOperationAndReleasesNextChange() {
-        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"));
-        MembershipEndpoint endpoint = new MembershipEndpoint("127.0.0.1:19001");
-        doReturn(CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, "peer rejected")))
-                .when(fixture.adapter).addLearner(endpoint);
-
-        assertThat(membership(fixture, 1).addLearner(BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand(
-                "join", "broker-b", 0L, endpoint.value()))
-                .toCompletableFuture().join().status()).isEqualTo(Status.REJECTED);
-        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("join")).orElseThrow().phase())
-                .isEqualTo(BrokerClusterOperationPhase.FAILED);
-        assertThat(fixture.stateMachine.getCluster().addLearner(LearnerJoinIntent.builder()
-                .operationId(new ClusterOperationId("next"))
-                .commandDigest(new CommandDigest("next-digest"))
-                .expectedRevision(fixture.stateMachine.getCluster().revision())
-                .brokerId(new BrokerId("broker-b"))
-                .membershipEndpoint(endpoint)
-                .changedAt(Instant.ofEpochMilli(2_000L))
-                .build()).status())
-                .isEqualTo(BrokerClusterDecision.Status.APPLIED);
-    }
-
-    @Test
-    void unavailableMembershipKeepsPendingOperationForRecovery() {
-        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"));
-        MembershipEndpoint endpoint = new MembershipEndpoint("127.0.0.1:19001");
-        doReturn(CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.UNAVAILABLE, null, "timeout")))
-                .when(fixture.adapter).addLearner(endpoint);
-
-        assertThat(membership(fixture, 1).addLearner(BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand(
-                "join", "broker-b", 0L, endpoint.value()))
-                .toCompletableFuture().join().status()).isEqualTo(Status.UNAVAILABLE);
-        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("join")).orElseThrow().phase())
-                .isEqualTo(BrokerClusterOperationPhase.PENDING);
-    }
-
-    @Test
-    void resumesPendingLearnerAdditionUsingCommittedEndpointBinding() {
-        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"));
+    void nativeBusyDoesNotProveFailureOrReleaseNextChange() throws Exception {
+        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"), discovered("broker-c"));
         BrokerMembershipAppService service = membership(fixture, 1);
-        MembershipEndpoint endpoint = new MembershipEndpoint("127.0.0.1:19001");
-        doReturn(CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.UNAVAILABLE, null, "timeout")))
-                .when(fixture.adapter).addLearner(endpoint);
-        service.addLearner(BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand(
-                "join", "broker-b", 0L, endpoint.value())).toCompletableFuture().join();
-        fixture.learners.add(endpoint.value());
-        doReturn(CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.DUPLICATE, null, null)))
-                .when(fixture.adapter).addLearner(endpoint);
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call -> {
+            entered.countDown();
+            return CompletableFuture.completedFuture(new com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult(
+                    com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult.Status.BUSY, 1, null, "unknown native outcome"));
+        }).when(fixture.adapter).changeMembershipConfiguration(any());
+        CompletionStage<AddLearnerResult> first = service.addLearner(new AddLearnerCommand(
+                "join-1", "broker-b", 0L, "127.0.0.1:19001"));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(first.toCompletableFuture()).isNotDone();
+        BrokerClusterOperation pending = fixture.stateMachine.findOperation(new ClusterOperationId("join-1")).orElseThrow();
+        assertThat(pending.phase()).isEqualTo(BrokerClusterOperationPhase.PENDING);
+        assertThat(pending.currentMembershipStep().hasUndrainedPermit()).isTrue();
+        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b")).orElseThrow().membershipRole().name())
+                .isEqualTo("DISCOVERED");
+        assertThat(service.addLearner(new AddLearnerCommand("join-2", "broker-c", 0L, "127.0.0.1:19002"))
+                .toCompletableFuture().get(5, TimeUnit.SECONDS).status()).isEqualTo(Status.CONFLICT);
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
+        verify(fixture.adapter, never()).commitOperation(any(), any());
+    }
 
-        service.resume(new ClusterOperationId("join"))
-                .toCompletableFuture().join();
+    @Test
+    void unavailableMembershipKeepsPendingOperationForRecovery() throws Exception {
+        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"), discovered("broker-c"));
+        BrokerMembershipAppService service = membership(fixture, 1);
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call -> {
+            entered.countDown();
+            return CompletableFuture.completedFuture(new com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult(
+                    com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult.Status.UNAVAILABLE, 1, null, "unknown native outcome"));
+        }).when(fixture.adapter).changeMembershipConfiguration(any());
+        CompletionStage<AddLearnerResult> first = service.addLearner(new AddLearnerCommand(
+                "join-1", "broker-b", 0L, "127.0.0.1:19001"));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(first.toCompletableFuture()).isNotDone();
+        BrokerClusterOperation pending = fixture.stateMachine.findOperation(new ClusterOperationId("join-1")).orElseThrow();
+        assertThat(pending.phase()).isEqualTo(BrokerClusterOperationPhase.PENDING);
+        assertThat(pending.currentMembershipStep().hasUndrainedPermit()).isTrue();
+        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b")).orElseThrow().membershipRole().name())
+                .isEqualTo("DISCOVERED");
+        assertThat(service.addLearner(new AddLearnerCommand("join-2", "broker-c", 0L, "127.0.0.1:19002"))
+                .toCompletableFuture().get(5, TimeUnit.SECONDS).status()).isEqualTo(Status.CONFLICT);
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
+        verify(fixture.adapter, never()).commitOperation(any(), any());
+    }
 
-        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("join")).orElseThrow().phase())
+    @Test
+    void resumesPendingLearnerAdditionUsingCommittedEndpointBinding() throws Exception {
+        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"));
+        String endpoint = "127.0.0.1:19001";
+        AddLearnerCommand command = new AddLearnerCommand("join", "broker-b", 0L, endpoint);
+        BrokerCluster cluster = fixture.stateMachine.getCluster();
+        BrokerClusterOperation operation = cluster.addLearner(LearnerJoinIntent.builder()
+                .operationId(new ClusterOperationId("join")).commandDigest(command.digest())
+                .expectedRevision(cluster.revision()).brokerId(new BrokerId("broker-b"))
+                .membershipEndpoint(new MembershipEndpoint(endpoint)).changedAt(Instant.EPOCH).build()).operation();
+        fixture.adapter.beginOperation(operation).toCompletableFuture().join();
+        membership(fixture, 1).resume(operation.id()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+        assertThat(fixture.stateMachine.findOperation(operation.id()).orElseThrow().phase())
                 .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED);
         assertThat(fixture.stateMachine.getCluster().operations()).hasSize(1);
-        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b"))
-                .orElseThrow().membershipRole()).isEqualTo(
-                        com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipRole.LEARNER_SYNCING);
+        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b")).orElseThrow().membershipRole().name())
+                .isEqualTo("LEARNER_SYNCING");
+        assertThat(fixture.learners).containsExactly(endpoint);
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
     }
 
     @Test
-    void twoStepPromotionRejectionRetainsPendingUntilMembershipIsReconciled() {
-        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"));
+    void twoStepPromotionUnknownRetainsPendingUntilExactPermitDrains() throws Exception {
+        StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"),
+                new BrokerNode("broker-b", "broker-b.example:18020", BrokerMembershipRole.LEARNER, BrokerRoutingState.INACTIVE));
         BrokerMembershipAppService service = membership(fixture, 1);
-        String endpoint = "127.0.0.1:19001";
-        service.addLearner(BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand("join", "broker-b", 0L, endpoint))
-                .toCompletableFuture().join();
-        service.confirmLearner(new ConfirmLearnerCommand(
-                "sync", "broker-b", 0L, endpoint)).toCompletableFuture().join();
-        doReturn(CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.REJECTED, null, "voter add rejected")))
-                .when(fixture.adapter).promoteLearner(new MembershipEndpoint(endpoint));
-
-        assertThat(service.promoteLearner(new PromoteLearnerCommand(
-                "promote", "broker-b", 0L, endpoint))
-                .toCompletableFuture().join().status()).isEqualTo("REJECTED");
-        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("promote")).orElseThrow().phase())
-                .isEqualTo(BrokerClusterOperationPhase.PENDING);
+        String endpoint = "broker-b.example:18120";
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call -> {
+            entered.countDown();
+            return CompletableFuture.completedFuture(new com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult(
+                    com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult.Status.UNAVAILABLE, 1, null, "unknown"));
+        }).when(fixture.adapter).changeMembershipConfiguration(any());
+        CompletionStage<?> result = service.promoteLearner(new PromoteLearnerCommand("change", "broker-b", 0L, endpoint));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(result.toCompletableFuture()).isNotDone();
+        BrokerClusterOperation operation = fixture.stateMachine.findOperation(new ClusterOperationId("change")).orElseThrow();
+        assertThat(operation.phase()).isEqualTo(BrokerClusterOperationPhase.PENDING);
+        assertThat(operation.currentMembershipStep().hasUndrainedPermit()).isTrue();
+        assertThat(fixture.stateMachine.getCluster().findNode(new BrokerId("broker-b")).orElseThrow().membershipRole().name())
+                .isEqualTo("LEARNER");
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
+        verify(fixture.adapter, never()).commitOperation(any(), any());
     }
 
     @Test
@@ -542,12 +577,11 @@ class BrokerClusterAppServiceChangeTest {
         String endpoint = "127.0.0.1:19001";
         membership(fixture, 1).addLearner(BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand(
                 "join", "broker-b", 0L, endpoint)).toCompletableFuture().join();
-        BrokerPeerAdapter peerAdapter =
-                mock(BrokerPeerAdapter.class);
-        doReturn(CompletableFuture.completedFuture(0L)).when(peerAdapter).fetchQuorumReadIndex(any());
-        BrokerMembershipAppService service = new BrokerMembershipAppService(
-                fixture.adapter, peerAdapter,
-                new MinimumVoterCount(1));
+        BrokerMembershipAppService service = membership(fixture, 1);
+        doReturn(CompletableFuture.completedFuture(new com.co.kc.imchat.broker.domain.authority.model.QuorumRead(
+                new com.co.kc.imchat.broker.domain.cluster.model.LeaderTerm(1L),
+                new com.co.kc.imchat.broker.domain.cluster.model.QuorumReadIndex(2L))))
+                .when(fixture.adapter).confirmLeadership(any());
 
         assertThat(service.confirmLearner(
                 new ConfirmLearnerCommand(
@@ -603,98 +637,40 @@ class BrokerClusterAppServiceChangeTest {
     }
 
     @Test
-    void pendingLearnerContinuationsCanReachExternalBoundaryTwice() throws Exception {
+    void pendingLearnerContinuationsCannotExecuteDuplicateOrStaleExternalActions() throws Exception {
         StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), discovered("broker-b"));
         BrokerMembershipAppService service = membership(fixture, 1);
         String endpoint = "127.0.0.1:19001";
-        MembershipEndpoint member = new MembershipEndpoint(endpoint);
-        BrokerId target = new BrokerId("broker-b");
-        ClusterOperationId joinId = new ClusterOperationId("join");
-        ClusterOperationId removeId = new ClusterOperationId("remove");
-        AddLearnerCommand join = BrokerManagementHttpTransformer.INSTANCE.addLearnerCommand(
-                "join", "broker-b", 0L, endpoint);
-        RemoveBrokerCommand remove = new RemoveBrokerCommand("remove", "broker-b", 0L, endpoint);
-        CompletableFuture<BrokerConsensusMembershipResult> first = new CompletableFuture<>();
-        java.util.concurrent.atomic.AtomicReference<Runnable> delayedAdd =
+        AddLearnerCommand join = new AddLearnerCommand("join", "broker-b", 0L, endpoint);
+        CompletableFuture<com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult> nativeResult = new CompletableFuture<>();
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership> target =
                 new java.util.concurrent.atomic.AtomicReference<>();
-        List<String> events = new ArrayList<>();
-        doAnswer(invocation -> {
-            if (delayedAdd.get() == null) {
-                events.add("add-first-entered");
-                // 保存副作用本身；不能仅延迟已执行动作的返回结果。
-                delayedAdd.set(() -> {
-                    fixture.learners.add(endpoint);
-                    events.add("add-first-applied");
-                });
-                return first;
-            }
-            events.add("add-second-entered");
-            fixture.learners.add(endpoint);
-            events.add("add-second-applied");
-            return CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(
-                    BrokerConsensusMembershipResult.Status.APPLIED, null, null));
-        }).when(fixture.adapter).addLearner(member);
-
-        try {
-            CompletionStage<AddLearnerResult> stale = service.addLearner(join);
-            assertThat(stale.toCompletableFuture()).isNotDone();
-            assertThat(fixture.stateMachine.findOperation(joinId).orElseThrow().phase())
-                    .isEqualTo(BrokerClusterOperationPhase.PENDING);
-            assertThat(fixture.stateMachine.getCluster().findNode(target).orElseThrow().membershipRole().name())
-                    .isEqualTo("DISCOVERED");
-            assertThat(fixture.stateMachine.getCluster().findNode(target).orElseThrow().trafficState())
-                    .isEqualTo(BrokerTrafficState.INACTIVE);
-            assertThat(fixture.stateMachine.getCluster().membershipEndpoints()).containsEntry(target, member);
-            assertThat(fixture.learners).isEmpty();
-
-            assertThat(service.removeBroker(remove).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
-                    .isEqualTo("CONFLICT");
-            assertThat(fixture.stateMachine.findOperation(removeId)).isEmpty();
-            verify(fixture.adapter, never()).removeMember(any());
-
-            assertThat(service.addLearner(join).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
-                    .isEqualTo(Status.APPLIED);
-            assertThat(fixture.stateMachine.findOperation(joinId).orElseThrow().phase())
-                    .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED);
-            assertThat(fixture.stateMachine.getCluster().findNode(target).orElseThrow().membershipRole().name())
-                    .isEqualTo("LEARNER_SYNCING");
-            assertThat(fixture.stateMachine.getCluster().findNode(target).orElseThrow().trafficState())
-                    .isEqualTo(BrokerTrafficState.INACTIVE);
-            assertThat(fixture.stateMachine.getCluster().membershipEndpoints()).containsEntry(target, member);
-            assertThat(fixture.learners).containsExactly(endpoint);
-            assertThat(fixture.stateMachine.committedState().epoch()).isZero();
-
-            assertThat(service.removeBroker(remove).toCompletableFuture().get(5, TimeUnit.SECONDS).status())
-                    .isEqualTo("APPLIED");
-            events.add("remove-applied");
-            assertThat(fixture.stateMachine.findOperation(removeId).orElseThrow().phase())
-                    .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED);
-            assertThat(fixture.stateMachine.getCluster().findNode(target)).isEmpty();
-            assertThat(fixture.stateMachine.getCluster().membershipEndpoints()).doesNotContainKey(target);
-            assertThat(fixture.learners).isEmpty();
-            BrokerClusterState removedState = fixture.stateMachine.committedState();
-
-            delayedAdd.get().run();
-            first.complete(new BrokerConsensusMembershipResult(
-                    BrokerConsensusMembershipResult.Status.APPLIED, null, null));
-            assertThat(stale.toCompletableFuture().get(5, TimeUnit.SECONDS).status())
-                    .isEqualTo(Status.DUPLICATE);
-            events.add("add-first-completed");
-
-            assertThat(events).containsExactly("add-first-entered", "add-second-entered",
-                    "add-second-applied", "remove-applied", "add-first-applied", "add-first-completed");
-            assertThat(fixture.learners).containsExactly(endpoint);
-            assertThat(fixture.stateMachine.committedState()).isEqualTo(removedState);
-            assertThat(fixture.stateMachine.getCluster().membershipEndpoints()).doesNotContainKey(target);
-            assertThat(fixture.stateMachine.findOperation(joinId).orElseThrow().phase())
-                    .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED);
-            assertThat(fixture.stateMachine.findOperation(removeId).orElseThrow().phase())
-                    .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED);
-            verify(fixture.adapter, times(2)).addLearner(member);
-            verify(fixture.adapter, times(1)).removeMember(member);
-        } finally {
-            first.cancel(false);
-        }
+        doAnswer(call -> {
+            target.set(call.getArgument(0));
+            entered.countDown();
+            return nativeResult;
+        }).when(fixture.adapter).changeMembershipConfiguration(any());
+        CompletionStage<AddLearnerResult> first = service.addLearner(join);
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        CompletionStage<AddLearnerResult> duplicate = service.addLearner(join);
+        assertThat(first.toCompletableFuture()).isNotDone();
+        assertThat(duplicate.toCompletableFuture()).isNotDone();
+        assertThat(service.removeBroker(new RemoveBrokerCommand("remove", "broker-b", 0L, endpoint))
+                .toCompletableFuture().get(5, TimeUnit.SECONDS).status()).isEqualTo("CONFLICT");
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
+        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("join")).orElseThrow()
+                .currentMembershipStep().hasUndrainedPermit()).isTrue();
+        fixture.learners.addAll(target.get().learners().stream().map(MembershipEndpoint::value).toList());
+        nativeResult.complete(new com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult(
+                com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult.Status.APPLIED, 0, null, null));
+        assertThat(first.toCompletableFuture().get(5, TimeUnit.SECONDS).status()).isEqualTo(Status.APPLIED);
+        assertThat(duplicate.toCompletableFuture().get(5, TimeUnit.SECONDS).status()).isEqualTo(Status.APPLIED);
+        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("join")).orElseThrow().phase())
+                .isEqualTo(BrokerClusterOperationPhase.SUCCEEDED);
+        assertThat(fixture.stateMachine.findOperation(new ClusterOperationId("remove"))).isEmpty();
+        assertThat(fixture.learners).containsExactly(endpoint);
+        verify(fixture.adapter, times(1)).changeMembershipConfiguration(any());
     }
 
     @Test
@@ -711,14 +687,15 @@ class BrokerClusterAppServiceChangeTest {
         service.demoteVoter(new DemoteVoterCommand("demote", "broker-b", 0L, endpoint))
                 .toCompletableFuture().join();
         long revision = fixture.stateMachine.committedState().revision();
+        verify(fixture.adapter, times(5)).changeMembershipConfiguration(any());
+        Mockito.clearInvocations(fixture.adapter);
 
         assertThat(service.addLearner(join).toCompletableFuture().join().status()).isEqualTo(Status.DUPLICATE);
         assertThat(service.confirmLearner(sync).toCompletableFuture().join().status()).isEqualTo(Status.DUPLICATE);
         assertThat(service.promoteLearner(promote).toCompletableFuture().join().status()).isEqualTo("DUPLICATE");
-        verify(fixture.adapter, times(1)).addLearner(new MembershipEndpoint(endpoint));
-        verify(fixture.adapter, times(1)).promoteLearner(new MembershipEndpoint(endpoint));
-        verify(fixture.adapter, times(1)).getConsensusMembership();
-        verify(fixture.adapter, times(1)).confirmLeadership(any());
+        verify(fixture.adapter, never()).changeMembershipConfiguration(any());
+        verify(fixture.adapter, never()).readLeaderMembershipConfiguration();
+        verify(fixture.adapter, never()).confirmLeadership(any());
         assertThat(fixture.stateMachine.committedState().revision()).isEqualTo(revision);
         assertThat(fixture.voters).doesNotContain(endpoint);
         assertThat(fixture.learners).containsExactly(endpoint);
@@ -729,14 +706,14 @@ class BrokerClusterAppServiceChangeTest {
         StatefulClusterAdapterFixture fixture = fixture(voter("broker-a"), voter("broker-b"), voter("broker-c"));
         fixture.stateMachine.restore(new BrokerClusterSnapshot(BrokerClusterSnapshot.CURRENT_FORMAT_VERSION,
                 "cluster-a", fixture.stateMachine.committedState(), List.of(), null,
-                Map.of("broker-b", "127.0.0.1:19001")));
+                bindings(fixture, "broker-b", "127.0.0.1:19001")));
         assertThat(membership(fixture, 3).demoteVoter(new DemoteVoterCommand(
                 "demote", "broker-b", 0L, "127.0.0.1:19001"))
                 .toCompletableFuture().join()).satisfies(result -> {
                     assertThat(result.status()).isEqualTo("REJECTED");
                     assertThat(result.message()).isEqualTo("membership change violates minimum voter count 3");
                 });
-        verify(fixture.adapter, never()).demoteVoter(any(MembershipEndpoint.class));
+        verify(fixture.adapter, never()).changeMembershipConfiguration(any());
         assertThat(fixture.stateMachine.getCluster().operations()).isEmpty();
     }
 
@@ -818,17 +795,86 @@ class BrokerClusterAppServiceChangeTest {
         return service;
     }
 
+    private final List<BrokerMembershipExecutor> executors = new ArrayList<>();
+
+    @org.junit.jupiter.api.AfterEach
+    void closeMembershipWorkers() {
+        executors.forEach(BrokerMembershipExecutor::close);
+    }
+
     private BrokerMembershipAppService membership(StatefulClusterAdapterFixture fixture, int minimumVoters) {
-        BrokerPeerAdapter peerAdapter =
-                mock(BrokerPeerAdapter.class);
+        BrokerPeerAdapter peerAdapter = mock(BrokerPeerAdapter.class);
         doReturn(CompletableFuture.completedFuture(1L)).when(peerAdapter).fetchQuorumReadIndex(any());
+        com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter.LocalBroker local = fixture.adapter.getLocalBroker();
+        doReturn(new BrokerId("broker-a")).when(local).getId();
+        doReturn(java.util.Optional.of(new com.co.kc.imchat.broker.domain.cluster.model.LeaderTerm(1L)))
+                .when(local).getLeaderTerm();
+        doReturn(new com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterId("cluster-a"))
+                .when(fixture.adapter).getClusterId();
+        doAnswer(call -> new com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership(
+                fixture.voters.stream().map(MembershipEndpoint::new).collect(java.util.stream.Collectors.toSet()),
+                fixture.learners.stream().map(MembershipEndpoint::new).collect(java.util.stream.Collectors.toSet())))
+                .when(fixture.adapter).readLeaderMembershipConfiguration();
+        doAnswer(call -> CompletableFuture.completedFuture(fixture.stateMachine.apply(call.getArgument(0))))
+                .when(fixture.adapter).registerMembershipPermit(any());
+        doAnswer(call -> {
+            com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership target = call.getArgument(0);
+            fixture.voters.clear();
+            fixture.learners.clear();
+            target.voters().forEach(member -> fixture.voters.add(member.value()));
+            target.learners().forEach(member -> fixture.learners.add(member.value()));
+            return CompletableFuture.completedFuture(new com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult(
+                    com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult.Status.APPLIED, 0, null, null));
+        }).when(fixture.adapter).changeMembershipConfiguration(any());
+        doReturn(true).when(fixture.adapter).isMembershipPermitDrainCurrent(any());
+        doReturn(CompletableFuture.completedFuture(new com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipPermitDrain(
+                new com.co.kc.imchat.broker.domain.cluster.model.LeaderTerm(1L), 1L,
+                new com.co.kc.imchat.broker.domain.cluster.model.QuorumReadIndex(10L))))
+                .when(fixture.adapter).confirmMembershipPermitDrain(any());
+        doReturn(CompletableFuture.completedFuture(10L)).when(fixture.adapter).fetchQuorumReadIndex();
+        doAnswer(call -> CompletableFuture.completedFuture(fixture.stateMachine.apply(call.getArgument(0))))
+                .when(fixture.adapter).confirmMembershipPermitDrained(any());
+        doAnswer(call -> {
+            BrokerClusterOperation operation = call.getArgument(0);
+            assertThat(operation.membershipReadyToCommit()).isTrue();
+            assertThat(call.<com.co.kc.imchat.broker.domain.cluster.model.ClusterRevision>getArgument(1))
+                    .isEqualTo(fixture.stateMachine.getCluster().revision());
+            return CompletableFuture.completedFuture(fixture.stateMachine.apply(
+                    BrokerClusterRaftTransformer.INSTANCE.commitCommandFrom(operation, call.getArgument(1), Instant.now())));
+        }).when(fixture.adapter).commitOperation(any(), any());
+        java.util.concurrent.ThreadPoolExecutor worker = new java.util.concurrent.ThreadPoolExecutor(
+                1, 1, 0L, TimeUnit.MILLISECONDS, new java.util.concurrent.ArrayBlockingQueue<>(1),
+                Thread.ofPlatform().daemon().name("t5-app-change-worker").factory(),
+                new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+        BrokerMembershipExecutor executor = new BrokerMembershipExecutor(new BrokerId("broker-a"), worker);
+        executor.onRoleChanged(1L, 1L);
+        executors.add(executor);
         return new BrokerMembershipAppService(fixture.adapter, peerAdapter,
-                new MinimumVoterCount(minimumVoters));
+                new MinimumVoterCount(minimumVoters), executor, new com.co.kc.imchat.broker.support.monitoring.MembershipDiagnosticMetrics(),
+                new MembershipOperationService(new InMemoryLearnerConfirmationAttemptRepository(), new InMemoryMembershipOperationAttemptRepository()));
     }
 
     private StatefulClusterAdapterFixture fixture(BrokerNode... nodes) {
-        return new StatefulClusterAdapterFixture(new BrokerClusterState(0L, 0L,
+        StatefulClusterAdapterFixture fixture = new StatefulClusterAdapterFixture(new BrokerClusterState(0L, 0L,
                 BrokerSelectionAlgorithm.RENDEZVOUS_HASH, List.of(nodes)));
+        Map<String, String> endpoints = new java.util.LinkedHashMap<>();
+        for (BrokerNode node : nodes) {
+            if (node.membershipRole() != BrokerMembershipRole.DISCOVERED) {
+                String endpoint = node.brokerId() + ".example:18120";
+                endpoints.put(node.brokerId(), endpoint);
+                (node.membershipRole() == BrokerMembershipRole.VOTER ? fixture.voters : fixture.learners).add(endpoint);
+            }
+        }
+        BrokerClusterSnapshot snapshot = fixture.stateMachine.snapshotState();
+        fixture.stateMachine.restore(new BrokerClusterSnapshot(snapshot.formatVersion(), snapshot.clusterId(),
+                snapshot.state(), snapshot.operations(), snapshot.fencingOperation(), endpoints));
+        return fixture;
+    }
+
+    private Map<String, String> bindings(StatefulClusterAdapterFixture fixture, String brokerId, String endpoint) {
+        Map<String, String> bindings = new java.util.LinkedHashMap<>(fixture.stateMachine.snapshotState().membershipEndpoints());
+        bindings.put(brokerId, endpoint);
+        return bindings;
     }
 
     private BrokerNode voter(String id) {

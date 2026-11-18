@@ -146,7 +146,6 @@ class BrokerHealthObservationPrecisionTest {
         when(adapter.getClusterId()).thenReturn(new BrokerClusterId("cluster-a"));
         when(adapter.getClusterSnapshot()).thenReturn(machine.getCluster());
         ConsensusMembership membership = new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120")), Set.of());
-        when(adapter.getConsensusMembership()).thenReturn(membership);
         AtomicLong nanos = new AtomicLong();
         BrokerHealthObservationTracker store = new BrokerHealthObservationTracker(new BrokerId("a"), Duration.ofSeconds(10));
 

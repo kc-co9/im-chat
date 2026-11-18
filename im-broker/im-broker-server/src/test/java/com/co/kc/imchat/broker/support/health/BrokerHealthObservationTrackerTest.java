@@ -6,7 +6,6 @@ import com.co.kc.imchat.broker.domain.cluster.model.BrokerHealthObservation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerHealthStatus;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterRevision;
-import com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership;
 import java.util.List;
 import java.util.Map;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
@@ -57,8 +56,7 @@ class BrokerHealthObservationTrackerTest {
         repository.synchronize(context);
         record(BrokerHealthStatus.UNHEALTHY, 0);
         BrokerHealthObservationContext next = new BrokerHealthObservationContext(
-                new ClusterRevision(2L), new BrokerClusterTopology(new RoutingEpoch(1L), List.of(), Map.of(),
-                        new ConsensusMembership(Set.of(), Set.of())));
+                new ClusterRevision(2L), new BrokerClusterTopology(new RoutingEpoch(1L), List.of(), Map.of()));
         repository.synchronize(next);
         record(BrokerHealthStatus.UNHEALTHY, 9);
         assertThat(repository.snapshot(next, Instant.EPOCH, at(9))).isEmpty();
@@ -69,8 +67,7 @@ class BrokerHealthObservationTrackerTest {
         return new BrokerHealthObservationContext(new ClusterRevision(revision),
                 new BrokerClusterTopology(new RoutingEpoch(1L), List.of(
                         new BrokerNode(target, new BrokerRouteEndpoint("b:18100"),
-                                BrokerMembershipRole.VOTER, BrokerTrafficState.ACTIVE)), Map.of(),
-                        new ConsensusMembership(Set.of(), Set.of())));
+                                BrokerMembershipRole.VOTER, BrokerTrafficState.ACTIVE)), Map.of()));
     }
 
     @Test
@@ -78,8 +75,7 @@ class BrokerHealthObservationTrackerTest {
         List<BrokerHealthObservationContext> changedContexts = List.of(
                 context(2L),
                 new BrokerHealthObservationContext(context.revision(),
-                        new BrokerClusterTopology(new RoutingEpoch(2L), context.topology().brokers(), Map.of(),
-                                new ConsensusMembership(Set.of(), Set.of()))));
+                        new BrokerClusterTopology(new RoutingEpoch(2L), context.topology().brokers(), Map.of())));
         for (BrokerHealthObservationContext next : changedContexts) {
             repository.synchronize(context);
             record(BrokerHealthStatus.UNHEALTHY, 0);
@@ -124,7 +120,7 @@ class BrokerHealthObservationTrackerTest {
                 BrokerMembershipRole.VOTER, BrokerTrafficState.INACTIVE);
         BrokerHealthObservationContext mixed = new BrokerHealthObservationContext(context.revision(),
                 new BrokerClusterTopology(new RoutingEpoch(1L), List.of(context.topology().brokers().getFirst(), inactive),
-                        Map.of(), new ConsensusMembership(Set.of(), Set.of())));
+                        Map.of()));
         repository.synchronize(mixed);
         repository.record(mixed, reporter, BrokerHealthStatus.UNHEALTHY, at(0));
         repository.record(mixed, new BrokerId("absent"), BrokerHealthStatus.UNHEALTHY, at(0));

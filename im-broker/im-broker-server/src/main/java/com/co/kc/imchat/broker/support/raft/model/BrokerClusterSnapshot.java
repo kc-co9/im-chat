@@ -23,7 +23,7 @@ public record BrokerClusterSnapshot(
         RoutingEpochFence fencingOperation,
         Map<String, String> membershipEndpoints) implements Serializable {
 
-    /** 编码 v2 JSON 快照；旧 v1 格式有意拒绝，不做迁移。 */
+    /** 编码 v3 JSON 快照；旧格式有意拒绝，不做迁移。 */
     public static byte[] encode(BrokerClusterSnapshot snapshot) {
         if (snapshot == null) {
             throw new IllegalArgumentException("snapshot must not be null");
@@ -41,7 +41,8 @@ public record BrokerClusterSnapshot(
                 new String(content, StandardCharsets.UTF_8), BrokerClusterSnapshot.class);
     }
 
-    public static final int CURRENT_FORMAT_VERSION = 2;
+    /** 当前快照格式版本；旧格式不做隐式迁移。 */
+    public static final int CURRENT_FORMAT_VERSION = 3;
 
     public BrokerClusterSnapshot {
         if (formatVersion != CURRENT_FORMAT_VERSION) {
@@ -55,6 +56,10 @@ public record BrokerClusterSnapshot(
         }
         if (operations == null) {
             throw new IllegalArgumentException("operations must not be null");
+        }
+        if (operations.stream().anyMatch(operation -> operation.nativeMembershipChange()
+                && operation.membershipSteps().isEmpty())) {
+            throw new IllegalArgumentException("native membership snapshot requires persisted steps");
         }
         operations = operations.stream()
                 .sorted(Comparator.comparing(operation -> operation.id().value()))

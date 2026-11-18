@@ -48,6 +48,8 @@ class OAuthTokenClaimsCustomizerTest {
         customizer.customizeAccessToken(context);
 
         assertThat(claims.build().getClaims())
+                .containsEntry("principal_type", "MACHINE")
+                .containsEntry("client_id", "im-admin-audit")
                 .containsEntry("appKey", "imAdmin")
                 .containsEntry("aud", List.of("imAudit"));
     }
@@ -84,6 +86,8 @@ class OAuthTokenClaimsCustomizerTest {
         customizer.customizeAccessToken(context);
 
         assertThat(claims.build().getClaims())
+                .containsEntry("principal_type", "ADMINISTRATOR")
+                .containsEntry("client_id", "im-admin-web")
                 .containsEntry("sub", "10")
                 .containsEntry("username", "root")
                 .containsEntry("appKey", "imAdmin")

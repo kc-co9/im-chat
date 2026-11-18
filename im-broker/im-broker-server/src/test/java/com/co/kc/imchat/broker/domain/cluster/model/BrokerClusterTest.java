@@ -25,6 +25,26 @@ import static com.co.kc.imchat.broker.support.BrokerDomainValues.term;
 class BrokerClusterTest {
 
     @Test
+    void expectedMembershipUsesCommittedRolesAndReturnsImmutableSets() {
+        BrokerId learnerId = new BrokerId("learner");
+        MembershipEndpoint learnerEndpoint = new MembershipEndpoint("10.0.0.2:18120");
+        BrokerNode learner = new BrokerNode(learnerId, new BrokerRouteEndpoint("10.0.0.2:18020"),
+                BrokerMembershipRole.LEARNER_SYNCING, BrokerTrafficState.INACTIVE);
+        BrokerNode discovered = BrokerNode.discovered(new BrokerId("discovered"),
+                new BrokerRouteEndpoint("10.0.0.3:18020"));
+        BrokerCluster cluster = clusterBuilder().brokers(List.of(activeNode(), learner, discovered))
+                .membershipEndpoints(java.util.Map.of(activeNode().id(), new MembershipEndpoint("10.0.0.1:18120"),
+                        learnerId, learnerEndpoint)).build();
+
+        ConsensusMembership expected = cluster.expectedMembership();
+
+        assertThat(expected.voters()).containsExactly(new MembershipEndpoint("10.0.0.1:18120"));
+        assertThat(expected.learners()).containsExactly(learnerEndpoint);
+        assertThatThrownBy(() -> expected.voters().clear()).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> expected.learners().clear()).isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
     void drainCleanupRequiresConfirmedGatewaysAndStopsAfterEvidenceIsSaved() {
         DrainProgress progress = new DrainProgress(List.of(checkpoint("gateway-a", 900L)), at(2_000L), null);
         BrokerClusterOperation operation = BrokerClusterOperation.builder()
@@ -288,8 +308,9 @@ class BrokerClusterTest {
         assertThat(decision.operation().targetBrokerId()).isEqualTo(discovered.id());
         assertThat(decision.operation().membershipEndpoint()).isEqualTo(new MembershipEndpoint("10.0.0.2:18120"));
 
+        drainMembership(cluster, decision.operation());
         assertThat(cluster.commitOperation(decision.operation().id(),
-                decision.operation().commandDigest(), decision.operation().acceptedRevision(),
+                decision.operation().commandDigest(), cluster.revision(),
                 at(1_100L)).accepted()).isTrue();
         assertThat(cluster.findNode(discovered.id()).orElseThrow().membershipRole())
                 .isEqualTo(BrokerMembershipRole.LEARNER_SYNCING);
@@ -316,7 +337,10 @@ class BrokerClusterTest {
         };
         BrokerCluster cluster = clusterBuilder().brokers(List.of(activeNode(),
                 new BrokerNode(new BrokerId("broker-b"), new BrokerRouteEndpoint("10.0.0.2:18020"),
-                        role, traffic))).build();
+                        role, traffic))).membershipEndpoints(role == BrokerMembershipRole.DISCOVERED
+                        ? java.util.Map.of(new BrokerId("broker-a"), new MembershipEndpoint("10.0.0.1:18120"))
+                        : java.util.Map.of(new BrokerId("broker-a"), new MembershipEndpoint("10.0.0.1:18120"),
+                                new BrokerId("broker-b"), new MembershipEndpoint("10.0.0.2:18120"))).build();
         BrokerClusterDecision begun = businessChange(cluster, type, digest("retry-digest"));
         assertThat(begun.accepted()).isTrue();
         assertThat(begun.duplicate()).isFalse();
@@ -326,6 +350,7 @@ class BrokerClusterTest {
                     cluster.brokers().stream().filter(node -> node.trafficState() == BrokerTrafficState.ACTIVE)
                             .map(BrokerNode::id).toList())).accepted()).isTrue();
         }
+        drainMembership(cluster, operation);
         ClusterRevision revisionBeforeCommit = cluster.revision();
         RoutingEpoch epochBeforeCommit = cluster.epoch();
         assertThat(commitOperation(cluster, proposalFor(operation)).accepted()).isTrue();
@@ -482,10 +507,24 @@ class BrokerClusterTest {
                 .initialDrainProgress(operation.drainProgress()).build();
     }
 
+    private void drainMembership(BrokerCluster cluster, BrokerClusterOperation operation) {
+        if (!operation.nativeMembershipChange()) { return; }
+        while (cluster.findOperation(operation.id()).orElseThrow().currentMembershipStep() != null) {
+            BrokerMembershipStep step = cluster.findOperation(operation.id()).orElseThrow().currentMembershipStep();
+            String permitId = "permit-" + step.stepId();
+            assertThat(cluster.registerMembershipPermit(operation.id(), step.stepId(), permitId,
+                    new BrokerId("broker-a"), "test-inc", cluster.revision()).accepted()).isTrue();
+            assertThat(cluster.confirmMembershipExecution(new MembershipExecutionConfirmation(operation.id(), step.stepId(), permitId,
+                    new BrokerId("broker-a"), "test-inc", step.targetDigest(),
+                    BrokerMembershipPermit.Result.TARGET_APPLIED)).accepted()).isTrue();
+        }
+    }
+
     private BrokerClusterDecision commitOperation(BrokerCluster cluster,
                                                  BrokerClusterOperationProposal proposal) {
+        BrokerClusterOperation operation = cluster.findOperation(proposal.operationId()).orElseThrow();
         return cluster.commitOperation(proposal.operationId(), proposal.commandDigest(),
-                proposal.expectedRevision(), proposal.changedAt());
+                operation.nativeMembershipChange() ? cluster.revision() : proposal.expectedRevision(), proposal.changedAt());
     }
 
     @Test
@@ -967,6 +1006,7 @@ class BrokerClusterTest {
                 .epoch(new RoutingEpoch(1L))
                 .algorithm(BrokerSelectionAlgorithm.RENDEZVOUS_HASH)
                 .brokers(List.of(activeNode()))
+                .membershipEndpoints(java.util.Map.of(new BrokerId("broker-a"), new MembershipEndpoint("10.0.0.1:18120")))
                 .operations(List.of())
                 .build())
                 .isInstanceOf(IllegalStateException.class);
@@ -982,6 +1022,28 @@ class BrokerClusterTest {
                 .fencedBrokerIds(List.of(new BrokerId("broker-a"), new BrokerId("broker-a")))
                 .build())
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void membershipTargetVoterRequiresCommittedBindingInVoterSet() {
+        BrokerCluster cluster = cluster();
+        MembershipEndpoint binding = new MembershipEndpoint("10.0.0.1:18120");
+        BrokerMembershipStep voter = new BrokerMembershipStep("voter",
+                new ConsensusMembership(java.util.Set.of(binding), java.util.Set.of()), List.of());
+        BrokerMembershipStep learnerOnly = new BrokerMembershipStep("learner",
+                new ConsensusMembership(java.util.Set.of(new MembershipEndpoint("other:18120")), java.util.Set.of(binding)), List.of());
+        assertThat(cluster.isMembershipTargetVoter(activeNode().id(), voter)).isTrue();
+        assertThat(cluster.isMembershipTargetVoter(new BrokerId("missing"), voter)).isFalse();
+        assertThat(cluster.isMembershipTargetVoter(activeNode().id(), learnerOnly)).isFalse();
+        BrokerMembershipStep unrelated = new BrokerMembershipStep("other",
+                new ConsensusMembership(java.util.Set.of(new MembershipEndpoint("other:18120")), java.util.Set.of()), List.of());
+        assertThat(cluster.isMembershipTargetVoter(activeNode().id(), unrelated)).isFalse();
+        BrokerNode found = cluster.findNodeByMembershipEndpoint(binding).orElseThrow();
+        assertThat(found).isEqualTo(cluster.findNode(activeNode().id()).orElseThrow());
+        assertThat(found).isNotSameAs(cluster.findNodeByMembershipEndpoint(binding).orElseThrow());
+        assertThat(cluster.findNodeByMembershipEndpoint(new MembershipEndpoint("missing:18120"))).isEmpty();
+        assertThat(cluster.hasPendingMembershipOperation()).isFalse();
+        assertThat(cluster.hasSyncingLearner()).isFalse();
     }
 
     private BrokerCluster cluster() {
@@ -1011,6 +1073,7 @@ class BrokerClusterTest {
                 .epoch(new RoutingEpoch(3L))
                 .algorithm(BrokerSelectionAlgorithm.RENDEZVOUS_HASH)
                 .brokers(List.of(activeNode()))
+                .membershipEndpoints(java.util.Map.of(new BrokerId("broker-a"), new MembershipEndpoint("10.0.0.1:18120")))
                 .operations(List.of())
                 .operationHistoryCapacity(new OperationHistoryCapacity(10));
     }

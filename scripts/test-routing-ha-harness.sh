@@ -13,7 +13,7 @@ SCENARIO_RUNNER="$ROOT_DIR/scripts/run-routing-ha-scenarios.sh"
 FIXTURE_ROOT="$(mktemp -d)"
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 
-restart_timeout_default="$(ruby -e '
+restart_timeout_default="$(ruby -E UTF-8 -e '
   source = File.read(ARGV.fetch(0))
   match = source.match(/RESTART_READY_TIMEOUT_SECONDS="\$\{ROUTING_HA_RESTART_READY_TIMEOUT_SECONDS:-(\d+)\}"/)
   abort "routing-ha restart readiness timeout must be configurable" unless match
@@ -29,7 +29,7 @@ if (( restart_timeout_uses != 2 )); then
   exit 1
 fi
 
-ruby -e '
+ruby -E UTF-8 -e '
   root = ARGV.fetch(0)
   manifest = File.readlines(File.join(root, "im-test/im-routing-ha/src/test/resources/routing-ha-scenarios.tsv"))
   row = manifest.find { |line| line.start_with?("RH-05\t") }.to_s.chomp.split("\t")
@@ -50,7 +50,7 @@ ruby -ryaml -e '
 ' "$ROOT_DIR/deploy/local/compose.routing-ha.yml"
 
 # 直接执行正式 runner 的只读收敛算法；替代 HTTP/单调时钟，覆盖注册、删除、拒绝及瞬时/持续 HTTP 拒绝，既不启动容器也不真实等待。
-ruby -rjson -rnet/http -ruri -ryaml -rtmpdir -e '
+ruby -E UTF-8 -rjson -rnet/http -ruri -ryaml -rtmpdir -e '# encoding: UTF-8
   source = File.read(ARGV.fetch(0))
   body = source[/assert_gossip_converged\(\) \{.*?ruby -rjson -rnet\/http -ruri -ryaml -e \x27(.*?)\x27 "\$COMPOSE_FILE"/m, 1]
   abort "missing actual Gossip convergence assertion" unless body
@@ -102,7 +102,7 @@ ruby -rjson -rnet/http -ruri -ryaml -rtmpdir -e '
      "PERSISTENT_REJECT"=>["",false]}.each do |name,(removed, expected)|
       output = File.join(directory, name + ".json")
       log = File.join(directory, name + ".log")
-      pid = Process.spawn({"CASE"=>name}, "ruby", "-rjson", "-rnet/http", "-ruri", "-ryaml", "-e", stub + body,
+      pid = Process.spawn({"CASE"=>name}, "ruby", "-E", "UTF-8", "-rjson", "-rnet/http", "-ruri", "-ryaml", "-e", stub + body,
         compose, output, name, removed, "http://127.0.0.1:1", "http://127.0.0.1:2", "http://127.0.0.1:3", out:log, err:[:child,:out])
       Process.wait(pid)
       abort "Gossip convergence case failed: #{name}: #{File.read(log)}" unless $?.success? == expected
@@ -314,7 +314,7 @@ git -C "$branch_root" -c user.name=Fixture -c user.email=fixture@example.invalid
 cat > "$branch_root/replacement.sh" <<'SH'
 #!/bin/bash
 set -eu
-ruby -rjson -e 'path = ARGV[0]; data = JSON.parse(File.read(path)); data["replacement"] = true; File.write(path, JSON.generate(data))' "$ROUTING_HA_REACTOR_EVIDENCE"
+ruby -E UTF-8 -rjson -e 'path = ARGV[0]; data = JSON.parse(File.read(path)); data["replacement"] = true; File.write(path, JSON.generate(data))' "$ROUTING_HA_REACTOR_EVIDENCE"
 for index in $(seq 1 25); do
   printf '{"id":"RH-%02d","name":"fixture","status":"passed","evidenceKind":"fixture","evidence":"fixture","assertion":"passed","durationMillis":1,"finishedAt":"2000-01-01T00:00:00Z"}\n' "$index"
 done > "$ROUTING_HA_STATE_DIR/scenarios.jsonl"

@@ -4,6 +4,8 @@ import com.co.kc.imchat.management.iam.sdk.catalog.IamPermissionCatalog;
 import com.co.kc.imchat.management.iam.sdk.catalog.IamPermissionCatalogRegistrar;
 import com.co.kc.imchat.management.iam.sdk.introspection.IamIntrospectionClient;
 import com.co.kc.imchat.management.iam.sdk.introspection.IamIntrospectionService;
+import com.co.kc.imchat.management.iam.sdk.security.IamSecurityFilter;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import com.co.kc.imchat.management.iam.sdk.session.crypto.IamSessionCipher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
@@ -62,6 +64,43 @@ class ImIamSdkAutoConfigurationTest {
                         .hasSingleBean(AnnotationTemplateExpressionDefaults.class)
                         .hasSingleBean(IamSessionCipher.class)
                         .hasSingleBean(IamIntrospectionService.class));
+    }
+
+    @Test
+    void suppliesDefaultBffChainWhenApplicationDoesNotComposeSecurityChains() {
+        new org.springframework.boot.test.context.runner.WebApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(
+                        org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration.class,
+                        org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration.class,
+                        org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration.class,
+                        ImIamSdkAutoConfiguration.class))
+                .withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class))
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .withPropertyValues(enabledProperties())
+                .run(context -> {
+                    assertThat(context).hasSingleBean(SecurityFilterChain.class);
+                    SecurityFilterChain chain = context.getBean(SecurityFilterChain.class);
+                    assertThat(chain.getFilters()).contains(context.getBean(IamSecurityFilter.class));
+                    assertThat(chain.matches(new org.springframework.mock.web.MockHttpServletRequest(
+                            "GET", "/api/browser-probe"))).isTrue();
+                });
+    }
+
+    @Test
+    void preventsBffFilterFromServletContainerAutoRegistration() {
+        contextRunner
+                .withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class))
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .withBean(SecurityFilterChain.class, () -> mock(SecurityFilterChain.class))
+                .withPropertyValues(enabledProperties())
+                .run(context -> {
+                    assertThat(context).hasSingleBean(FilterRegistrationBean.class);
+                    FilterRegistrationBean<?> registration =
+                            context.getBean(FilterRegistrationBean.class);
+                    assertThat(registration.isEnabled()).isFalse();
+                    assertThat(registration.getFilter())
+                            .isSameAs(context.getBean(IamSecurityFilter.class));
+                });
     }
 
     @Test

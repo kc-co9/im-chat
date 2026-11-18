@@ -4,6 +4,7 @@ import com.co.kc.imchat.management.audit.sdk.annotation.Audited;
 import com.co.kc.imchat.management.audit.sdk.annotation.AuditAttribute;
 import com.co.kc.imchat.management.audit.sdk.client.AuditClient;
 import com.co.kc.imchat.management.audit.sdk.context.AuditContextCollector;
+import com.co.kc.imchat.management.audit.sdk.context.AuditThreadContextHolder;
 import com.co.kc.imchat.management.audit.sdk.model.AuditContext;
 import com.co.kc.imchat.management.audit.sdk.model.AuditAttributes;
 import com.co.kc.imchat.management.audit.sdk.model.AuditDescription;
@@ -170,6 +171,7 @@ public class AuditedAspect {
         try {
             LinkedHashMap<String, String> values = new LinkedHashMap<>();
             collectArguments(joinPoint, values);
+            values.putAll(AuditThreadContextHolder.current());
             collectResult(result, values);
             return new AuditAttributes(values);
         } catch (RuntimeException attributeFailure) {

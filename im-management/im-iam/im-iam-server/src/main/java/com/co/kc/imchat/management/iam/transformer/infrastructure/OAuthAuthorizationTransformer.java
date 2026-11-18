@@ -49,6 +49,8 @@ public class OAuthAuthorizationTransformer {
     public OAuthAuthorizationSaveCmd saveCommandFrom(OAuth2Authorization authorization) {
         OAuth2AuthorizationRequest request = authorization.getAttribute(OAuth2AuthorizationRequest.class.getName());
         OAuthPrincipalType principalType = authorization.getAttribute(OAuthAuthorizationAttributes.PRINCIPAL_TYPE);
+        boolean revoked = authorization.getAccessToken() != null
+                && authorization.getAccessToken().isInvalidated();
         return new OAuthAuthorizationSaveCmd(
                 authorization.getId(),
                 authorization.getRegisteredClientId(),
@@ -61,8 +63,9 @@ public class OAuthAuthorizationTransformer {
                 refreshTokenFrom(authorization),
                 idTokenFrom(authorization),
                 Set.copyOf(authorization.getAuthorizedScopes()),
-                OAuthAuthorizationStatus.ACTIVE,
-                null);
+                revoked ? OAuthAuthorizationStatus.REVOKED : OAuthAuthorizationStatus.ACTIVE,
+                revoked ? clock.instant() : null,
+                authorization.getAttribute(OAuthAuthorizationAttributes.ROW_VERSION));
     }
 
     private boolean authorizationCodeInvalidated(OAuth2Authorization authorization) {
@@ -120,6 +123,7 @@ public class OAuthAuthorizationTransformer {
                 .authorizationGrantType(new AuthorizationGrantType(grantType(stored.grantType())))
                 .authorizedScopes(stored.scopes())
                 .attribute(Principal.class.getName(), principal);
+        builder.attribute(OAuthAuthorizationAttributes.ROW_VERSION, stored.rowVersion());
         builder.attribute(OAuthAuthorizationAttributes.PRINCIPAL_TYPE, stored.principalType());
         builder.attribute(OAuthAuthorizationAttributes.PRINCIPAL, stored.principal());
         if (stored.grantType() == OAuthGrantType.AUTHORIZATION_CODE) {

@@ -67,7 +67,6 @@ class BrokerFailureObservationStateTest {
         when(adapter.getLocalBroker().getLeaderTerm()).thenAnswer(ignored -> Optional.of(new LeaderTerm(term.get())));
         when(adapter.getClusterId()).thenReturn(new BrokerClusterId("cluster-a"));
         when(adapter.getClusterSnapshot()).thenAnswer(ignored -> cluster);
-        when(adapter.getConsensusMembership()).thenReturn(membership);
         when(adapter.confirmLeadership(any())).thenAnswer(ignored -> CompletableFuture.completedFuture(
                 new QuorumRead(new LeaderTerm(term.get()), new QuorumReadIndex(1L))));
         // 直接依赖仅建模MTLS授权前提；实际mode的正反例见BrokerPeerAdapterTest。
@@ -104,7 +103,7 @@ class BrokerFailureObservationStateTest {
         });
         clearInvocations(adapter);
         tick(seconds(60), false);
-        verify(adapter, never()).getConsensusMembership();
+        verify(adapter, never()).readLeaderMembershipConfiguration();
         verify(adapter, never()).confirmLeadership(any());
         when(adapter.getLocalBroker().getLeaderTerm()).thenAnswer(ignored -> Optional.of(new LeaderTerm(term.get())));
         tick(seconds(61), false);
@@ -132,7 +131,7 @@ class BrokerFailureObservationStateTest {
     }
 
     @Test
-    void reorderedMembershipDoesNotRestartCooldown() {
+    void businessBindingsPreserveCooldownWithoutNativeConfigurationObservation() {
         MembershipEndpoint a = new MembershipEndpoint("Aa:18120");
         MembershipEndpoint b = new MembershipEndpoint("BB:18120");
         MembershipEndpoint c = new MembershipEndpoint("c:18120");
@@ -140,13 +139,10 @@ class BrokerFailureObservationStateTest {
                 .algorithm(cluster.algorithm()).brokers(cluster.brokers()).operations(List.of())
                 .operationHistoryCapacity(new OperationHistoryCapacity(100))
                 .membershipEndpoints(java.util.Map.of(new BrokerId("a"), a, new BrokerId("b"), b, new BrokerId("c"), c)).build();
-        when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(
-                new java.util.LinkedHashSet<>(List.of(a, b, c)), Set.of()));
         tick(0L, false);
-        when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(
-                new java.util.LinkedHashSet<>(List.of(c, b, a)), Set.of()));
         tick(seconds(60), true);
         tick(seconds(61), true);
+        org.mockito.Mockito.verify(adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
 
     @Test
@@ -160,7 +156,7 @@ class BrokerFailureObservationStateTest {
         when(adapter.getLocalBroker().isLeader()).thenReturn(false);
         clearInvocations(adapter);
         tick(seconds(122), false);
-        verify(adapter, never()).getConsensusMembership();
+        verify(adapter, never()).readLeaderMembershipConfiguration();
         when(adapter.getLocalBroker().isLeader()).thenReturn(true);
         tick(seconds(123), false);
         tick(seconds(183) - 1L, false);
@@ -168,29 +164,27 @@ class BrokerFailureObservationStateTest {
     }
 
     @Test
-    void membershipMismatchCannotSpendCooldownUntilConsistencyReturns() {
+    void businessCooldownDoesNotReadNativeConfiguration() {
         tick(0L, false);
-        when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120")), Set.of(new MembershipEndpoint("c:18120"))));
-        tick(seconds(70), false);
-        tick(seconds(140), false);
-        when(adapter.getConsensusMembership()).thenReturn(membership);
-        tick(seconds(200), false);
-        tick(seconds(260) - 1L, false);
+        tick(seconds(70), true);
+        tick(seconds(140), true);
+        tick(seconds(200), true);
+        tick(seconds(260) - 1L, true);
         tick(seconds(260), true);
         tick(seconds(260) + 1L, true);
+        org.mockito.Mockito.verify(adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
 
     @Test
-    void unknownRaftEndpointAndMonotonicRegressionFailClosed() {
-        when(adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120"), new MembershipEndpoint("unknown:18120")), Set.of()));
+    void monotonicRegressionRecoolsWithoutNativeConfigurationObservation() {
         tick(0L, false);
-        tick(seconds(60), false);
-        when(adapter.getConsensusMembership()).thenReturn(membership);
+        tick(seconds(60), true);
         tick(seconds(20), false);
         tick(seconds(80), true);
         tick(0L, false);
         tick(seconds(60) - 1L, false);
         tick(seconds(60), true);
+        org.mockito.Mockito.verify(adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
 
     @Test

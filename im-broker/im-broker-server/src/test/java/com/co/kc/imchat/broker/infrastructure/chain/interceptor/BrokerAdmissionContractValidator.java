@@ -46,6 +46,7 @@ public final class BrokerAdmissionContractValidator {
             case BROKER_PEER -> BrokerPeerRequest.class.isAssignableFrom(requestType)
                     || GossipPeerRequest.class.isAssignableFrom(requestType);
             case BROKER_CONTROL -> switch (operation) {
+                case CONFIRM_MEMBERSHIP_PERMIT_DRAINED -> requestType == com.co.kc.imchat.broker.sdk.model.params.ConfirmMembershipPermitDrainedParams.class;
                 case FETCH_QUORUM_READ_INDEX -> requestType == QuorumReadIndexParams.class;
                 case PREPARE_ROUTE_LEASE -> requestType == RouteLeasePrepareParams.class;
                 case INSTALL_ROUTE_LEASE -> requestType == RouteLeaseInstallParams.class;

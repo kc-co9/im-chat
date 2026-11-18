@@ -62,17 +62,16 @@ class BrokerFailureObservationRoundTest {
     }
 
     @Test
-    void inconsistentMembershipDoesNotRequestReportsOrQuorum() {
+    void committedObserverRoundDoesNotReadNativeConfiguration() {
         Fixture fixture = new Fixture();
-        when(fixture.adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(
-                Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120")),
-                Set.of(new MembershipEndpoint("c:18120"))));
         fixture.app.reconcileFailures().toCompletableFuture().join();
-        fixture.nanos.set(Duration.ofSeconds(120).toNanos());
+        fixture.nanos.set(Duration.ofSeconds(60).toNanos());
         fixture.app.reconcileFailures().toCompletableFuture().join();
-        verify(fixture.adapter, never()).confirmLeadership(any());
-        verify(fixture.peer, atLeastOnce()).observationsAllowed();
-        verifyNoMoreInteractions(fixture.peer);
+        verify(fixture.adapter).confirmLeadership(any());
+        verify(fixture.peer, times(2)).fetchHealthReport(any(), any(), any(), any(), any());
+        verify(fixture.policy, times(3)).evaluate(any(), eq(Set.of(new BrokerId("a"), new BrokerId("b"), new BrokerId("c"))), any(), any());
+        verify(fixture.adapter, never()).beginOperation(any());
+        org.mockito.Mockito.verify(fixture.adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
 
     @Test
@@ -160,54 +159,33 @@ class BrokerFailureObservationRoundTest {
     }
 
     @Test
-    void observedMembershipMismatchRestartsCooldownEvenWhenOriginalTopologyReturns() {
+    void pendingReportsPreserveCooldownWithoutNativeConfigurationObservation() {
         Fixture fixture = new Fixture();
         fixture.app.reconcileFailures().toCompletableFuture().join();
         fixture.nanos.set(Duration.ofSeconds(60).toNanos());
         CompletableFuture<List<BrokerHealthObservation>> pending = fixture.pendingReport();
         CompletableFuture<Void> round = fixture.app.reconcileFailures().toCompletableFuture();
-        when(fixture.adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120")), Set.of(new MembershipEndpoint("c:18120"))));
         pending.complete(List.of());
         round.join();
-        when(fixture.adapter.getConsensusMembership()).thenReturn(fixture.membership);
-        fixture.nanos.set(Duration.ofSeconds(61).toNanos());
+        verify(fixture.policy, times(3)).evaluate(any(), any(), any(), any());
         clearInvocations(fixture.peer);
-        fixture.app.reconcileFailures().toCompletableFuture().join();
-        verify(fixture.peer, never()).fetchHealthReport(any(), any(), any(), any(), any());
-        doReturn(CompletableFuture.completedFuture(List.of())).when(fixture.peer).fetchHealthReport(any(), any(), any(), any(), any());
-        fixture.nanos.set(Duration.ofSeconds(121).toNanos());
+        fixture.nanos.set(Duration.ofSeconds(61).toNanos());
         fixture.app.reconcileFailures().toCompletableFuture().join();
         verify(fixture.peer, times(2)).fetchHealthReport(any(), any(), any(), any(), any());
+        verify(fixture.adapter, never()).beginOperation(any());
+        org.mockito.Mockito.verify(fixture.adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
 
     @Test
-    void overlappingMembershipInitialAndAsyncReadsReleaseRoundGateWithoutAutomaticBegin() {
+    void businessObservationRoundUsesNoNativeConfigurationRead() {
         Fixture fixture = new Fixture();
-        when(fixture.adapter.getConsensusMembership()).thenAnswer(ignored -> new ConsensusMembership(
-                Set.of(new MembershipEndpoint("a:18120")), Set.of(new MembershipEndpoint("a:18120"))));
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> fixture.app.reconcileFailures().toCompletableFuture().join())
-                .hasCauseInstanceOf(IllegalStateException.class);
-        verify(fixture.peer, atLeastOnce()).observationsAllowed();
-        verifyNoMoreInteractions(fixture.peer);
-        doReturn(fixture.membership).when(fixture.adapter).getConsensusMembership();
         fixture.app.reconcileFailures().toCompletableFuture().join();
         fixture.nanos.set(Duration.ofSeconds(60).toNanos());
-        CompletableFuture<List<BrokerHealthObservation>> pending = fixture.pendingReport();
-        CompletableFuture<Void> round = fixture.app.reconcileFailures().toCompletableFuture();
-        when(fixture.adapter.getConsensusMembership()).thenAnswer(ignored -> new ConsensusMembership(
-                Set.of(new MembershipEndpoint("a:18120")), Set.of(new MembershipEndpoint("a:18120"))));
-        pending.complete(List.of());
-        org.assertj.core.api.Assertions.assertThatThrownBy(round::join)
-                .hasCauseInstanceOf(IllegalStateException.class);
-        verify(fixture.adapter, never()).beginOperation(any());
-        assertThat(fixture.cluster.operations()).isEmpty();
-        doReturn(fixture.membership).when(fixture.adapter).getConsensusMembership();
-        doReturn(CompletableFuture.completedFuture(List.of())).when(fixture.peer).fetchHealthReport(any(), any(), any(), any(), any());
-        clearInvocations(fixture.peer);
-        fixture.nanos.set(Duration.ofSeconds(61).toNanos());
         fixture.app.reconcileFailures().toCompletableFuture().join();
-        verify(fixture.peer, times(2)).fetchHealthReport(any(), any(), any(), any(), any());
+        verify(fixture.adapter).confirmLeadership(any());
+        verify(fixture.policy, times(3)).evaluate(any(), any(), any(), any());
         verify(fixture.adapter, never()).beginOperation(any());
+        org.mockito.Mockito.verify(fixture.adapter, org.mockito.Mockito.never()).readLeaderMembershipConfiguration();
     }
 
     @ParameterizedTest
@@ -216,17 +194,14 @@ class BrokerFailureObservationRoundTest {
         Fixture fixture = new Fixture();
         fixture.app.reconcileFailures().toCompletableFuture().join();
         BrokerHealthObservationContext context = new BrokerHealthObservationContext(
-                fixture.cluster.revision(), fixture.cluster.topology(fixture.membership));
+                fixture.cluster.revision(), fixture.cluster.topology());
         fixture.store.synchronize(context);
         for (long second = 20; second <= 60; second += 5) {
             fixture.store.record(context, new BrokerId("b"), BrokerHealthStatus.UNHEALTHY,
                     new MonotonicTimestamp(Duration.ofSeconds(second).toNanos()));
         }
         fixture.nanos.set(Duration.ofSeconds(60).toNanos());
-        when(fixture.adapter.getConsensusMembership()).thenAnswer(call -> {
-            fixture.nanos.addAndGet(Duration.ofMillis(100).toNanos());
-            return fixture.membership;
-        });
+        fixture.nanos.addAndGet(Duration.ofMillis(100).toNanos());
         List<Instant> requestBaselines = new ArrayList<>();
         List<BrokerHealthObservation> remoteReports = new ArrayList<>();
         when(fixture.peer.fetchHealthReport(any(), any(), any(), any(), any())).thenAnswer(call -> {
@@ -323,7 +298,6 @@ class BrokerFailureObservationRoundTest {
                     .operationId(new ClusterOperationId("promote"))
                     .commandDigest(new CommandDigest("promote"))
                     .expectedRevision(transitional.revision()).brokerId(new BrokerId("c")).changedAt(Instant.EPOCH).build()).accepted()).isTrue();
-            when(fixture.adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120")), Set.of(new MembershipEndpoint("c:18120"))));
         } else {
             assertThat(transitional.demoteVoter(VoterDemotionIntent.builder()
                     .operationId(new ClusterOperationId("demote"))
@@ -332,7 +306,6 @@ class BrokerFailureObservationRoundTest {
                     .minimumVoterCount(new MinimumVoterCount(1))
                     .changedAt(Instant.EPOCH).build()).accepted()).isTrue();
             if (phase.equals("MEMBERSHIP_APPLIED_COMMIT_PENDING")) {
-                when(fixture.adapter.getConsensusMembership()).thenReturn(new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120"), new MembershipEndpoint("b:18120")), Set.of(new MembershipEndpoint("c:18120"))));
             }
         }
         when(fixture.adapter.getClusterSnapshot()).thenReturn(transitional);
@@ -341,7 +314,6 @@ class BrokerFailureObservationRoundTest {
         verify(fixture.adapter, never()).beginOperation(any());
         verify(fixture.peer, never()).fetchHealthReport(any(), any(), any(), any(), any());
         when(fixture.adapter.getClusterSnapshot()).thenReturn(fixture.cluster);
-        when(fixture.adapter.getConsensusMembership()).thenReturn(fixture.membership);
         fixture.nanos.set(Duration.ofSeconds(61).toNanos());
         fixture.app.reconcileFailures().toCompletableFuture().join();
         verify(fixture.peer, never()).fetchHealthReport(any(), any(), any(), any(), any());
@@ -356,15 +328,15 @@ class BrokerFailureObservationRoundTest {
         Fixture fixture = new Fixture();
         fixture.app.reconcileFailures().toCompletableFuture().join();
         BrokerHealthObservationContext context = new BrokerHealthObservationContext(
-                fixture.cluster.revision(), fixture.cluster.topology(fixture.membership));
+                fixture.cluster.revision(), fixture.cluster.topology());
         fixture.store.synchronize(context);
         fixture.nanos.set(Duration.ofSeconds(60).toNanos());
-        when(fixture.adapter.getConsensusMembership()).thenAnswer(call -> {
+        when(fixture.adapter.getClusterSnapshot()).thenAnswer(call -> {
             fixture.store.record(context, new BrokerId("b"), BrokerHealthStatus.UNHEALTHY,
                     new MonotonicTimestamp(Duration.ofMillis(sampleMs).toNanos()));
             fixture.nanos.set(Duration.ofMillis(60_200).toNanos());
             fixture.wallMillis.set(100_200);
-            return fixture.membership;
+            return fixture.cluster;
         });
 
         fixture.app.reconcileFailures().toCompletableFuture().join();
@@ -409,7 +381,7 @@ class BrokerFailureObservationRoundTest {
         Fixture fixture = new Fixture();
         fixture.app.reconcileFailures().toCompletableFuture().join();
         BrokerHealthObservationContext context = new BrokerHealthObservationContext(
-                fixture.cluster.revision(), fixture.cluster.topology(fixture.membership));
+                fixture.cluster.revision(), fixture.cluster.topology());
         fixture.store.synchronize(context);
         for (long second = 20; second <= 60; second += 5) {
             fixture.store.record(context, new BrokerId("b"), BrokerHealthStatus.UNHEALTHY,
@@ -458,7 +430,6 @@ class BrokerFailureObservationRoundTest {
             when(adapter.getLocalBroker().getLeaderTerm()).thenReturn(Optional.of(new LeaderTerm(1L)));
             when(adapter.getClusterId()).thenReturn(new BrokerClusterId("cluster-a"));
             when(adapter.getClusterSnapshot()).thenReturn(cluster);
-            when(adapter.getConsensusMembership()).thenReturn(membership);
             when(adapter.confirmLeadership(any())).thenReturn(CompletableFuture.completedFuture(
                     new QuorumRead(new LeaderTerm(1L), new QuorumReadIndex(1L))));
             when(adapter.beginOperation(any())).thenReturn(CompletableFuture.completedFuture(BrokerClusterConsensusResult.rejected("test must not submit")));

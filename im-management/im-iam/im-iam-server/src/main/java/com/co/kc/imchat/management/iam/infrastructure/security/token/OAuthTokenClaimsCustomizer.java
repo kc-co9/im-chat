@@ -28,7 +28,10 @@ public class OAuthTokenClaimsCustomizer {
                     .subject(claims.subject())
                     .claim("appKey", claims.sourceAppKey())
                     .claim("aud", List.of(claims.audienceAppKey()))
-                    .claim("clientId", context.getRegisteredClient().getClientId());
+                    .claim("clientId", context.getRegisteredClient().getClientId())
+                    .claim("client_id", context.getRegisteredClient().getClientId())
+                    .claim("principal_type", "MACHINE")
+                    .claim("authorities", List.of());
             return;
         }
 
@@ -43,6 +46,8 @@ public class OAuthTokenClaimsCustomizer {
                 .claim("appKey", claims.sourceAppKey())
                 .claim("aud", List.of(claims.audienceAppKey()))
                 .claim("clientId", context.getRegisteredClient().getClientId())
+                .claim("client_id", context.getRegisteredClient().getClientId())
+                .claim("principal_type", "ADMINISTRATOR")
                 .claim("authorities", claims.authorities());
     }
 

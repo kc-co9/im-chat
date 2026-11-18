@@ -13,6 +13,8 @@
 
 ## 验证
 
+`CoverageInstrumentationTest` 随 `architecture` 运行，实际执行普通自有工具、Ops 的 MapStruct 映射和外部 SQL parser，核对 Surefire 双 agent、namespace、live probes 与 session。单独诊断使用覆盖率设计第 4 节的独享 exec 命令；退出后 exec 与两个 owner report 仍须独立检查，不能只看测试通过。该测试不启动业务服务，不证明 generated 同轮鲜度或 full／HA 验收。
+
 ```bash
 ./scripts/verify.sh architecture
 ./scripts/verify.sh e2e

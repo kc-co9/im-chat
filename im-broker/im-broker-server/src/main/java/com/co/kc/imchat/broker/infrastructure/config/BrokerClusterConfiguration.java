@@ -1,5 +1,18 @@
 package com.co.kc.imchat.broker.infrastructure.config;
 
+import com.co.kc.imchat.broker.domain.cluster.repository.LearnerConfirmationAttemptRepository;
+import com.co.kc.imchat.broker.domain.cluster.service.MembershipOperationService;
+import com.co.kc.imchat.broker.domain.cluster.repository.MembershipOperationAttemptRepository;
+import com.co.kc.imchat.broker.infrastructure.domain.repository.InMemoryMembershipOperationAttemptRepository;
+import com.co.kc.imchat.broker.infrastructure.domain.repository.InMemoryLearnerConfirmationAttemptRepository;
+
+import com.alibaba.cloud.nacos.registry.NacosRegistrationCustomizer;
+import java.util.Map;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.binder.MeterBinder;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
+import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipExecutor;
 import com.co.kc.imchat.broker.support.health.BrokerHealthObservationTracker;
 import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
 import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
@@ -34,6 +47,23 @@ import org.springframework.context.annotation.Configuration;
 /** 权威集群状态和管理用例装配。 */
 @Configuration
 public class BrokerClusterConfiguration {
+
+    /** 显式等待 Raft Adapter 初始化；在官方首次注册前发布 Node 身份，保留键冲突立即拒绝。 */
+    @Bean
+    public NacosRegistrationCustomizer brokerRaftRegistrationCustomizer(BrokerRaftAdapter adapter) {
+        return registration -> {
+            String peerId = adapter.getLocalRaftPeerId();
+            if (peerId == null || peerId.isBlank()) {
+                throw new IllegalStateException("Initialized Raft peer identity is required");
+            }
+            Map<String, String> metadata = registration.getMetadata();
+            String key = "raft-peer-id";
+            if (metadata.containsKey(key) && !peerId.equals(metadata.get(key))) {
+                throw new IllegalStateException("Broker Raft registration metadata conflicts with initialized identity");
+            }
+            metadata.put(key, peerId);
+        };
+    }
 
     /** 独立的 quarantine 延迟调度器，不复用公共线程池或可能饱和的 RPC 工作队列。 */
     @Bean(destroyMethod = "shutdown")
@@ -70,14 +100,29 @@ public class BrokerClusterConfiguration {
                 Duration.ofMillis(properties.getCommandTimeoutMs()).multipliedBy(4));
     }
 
+    /** 低基数诊断不使用 operationId 或 endpoint 标签；漂移不改变自动接管门禁。 */
+    @Bean
+    public MeterBinder brokerMembershipMetrics(
+            BrokerMembershipAppService service, BrokerMembershipExecutor executor) {
+        return registry -> {
+            FunctionCounter.builder("im.broker.membership.native.busy", executor,
+                    BrokerMembershipExecutor::nativeBusyCount).register(registry);
+            Gauge.builder("im.broker.membership.permit.undrained", executor,
+                    BrokerMembershipExecutor::undrainedPermitCount).register(registry);
+            Gauge.builder("im.broker.membership.maintenance.blocked", service,
+                    BrokerMembershipAppService::membershipMaintenanceBlocked).register(registry);
+        };
+    }
+
     @Bean(destroyMethod = "close")
     public BrokerRaftAdapter brokerRaftAdapter(
             BrokerRaftProperties properties,
             BrokerRoutingProperties routingProperties,
-            RoutingLeaseGrantService leaseGrantService) throws IOException {
+            RoutingLeaseGrantService leaseGrantService,
+            BrokerMembershipExecutor permitExecutor) throws IOException {
         routingProperties.validate();
         return new BrokerRaftAdapter(properties,
-                properties.initialClusterState(routingProperties.getAlgorithm()), leaseGrantService);
+                properties.initialClusterState(routingProperties.getAlgorithm()), leaseGrantService, permitExecutor);
     }
 
     @Bean
@@ -99,14 +144,40 @@ public class BrokerClusterConfiguration {
                 observationProperties.getCooldown());
     }
 
+    /** 由 Permit 执行器拥有固定单线程和等待槽，配置层只负责创建组件。 */
+    @Bean(destroyMethod = "close")
+    public BrokerMembershipExecutor brokerMembershipExecutor(BrokerRaftProperties properties) {
+        return new BrokerMembershipExecutor(new BrokerId(properties.getNodeId()));
+    }
+
+    @Bean
+    public LearnerConfirmationAttemptRepository learnerConfirmationAttemptRepository() {
+        return new InMemoryLearnerConfirmationAttemptRepository();
+    }
+
+    @Bean
+    public MembershipOperationAttemptRepository membershipOperationAttemptRepository() {
+        return new InMemoryMembershipOperationAttemptRepository();
+    }
+
+    @Bean
+    public MembershipOperationService membershipOperationService(LearnerConfirmationAttemptRepository learnerRepository,
+                                                                MembershipOperationAttemptRepository memberRepository) {
+        return new MembershipOperationService(learnerRepository, memberRepository);
+    }
+
     @Bean
     public BrokerMembershipAppService brokerMembershipAppService(
             BrokerRaftAdapter brokerClusterAdapter,
             BrokerPeerAdapter brokerPeerAdapter,
             BrokerRaftProperties properties,
-            BrokerRoutingProperties routingProperties) {
+            BrokerRoutingProperties routingProperties,
+            BrokerMembershipExecutor permitExecutor,
+            com.co.kc.imchat.broker.support.monitoring.MembershipDiagnosticMetrics diagnosticMetrics,
+            MembershipOperationService membershipOperationService) {
         return new BrokerMembershipAppService(brokerClusterAdapter, brokerPeerAdapter,
-                new MinimumVoterCount(properties.getMinimumVoterCount()));
+                new MinimumVoterCount(properties.getMinimumVoterCount()), permitExecutor, diagnosticMetrics,
+                membershipOperationService);
     }
 
     @Bean

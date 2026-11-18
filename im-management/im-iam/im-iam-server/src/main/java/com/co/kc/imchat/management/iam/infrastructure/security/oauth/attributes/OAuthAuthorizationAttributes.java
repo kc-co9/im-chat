@@ -6,6 +6,9 @@ public final class OAuthAuthorizationAttributes {
             OAuthAuthorizationAttributes.class.getName() + ".principalType";
     public static final String PRINCIPAL =
             OAuthAuthorizationAttributes.class.getName() + ".principal";
+    /* 内部原读版本，不进入 Token Claim 或持久化属性 JSON。 */
+    public static final String ROW_VERSION =
+            OAuthAuthorizationAttributes.class.getName() + ".rowVersion";
     private OAuthAuthorizationAttributes() {
     }
 }

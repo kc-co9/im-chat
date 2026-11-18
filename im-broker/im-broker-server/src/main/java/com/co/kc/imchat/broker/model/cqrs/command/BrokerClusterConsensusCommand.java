@@ -11,5 +11,6 @@ public sealed interface BrokerClusterConsensusCommand extends Serializable
         permits BeginBrokerClusterOperationCommand, CommitBrokerOperationCommand,
         AdvanceClusterOperationCommand, CommitRoutingEpochFenceCommand,
         UpdateBrokerDrainProgressCommand, CompleteBrokerDrainCommand, ForceDrainOperationCommand,
-        VerifyRouteRecoveryCommand, CompleteRouteRecoveryCommand {
+        VerifyRouteRecoveryCommand, CompleteRouteRecoveryCommand,
+        RegisterMembershipPermitCommand, ConfirmMembershipPermitDrainedCommand {
 }

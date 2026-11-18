@@ -24,6 +24,8 @@ class BrokerBoltAccessContractTest {
                 .allSatisfy(operation -> assertThat(operation.admissionType()).isNotNull());
         assertThat(BrokerBoltOperation.GOSSIP_DIGEST.admissionType())
                 .isEqualTo(BrokerAdmissionType.BROKER_PEER);
+        assertThat(BrokerBoltOperation.CONFIRM_MEMBERSHIP_PERMIT_DRAINED.admissionType())
+                .isEqualTo(BrokerAdmissionType.BROKER_CONTROL);
         assertThat(BrokerBoltOperation.INSTALL_ROUTE_LEASE.admissionType())
                 .isEqualTo(BrokerAdmissionType.BROKER_CONTROL);
         assertThat(BrokerBoltOperation.REGISTER_GATEWAY.admissionType())

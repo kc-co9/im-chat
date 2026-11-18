@@ -8,9 +8,7 @@ import com.co.kc.imchat.common.utils.JsonUtils;
 import java.time.Instant;
 import java.util.List;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,11 +21,10 @@ class BrokerTopologyIsolationTest {
         BrokerNode supplied = discovered();
         MembershipEndpoint endpoint = new MembershipEndpoint("10.0.0.2:18120");
         Map<BrokerId, MembershipEndpoint> endpoints = new LinkedHashMap<>(Map.of(targetId, endpoint));
-        ConsensusMembership membership = new ConsensusMembership(Set.of(endpoint), Set.of());
         BrokerClusterTopology topology = new BrokerClusterTopology(
-                new RoutingEpoch(0L), List.of(supplied), endpoints, membership);
+                new RoutingEpoch(0L), List.of(supplied), endpoints);
         BrokerClusterTopology expected = new BrokerClusterTopology(
-                new RoutingEpoch(0L), List.of(discovered()), Map.of(targetId, endpoint), membership);
+                new RoutingEpoch(0L), List.of(discovered()), Map.of(targetId, endpoint));
         int hash = topology.hashCode();
 
         supplied.joinAsLearner();
@@ -43,31 +40,25 @@ class BrokerTopologyIsolationTest {
     }
 
     @Test
-    void aggregateTopologyIgnoresRevisionAndMembershipOrder() {
-        MembershipEndpoint first = new MembershipEndpoint("10.0.0.1:18120");
-        MembershipEndpoint second = new MembershipEndpoint("10.0.0.2:18120");
-        ConsensusMembership membership = new ConsensusMembership(
-                new LinkedHashSet<>(List.of(second, first)), Set.of());
+    void aggregateBusinessTopologyIgnoresRevision() {
         BrokerCluster cluster = cluster(discovered());
-        BrokerClusterTopology before = cluster.topology(membership);
+        BrokerClusterTopology before = cluster.topology();
         BrokerCluster later = BrokerCluster.builder()
                 .algorithm(cluster.algorithm()).revision(new ClusterRevision(1L)).epoch(cluster.epoch())
-                .brokers(cluster.brokers()).operations(List.of())
+                .brokers(cluster.brokers()).membershipEndpoints(cluster.membershipEndpoints()).operations(List.of())
                 .operationHistoryCapacity(new OperationHistoryCapacity(20)).build();
 
-        BrokerClusterTopology after = later.topology(new ConsensusMembership(
-                new LinkedHashSet<>(List.of(first, second)), Set.of()));
+        BrokerClusterTopology after = later.topology();
 
         assertThat(later.revision()).isNotEqualTo(cluster.revision());
         assertThat(after).isEqualTo(before).hasSameHashCodeAs(before);
-        assertThat(after.membership()).isEqualTo(before.membership());
     }
 
     @Test
     void invalidCompletionTimeReturnsRejectionWithoutChangingCommittedOperation() {
         BrokerCluster cluster = cluster(discovered());
         BrokerClusterOperation pending = cluster.addLearner(joinIntent()).operation();
-        cluster.commitOperation(pending.id(), pending.commandDigest(), pending.acceptedRevision(),
+        commitOperation(cluster, pending.id(), pending.commandDigest(), pending.acceptedRevision(),
                 Instant.ofEpochMilli(1_100L));
         BrokerClusterOperation committed = cluster.findOperation(pending.id()).orElseThrow();
 
@@ -85,7 +76,8 @@ class BrokerTopologyIsolationTest {
         BrokerCluster cluster = BrokerCluster.builder()
                 .algorithm(BrokerSelectionAlgorithm.RENDEZVOUS_HASH)
                 .revision(new ClusterRevision(Long.MAX_VALUE)).epoch(new RoutingEpoch(0L))
-                .brokers(List.of(active(), discovered())).operations(List.of())
+                .brokers(List.of(active(), discovered())).membershipEndpoints(Map.of(new BrokerId("broker-a"),
+                        new MembershipEndpoint("10.0.0.1:18120"))).operations(List.of())
                 .operationHistoryCapacity(new OperationHistoryCapacity(20)).build();
         LearnerJoinIntent intent = LearnerJoinIntent.builder()
                 .operationId(new ClusterOperationId("join-1"))
@@ -96,7 +88,8 @@ class BrokerTopologyIsolationTest {
 
         assertThatThrownBy(() -> cluster.addLearner(intent)).isInstanceOf(ArithmeticException.class);
         assertThat(cluster.operations()).isEmpty();
-        assertThat(cluster.membershipEndpoints()).isEmpty();
+        assertThat(cluster.membershipEndpoints()).containsExactlyEntriesOf(Map.of(new BrokerId("broker-a"),
+                new MembershipEndpoint("10.0.0.1:18120")));
         assertThat(cluster.revision()).isEqualTo(new ClusterRevision(Long.MAX_VALUE));
         assertThat(cluster.findNode(targetId).orElseThrow().membershipRole())
                 .isEqualTo(BrokerMembershipRole.DISCOVERED);
@@ -186,10 +179,10 @@ class BrokerTopologyIsolationTest {
         assertThat(cluster.findNode(targetId).orElseThrow().membershipRole())
                 .isEqualTo(BrokerMembershipRole.DISCOVERED);
 
-        assertThat(cluster.commitOperation(operation.id(), operation.commandDigest(), operation.acceptedRevision(),
+        assertThat(commitOperation(cluster, operation.id(), operation.commandDigest(), operation.acceptedRevision(),
                 Instant.ofEpochMilli(1_100L)).status()).isEqualTo(BrokerClusterDecision.Status.APPLIED);
         ClusterRevision committedRevision = cluster.revision();
-        assertThat(cluster.commitOperation(operation.id(), operation.commandDigest(), operation.acceptedRevision(),
+        assertThat(commitOperation(cluster, operation.id(), operation.commandDigest(), operation.acceptedRevision(),
                 Instant.ofEpochMilli(1_200L)).status()).isEqualTo(BrokerClusterDecision.Status.DUPLICATE);
         assertThat(cluster.revision()).isEqualTo(committedRevision);
         assertThat(cluster.findNode(targetId).orElseThrow().membershipRole())
@@ -207,7 +200,7 @@ class BrokerTopologyIsolationTest {
         BrokerCluster snapshot = original.snapshot();
         BrokerClusterOperation operation = snapshot.addLearner(joinIntent()).operation();
 
-        assertThat(snapshot.commitOperation(operation.id(), operation.commandDigest(), operation.acceptedRevision(),
+        assertThat(commitOperation(snapshot, operation.id(), operation.commandDigest(), operation.acceptedRevision(),
                 Instant.ofEpochMilli(1_100L)).accepted()).isTrue();
 
         assertThat(snapshot.findNode(targetId).orElseThrow().membershipRole())
@@ -221,20 +214,38 @@ class BrokerTopologyIsolationTest {
     void laterNodeChangesDoNotRewriteEarlierOperationFacts() {
         BrokerCluster cluster = cluster(discovered());
         BrokerClusterOperation joined = cluster.addLearner(joinIntent()).operation();
-        cluster.commitOperation(joined.id(), joined.commandDigest(), joined.acceptedRevision(),
+        commitOperation(cluster, joined.id(), joined.commandDigest(), joined.acceptedRevision(),
                 Instant.ofEpochMilli(1_100L));
         BrokerClusterOperation history = cluster.findOperation(joined.id()).orElseThrow();
         BrokerClusterOperation synced = cluster.confirmLearner(LearnerSyncCompletionIntent.builder()
                 .operationId(new ClusterOperationId("sync-1")).commandDigest(new CommandDigest("sync-digest"))
                 .expectedRevision(cluster.revision()).brokerId(targetId)
                 .changedAt(Instant.ofEpochMilli(1_200L)).build()).operation();
-        assertThat(cluster.commitOperation(synced.id(), synced.commandDigest(), synced.acceptedRevision(),
+        assertThat(commitOperation(cluster, synced.id(), synced.commandDigest(), synced.acceptedRevision(),
                 Instant.ofEpochMilli(1_300L)).accepted()).isTrue();
 
         assertThat(cluster.findNode(targetId).orElseThrow().membershipRole()).isEqualTo(BrokerMembershipRole.LEARNER);
         assertThat(cluster.findOperation(joined.id())).contains(history);
         assertThat(history.type()).isEqualTo(BrokerClusterOperationType.START_LEARNER_SYNC);
         assertThat(history.membershipEndpoint()).isEqualTo(joinIntent().membershipEndpoint());
+    }
+
+    private BrokerClusterDecision commitOperation(BrokerCluster cluster, ClusterOperationId id,
+            CommandDigest digest, ClusterRevision acceptedRevision, Instant at) {
+        BrokerClusterOperation operation = cluster.findOperation(id).orElseThrow();
+        if (operation.phase() == BrokerClusterOperationPhase.PENDING && operation.nativeMembershipChange()) {
+            while (cluster.findOperation(id).orElseThrow().currentMembershipStep() != null) {
+                BrokerMembershipStep step = cluster.findOperation(id).orElseThrow().currentMembershipStep();
+                String permitId = "permit-" + step.stepId();
+                assertThat(cluster.registerMembershipPermit(id, step.stepId(), permitId, new BrokerId("broker-a"),
+                        "test-inc", cluster.revision()).accepted()).isTrue();
+                assertThat(cluster.confirmMembershipExecution(new MembershipExecutionConfirmation(id, step.stepId(), permitId,
+                        new BrokerId("broker-a"), "test-inc", step.targetDigest(),
+                        BrokerMembershipPermit.Result.TARGET_APPLIED)).accepted()).isTrue();
+            }
+            return cluster.commitOperation(id, digest, cluster.revision(), at);
+        }
+        return cluster.commitOperation(id, digest, acceptedRevision, at);
     }
 
     private LearnerJoinIntent joinIntent() {
@@ -249,7 +260,8 @@ class BrokerTopologyIsolationTest {
         return BrokerCluster.builder()
                 .algorithm(BrokerSelectionAlgorithm.RENDEZVOUS_HASH)
                 .revision(new ClusterRevision(0L)).epoch(new RoutingEpoch(0L))
-                .brokers(List.of(active(), target)).operations(List.of())
+                .brokers(List.of(active(), target)).membershipEndpoints(Map.of(new BrokerId("broker-a"),
+                        new MembershipEndpoint("10.0.0.1:18120"))).operations(List.of())
                 .operationHistoryCapacity(new OperationHistoryCapacity(20)).build();
     }
 

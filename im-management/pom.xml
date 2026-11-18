@@ -15,6 +15,7 @@
         <module>im-iam</module>
         <module>im-admin</module>
         <module>im-ops</module>
+        <module>im-ops-cli</module>
         <module>im-audit</module>
     </modules>
 </project>

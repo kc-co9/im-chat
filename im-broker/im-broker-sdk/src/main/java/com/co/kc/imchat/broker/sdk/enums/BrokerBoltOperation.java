@@ -32,6 +32,9 @@ public enum BrokerBoltOperation {
     /** 查询目标 Broker 已取得并在本机应用的 quorum ReadIndex，不表示最新应用位置。 */
     FETCH_QUORUM_READ_INDEX(BrokerBoltService.BROKER, "fetchQuorumReadIndex", BrokerAdmissionType.BROKER_CONTROL),
 
+    /** 精确 MTLS 执行者提交不可逆许可排空事实，包括已自移除的持有者。 */
+    CONFIRM_MEMBERSHIP_PERMIT_DRAINED(BrokerBoltService.BROKER, "confirmMembershipPermitDrained", BrokerAdmissionType.BROKER_CONTROL),
+
     /** 已认证 voter 对目标 Broker 的轻量探测，不执行 quorum ReadIndex。 */
     PROBE_BROKER(BrokerBoltService.BROKER, "probeBroker", BrokerAdmissionType.BROKER_OBSERVATION),
 

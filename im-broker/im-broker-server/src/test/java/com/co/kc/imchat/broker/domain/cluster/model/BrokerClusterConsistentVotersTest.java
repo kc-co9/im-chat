@@ -11,11 +11,13 @@ import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.domain.cluster.model.ClusterRevision;
 import com.co.kc.imchat.broker.domain.cluster.model.CommandDigest;
 import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+import com.co.kc.imchat.broker.domain.cluster.service.BrokerFailureObservationService;
 import com.co.kc.imchat.broker.domain.cluster.model.MinimumVoterCount;
 import com.co.kc.imchat.broker.domain.cluster.model.OperationHistoryCapacity;
 import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
 import com.co.kc.imchat.broker.domain.cluster.model.VoterDemotionIntent;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
@@ -29,13 +31,10 @@ class BrokerClusterConsistentVotersTest {
     private final MembershipEndpoint b = new MembershipEndpoint("b:18120");
 
     @Test
-    void resolvesOnlyMatchingActualMembershipAndCommittedEndpointRoles() {
-        BrokerCluster cluster = cluster(BrokerMembershipRole.LEARNER);
-        assertThat(cluster.findConsistentVoters(new ConsensusMembership(Set.of(a), Set.of(b)))).containsExactly(new BrokerId("a"));
-        assertThat(cluster.findConsistentVoters(new ConsensusMembership(Set.of(b), Set.of(a)))).isEmpty();
-        assertThat(cluster.findConsistentVoters(new ConsensusMembership(Set.of(new MembershipEndpoint("unknown:18120")), Set.of(b)))).isEmpty();
-        assertThat(cluster.findConsistentVoters(new ConsensusMembership(Set.of(), Set.of(a, b)))).isEmpty();
-        assertThat(cluster.findConsistentVoters(new ConsensusMembership(Set.of(a), Set.of()))).isEmpty();
+    void committedVotersAreTheCompleteObserverSet() {
+        BrokerCluster cluster = cluster(BrokerMembershipRole.VOTER);
+        assertThat(cluster.findObservers())
+                .containsExactlyInAnyOrder(new BrokerId("a"), new BrokerId("b"));
     }
 
     @Test
@@ -47,24 +46,23 @@ class BrokerClusterConsistentVotersTest {
     @ParameterizedTest
     @ValueSource(strings = {"DISCOVERED", "LEARNER_SYNCING"})
     void transitionalOrUnqualifiedRoleCannotUseLearnerBinding(String role) {
-        assertThat(cluster(BrokerMembershipRole.valueOf(role)).findConsistentVoters(new ConsensusMembership(Set.of(a), Set.of(b)))).isEmpty();
+        assertThat(cluster(BrokerMembershipRole.valueOf(role)).findObservers()).isEmpty();
     }
 
     @Test
-    void nonTerminalMembershipOperationBlocksEvenWhenActualRolesStillMatch() {
+    void nonTerminalMembershipOperationBlocksCommittedObservers() {
         BrokerCluster cluster = cluster(BrokerMembershipRole.VOTER);
-        ConsensusMembership membership = new ConsensusMembership(Set.of(a, b), Set.of());
         ClusterRevision revision = cluster.revision();
-        BrokerClusterTopology topology = cluster.topology(membership);
-        assertThat(cluster.findConsistentVoters(membership))
+        BrokerClusterTopology topology = cluster.topology();
+        assertThat(cluster.findObservers())
                 .containsExactlyInAnyOrder(new BrokerId("a"), new BrokerId("b"));
         assertThat(cluster.demoteVoter(VoterDemotionIntent.builder().operationId(new ClusterOperationId("demote"))
                 .commandDigest(new CommandDigest("demote")).expectedRevision(cluster.revision())
                 .brokerId(new BrokerId("b")).minimumVoterCount(new MinimumVoterCount(1)).changedAt(Instant.EPOCH).build())
                 .accepted()).isTrue();
         assertThat(cluster.revision()).isEqualTo(revision.next());
-        assertThat(cluster.topology(membership)).isEqualTo(topology);
-        assertThat(cluster.findConsistentVoters(membership)).isEmpty();
+        assertThat(cluster.topology()).isEqualTo(topology);
+        assertThat(cluster.findObservers()).isEmpty();
     }
 
     @Test
@@ -73,11 +71,32 @@ class BrokerClusterConsistentVotersTest {
         BrokerCluster missing = BrokerCluster.builder().revision(cluster.revision()).epoch(cluster.epoch())
                 .algorithm(cluster.algorithm()).brokers(cluster.brokers()).operations(List.of())
                 .operationHistoryCapacity(new OperationHistoryCapacity(100)).membershipEndpoints(Map.of(new BrokerId("a"), a)).build();
-        assertThat(missing.findConsistentVoters(new ConsensusMembership(Set.of(a, b), Set.of()))).isEmpty();
+        assertThat(missing.findObservers()).isEmpty();
         BrokerCluster discovered = BrokerCluster.builder().revision(cluster.revision()).epoch(cluster.epoch())
                 .algorithm(cluster.algorithm()).brokers(cluster(BrokerMembershipRole.DISCOVERED).brokers()).operations(List.of())
                 .operationHistoryCapacity(new OperationHistoryCapacity(100)).membershipEndpoints(Map.of(new BrokerId("a"), a)).build();
-        assertThat(discovered.findConsistentVoters(new ConsensusMembership(Set.of(a), Set.of()))).containsExactly(new BrokerId("a"));
+        assertThat(discovered.findObservers()).containsExactly(new BrokerId("a"));
+    }
+
+    @Test
+    void partialResponsesAndTargetSelfReportDoNotShrinkCommittedDenominator() {
+        BrokerCluster cluster = cluster(BrokerMembershipRole.VOTER);
+        Set<BrokerId> observers = cluster.findObservers();
+        Instant evaluatedAt = Instant.ofEpochSecond(100);
+        List<BrokerHealthObservation> reports = List.of(
+                BrokerHealthObservation.builder().brokerId(new BrokerId("b")).observerBrokerId(new BrokerId("a"))
+                        .status(BrokerHealthStatus.UNHEALTHY).observedAt(evaluatedAt)
+                        .unreachableBeginAt(evaluatedAt.minusSeconds(30)).build(),
+                BrokerHealthObservation.builder().brokerId(new BrokerId("b")).observerBrokerId(new BrokerId("b"))
+                        .status(BrokerHealthStatus.UNHEALTHY).observedAt(evaluatedAt)
+                        .unreachableBeginAt(evaluatedAt.minusSeconds(30)).build());
+        assertThat(observers).containsExactlyInAnyOrder(new BrokerId("a"), new BrokerId("b"));
+        BrokerFailureObservationService service = new BrokerFailureObservationService(
+                Duration.ofSeconds(30), Duration.ofSeconds(10));
+        BrokerFailureObservationDecision decision = service.evaluate(new BrokerId("b"), observers, reports, evaluatedAt);
+        assertThat(decision.eligible()).isFalse();
+        assertThat(decision.quorum().value()).isEqualTo(2);
+        assertThat(decision.observerIds()).containsExactly(new BrokerId("a"));
     }
 
     private BrokerCluster cluster(BrokerMembershipRole secondRole) {

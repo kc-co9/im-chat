@@ -1,151 +1,151 @@
 # 项目进度
 
-## 当前收口入口（2026-10-29）
+- 当前活跃计划：`none`。[Broker 成员应用流程可读性计划](docs/exec-plans/completed/2026-11-09-broker-membership-flow-readability.md) 已归档，T1–T3 均为 `passing`。群聊风险由独立设计草案跟踪，未实施。
 
-- 活跃计划：none，active 任务 0。[Bolt 包职责与 Broker 快照归位](docs/exec-plans/completed/2026-10-25-bolt-package-boundaries.md#attempt6-与复审-r1r52026-10-29) 已关闭：T1–T3 passing；冻结 full attempt8 实际 exit0（routing-ha 25 场景、cleanup passed），独立 quality 复审与迁移精确差异复核均为 Accept；迁移后的 drift、clean、quality、cleanup、handoff 已完成，实际机器结果由当前 Harness 拥有，后续发现验收无效则恢复 active。
-- 已知偏差与偶发失败登记为 [技术债 TD-01–TD-04](docs/exec-plans/tech-debt-tracker.md)；D9（移除私有 JRaft 补丁）延后。用户已授权全部改动按独立主题提交，不授权 push；提交准备与取消重复验收的决定见已归档计划末尾，实际提交记录以 Git 历史为准。机器结果入口为 `.harness/report.json`，原 full 时间与指纹照实保留、迁移后如实 stale。下文均为历史检查点。
+- Executor 可读性收尾已完成：import/命名/容量谓词/待处理阶段判定整理，未改锁和调度顺序。聚焦回归、完整Broker模块、完整架构模块均通过（证据见活跃计划），style/diff通过。下一步按窄到宽执行clean/full；T2仍active，不提交。
 
-## Bolt 当前构建检查点（2026-10-29）
+- 当前T2已采用单个具体adapter.cluster.membership.BrokerMembershipExecutor，删除application接口和Default实现；本地准入不再报告共识APPLIED，完整领域报告/确认结果隔离CQRS和SDK，原生观察保留错误码，RaftAdapter同步进入Runtime且删除第二线程池。原生入口RED/GREEN、架构/成员/映射及routing-ha编译通过，首轮实现Review Revise（仅accepted误映射）已修复并补拒绝映射/全状态回归；独立复审、clean/full待完成。历史接口方案及旧失败保留，不提交、不关闭计划。
 
-- 最新检查点：用户已明确允许构建和测试官方 `https://github.com/sofastack/sofa-jraft` commit `cb1a0c7ac16ff146ad8abb04b1bcb035270bb234` 与当前已 Review 的补丁，仅隔离验证、不发布。修订后的 Leader 单项 Maven 测试已执行：首次因命令工作目录错误在测试前失败；纠正后 1 项出现 setup SPI 实现缺失错误，尚未执行 Leader 断言。已定位为独立准备目录的 epoch-zero 资源时间与旧插件复制比较相互作用，在新隔离副本仅增加 resources overwrite 参数后 focused 1 项全零、四个 SPI 字节一致；完整 NodeTest 已结束 exit0，fresh XML 64 项零失败/错误/跳过。尝试启动正式新双轮构建时工具判定服务超时，命令未执行，不算权限拒绝或构建失败。正式 recipe 不保留 tar mtime，不修改 recipe；此前权限拒绝保留为历史，不再作为当前执行阻塞。readiness 已通过；用户已告知启动 Docker，但随后健康检查被工具判定服务超时阻止，当前 daemon 状态待实测，不沿用旧不可用结论。T3 仍 blocked；磁盘最近观测约 68 GiB 可用，不代表其他环境问题已恢复。
+- 执行接口切片已按用户批准实施：应用BrokerMembershipExecutor契约、Default基础设施实现、following Adapter自有观察、learner JDK Executor及只读确认句柄；原账本/锁/预算/优先级保持，配置和构造测试同步。独立设计Approved；LayerBoundary/ModuleBoundary及成员/配置聚焦通过，包含routing-ha编译。当前T2active，独立实现Review及新clean/full尚待，不提交。准确命令与范围见活跃计划。
 
-- 用户明确授权固定官方 JRaft commit 与既有补丁的隔离双构建后，`capture-20261029` 第一轮已 exit1，未启动第二轮；精确失败及证据见计划末尾。恢复来源映射已独立批准并写入 provenance；readiness 再次通过。T3 仍未验收，不提前归档。上游 Leader 测试有界观测修订和 Bolt 关闭失败延后传播均已独立设计批准，当前在原任务内窄修验证；Docker daemon/backend 仍不可用，未重置用户环境。下一步按真实结果处理输入/外部模型证明、reviewed lock、消费者及完整验收；未来官方 JRaft 治理简化草案延后，不实施、不发布、不代用户提交。下文旧暂停和阻塞记录作为历史保留，当前顺序以本节及计划末尾为准。
+- 当前架构修复第一片：用户批准的LearnerConfirmationState内联AppService已实施，原model.execution文件删除；成员回归通过，LayerBoundaryTest仅剩既有application→infrastructure Executor一项失败，不是完整通过。调用职责/原子性清单已写入原T2；不新增Coordinator、Adapter、抽象类或第二状态表，不迁Executor，第二片具体落位尚待明确与独立设计Review。无full/HA新证据、不提交，详见活跃计划。
 
-## Bolt 计划收口入口（2026-10-28）
+- 当前full回归遗漏已修正：Ops Leader映射与审计两份fixture补齐必填端点，原完整字段／单跳／审计脱敏断言保留；聚焦及完整Ops模块通过、独立窄Review Accept。T2保持active，准备重新冻结clean/full；旧full 10项失败与网络失败均保留，不冒充当前通过，不提交。准确命令和原件见活跃计划。
 
-- 当前计划：[Bolt 包职责与 Broker 快照归位](docs/exec-plans/completed/2026-10-25-bolt-package-boundaries.md#当前收口账本2026-10-28)。已汇总实施、取代决定和剩余验证；T3 为 blocked，暂无 active 任务，不归档。用户已要求收口，不再等待 Review 结束通知；当前仍被私有 JRaft 制品缺失及必要跨模块验证缺口阻塞。TLS 与 DECODE 测试取证修正均已获独立局部 Accept，现继续不依赖 JRaft 的 Bolt 模块验证；原失败和历史精确归因限制仍保留，详细结果和下一步见计划。最终机器结果入口为 `.harness/report.json`，本次诊断不产生完整验收，也不把历史通过记为当前验收。
+- 用户要求继续收口：相同受控三键环境的 IAM UI npm ci 已成功，原 ECONNRESET 阻断的恢复前提得到窄复核；T2 恢复 active，重新冻结执行 clean/full，不复用旧失败的部分报告。未改网络配置、不提交，完整验收／quality／精确状态 Review 尚未完成，细节见活跃计划。
 
-## Gateway 目标职责内聚（2026-10-28）
+- 本轮收口停止于外部依赖：T2 改 blocked，完整 Broker 模块／真实治理 E2E 与最终独立代码 Review 已完成，最终 full 的 IAM UI npm ci 下载 whatwg-mimetype-4.0.0.tgz 报 read ECONNRESET，实际 Maven 退出1，尚未到HA。原启动 full.json 仍 incomplete，不手改机器证据；日志、关闭账本和恢复条件见活跃计划。原进程已全部退出、Loop #1已停止，不自动重复full、不归档、不提交。恢复下载后须重新冻结验收，代码级Accept不替代完整门禁。
 
-- 用户批准删除 `GatewayIdentityConfiguration`，独立设计 Reviewer `aa00ec4801ac133f0` Approved；readiness 与 SDK 基线通过，在现有 T3 将原目标选择、校验和不可变快照收回 GatewayClient。SDK baseline/final 各 6 项通过，原体比较一致。独立实现 Reviewer `a578c69c59159b4d9` Revise、源码 findings none，原因是必要 Broker 测试及跨模块编译证据缺失；既有暂停保持，尚未验收。
+- 当前用户要求继续收口原计划：T2 保持 active，恢复模块／真实治理 E2E／独立 Review／冻结 full 与 HA 验收。T1 非法 pending_acceptance 改为合法 blocked，仅修正表示，不改写历史证据；active 索引已同步。准确关闭账本与恢复步骤见活跃计划，未验收前不归档、不提交。
 
-## Broker bootstrap 职责内聚（2026-10-28）
+- 当前 Review 两项修复已实施，仍纳入原 T2：CLI 五动作显式端点记录/发送/retry 保真，旧缺端点记录拒绝不改写；权限同步由领域返回本轮撤回事实，不因历史停用记录重复撤销。RED/GREEN、真实 Ops→Broker 组合及 style/diff 证据见活跃计划。clean 仍被既有 T1 pending_acceptance 非法状态阻断，未继续 full；专属 MySQL 未启用，独立增量 Review 未取得。不提交、不关闭 T2。
 
-- 用户批准删除 `BrokerIdentityConfiguration`，独立设计 Reviewer `a6eeb49b80726e483` Approved 后在现有 T3 实施；客户端直接接收可信配对列表，SDK 21 项、三个消费方 33 项窄验证及原体比较已执行。独立实现 Reviewer `abd7615ac6f041374` Revise、源码 findings none，原因是必要 Broker 测试与 E2E 编译证据缺失，不记 Accept。追加 RequestContext/observationsAllowed 注释和单处构造判空删除；旧验证缺口与暂停保留，T3 不关闭，详细证据见 T3。
+- T2 BrokerCluster 注释：按用户批准补充关键方法Javadoc和观察资格/许可登记/Commit/阶段推进/排空收尾步骤块注释，说明校验顺序、重复处理与写入边界，不改逻辑。与`/tmp/broker-cluster-comments-before.java`对比Java token完全一致；readiness/style/diff check通过，计划同步。纯注释未重跑行为测试或独立Review，上一轮208/208不冒充本轮证据；clean仍既有pending_acceptance阻断（`/tmp/broker-cluster-comments-clean.log`），未继续full/HA，T2active，不提交。
 
-## Bolt 传输模式枚举提取（2026-10-28）
+- T2 BrokerCluster 可读性：按用户批准将Builder置底、公开行为集中、意图登记先于Commit、私有规则后置，展开成员阶段守卫和revision条件，观察者逐节点失败返回并复用已有成员谓词，整理import。不改签名/文案/Permit全历史扫描，不新增类或包装。六组208/208、readiness/style/diff check通过（`/tmp/broker-cluster-readability-tests.log`）；计划同步，无新通用规则，未取得独立增量Review。clean仍既有T1 pending_acceptance阻断（`/tmp/broker-cluster-readability-clean.log`），未继续full/HA，T2active，不提交。
 
-- 用户批准 `BoltTransportMode` 独立枚举并要求注释，独立设计 Reviewer `aa6dedabbf9c56d38` Approved 后已在现有 T3 实施并补齐类/枚举值注释；类型规范化对比和窄验证已执行，局部独立实现 Reviewer `a4053f269f0ea9d40` Revise、源码 findings none，原因是必要跨模块编译受依赖阻塞，证据见 T3。固定前缀 Revise 与既有依赖/验证缺口保留，不恢复 full/clean/module/architecture/commit。
+- T2 全类可读性收尾：用户批准六项均已实施，AppService公开入口集中、import整理，恢复链一次分流后直接传递共识结果，删除无调用Outcome；历史分支合并且保留身份时点，发布统一选结果，四个私有名统一执行/发送/确认语义，旧反射测试同步名不新增反射。六组205/205、readiness/style/diff check通过（`/tmp/readability-all-tests.log`）；独立Review对照精确before快照Accept（`/tmp/readability-all-review.txt`），仅本增量非整体验收。设计/README/计划同步，clean结果见`/tmp/readability-all-clean.log`，未继续full/HA，T2active，不提交。
 
-## 项目角色身份前缀固定化（2026-10-28）
+- T2 确认准备守卫整理：按用户批准展开上报者/cluster/receiver检查，保留逐段短路；删除matchesExecutionReceiver薄封装，SDK响应增加identityMismatch/rejected工厂，原状态/空Leader/文案不变。新增cluster错不读localBroker、receiver错不读snapshot且不提交执行器测试及响应工厂测试；五组聚焦回归（`/tmp/confirmation-guards-tests2.log`）、readiness/style/diff check通过，首轮测试注解漏限定已修。计划同步；clean本轮结果见`/tmp/confirmation-guards-clean.log`，未继续full/HA或取得新独立Review，T2active，不提交。
 
-- 用户确认五角色一起固定，已记录[固定前缀设计](docs/design-docs/2026-10-28-fixed-peer-identity-prefixes-design.md)，独立设计 Reviewer `a7ce1f2aa262d78e2` Approved 后在现有 T3 实施；SDK/消费方窄验证已执行，Broker 与 E2E/HA 仍受私有依赖阻塞，独立实现 Reviewer `a28177bf77d7ebedd` Revise、源码 findings none，原因是必要 Broker/跨模块编译证据缺失，不记 Accept，详细命令及实际结果见 T3。私有 JRaft 依赖阻塞、旧 DECODE/TLS 缺口及 full/clean/module/architecture/commit 暂停保留。
+- T2 learner执行类型明确化：reserveLearnerExecution返回现有公开final内部LearnerExecution（私有构造、仍实现Executor），确认/恢复局部stages改execution，注释明确复用worker、绑定资格和失效收尾，不新增包装/finish机制或改变预算/调度。六组203/203、readiness/style/diff check通过（`/tmp/learner-execution-type-tests.log`），README/计划同步；本轮clean在drift阶段120秒超时，未取得最终结论（`/tmp/learner-execution-type-clean.log`）；此前pending_acceptance阻断仍为历史未解决项，未继续full/HA或独立增量Review，T2active，不提交。
 
-## 身份前缀默认值集中（2026-10-28）
+- T2 应用确认入口命名统一：按用户批准改为confirmExecution／submitExecutionConfirmation／sendExecutionResult，更新应用注释、Handler、本机调用及Broker/HA fixture调用；Adapter/Executor/SDK/wire不改，无旧名包装。三组Workflow/Admission/RequestConfiguration测试及routing-ha testCompile、readiness/style/diff check通过（`/tmp/execution-api-rename-tests.log`）；README/计划同步。clean原pending_acceptance阻断保留（`/tmp/execution-api-rename-clean.log`），未继续full/HA、未新增独立Review结论，不提交。
 
-- 用户批准 `PeerIdentityConstants`，在现有T3集中五类九处Java默认前缀，配置覆盖和YAML不变；readiness exit0，独立设计Reviewer `a19a522ec3aa516fc` Approved后已实施，九处默认值精确展开一致、独立javac及scoped diff-check通过。Broker聚焦测试因私有jraft-core:1.4.1-imchat.1缺失在执行前阻塞，未继续消费方验证；独立实现Reviewer `ae9d95d394bdfb2f8` Revise、findings none，源码无修改要求，必要验证缺口待依赖恢复后补齐，不记Accept。保留已有TLS Broken pipe与DECODE缺口，不运行full/clean/module/architecture/commit，完整验收未完成。
+- T2 成员投递入口已收为private：Workflow不再直接调用/spy submitMembershipOperation，改经resume公开入口及执行器submitApplicationStage协作边界，保留following拒绝/预算/共享优先/摘要冲突/worker重读覆盖，不加反射或兼容包装。Workflow/AppServiceChange/Scheduler135/135、readiness/style/diff check通过（`/tmp/private-submit-tests.log`），Java测试无私有入口引用。独立Review调用240秒超时（`/tmp/private-submit-review.txt`），未取得结论，不记Accept；clean既有pending_acceptance阻断保留（`/tmp/private-submit-clean.log`），未继续full/HA，T2active，不提交。
 
-## 连接创建作用域合并（2026-10-28）
+- T2 成员投递入口命名：executeMembershipOperation改submitMembershipOperation，从public收紧为包内可见；方法体不变，所有生产调用仍在AppService内。现有Workflow直接调用/spy隔离点仍依赖此入口，未强改private或引入反射，private目标尚未完成；后续迁移测试到公开用例后再收紧。Workflow/AppServiceChange/Scheduler三组135/135、readiness/style/diff check通过（`/tmp/submit-member-tests.log`），旧Java名称无残留。计划同步，clean原pending_acceptance阻断保留（`/tmp/submit-member-clean.log`），未继续full/HA或独立增量Review，不提交。
 
-- 用户确认 `ConnectionCreationScope` 命名并授权调整；设计追加节独立Reviewer `a5158f39a13936936` Approved、必须项none。按现有T3合并Factory两个ThreadLocal，保留候选回收、嵌套恢复及原close抛错边界；readiness exit0，合并已实施，修改前后Resources/Background各9项通过；TLS/Lifecycle共63项中1项证书轮换用例原生SSLSocket握手Broken pipe失败，归因未定，停止扩大验证。独立实现Reviewer `a6a913c731e865433` 局部Accept、findings none，不代表边界或完整验收通过。无新增真实嵌套专项回归。仅本增量实现及窄验证，不运行旧DECODE/module/architecture/full/clean/commit，完整验收未完成。
+- T2 执行确认值对象/只读检查：七参数收为MembershipExecutionConfirmation，MapStruct生成Command转换；聚合check只读、confirm复用检查后首次更新，AppService预检不再改快照，FSM按最新状态重新校验。原七参入口及调用迁移，无兼容包装/wire变更。聚焦领域/应用/映射及ModuleBoundary命令通过（`/tmp/execution-value-tests.log`），readiness/style/diff check通过；设计Approved/实现Accept（`/tmp/execution-value-design-review.txt`、`/tmp/execution-value-code-review.txt`），非精确增量diff或独立执行。新增无副作用预检、相反结果后重验拒绝/重复revision及七字段保真测试；首轮漏test调用已补，不计行为RED。真实AppService→FSM交错待增强；设计/README/计划同步，clean既有pending_acceptance阻断保留（`/tmp/execution-value-clean.log`），未继续full/HA，T2active，不提交。
 
-## 初始化阶段方法提取（2026-10-26）
+- T2 执行确认准入决定收拢：领域MembershipExecutionAdmission明确状态/permit/reason，统一服务定位执行记录；AppService准备入口保留身份短路并按决定拒绝或提交，submitExecutionConfirmation仅管理执行器准入异常边界，worker完整复验不变。六组聚焦回归/readiness/style/diff check通过（`/tmp/confirmation-admission-tests.log`），设计Approved/源码Review Accept（`/tmp/confirmation-admission-design-review.txt`、`/tmp/confirmation-admission-code-review.txt`），非精确增量diff或独立执行。无permit/非法字段/全部零交互矩阵为非阻断增强项；设计/README/计划同步，clean原pending_acceptance阻断保留（`/tmp/confirmation-admission-clean.log`），未继续full/HA，T2active，不提交。
 
-- 当前T3独立追加Client三个private阶段方法原位提取，保持monitor/calls和失败责任；不改正在Review的monitor-startup旧证据。当前58项窄验证已实际通过，展开原体比较一致，局部实现Review待完成，保留Handler和用户排版；旧DECODE/更宽验证暂停不变。
+- T2 执行结果确认可读性：私有入口改名prepareExecutionConfirmation/confirmMembershipExecution，用“确认成员变更执行已结束及其结果”说明；统一领域服务校验显式受信/本机身份，operation封装当前许可查找，已有聚合结果校验直接复用。公开API/wire及worker/证据/提交复验不变。九组220/220、readiness/style/diff check通过（`/tmp/execution-confirm-tests.log`），限定设计Approved／实现Accept（`/tmp/execution-confirm-design-review.txt`、`/tmp/execution-confirm-code-review.txt`）；拒绝路径完整零交互矩阵仍可增强。设计/README/计划同步，clean既有pending_acceptance阻断保留（`/tmp/execution-confirm-clean.log`），未继续full/HA，T2active，不提交。
 
-## 最终 monitor/startup 迁移（2026-10-26）
+- T2 等待句柄入口命名：按用户批准将 requestMembershipPermitDrainConfirmation 改为 submitMembershipPermitDrainedConfirmation，同步Handler和Admission/RequestConfiguration测试，不保留旧名包装，不改方法体或等待语义。readiness、两组聚焦测试（`/tmp/permit-confirm-rename-tests.log`）、style/diff check通过，Broker Java旧名无残留；历史原件名称不改写。clean既有pending_acceptance阻断保留（`/tmp/permit-confirm-rename-clean.log`），未继续full/HA，T2 active，不提交。
 
-- 当前T3唯一active，最终采用独立monitor串行startup/shutdown，取消5秒等锁及中断退出；无期限等待和自定义回调跨线程join风险明确保留。同步弃用入口迁移及必要真实回归，RED→GREEN和受影响窄测试已执行，跨Broker/HA仅编译；局部独立实现Review待完成，详细证据见T3；旧DECODE及更宽验收缺口不变，不运行full/clean/commit/module/architecture。
+- T2 扫描/重传规则收拢：BrokerCluster拥有维护状态、端点副本查询和target-voter绑定资格，operation拥有步骤查询/完整结构扫描，统一服务根据本机领域事实Map选择Permit并拒绝矛盾。AppService保留采样/worker/请求组装、选定后及发送前实时复验。新增选择测试3项、真实聚合规则测试；最终业务/领域279/279、ModuleBoundary14/14、readiness/style/diff check通过（`/tmp/member-rules-final.log`）。首轮fixture缺minimumVoters、回归旧getter stub未命中新聚合方法已修正；独立设计Approved，实现首轮Revise/P2因领域资格缺专测，补齐后第二轮Accept（`/tmp/member-rules-code-review.txt`、`/tmp/member-rules-code-review2.txt`），首轮保留。设计/Architecture/README/计划同步，无新通用规则；clean原pending_acceptance阻断未解决前不继续full/HA（`/tmp/member-rules-clean.log`），T2 active，不提交。
 
-## 受控 startup 入口迁移（2026-10-26）
+- T2 成员资源库收尾已实施：删除 MembershipOperationAttempts／执行层 Claim，AppService 仅注入统一 MembershipOperationService；两张独立资源库，成员单表保存领域 Attempt 及自有 Outcome 完成源，MapStruct 边界保真映射，无第二张Future表或独立completed标志。领域服务锁内认领/容量/精确释放，锁外通知；公开Stage包装不保证实例身份，内部固定共享/取消隔离保持。首轮旧Stage身份断言失败，按获审契约调整并补映射取消/全状态测试；最终业务/配置246/246、ModuleBoundary14/14、routing-ha testCompile、readiness/style/diff check 通过（`/tmp/member-repository-final.log`），含新增8线程唯一认领。限定设计Approved／源码Review Accept（`/tmp/member-repository-design-review.txt`、`/tmp/member-repository-code-review.txt`），新增并发测试为Review后补、非精确增量diff或独立执行证明。配置完整图/专属删除后通知前交错仍待增强；Architecture/README/计划/设计同步。clean既有pending_acceptance阻断保留（`/tmp/member-repository-clean.log`），未继续full/HA，T2 active，不提交。
 
-- T3追加弃用init迁移：已核原生动态startup与异常契约，最小同步受控override/super、默认Bean和已确认受控调用；原生/raw/server init不动。当前待实施窄验证及独立Review，不运行module/architecture/full/clean/commit，旧DECODE保留。
+- T2 领域服务合并：按用户批准将 learner 认领/释放直接合入 MembershipOperationService，删除 LearnerConfirmationService，无转发门面；AppService 与成员协调由生产配置共用一个服务 Bean。仅合并服务，不合并存储；成员资源库化尚未完成。重命名领域服务测试，新增同 ID 两类占用双向不干扰回归；十组业务/配置234/234、ModuleBoundary14/14、routing-ha testCompile、readiness/style/diff check 通过（`/tmp/merge-membership-service-regression.log`）。限定设计 Approved／实现 Accept（`/tmp/merge-membership-service-design-review.txt`、`/tmp/merge-membership-service-code-review.txt`），非精确增量diff或独立测试。完整生产注入运行证明待增强，设计/Architecture/README/计划同步；clean 既有 pending_acceptance 阻断保留（`/tmp/merge-membership-service-clean.log`），未继续 full/HA，T2 active，不提交。
 
-## 最小锁边界维护（2026-10-26）
+- T2 成员尝试领域化：MembershipOperationAttempt 移入领域保存身份/保留及回收资格，MembershipOperationService 拥有冲突/共享/固定4096容量和继承规则；协调对象单表 Execution 绑定领域尝试与 Future，不新增 completed 标志或第二张表。AppService 注入协调对象并按状态 Claim 判断，成员原子性/取消/generation 不变。八组协调回归及既有领域/业务/配置共233/233、ModuleBoundary 14/14、routing-ha testCompile、readiness/style/diff check 通过（`/tmp/member-domain-regression.log`）；设计 Approved、限定实现 Review Accept（`/tmp/member-domain-design-review.txt`、`/tmp/member-domain-code-review.txt`），非精确增量 diff/独立测试执行。专属删除后通知前交错和完整生产注入运行证明为非阻断增强项；设计/Architecture/README/计划同步。clean 既有 pending_acceptance 阻断未解决前不继续 full/HA，日志 `/tmp/member-domain-clean.log`，T2 active，不提交。
 
-- 现有T3继续处理三处已审计冗余calls外层锁及重复acquireLifecycleLock提取；保留四处复合原子边界、Tracker和Handler，不提取initializeResources。52项生命周期/后台窄验证已实际通过，helper原体比较及四处复合锁检查通过；局部实现Review待完成；旧DECODE及更宽验证暂停保留，不运行full/clean/commit。
+- T2 learner 认领领域化：按用户批准新增领域 Identity/Attempt/状态 Claim、LearnerConfirmationService 和领域资源库；InMemory 实现单表原子登记、精确实例释放。AppService 确认/恢复按状态响应，局部 Future 保留失效桥梁；配置注入共用服务/资源库，旧 model.execution 三类型及旧测试删除，成员共享模型未改。设计独立 Approved、限定源码 Review Accept（`/tmp/learner-domain-design-review.txt`、`/tmp/learner-domain-code-review.txt`）；九组业务/配置 225/225、ModuleBoundary 14/14、routing-ha testCompile、readiness/style/diff check 通过（`/tmp/learner-domain-regression2.log`）。首次漏同步一个全限定构造调用已修复；非生产缺陷 RED。配置专测尚非完整生产 AppService 注入运行证明，Review 记录非阻断增强项；clean 既有 pending_acceptance 阻断未解决前不继续 full/HA，证据 `/tmp/learner-domain-clean.log`，T2 active，不提交。
 
-## 生命周期串行化增量（2026-10-26）
+- T2 确认链单次分流：按用户批准，confirmLearner 准备后一次区分 Finished/Prepared；新操作链直接传递 evidence/registered/committed/completed 共识结果，删除重复 Outcome 包装和 Finished 透传。保留各副作用阶段 worker 调度、revision/epoch/端点/任期复验、Begin DUPLICATE 不推进、最终发布与失效桥梁；恢复链不改。六组 203/203、readiness/style/diff check 通过（`/tmp/learner-direct-tests.log`）。设计与活跃计划同步；独立增量 Review 未取得，clean 结果另见本轮日志 `/tmp/learner-direct-clean.log`，既有 T1 pending_acceptance 阻断未修复前不继续 full/HA，T2 active，不提交。
 
-- 最终 [ReentrantLock 与固定 5 秒 tryLock 设计](docs/design-docs/2026-10-26-bolt-client-serialized-lifecycle-design.md) 独立 Reviewer `a3b3f5a6c96a74ee1` Approved、必须项 none，进入现有 T3 实施，仍唯一 active。先新契约 RED 再最小 GREEN，仅 Lifecycle/ProductionBackground；保留用户排版及 ControlledChannelHandler。新契约 RED 后最小实现 GREEN 已完成，当前等待局部独立实现 Review；详细证据和残余专项覆盖缺口见 active T3。尚未完整验收；旧 DECODE 缺口保留，不运行 module/architecture/full/clean/commit。
+- T2 容量常量归位：按用户意见将 4096 常量移入 MembershipOperationAttempts，AppService 无参创建；小容量构造器仅包内测试使用。`mvn -q -pl im-broker/im-broker-server -am test '-Dtest=MembershipOperationAttemptsTest,BrokerMembershipWorkflowTest,BrokerMembershipDriftTest' -Dsurefire.failIfNoSpecifiedTests=false`、readiness/style/diff check 通过（`/tmp/attempt-capacity-tests.log`）；既有 clean 阻断及独立 Review/full/HA 缺口不变，T2 active，不提交。
 
-## Client 四态生命周期追加（2026-10-26）
+- T2 请求执行协调抽取：用户批准将两张表及认领、共享/互斥、容量、精确释放/完成规则封装为 model.execution.MembershipOperationAttempts 与 LearnerConfirmationAttempts，Acquired/Existing 区分执行者和直接响应。AppService 保留业务阶段、身份保留时点和 worker/generation 调度，不迁入 domain、不改永久预算。新增协调对象 8/8，八组业务共 211/211、窄架构 1/1、readiness/style/diff check 通过（`/tmp/attempt-coordination-final.log`）；初期 fixture/枚举/AssertJ 重载失败已修正，不计生产缺陷 RED。设计、Architecture/README 与活跃计划同步；clean 仍被既有 T1 pending_acceptance 阻断（`/tmp/attempt-coordination-clean.log`），未继续 full/HA，独立增量设计/实现 Review 未取得，T2 active，不提交。
 
-- 独立设计 Reviewer `a46adc81a21ae2558` Approved、必须项 none；用户确认继续处理后，按[四态设计](docs/design-docs/2026-10-26-bolt-client-lifecycle-state-design.md)进入现有 T3，仍唯一 active。仅 Client、必要 lifecycle 测试及 README；先旧实现 baseline，再同层验证，保留 Handler 修改。既有 DECODE 失败未归因，不扩大 module/architecture；clean/full/commit 暂停，尚未验收。
+- T2 MembershipOperationAttempt 迁移：按用户确认从 BrokerMembershipAppService 内部类移至 model/execution，改为语义访问器与 retainIdentity 动作，删除旧内部类；成员操作共享、容量、Future/身份保留语义不变。六组回归、style/diff check 通过，证据见活跃计划；此前 confirm 步骤注释已补，retransmitDrainedPermit 经核对保留为完整安全扫描，不删除。clean/full/HA 缺口保留，T2 active，不提交。
 
-## 两处可读性提取追加（2026-10-26）
+- T2 learner 结果工厂收敛：CompleteLearnerSyncResult 新增 notLeader/unavailable/自定义原因 rejected，替换 AppService 全部 learner workflow/recovery 裸结果构造；不把固定结果误放 Transformer 或 Builder。状态、epoch、文案测试与七组回归 211/211、style/diff check 通过，未重跑 clean/full/HA，T2 active，不提交。
 
-- 用户批准仅将消息类型白名单直接展开回 Handler.write，删除 validateMessageType；validateInvocation 保留 private void，失败抛异常，统一 catch 与 catch 外 super.write 不变。已实施并同步设计/当前 T3；精确展开比较一致、git diff --check exit0，证据在 job tmp/message-type-inline-*。本次未构建或测试，既有 DECODE 失败仍未归因，不复用旧报告声称新输入通过；T3 保持唯一 active，clean/full/commit 继续暂停。
+- T2 组装/转换纠偏：Permit 登记命令与 SDK 确认 Params 使用手写 Builder（record canonical 校验/字段不变），删除两个多来源 Mapper；真正请求→命令转换仍用 MapStruct。Builder 复用隔离/字段/非法输入及领域/成员回归、style/diff check 通过，限定源码 Review Accept，证据见活跃计划。维护指标分段短路保留；扫描删除试改因 Review Revise 已恢复安全检查，既有领域 Builder alias 风险不在本次扩大修复。clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA，T2 active，不提交。
 
-- 用户授权「你先调整一下看看」，独立设计 Reviewer `a38eedb4de94875cc` Approved、必须项 none，仅覆盖 Tracked 静态内部类与 Optional failure 提取。Optional 阶段 focused103、Bolt267（含 common 共304）均 exit0、零失败/错误/跳过；旧版架构未运行。readiness exit0，保留用户新增 Handler @Override，before/effective-before、精确 diff 和语义比较已保存。
-- 用户后续明确「可以」，批准两个 private void 校验方法与 write 单层 RuntimeException catch、super.write 在外；新增属性/校验/drain 意外 RuntimeException 转 promise 的行为变化已写入同一设计，独立设计 Reviewer `a38eedb4de94875cc` 复核 Approved、必须项 none，明确恢复实施；新增边界回归先 RED 后 GREEN，再按 focused→module→architecture 顺序验证，不用旧证据证明新方案；T3 仍唯一 active。clean/full/commit 禁止，实现独立 Review、正式 quality 与完整验收未完成。
-- 最终版新增边界回归9项已 RED→GREEN；含步骤注释的 focused112 中既有 DECODE handled 预期1/实际0失败，最窄三参数再现，未扩大 module/architecture。一次临时cause诊断走预期解码后预算路径并通过，但不能证明两次失败根因，失败记录保留；测试诊断行已恢复原bytes/hash。用户追加的 validateInvocation 五阶段注释已补齐，去注释 token 一致，最终 diff/SHA 已刷新；当前仍暂停更宽验证，不冒称已修复或完整通过。
+- T2 多参数转换：按用户澄清撤回新增 Lombok Builder，仅新增 MapStruct BrokerMembershipTransformer，接管 Permit 请求、受信身份显式传入的本机接收命令、共识确认和登记命令四类字段映射；canonical 校验、业务判断与生命周期位置保留，固定结果不强制转换。映射专测/聚焦回归/style/diff check 通过，限定源码 Review Accept，证据见活跃计划；clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA，T2 active，不提交。
 
-## Bolt 按职责拆包追加（2026-10-25）
+- T2 Permit 确认校验整理：Command 用 AssertUtils 建立字段完整性，AppService 删除 Stream/null 兜底，仅分段校验受信身份及本机匹配；本机/远端分支展开，Handler 删除 result 空值兜底。格式错误由构造异常表达，身份不匹配仍 REJECTED；构造 RED/GREEN、聚焦回归/style/diff check 通过，限定设计/实现 Review Approved/Accept，真实 Bolt 异常组合覆盖缺口见活跃计划。clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA，T2 active，不提交。
 
-- 用户明确认可设计，独立设计 Reviewer `ad3341b14c207845a` Approved、必须项 none，已明确恢复实施；依据 [职责拆包设计](docs/design-docs/2026-10-25-bolt-responsibility-packages-design.md)，T3 仍唯一 active。
-- 本轮按批准范围完成 invocation / connection / channel 搬包、Factory/Manager Controlled 命名、最小 public、private 唯一 closed 受控访问及测试/fixture/helper/当前文档同步。顺序 baseline103、focused103、Bolt267（reactor含common共304）、Broker50、consumer/startup37、architecture34 全零且 exit0；E2E/HA 仅 test-compile、Harness 均 exit0。54 个 allowlisted 旧 class 已保存清单/SHA并隔离，无重现；103 条同轮 invocation 与方法/参数清单一致，生产归一对比相同、BoltRpcClient 字节不变。证据见 active T3 与 job tmp。独立实现 Reviewer `ad3341b14c207845a` 局部 Accept、findings none，已独立核对 SHA、归一差异、103 条矩阵、54 个旧产物无重现、可见性及 shared monitor；仅覆盖本轮职责拆包，不覆盖完整混合工作区。正式 quality、full 与真实网络完整验收缺口保留；clean/full/commit 未运行，T3 不关闭、不归档。本次仅同步 Review 状态，无源码或构建变更。
+- T2 命名收尾：按用户确认将私有 resumeLearnerConfirmation 及调用点更名 resumeLearner，不改方法体。readiness、编译、diff check 通过，证据见活跃计划；未重跑行为/full/HA，既有 clean 阻断保留，T2 active，不提交。
 
-- 活跃计划：[Bolt 包职责与 Broker 快照归位](docs/exec-plans/completed/2026-10-25-bolt-package-boundaries.md)；当前任务：T3。包迁移及聚焦架构/模块测试已通过，追加的 Bolt 11 类与 Broker 快照成员注释已补齐，非注释 token 对比和空白检查通过。用户 Review 批准出站处理器改名为 client.BoltOutboundHandler，3 处装配引用已同步，静态检查通过，改名后尚未编译。用户正在 Review，clean/full 按要求暂停，待明确通知后集中验收；已取消批次不计通过或失败，此前完成记录不替代本轮证据。
+- T2 恢复链平铺：resume 删除不可达旧用例 switch、修正注释；为保留非成员输入旧错误分类保留末尾端点检查。resumeLearnerConfirmation 复用现有阶段载体，直接返回准备/Begin/Commit/终态/映射/发布链，汇合失效信号，保留恢复 Begin DUPLICATE 可推进、不重新取证和 worker 门禁。聚焦回归/style/diff check 通过，限定源码 Review Accept，覆盖边界见活跃计划；clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA，T2 active，不提交。
 
-## Review 追加范围（2026-10-25）
+- T2 确认链两处冗余收敛：准备阶段直接 supplyAsync，终态守卫通过后直接调用 Adapter，移除同结果重复检查；其他短路、任期/revision/端点及发布门禁不改。聚焦回归/style/diff check 通过，证据见活跃计划；clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA、本增量未独立 Review，T2 active，不提交。
 
-- 用户批准删除无仓库内生产调用者的 `BrokerClient.listBrokers()` RPC 整链；设计 D6 独立 Review a61ffe608a987aada Approved、无必须修改项后已实施。专用 DTO/响应映射及实际测试引用已清理；`BrokerQueryParams`、String/Instant 注册映射、Registry/Gossip/HTTP 诊断保留，外部消费者未知的不兼容风险已记录。
-- 静态搜索与 `git diff --check` 通过；私有 m2 下顺序 Broker focused 25 tests、Message focused 3 tests、LayerBoundary 30 tests，全部零失败/错误/跳过，日志与准确命令见 active 计划。未改前缀命名或其他 Bolt 客户端逻辑。T3 仍唯一 active；独立实现 Review 与完整验收未完成，clean/full 保持用户暂停，未提交。
+- T2 固定在途结果工厂：CompleteLearnerSyncResult 新增 inFlightConflict/inProgress，确认与恢复共用，固定状态/空值/文案不变；未新增 private 方法。工厂字段断言先 RED 后 GREEN，聚焦回归/style/diff check 通过，证据见活跃计划；clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA、未取得本增量独立 Review，T2 active，不提交。
 
-## 暂停维护交接（2026-10-24）
+- T2 learner 调度闭包已提取为 BrokerMembershipExecutor 的 private 内部 LearnerExecution，实现标准 Executor；pending 使用 mutex 保护的 boolean，保留固定 generation、单 pending、永久预算及锁外执行。六组聚焦回归/style/diff check 通过，限定源码 Review Accept，证据边界见活跃计划；clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA，T2 active，不提交。
 
-- 本次仅涉及 `im-plugin/im-bolt/src/main/java/com/co/kc/imchat/plugin/bolt/core/BoltAuthenticatedConnectionFactory.java` 和 `scripts/test-routing-ha-process.sh`。前者展开嵌套异常分类并补充原因注释；后者修复获批的 cleanup 握手、取消同步与异常子进程回收测试。两项均已独立 spec／quality Accept，工厂 focused 59 tests 全零、fixture 子自测及变异反证通过；不等于完整验收通过。
-- 最新实际结果：父 Harness exit0；标准全 reactor Maven clean、`verify.sh clean` exit0；full 于 08:50:44–09:08:28 UTC **exit1**，停在 IAM JUnit discovery，无法加载 `DbIamOAuthAuthorization`。未进入本轮真实 HA，348 份 fresh XML／1865 tests 全零只是中途报告，不能当完整 reactor 通过。
-- 干净构建期间再次出现 JDT 风格错误 class；此前生成源码明确标注 Eclipse JDT (IDE)，本项目 IDE 与 Maven 共用 target。隔离 javac＋MapStruct 窄实验已通过。具体 writer 及 discovery 因果尚未全部证明，未擅改 IDE 设置或终止 IDE／外仓进程；恢复前须明确隔离共享输出的维护窗口，不再盲目 clean／full。
-- **交接原件：`/tmp/bolt-readability/STOP-HANDOFF.md`**。本任务精确差异、两个冻结 SHA、审查、历次失败、编译器调查及下一步边界均在该文件及 `/tmp/bolt-readability/`。恢复前先核对冻结文件，不扩大源码／fixture 范围、不用旧 Bolt full8 替代新维护验收。其他用户改动全部保留；未提交、未部署。
-- 以下为**此前已完成的 Bolt 统一 invoke 项目**记录，完成结论只绑定其原验收输入，不代表上述新维护通过。
+- T2 两表职责核对：未证明可删除的冗余账本；保留成员身份/在途共享表和 learner 在途互斥表，不擅自统一共享契约。submissionStarted 更名 identityRetained，容量常量明确为 MEMBERSHIP_ATTEMPT_CAPACITY，修正完成后身份保留与执行器账本区别的注释/README。聚焦回归及 style/diff check 通过，证据见活跃计划；clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA或取得新独立 Review，T2 active，不提交。
 
-## 此前已完成项目
-- **Bolt 连接层认证与统一 invoke 已完成实现、隔离验收、独立 Review 和状态关闭。** 执行计划已迁移至 [completed](docs/exec-plans/completed/2026-10-22-bolt-unified-invoke.md)，历史失败、Block、修复与验证窗口保留在该计划及对应证据目录，不作为当前待办。
-- 监督循环 #4 已删除；未创建 Git commit，未生产部署，未撤销或提交无关用户改动。
+- T2 预算拒绝出口收敛：确认与恢复在 reserve 返回 null 时精确移除后直接返回 completedStage，删除无等待者的 attempt 完成/返回中转；保留在途身份与换代桥梁。聚焦回归、Java style/diff check 通过，独立窄 Review Accept，证据见活跃计划；clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA，T2 active，不提交。
 
-## 验收与关闭证据
+- T2 在途不共享已实现供 Review：同身份重复立即 IN_PROGRESS（epochs 为空），不同内容 REJECTED；确认/恢复只共用互斥，不共享响应，内部 generation 完成桥梁保留。Broker/Ops nullable acceptedEpoch、CLI 状态识别/非成功提示和同版本部署说明已同步。独立设计第二轮 Approved，限定实现 Review Accept；RED/GREEN、聚焦回归与具体证据见活跃计划。clean 仍被原 T1 pending_acceptance 阻断，未继续 full/HA；真实 E2E 缺口保留，T2 active，不提交。下条平铺阶段的共享契约已被本次批准取代，不代表当前行为。
 
-- 标准 full8：2026-10-24 02:55:41–03:19:43 UTC，exit0，1442.057 秒；2746 个冻结输入稳定。
-- 完整 reactor：496 份 fresh XML，**2350 tests，0 failures，0 errors**；2 项既有本地 MySQL 条件 skip，不代表真实 MySQL 分片已验证。
-- 同轮制品证明：48 项 expected/actual SHA 匹配；真实 HA **RH01–RH25 全通过**，新增 Gossip 注册、删除与恢复收敛检查通过。owned HA 项目的容器、网络、卷清理后为空。
-- 最终独立实现 Review `59cbddd1`：**Accept，findings=[]**，原 T6-R1／R2／R3 均关闭。迁移后的机械差异经独立复核，正式 quality 的当前 scope 和十二个 unitFingerprint 匹配，verdict 为 Accept。
-- 状态迁移及用户批准的两个链接重定位，经独立 Reviewer `40c50a94` 精确差异审查 Accept。最终 drift、clean、quality、cleanup（scan-only）、handoff 均实际通过；运行后未再回填 Git 状态。
+- T2 确认链平铺试改：按用户批准不新增 private 方法，在 confirmLearner 内依次展示准备、取证、复验 Begin、Commit、终态和响应；新增 model.execution.LearnerConfirmationState 只承载不可变阶段事实。正常结果保留 worker 发布门禁，与 attempt 失效信号汇合后直接返回只读链；执行器及恢复实现不变。首次与重复请求 Stage 身份不再相同，重复请求仍共用固定视图，结果对象/副作用共享且取消隔离。首次六组 3 failures/1 error 为旧对象身份断言，更新契约断言后最终 203/203 通过（`/tmp/learner-flat-final2.log`）；readiness、Java style、diff check 通过。clean 仍因既有 T1 pending_acceptance 失败（`/tmp/learner-flat-clean.log`），未继续 full/HA；独立增量 Review 待完成，T2 active，不提交。设计增量与计划已同步。
 
-证据入口：
-- full8：`/tmp/bolt-t6-acceptance-attempt8/RESULT.md`
-- 最终实现质量：`/tmp/bolt-t6-final-acceptance-quality/RESULT.md`
-- 状态迁移与廉价收尾：`/tmp/bolt-state-closeout/`
-- 当前机器报告：[Harness report](.harness/report.json)、quality snapshot（`.harness/quality/quality-snapshot.json`，由 quality 生成）。状态迁移后的 stale、原 full 时间及指纹照实保留，不将旧运行刷新为当前 fresh。
+- T2 共享/文档补齐：新增确认先入与恢复先入的双向同结果测试，确认先占表时不升级恢复、下一轮 resume 才推进；补旧无端点记录 retry 抛错、无任何网络请求且不改记录。六组 Broker 203/203、三组 CLI 135/135 通过（`/tmp/learner-sharing-docs-final.log`），Java style、diff check 通过。Broker Architecture/Server README、Ops/CLI README、RELIABILITY 与 CLI 提示已同步登记/终态区别及后台恢复边界。真实 E2E 尚未修改或验证：当前 write fixture 仅为 learner 分配地址而未启动目标 runtime，实际取证需扩正式 topology，不能 mock 进度冒充真实链路。独立实现 Review 仅覆盖前一增量，本轮新增测试/文档待复核；T2 active，未运行 full/HA、不提交。
 
-## 保留边界与后轨
+- T2 Broker 分流首版：confirmLearner 对历史已登记请求只校验身份并返回 DUPLICATE，不取证或推进；新 Begin 返回 DUPLICATE 不接管恢复。resume 改走独立 learner 恢复用例，共用在途表和预算，在 worker 重读阶段后恢复。新增历史 PENDING/RAFT_COMMITTED 只读确认先 RED（`/tmp/learner-history-split-red.log`），实现后通过；六组首次回归三项旧重发恢复断言按新契约调整。最终六组 201/201 通过（`/tmp/learner-history-split-final2.log`）。一次重跑退出 1 且日志为空，后续同范围完整通过，不计为通过证据。独立限定 Review 首轮 Block（`/tmp/learner-history-split-code-review.md`）经完整调用链复核撤回为误报，第二轮 Accept/findings none（`/tmp/learner-history-split-code-review-round2.md`）；保留首轮原件。另补延迟 Begin 返回 DUPLICATE/SUCCEEDED 不重复提交的回归，未改生产逻辑即通过；该新增 fixture 首次 when 调用触发旧 stub 的线程断言，改 doAnswer 后通过。模块稳定说明、CLI 旧记录无网络 retry 专测和真实 E2E 尚待补齐，T2 active，不运行 full/HA、不提交，既有 clean 阻断保留。
 
-- 正式质量十二单元均为 **B／10分（满分12）**。历史 performance/load stale 导致机器 `handoffReadiness=0`，未修改分数或扩大排除项；本任务不提供容量或性能保证。
-- full4 两个 close 用例的历史具体 cause 仍 unknown；测试已按审查补足完整 retirement 前提，不能将后续通过冒称为该历史 cause 已证实。
-- D10 约束当前实际发送／呈现的证书数组，不证明隐藏 CertPath；D11 以受控装配及可信 JVM 代码为边界，不提供恶意进程内 sandbox。D14 沿用原生 TLS 材料加载，D13 私钥快照未实施。
-- 专用 DEV Compose 已验证配置绑定及 write/close 目标选择，不据此宣称该部署的真实网络传输已经验证。未知 TLS 目录 `RphHzdkY` 未擅自删除，精确材料删除取证限制保留。
-- 生产证书签发、secret 分发、在线吊销、私有 JRaft 正式发布／可复现性、历史 Raft 偶发及 Redis 丢失等后轨不因本次完成而消失。
-- [原 Harness 平台计划](docs/exec-plans/history/2026-10-21-harness-verification-resume.md)已撤回并保留 H1–H4 检查点与 H5 blocked，不计 completed，不恢复旧 chain／journal 平台。
+- T2 CLI/Ops 端点链路增量：CLI 确认解析必填端点并保留可选 reason，记录发送与 retry 同时原样传递两者；旧缺端点记录拒绝且原文件不变，缺端点/错序命令退出失败。CLI 先 RED（3 failures，`/tmp/learner-cli-send-red.log`），最终全模块 173/173 通过（`/tmp/learner-cli-send-final.log`）。Ops 确认使用独立 CompleteLearnerSyncRequest，原样传递端点/reason；HTTP 测试先 RED 1 failure（`/tmp/learner-ops-endpoint-red.log`），最终 48/48 通过（`/tmp/learner-ops-endpoint-final.log`），含缺失/空白端点及负 epoch 拒绝。readiness、Java style、diff check 通过，CLI README 同步。Broker 分流、后台恢复、真实 E2E 及独立实现 Review 尚未完成，未运行 full/HA、不提交，T2 active，既有 clean 阻断保留。
 
-## 客户端调用追踪追加（2026-10-25）
+- T2 后台恢复设计已获第二轮独立 Approved、findings none（`/tmp/learner-auto-recovery-design-review-round2.md`），用户批准纳入确认端点原样保存/传递；首轮 Revise 保留。已纳入原 T2，开始 CLI 子步骤：确认记录要求非空端点并保留 reason；OperationRequestFileTest 先 RED（3 failures/1 error，`/tmp/learner-endpoint-record-red.log`），最小实现后 34/34 GREEN（`/tmp/learner-endpoint-record-green2.log`）。首次 GREEN 仅旧拒绝文案断言未同步，已更新准确文案后通过。CLI 解析/发送/retry、Ops 请求、Broker 分流及 E2E 尚未实施，不把局部通过当作整体验收；readiness、diff check 通过，T2 active，不提交。
 
-- 用户批准最小职责拆分，设计 `2026-10-25-bolt-client-call-tracking-design.md` 已由独立 Reviewer `a35e419d309f04bf8` Approved，必须项 none。T3 仍唯一 active，进入实施及顺序窄验证；readiness exit0。
-- 已提取一个 package-private Tracker；保留单 monitor、唯一关闭标志、初始化交接、原生完成与锁外关闭语义。原行为 baseline / 提取后 focused 各62 tests、完整 Bolt267 tests、架构34 tests 均 exit0，全零失败/错误/跳过；精确 admit/drain/Completion 归一 token 对比一致，日志及并发限定符差异事实见 active 计划。
-- Tracker 局部独立实现 Reviewer `ac1bb6179c9cf8a01` Accept，findings none；该结论不覆盖完整混合工作区。quiet baseline 日志本身不单独证明退出码或冻结输入，退出码来自当次工具返回；未做专用 mutation。正式 quality 和完整验收未完成，clean/full/commit 继续暂停。
-- Factory 依赖评估第一轮 Reviewer `a12ce5a7edf571b89` Revise；接受成本判断，修订为保留 client.manager() 和已固定 snapshot 的模式读取，不实施 bindManager、额外 mode 参数或任何 Factory 生产改动，原 Reviewer 复核 Approved、findings none，两个必须项关闭，仅批准评估后保留现状、零生产修改。Manager 构造执行器但未 started 阶段的新增失败回收不能由现 rollback 证明；不据此宣称现有线程泄漏，不扩生命周期修复。
-- D6、前缀迁移及混合改动保留。T3 仍唯一 active；本轮仅文档修订，无 Maven/full/生产修改，不改 BoltRpcClient。
+- T2 后台恢复设计：用户已批准保留自动 scheduler/resume、不新增恢复 HTTP 接口。独立 pi 设计 Review 首轮 Revise（`/tmp/learner-auto-recovery-design-review.md`）：CLI 原记录仅允许 add-learner 保存端点，确认经 Ops 传空端点而 Broker 要求非空，既有链路无法连通；须确认是否纳入本次端点契约修复范围。设计与索引已保留 Revise，未实施生产变更；readiness 通过，T2 active，既有验收缺口不变。
 
-## Peer 身份 URI 前缀迁移（2026-10-25）
+- T2 恢复可达性核对：`BrokerMembershipScheduler` 已自动调用 `resume`，但 Broker 无独立恢复 HTTP 接口，`OpsCliClient.retry` 仅重发原请求。已补充设计事实；「客户端显式恢复」并非现有能力。待用户选择保留自动协调恢复并查询，或新增对外恢复接口；不默认扩公共协议，不改生产代码。readiness 通过，独立设计 Review 尚未执行。
 
-- 设计独立 Review `a0b58853328dc8e68` Approved，无必须项；T3 为唯一 active。全仓同概念 Java、配置、实际环境入口和当前文档同步，无旧别名；历史归档和完整 workloadIdentity 不改。
-- 实施完成：九入口非默认新键/原生环境与旧键无别名共36个参数化断言先 RED 后 GREEN。顺序窄验证 Broker55、Consumer33、Startup6、SDK24、Architecture4，共122 tests 零失败/错误/跳过，命令均 exit0；精确命令与失败归因见 active 计划。旧名仅留负例、迁移说明及历史记录。
-- 默认 URI、拼接/匹配/授权及 MTLS/DEV 不变，外部旧键可能静默回退默认值已在五份 owning README 披露。沿用本轮 readiness exit0；T3 仍唯一 active，独立实现 Review/quality/完整验收未完成，clean/full 按用户要求暂停，未提交。
+- T2 后续方向：用户批准确认提交与显式恢复分离，已写入 `docs/design-docs/2026-11-12-learner-confirmation-explicit-recovery-design.md` 并登记索引。核实现有 `resume` 对 learner 仍回调 `confirmLearner`，不能直接删除恢复分支；响应映射、恢复可达性、跨入口并发和预算规则尚待核对与独立设计 Review，草案不作为实施批准。readiness 通过，本轮仅新增设计事实，不改行为或新增实施任务，T2 仍 active；既有 clean 阻断保留。
 
-## Factory / Manager 方法提取（2026-10-26）
+- T2 输入转换前置：按用户批准将 `confirmLearner` 的 BrokerId、ClusterOperationId、MembershipEndpoint、RoutingEpoch 和 CommandDigest 构造移到方法开头、在途登记与预算预留之前，worker 直接使用领域值。非法领域值改为入口同步抛出，不再映射 UNAVAILABLE；新增负 epoch 回归验证无在途记录或 Begin/Commit，随后合法同 ID 可成功。五组定向测试通过（`/tmp/learner-conversion-tests.log`），readiness、Java style、diff check 通过；未执行修复前 RED，未取得独立 Review，未运行 full/HA，既有 clean 阻断保留，T2 active，不提交。
 
-- 独立设计Reviewer `a3b3f5a6c96a74ee1` Approved、findings none，按Factory依赖设计追加节实施分类helper及五参数完整创建/发布职责方法，删除acquire纯重抛catch；Client/Handler保留当前用户字节。
-- before/SHA已保存，readiness exit0（PATH world-writable警告保留）；Resources/Background 9项、TLS/Lifecycle/DEV/AutoConfiguration 89项依次exit0，全零，原体归一/顺序/Client与Handler字节检查通过，证据已复制job tmp。本增量独立实现Review待完成；scoped diff-check通过，全仓无关Broker尾空白保留。T3仍唯一active，旧DECODE/module/architecture/full/clean/commit不运行。
+- T2 learner 异步入口简化：按用户批准将 `confirmLearner` 的外层 `supplyAsync` 加手动展平改为 `completedFuture(null).thenComposeAsync`，内部逻辑、受控执行器、异常映射及发布阶段不变。五组定向测试 193/193 通过（`/tmp/learner-compose-tests.log`），readiness、Java style、diff check 通过。未取得独立 Review，未运行 full/HA；既有 clean 状态阻断保留，T2 仍 active，不提交。
 
-## 生命周期关闭阶段提取（2026-10-26）
+- T2 命名微调：按用户意见将 `confirmLearner` 的局部变量 `workflowTerm` 改为 `expectedTerm`，同步全部引用，不改逻辑或结果文案。`mvn -q -pl im-broker/im-broker-server -am -DskipTests compile` 与 diff check 通过（`/tmp/learner-term-rename-compile.log`）；未重跑测试或 full/HA，T2 保持 active。
 
-- 三个初始化helper增量已获独立Reviewer `a3b3f5a6c96a74ee1` Accept，但其独立SHA重算因ENOSPC未完成，限制保留。用户批准继续仅提取beginShutdown及三值ShutdownAction；NONE/重入拒绝保持在资源try之前，Handler及record不改。
-- 普通df显示可用约3.7 GiB；未删除材料或改临时路径。before/SHA已保存，本增量58项聚焦验证09:07:22–09:08:58 UTC exit0、零失败/错误/跳过，源码运行中不变；freshXML与日志已复制到job tmp/shutdown-method-test，不依赖target保留。本增量局部Review待完成，T3仍唯一active，旧DECODE/module/architecture/full/clean/commit继续暂停，不称完整验收。按后续盘点要求不再启动构建。
+- T2 按用户确认展开三个 learner 收尾 helper：删除 `learnerConfirmationUnavailable`、`publishInvalidLearnerAttempt`、`publishLearnerConfirmation`，在调用处直接构造结果、精确移除并完成；不改状态、文案、异步边界或发布顺序。五组定向测试 193/193 通过（`/tmp/learner-helper-inline-tests.log`），readiness、Java style、diff check 通过，旧方法无残留。未取得独立 Review，本轮不运行 full/HA、不提交；此前 clean 的既有计划状态阻断保留，T2 仍 active。
 
-## 受控客户端 API 追加（2026-10-25）
+- T2 learner 入口展开：按用户确认，将 `executeLearnerConfirmation` 原样内联到 `confirmLearner` 的 worker lambda，删除单调用私有方法，不改判断、异步阶段、异常映射和发布顺序。机械等价脚本通过；Workflow/Executor/Admission/Drift/AppServiceChange 五组 193/193 通过（`/tmp/confirm-learner-inline-tests.log`），readiness、Java style、diff check 通过。`./scripts/verify.sh clean` 失败：既有 T1 状态 `pending_acceptance` 不在 checker 支持集合，日志 `/tmp/confirm-learner-inline-clean.log`；未改写既有任务状态或放宽规则。未取得独立 Review；T2 保持 active，本轮未运行 full/HA、不提交，不宣称整体验收。
 
-- 用户批准 Client 改名与 acquire 包级；独立 Reviewer `a515ed306ad89329e` 首轮 Revise 保留、复核 Approved，三个必须项关闭，已明确恢复实施。T3 仍唯一 active，窄验证待执行，不称验收；clean/full/commit 继续禁止。Invoker 构造、安全检查、分类、Factory/Manager 名称及混合改动保留。
+- T2 learner 在途表按用户意见改为 ConcurrentHashMap：putIfAbsent 选唯一执行者，删除登记与完成发布的显式锁；仅胜者预留预算，拒绝时精确移除并完成共享结果。补八调用并发共享回归，旧等待应用锁测试调整为持有 Map monitor 不阻塞发布。五组定向测试 193/193 通过（`/tmp/learner-chm-final.log`），readiness、Java style、diff check 通过；独立限定复核无必修 findings。首轮旧锁测试超时已按新契约调整，T2 保持 active，未运行 full/HA、不提交。
 
-- 本轮窄验证：旧FQCN baseline103、consumer真实invoke baseline37；迁移 focused103、Bolt267（reactor含common共304）、Broker50、Consumer/startup37、Architecture34，全零且exit0。E2E/HA仅test-compile exit0，Harness exit0；首次 focused 编译可见性失败已归因并最小修复，保留失败记录。52个allowlisted旧class隔离，103条same-run invocation及源码方法/参数清单一致，无漏跑双跑；外包javac证明acquire由可访问变为包外不可访问。证据与准确命令见active计划及本轮job tmp。独立实现Review待完成，clean/full/commit未运行，不称验收。
+- 监控迁移最终补验：初始 Gauge 断言补充后的配置测试 13/13 通过（`/tmp/membership-metrics-config-final.log`），readiness、Java style、diff check 通过；该结果补齐下条待记录项。T2 仍 active，未运行 full/HA、未提交。
 
-- 受控客户端API局部独立实现 Reviewer `a515ed306ad89329e` Accept、findings none，已核39文件SHA、生产精确归一、103条无漏双跑、52旧产物隔离及API反证。仅本轮局部Review通过，不覆盖完整混合工作区；保留设计首轮Revise与首次编译失败。正式quality、完整验收及真实E2E/HA缺口未消除，T3仍唯一active、不归档。本次仅状态同步，未改源码或运行build/clean/full/commit。
+- T2 监控迁移供 Review：两个配置诊断字段和 Gauge 注册移入 `support.monitoring.MembershipDiagnosticMetrics`，应用服务删除指标 getter，只报告采样结果；实时配置、任期/revision 准入检查不变。七组 Broker 测试 208/208 通过（`/tmp/membership-metrics-tests.log`），窄架构 1/1 与 routing-ha 测试编译通过（`/tmp/membership-metrics-boundary.log`）；独立限定复核无必修 findings。首次 testCompile 的两处遗漏已修复，HA fixture 构造同步；初始指标断言补充后的配置复验另记录。T2 保持 active，不运行 full/HA、不提交。
+
+- T2 冗余收敛：删除 learner 在途 record.equals 后的重复 digest 比较；成员旧 Permit 恢复与新 Permit 登记统一结果尾部，不新增抽象，保留注册后的任期/Permit 身份、最新步骤和异步边界检查。Workflow/Executor/AppServiceChange/Admission 四组 184/184 通过（`/tmp/membership-dedup-tests.log`），readiness、Java style、diff check 通过，独立限定复核等价无 findings。T2 保持 active，不运行 full/HA、不提交。
+
+- 当前 T2 按用户批准收敛为 learner 在途表：完成时精确移除，后续按 committed operation 判断幂等与恢复；不再缓存完成后的拒绝、重放或冲突视图。LearnerConfirmationAttempt 移至 model.execution，仅保留 command、一个完成源及固定只读视图；删除 retryable 与 LearnerReplayFacts。不同内容在途请求立即拒绝，新尝试仍消耗共享永久预算。成功历史直接 DUPLICATE，不重复 Begin/Commit/证据。五组业务 192/192、窄架构 1/1 通过（`/tmp/learner-inflight-final.log`），readiness、Java style、diff check 通过，独立限定复核无 findings。首次测试发现成功重放重复 Begin 已修复；T2 active，不运行 full/HA、不提交。
+
+- 当前 T2 Future 增量已完成供 Review：删除 StageSlot 和 claimPublication，标准 Executor 闭包绑定首次 generation；永久计数和待执行队列替代历史槽位对象，保留共享 4096 预算及单 pending。confirmLearner 使用 Future 链编排，重放事实后再投递发布任务以复验 generation。五组业务测试 192/192、窄架构 1/1 通过（`/tmp/learner-future-final.log`）；readiness、Java style、diff check 通过，独立限定复核无必须修复 finding。fault/close 仍保留既有可能未完成边界，内部被跳过的 Future 不作为对外结果。T2 仍 active，不运行 full/HA、不提交。
+
+- 当前 T2 增量已调整供 Review：learner 的身份、共享、重试与重放归应用层强类型 LearnerConfirmationAttempt，执行器仅保留技术阶段槽、共享永久预算与 worker/generation 约束，删除 submitWorkflow/unchecked API。完成发布在应用锁内认领当前代际，释放全部锁后完成 Future；认领后角色切换不撤销已选结果。五组业务测试 191/191、窄架构 1/1 通过（`/tmp/learner-ownership-final2.log`）；readiness、Java style 与 diff check 通过，独立限定复核无剩余必修 finding。此前一次增量构建因残留 class 的 NoClassDefFoundError 无法发现测试，clean 后通过。T2 仍 active，不运行 full/HA、不提交，不宣称整体验收。
+
+- 两项 P2 已处理供 Review：本地状态改名 `MembershipOperationAttempt`，提交前确定拒绝可精确释放，提交未知/历史身份继续保留；诊断先复验 term/revision 再发布 drift。补满额拒绝恢复和失效 mismatch 回归，四组定向测试、Java style、diff check 通过（`/tmp/membership-attempt-final.log`），独立限定 Review 无新增 findings；入口步骤和字段注释已补。未执行修复前 RED 或 full/HA，不提交，T2 仍 active。
+
+- 可读性小幅整理完成：两处 learner 任期守卫复用现有方法，终态推进移除多余 else，重放事实 record 收为 private；未改变 ReadIndex 证据校验或异步边界。Workflow/AppServiceChange 定向测试、readiness、Java style 与 diff check 通过，独立限定 Review 无 findings；日志 `/tmp/membership-small-cleanup-tests.log`。T2 仍 active，不运行 full/HA、不提交。
+
+- 命名收尾：按用户确认去除成员处理、步骤推进、排空重传/确认和配置诊断五个私有方法的 `OnWorker` 后缀，同步调用点与 Javadoc；诊断私有方法采用 `inspectMembershipConfiguration` 避免与公开入口重名。编译、旧名搜索、diff check 通过；仅重命名，不改变线程调度和校验边界。T2 仍 active，本轮不运行 full/HA。
+
+- 当前增量已完成供 Review：成员操作及完成发布绑定首次准入 generation，修复 Begin 延迟返回跨同 term 重启窗口；入口改名 `executeMembershipOperation`，收紧内部可见性，期望配置归入 `BrokerCluster.expectedMembership()`，不留兼容包装。新增回归修复前超时失败；最终成员/领域五组 227/227、窄架构 1/1、readiness、Java style 与 diff check 通过，日志 `/tmp/membership-operation-final.log`。独立源码 Review 未发现未处理 finding；本轮不运行 full/HA、不提交，T2 仍 active，不宣称整体验收。
+
+- 入口可读性增量：展开 `executeMembershipPermit` 的冲突/共享/容量守卫，并将单调用的 `runMembershipOperation` 内联到 worker 任务；不改调度、异常映射或重试契约。内联后 Workflow 75/75、Java style 与差异检查通过；不运行 full/HA，T2 状态不变。
+
+- 命名调整：按用户确认将技术组件改名为 `BrokerMembershipExecutor`，同步构造器、Bean 方法、测试与当前规范引用；不修改行为，历史验收名称保留。当前任务仍为 T2，不运行 full/HA。
+
+- Review 增量：已整理 `BrokerMembershipAppService` 的方法与内部类型顺序；仅调整源码组织，不改方法名、可见性或方法体。readiness、等价检查、差异空白检查与 Java style 通过；遵照用户要求未重跑 full/HA，计划仍为 T1 active。
+
+- 最新恢复：full 的 TOKEN_EXCHANGE 失败已定位为 CLI 严格模型未接纳标准可选 `scope`；显式字段修复后 CLI 测试 60/60、治理 E2E 8/8 及增量独立 Review Accept。重新 clean 通过；full 的 Maven/Harness 阶段完成，最终 routing-ha 因 Docker Hub 拉取 `eclipse-temurin:21.0.12_8-jre-jammy` 超时失败，直接 `docker pull` 仍因 Docker Hub 连接超时，未取得最终验收。
+
+- 历史进度：[Broker 成员应用流程可读性](docs/exec-plans/completed/2026-11-09-broker-membership-flow-readability.md)，当时 T2 `active`：用户批准先调整职责和包位置，执行器已移到 `infrastructure.cluster`，learner 业务映射与完成事实由 AppService 提供，技术账本保留共享预算和 worker/generation 约束。迁包后成员回归 178/178、窄架构测试 1/1、Java style 与 diff check 通过；未运行 full/HA。T1 保留 `pending_acceptance`，T3 尚未开始，不以聚焦通过表示整体完成。[官方 JRaft 治理迁移与自有运维 CLI](docs/exec-plans/completed/2026-10-30-official-jraft-and-ops-cli.md) 已归档，T1–T12 `passing`。
+- T11/B3 的正式模型、受控清理、完整重建、manifest 校验、launcher 修复和正式窄 Docker build 均已取得限定 Accept；历史冻结 `full` 与真实 HA 也已通过。旧冻结文档的精确差异未审定，保留历史缺口；当前以新完整快照、新 full／HA 和独立完整 Review 建立新验收时点，不追认旧状态迁移。
+- 最小代理接入已完成：`full` 仅 HA 子阶段固定既有 `HTTPS_PROXY=http://127.0.0.1:7890`，主模型/Maven 保留三键。launcher 隔离回归、独立 Review、正式窄 build、冻结 full 和真实 HA 原件分别见活跃计划与 `.harness/t11/launcher-stdin-20261106/`、`.harness/t11/launcher-build-20261106/`、`.harness/verifications/full.json`、`.harness/verifications/routing-ha.json`。
+- B4、新冻结 full／真实 HA、完整 T11 Review 及精确状态 Review 均已通过，原件见 `.harness/t11/b5-final-20261106/`。T12 正式 quality 已在完整 evidence allowlist 上取得 `Accept`；早期 README-only Revise 与旧取证缺口作为历史保留，当前合同回归已通过。
+- 机器证据由 `.harness/report.json` 与 `.harness/t11/` 原件拥有；不提交、不 push、不修改用户 Docker 配置，不自动清理用户数据、旧证据、镜像或缓存。
+- 空间清理与第三方退役材料整理已记录；保留法律文件、provenance 和原始验收证据。T11 与 T12 均已关闭，正式 quality 与状态迁移 Review 为 `Accept`。
+- 精简前的入口原文见[历史快照](docs/exec-plans/history/2026-11-06-active-index-progress-before-trim.md)；当前恢复步骤由活跃计划拥有。

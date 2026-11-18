@@ -1,13 +1,8 @@
 package com.co.kc.imchat.broker.domain.cluster.model;
 
-import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
-
-import com.co.kc.imchat.common.utils.AssertUtils;
-import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantResult;
-import com.co.kc.imchat.broker.domain.authority.model.LeaseRejectionReason;
-import lombok.Getter;
-import lombok.experimental.Accessors;
-
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -16,9 +11,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.time.Instant;
-import java.time.Duration;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantResult;
+import com.co.kc.imchat.broker.domain.authority.model.LeaseRejectionReason;
+import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
+import com.co.kc.imchat.common.utils.AssertUtils;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 
 /**
  * Broker 权威集群聚合根，是拓扑与路由代次的一致性边界。
@@ -27,6 +28,11 @@ import java.util.stream.Collectors;
  * 身份和端点稳定、成员与流量状态迁移合法、operation 阶段单调以及 fence 证据不回退。</p>
  */
 public final class BrokerCluster {
+
+    /* 角色转换的中间步骤：先移除旧角色，再登记最终角色。 */
+    private static final String REMOVE_OLD_ROLE_STEP = "remove-old-role";
+    /* 所有成员变更的最终配置步骤。 */
+    private static final String FINAL_TARGET_STEP = "final-target";
 
     /**
      * 建群时确定的 RouteBroker 选择算法。
@@ -73,44 +79,46 @@ public final class BrokerCluster {
     }
 
     /**
-     * 解析角色与成员地址绑定一致的 voter；成员过渡或未知地址均不产生资格。
+     * 从同一已提交业务快照解析完整 VOTER 观察者；成员过渡或绑定缺失时返回空集合。
      */
-    public Set<BrokerId> findConsistentVoters(ConsensusMembership membership) {
+    public Set<BrokerId> findObservers() {
+        /* 1. 成员过渡期间不发布观察者集合，避免以不稳定角色计算多数。 */
         if (operations.values().stream().anyMatch(BrokerClusterOperation::isUnfinishedMembershipChange)) {
             return Set.of();
         }
-        boolean consistent = true;
+        /* 2. 核对全部节点角色与端点绑定；任一不一致使整份观察资格失效。 */
         Set<BrokerId> voterIds = new HashSet<>();
-        Set<MembershipEndpoint> expectedVoters = new HashSet<>();
-        Set<MembershipEndpoint> expectedLearners = new HashSet<>();
         for (BrokerNode brokerNode : brokers) {
             switch (brokerNode.membershipRole()) {
-                case DISCOVERED -> consistent &= !membershipEndpoints.containsKey(brokerNode.id());
-                case LEARNER_SYNCING -> consistent = false;
-                case VOTER, LEARNER -> {
-                    MembershipEndpoint endpoint = membershipEndpoints.get(brokerNode.id());
-                    consistent &= endpoint != null;
-                    if (consistent) {
-                        if (brokerNode.membershipRole() == BrokerMembershipRole.VOTER) {
-                            voterIds.add(brokerNode.id());
-                            expectedVoters.add(endpoint);
-                        } else {
-                            expectedLearners.add(endpoint);
-                        }
+                case DISCOVERED -> {
+                    if (membershipEndpoints.containsKey(brokerNode.id())) {
+                        return Set.of();
+                    }
+                }
+                case LEARNER_SYNCING -> {
+                    return Set.of();
+                }
+                case VOTER -> {
+                    if (!membershipEndpoints.containsKey(brokerNode.id())) {
+                        return Set.of();
+                    }
+                    voterIds.add(brokerNode.id());
+                }
+                case LEARNER -> {
+                    if (!membershipEndpoints.containsKey(brokerNode.id())) {
+                        return Set.of();
                     }
                 }
             }
         }
-        consistent &= expectedVoters.equals(membership.voters());
-        consistent &= expectedLearners.equals(membership.learners());
-        return consistent ? Set.copyOf(voterIds) : Set.of();
+        return Set.copyOf(voterIds);
     }
 
     /**
-     * 返回不含操作 revision 的已提交拓扑与实际共识成员快照。
+     * 返回不含操作 revision 的已提交业务拓扑快照，不读取原生成员配置。
      */
-    public BrokerClusterTopology topology(ConsensusMembership membership) {
-        return new BrokerClusterTopology(epoch, brokers, membershipEndpoints, membership);
+    public BrokerClusterTopology topology() {
+        return new BrokerClusterTopology(epoch, brokers, membershipEndpoints);
     }
 
     public boolean exists(ClusterOperationId operationId) {
@@ -168,7 +176,9 @@ public final class BrokerCluster {
         return List.copyOf(operations.values());
     }
 
-    /** 当前是否存在仍独占集群变更、阻塞新操作的已登记操作。 */
+    /**
+     * 当前是否存在仍独占集群变更、阻塞新操作的已登记操作。
+     */
     public boolean hasBlockingOperation() {
         return operations.values().stream().anyMatch(BrokerClusterOperation::blocksNewOperation);
     }
@@ -209,6 +219,24 @@ public final class BrokerCluster {
         return endpoint.equals(membershipEndpoints.get(brokerId));
     }
 
+    public Optional<BrokerNode> findNodeByMembershipEndpoint(MembershipEndpoint endpoint) {
+        return brokers.stream().filter(node -> hasMembershipEndpoint(node.id(), endpoint))
+                .findFirst().map(BrokerNode::copy);
+    }
+
+    public boolean hasPendingMembershipOperation() {
+        return operations.values().stream().anyMatch(BrokerClusterOperation::isUnfinishedMembershipChange);
+    }
+
+    public boolean hasSyncingLearner() {
+        return brokers.stream().anyMatch(node -> node.membershipRole() == BrokerMembershipRole.LEARNER_SYNCING);
+    }
+
+    public boolean isMembershipTargetVoter(BrokerId brokerId, BrokerMembershipStep step) {
+        MembershipEndpoint binding = membershipEndpoints.get(brokerId);
+        return binding != null && step.target().voters().contains(binding);
+    }
+
     /**
      * 返回节点状态与权威聚合隔离的深快照，供应用校验与领域操作使用。
      */
@@ -223,148 +251,6 @@ public final class BrokerCluster {
                 .routingFence(routingFence)
                 .operationHistoryCapacity(operationHistoryCapacity)
                 .build();
-    }
-
-    /**
-     * BrokerCluster 聚合恢复 Builder。
-     */
-    public static final class Builder {
-        private final BrokerCluster cluster = new BrokerCluster();
-        private List<BrokerClusterOperation> operationSnapshot;
-
-        public Builder revision(ClusterRevision value) {
-            cluster.revision = value;
-            return this;
-        }
-
-        public Builder epoch(RoutingEpoch value) {
-            cluster.epoch = value;
-            return this;
-        }
-
-        public Builder algorithm(BrokerSelectionAlgorithm value) {
-            cluster.algorithm = value;
-            return this;
-        }
-
-        public Builder brokers(List<BrokerNode> value) {
-            cluster.brokers = value;
-            return this;
-        }
-
-        public Builder operations(List<BrokerClusterOperation> value) {
-            operationSnapshot = value;
-            return this;
-        }
-
-        public Builder membershipEndpoints(Map<BrokerId, MembershipEndpoint> value) {
-            cluster.membershipEndpoints = value;
-            return this;
-        }
-
-        public Builder routingFence(RoutingEpochFence value) {
-            cluster.routingFence = value;
-            return this;
-        }
-
-        public Builder operationHistoryCapacity(OperationHistoryCapacity value) {
-            cluster.operationHistoryCapacity = value;
-            return this;
-        }
-
-        public BrokerCluster build() {
-            AssertUtils.allDomainPropNotNull("broker cluster builder is incomplete",
-                    cluster.revision, cluster.epoch, cluster.algorithm,
-                    cluster.brokers, operationSnapshot, cluster.operationHistoryCapacity);
-            cluster.brokers = cluster.validateAndSortBrokers(cluster.brokers);
-            cluster.operations = cluster.restoreOperationHistory(operationSnapshot, cluster.operationHistoryCapacity);
-            cluster.membershipEndpoints = new LinkedHashMap<>(cluster.membershipEndpoints == null ? Map.of() : cluster.membershipEndpoints);
-            if (!cluster.brokers.stream().map(BrokerNode::id).collect(Collectors.toSet()).containsAll(cluster.membershipEndpoints.keySet())) {
-                throw new IllegalArgumentException("membership endpoint is bound to an unknown broker");
-            }
-            if (Set.copyOf(cluster.membershipEndpoints.values()).size() != cluster.membershipEndpoints.size()) {
-                throw new IllegalArgumentException("membership endpoint is bound to multiple brokers");
-            }
-            cluster.validateFence(cluster.routingFence);
-            return cluster;
-        }
-    }
-
-    /**
-     * 按 Begin 已登记的事实执行实体行为，Commit 不接收或生成目标拓扑。
-     */
-    public BrokerClusterDecision commitOperation(ClusterOperationId operationId,
-                                                 CommandDigest commandDigest,
-                                                 ClusterRevision expectedRevision,
-                                                 Instant changedAt) {
-        BrokerClusterOperation existing = operations.get(operationId);
-        if (existing == null) {
-            return BrokerClusterDecision.rejected(null,
-                    new DecisionReason("cluster operation must be committed before topology"));
-        }
-        if (!existing.commandDigest().equals(commandDigest)) {
-            return BrokerClusterDecision.rejected(existing,
-                    new DecisionReason("operationId is already bound to another request"));
-        }
-        if (existing.phase() == BrokerClusterOperationPhase.FAILED) {
-            return BrokerClusterDecision.rejected(existing,
-                    new DecisionReason("failed operation cannot commit topology"));
-        }
-        if (existing.phase() != BrokerClusterOperationPhase.PENDING
-                && existing.phase() != BrokerClusterOperationPhase.FENCING_OLD_EPOCH) {
-            return BrokerClusterDecision.duplicate(existing,
-                    new DecisionReason("operation was already committed"));
-        }
-        if (!existing.acceptedRevision().equals(expectedRevision)
-                || !revision.equals(expectedRevision.next())) {
-            return BrokerClusterDecision.conflict(existing,
-                    new DecisionReason("expected revision does not match committed state"));
-        }
-        if (!existing.resultEpoch().equals(epoch) && !hasCommittedFence(operationId)) {
-            return BrokerClusterDecision.conflict(existing,
-                    new DecisionReason("old routing epoch fence is not committed for operation"));
-        }
-
-        BrokerClusterOperation operation = existing.advance(
-                BrokerClusterOperationPhase.RAFT_COMMITTED,
-                null,
-                changedAt);
-        // 所有可能失败的校验与数值计算先完成，节点行为只在 Commit 内执行。
-        Optional<DecisionReason> violation = checkOperationConstraints(existing.type(),
-                existing.targetBrokerId(), existing.routeEndpoint(), existing.minimumVoterCount());
-        if (violation.isPresent()) {
-            return BrokerClusterDecision.rejected(existing, violation.get());
-        }
-        ClusterRevision committedRevision;
-        try {
-            committedRevision = revision.next();
-        } catch (ArithmeticException exception) {
-            return BrokerClusterDecision.rejected(existing, new DecisionReason(exception.getMessage()));
-        }
-        BrokerNode broker = brokers.stream().filter(node -> node.id().equals(existing.targetBrokerId()))
-                .findFirst().orElse(null);
-        switch (existing.type()) {
-            case ADD_BROKER -> brokers = java.util.stream.Stream.concat(brokers.stream(),
-                            java.util.stream.Stream.of(BrokerNode.discovered(existing.targetBrokerId(),
-                                    existing.routeEndpoint())))
-                    .sorted(Comparator.comparing(node -> node.id().value())).toList();
-            case ADD_LEARNER, START_LEARNER_SYNC -> broker.joinAsLearner();
-            case COMPLETE_LEARNER_SYNC -> broker.completeLearnerSync();
-            case PROMOTE_LEARNER, PROMOTE_BROKER -> broker.promoteToVoter();
-            case DEMOTE_VOTER, DEMOTE_BROKER -> broker.demoteToLearner();
-            case ACTIVATE_BROKER -> broker.activate();
-            case DEACTIVATE_BROKER, FAIL_BROKER -> broker.deactivate();
-            case DRAIN_BROKER -> broker.drain();
-            case REMOVE_BROKER -> brokers = brokers.stream()
-                    .filter(node -> !node.id().equals(existing.targetBrokerId())).toList();
-        }
-        if (existing.type() == BrokerClusterOperationType.REMOVE_BROKER) {
-            membershipEndpoints.remove(existing.targetBrokerId());
-        }
-        revision = committedRevision;
-        epoch = existing.resultEpoch();
-        operations.put(operation.id(), operation);
-        return BrokerClusterDecision.applied(operation);
     }
 
     /**
@@ -519,6 +405,10 @@ public final class BrokerCluster {
 
         // 3. 创建：完成生命周期初始化与 revision 计算，失败不能留下部分登记。
         BrokerClusterOperation operation = BrokerClusterOperation.begin(proposal, revision, epoch);
+        if (operation.nativeMembershipChange()) {
+            operation = operation.withMembershipSteps(membershipStepsFor(proposal));
+        }
+        // 先计算候选 revision，但暂不写回；revision 溢出或容量不足时本次登记必须保持完全无副作用。
         ClusterRevision nextRevision = revision.next();
 
         // 4. 容量：必要时回收最早的终态记录，未完成操作不能被回收。
@@ -532,43 +422,226 @@ public final class BrokerCluster {
         if (operation.learnerJoin()) {
             membershipEndpoints.put(operation.targetBrokerId(), operation.membershipEndpoint());
         }
+        // 操作、端点和 revision 一起提交，避免失败路径只推进 revision。
         revision = nextRevision;
         return BrokerClusterDecision.applied(operation);
     }
 
     /**
-     * 新操作的准入判断，按 revision、端点绑定、并行操作、节点规则的顺序返回拒绝结果。
+     * 从已提交节点及其绑定端点构造期望成员配置，不包含发现态节点。
      */
-    private Optional<BrokerClusterDecision> checkAdmission(BrokerClusterOperationProposal proposal) {
-        // 1. 新请求必须基于当前 revision。
-        if (!revision.equals(proposal.expectedRevision())) {
-            return Optional.of(BrokerClusterDecision.conflict(null,
-                    new DecisionReason("expected revision does not match committed state")));
-        }
-
-        // 2. 检查成员端点绑定，保持具体规则只返回原因。
-        if (proposal.learnerJoin()) {
-            Optional<DecisionReason> violation = checkEndpointBinding(
-                    proposal.targetBrokerId(), proposal.membershipEndpoint());
-            if (violation.isPresent()) {
-                return Optional.of(BrokerClusterDecision.rejected(null, violation.get()));
+    public ConsensusMembership expectedMembership() {
+        Set<MembershipEndpoint> voters = new HashSet<>();
+        Set<MembershipEndpoint> learners = new HashSet<>();
+        for (BrokerNode node : brokers) {
+            if (node.membershipRole() == BrokerMembershipRole.DISCOVERED) {
+                continue;
+            }
+            MembershipEndpoint endpoint = membershipEndpoints.get(node.id());
+            if (endpoint == null) {
+                throw new IllegalStateException("committed membership binding is missing");
+            }
+            if (node.membershipRole() == BrokerMembershipRole.VOTER) {
+                voters.add(endpoint);
+            } else {
+                learners.add(endpoint);
             }
         }
-
-        // 3. 共识中的操作生命周期决定互斥，不依赖 Leader 进程内标记。
-        if (hasBlockingOperation()) {
-            return Optional.of(BrokerClusterDecision.conflict(null,
-                    new DecisionReason("another cluster change is awaiting topology commit or authorization")));
-        }
-
-        // 4. 校验节点资格、流量状态和最低 voter 数量；这一阶段不修改节点。
-        Optional<DecisionReason> violation = checkOperationConstraints(
-                proposal.operationType(), proposal.targetBrokerId(),
-                proposal.routeEndpoint(), proposal.minimumVoterCount());
-        return violation.map(decisionReason -> BrokerClusterDecision.rejected(null, decisionReason));
+        return new ConsensusMembership(voters, learners);
     }
 
+    /**
+     * 为当前成员步骤登记执行许可，冻结目标配置及执行者身份。
+     *
+     * <p>先按全部历史识别许可重试，再检查当前 revision 和全局排空状态。
+     * 登记只保存许可事实，不执行成员变更；重复登记不产生新的执行授权。</p>
+     */
+    public BrokerClusterDecision registerMembershipPermit(ClusterOperationId operationId, String stepId,
+                                                          String permitId, BrokerId executorBrokerId, String executorIncarnation, ClusterRevision expectedRevision) {
+        BrokerClusterOperation operation = operations.get(operationId);
+        /* 1. 跨操作历史查重；已有许可先识别身份，不受当前 revision 变化影响。 */
+        for (BrokerClusterOperation recorded : operations.values()) {
+            for (BrokerMembershipStep step : recorded.membershipSteps()) {
+                for (BrokerMembershipPermit permit : step.permits()) {
+                    if (!permit.permitId().equals(permitId)) {
+                        continue;
+                    }
+                    if (permit.operationId().equals(operationId) && permit.stepId().equals(stepId)
+                            && permit.executorBrokerId().equals(executorBrokerId)
+                            && permit.executorIncarnation().equals(executorIncarnation)) {
+                        return BrokerClusterDecision.duplicate(operation, new DecisionReason("permit was already registered"));
+                    }
+                    return BrokerClusterDecision.rejected(operation, new DecisionReason("permitId is already bound"));
+                }
+            }
+        }
+        /* 2. 仅当前非终态成员操作可登记，且请求必须基于当前 revision。 */
+        if (operation == null || !operation.nativeMembershipChange() || operation.phase().terminal()) {
+            return BrokerClusterDecision.rejected(operation, new DecisionReason("current native membership operation is required"));
+        }
+        if (!revision.equals(expectedRevision)) {
+            return BrokerClusterDecision.conflict(operation, new DecisionReason("expected revision does not match committed state"));
+        }
+        /* 3. 目标必须是当前独占步骤；任一历史许可未排空时不能发出下一份许可。 */
+        BrokerMembershipStep step = operation.currentMembershipStep();
+        if (!operation.blocksNewOperation() || step == null || !step.stepId().equals(stepId)
+                || operations.values().stream().flatMap(value -> value.membershipSteps().stream())
+                .anyMatch(BrokerMembershipStep::hasUndrainedPermit)) {
+            return BrokerClusterDecision.rejected(operation, new DecisionReason("membership step is not available"));
+        }
+        /* 4. 追加 UNKNOWN 许可，并与聚合 revision 一起更新。 */
+        BrokerMembershipPermit permit = new BrokerMembershipPermit(permitId, operationId, stepId, step.target(),
+                executorBrokerId, executorIncarnation, BrokerMembershipPermit.Result.UNKNOWN);
+        List<BrokerMembershipPermit> permits = new ArrayList<>(step.permits());
+        permits.add(permit);
+        return replaceMembershipStep(operation, new BrokerMembershipStep(stepId, step.target(), permits));
+    }
 
+    /**
+     * 只读检查成员执行结果是否可被接受，不修改许可或聚合 revision。
+     *
+     * <p>仅步骤的当前完整许可身份可提交已知结果；UNKNOWN 不能作为排空证明。
+     * 已排空许可的相同结果返回重复，矛盾结果返回拒绝。</p>
+     */
+    public BrokerClusterDecision checkMembershipExecutionConfirmation(MembershipExecutionConfirmation confirmation) {
+        BrokerClusterOperation operation = operations.get(confirmation.operationId());
+        if (operation == null || !operation.nativeMembershipChange() || confirmation.result() == null
+                || confirmation.result() == BrokerMembershipPermit.Result.UNKNOWN) {
+            return BrokerClusterDecision.rejected(operation, new DecisionReason("known membership result is required"));
+        }
+        BrokerMembershipStep step = operation.findMembershipStep(confirmation.stepId()).orElse(null);
+        BrokerMembershipPermit permit = step == null ? null : step.currentPermit();
+        if (permit == null || !permit.permitId().equals(confirmation.permitId())
+                || !permit.executorBrokerId().equals(confirmation.executorBrokerId())
+                || !permit.executorIncarnation().equals(confirmation.executorIncarnation())
+                || !step.targetDigest().equals(confirmation.targetDigest())) {
+            return BrokerClusterDecision.rejected(operation, new DecisionReason("current membership permit identity does not match"));
+        }
+        if (permit.drained()) {
+            return permit.result() == confirmation.result()
+                    ? BrokerClusterDecision.duplicate(operation, new DecisionReason("permit drain was already confirmed"))
+                    : BrokerClusterDecision.rejected(operation, new DecisionReason("permit result is contradictory"));
+        }
+        if (operation.phase().terminal()) {
+            return BrokerClusterDecision.rejected(operation, new DecisionReason("operation is terminal"));
+        }
+        return BrokerClusterDecision.applied(operation);
+    }
+
+    /**
+     * 应用执行结果前按最新记录重新检查；只在首次接受时更新记录和 revision。
+     */
+    public BrokerClusterDecision confirmMembershipExecution(MembershipExecutionConfirmation confirmation) {
+        BrokerClusterDecision decision = checkMembershipExecutionConfirmation(confirmation);
+        if (decision.status() != BrokerClusterDecision.Status.APPLIED) {
+            return decision;
+        }
+        /* 检查通过后只替换当前许可；重复或拒绝结果不会推进 revision。 */
+        BrokerClusterOperation operation = decision.operation();
+        BrokerMembershipStep step = operation.findMembershipStep(confirmation.stepId()).orElseThrow();
+        BrokerMembershipPermit permit = step.currentPermit();
+        List<BrokerMembershipPermit> permits = new ArrayList<>(step.permits());
+        permits.set(permits.size() - 1, permit.confirm(confirmation.result()));
+        return replaceMembershipStep(operation, new BrokerMembershipStep(step.stepId(), step.target(), permits));
+    }
+
+    /**
+     * 按 Begin 冻结的操作事实提交节点变化，同时更新 revision、epoch 和操作阶段。
+     *
+     * <p>Commit 不接收或生成目标拓扑。成员操作须先完成步骤与许可排空；
+     * 改变路由代次的操作须先提交当前旧 epoch 的 fence。</p>
+     */
+    public BrokerClusterDecision commitOperation(ClusterOperationId operationId,
+                                                 CommandDigest commandDigest,
+                                                 ClusterRevision expectedRevision,
+                                                 Instant changedAt) {
+        /* 1. 核对已登记身份及阶段；已提交请求直接返回重复。 */
+        BrokerClusterOperation existing = operations.get(operationId);
+        if (existing == null) {
+            return BrokerClusterDecision.rejected(null,
+                    new DecisionReason("cluster operation must be committed before topology"));
+        }
+        if (!existing.commandDigest().equals(commandDigest)) {
+            return BrokerClusterDecision.rejected(existing,
+                    new DecisionReason("operationId is already bound to another request"));
+        }
+        if (existing.phase() == BrokerClusterOperationPhase.FAILED) {
+            return BrokerClusterDecision.rejected(existing,
+                    new DecisionReason("failed operation cannot commit topology"));
+        }
+        if (existing.phase() != BrokerClusterOperationPhase.PENDING
+                && existing.phase() != BrokerClusterOperationPhase.FENCING_OLD_EPOCH) {
+            return BrokerClusterDecision.duplicate(existing,
+                    new DecisionReason("operation was already committed"));
+        }
+        /* 2. 核对成员执行完成事实、对应提交协议的 revision 及旧代次隔离事实。 */
+        if (existing.nativeMembershipChange() && !existing.membershipReadyToCommit()) {
+            return BrokerClusterDecision.rejected(existing, new DecisionReason("membership steps are not successful and drained"));
+        }
+        if (existing.nativeMembershipChange()) {
+            if (!revision.equals(expectedRevision)) {
+                return BrokerClusterDecision.conflict(existing,
+                        new DecisionReason("expected revision does not match committed state"));
+            }
+        } else if (!existing.acceptedRevision().equals(expectedRevision)
+                || !revision.equals(expectedRevision.next())) {
+            return BrokerClusterDecision.conflict(existing,
+                    new DecisionReason("expected revision does not match committed state"));
+        }
+        if (!existing.resultEpoch().equals(epoch) && !hasCommittedFence(operationId)) {
+            return BrokerClusterDecision.conflict(existing,
+                    new DecisionReason("old routing epoch fence is not committed for operation"));
+        }
+
+        BrokerClusterOperation operation = existing.advance(
+                BrokerClusterOperationPhase.RAFT_COMMITTED,
+                null,
+                changedAt);
+        /* 3. 重验节点与集群约束并预计算 revision；检查失败不能留下部分节点修改。 */
+        Optional<DecisionReason> violation = checkOperationConstraints(existing.type(),
+                existing.targetBrokerId(), existing.routeEndpoint(), existing.minimumVoterCount());
+        if (violation.isPresent()) {
+            return BrokerClusterDecision.rejected(existing, violation.get());
+        }
+        ClusterRevision committedRevision;
+        try {
+            committedRevision = revision.next();
+        } catch (ArithmeticException exception) {
+            return BrokerClusterDecision.rejected(existing, new DecisionReason(exception.getMessage()));
+        }
+        /* 4. 按冻结操作执行节点行为，再保存端点、版本与阶段变化。 */
+        BrokerNode broker = brokers.stream().filter(node -> node.id().equals(existing.targetBrokerId()))
+                .findFirst().orElse(null);
+        switch (existing.type()) {
+            case ADD_BROKER -> brokers = Stream.concat(brokers.stream(),
+                            Stream.of(BrokerNode.discovered(existing.targetBrokerId(),
+                                    existing.routeEndpoint())))
+                    .sorted(Comparator.comparing(node -> node.id().value())).toList();
+            case ADD_LEARNER, START_LEARNER_SYNC -> broker.joinAsLearner();
+            case COMPLETE_LEARNER_SYNC -> broker.completeLearnerSync();
+            case PROMOTE_LEARNER, PROMOTE_BROKER -> broker.promoteToVoter();
+            case DEMOTE_VOTER, DEMOTE_BROKER -> broker.demoteToLearner();
+            case ACTIVATE_BROKER -> broker.activate();
+            case DEACTIVATE_BROKER, FAIL_BROKER -> broker.deactivate();
+            case DRAIN_BROKER -> broker.drain();
+            case REMOVE_BROKER -> brokers = brokers.stream()
+                    .filter(node -> !node.id().equals(existing.targetBrokerId())).toList();
+        }
+        if (existing.type() == BrokerClusterOperationType.REMOVE_BROKER) {
+            membershipEndpoints.remove(existing.targetBrokerId());
+        }
+        revision = committedRevision;
+        epoch = existing.resultEpoch();
+        operations.put(operation.id(), operation);
+        return BrokerClusterDecision.applied(operation);
+    }
+
+    /**
+     * 推进普通操作阶段，不代替拓扑 Commit 或故障恢复的专用验证、完成行为。
+     *
+     * <p>先校验身份与专用协议，再识别重复及预期阶段；实体校验通过后才保存。
+     * learner 加入失败时同时撤销 Begin 登记的成员端点绑定。</p>
+     */
     public BrokerClusterDecision advanceOperation(ClusterOperationId operationId,
                                                   CommandDigest commandDigest,
                                                   BrokerClusterOperationPhase expectedPhase,
@@ -582,6 +655,33 @@ public final class BrokerCluster {
         if (!operation.commandDigest().equals(commandDigest)) {
             return BrokerClusterDecision.rejected(operation, new DecisionReason("operationId is already bound to another request"));
         }
+        /* 1. 成员拓扑提交必须走 Commit；终态还需满足许可排空和步骤完成规则。 */
+        if (operation.nativeMembershipChange()
+                && nextPhase == BrokerClusterOperationPhase.RAFT_COMMITTED) {
+            return BrokerClusterDecision.rejected(operation,
+                    new DecisionReason("membership lifecycle requires permit completion"));
+        }
+        if (operation.nativeMembershipChange()
+                && nextPhase.terminal()
+                && operation.membershipSteps().stream().anyMatch(BrokerMembershipStep::hasUndrainedPermit)) {
+            return BrokerClusterDecision.rejected(operation,
+                    new DecisionReason("membership lifecycle requires permit completion"));
+        }
+        if (operation.nativeMembershipChange()
+                && nextPhase == BrokerClusterOperationPhase.FAILED
+                && (!operation.canFailOnRejection()
+                || operation.membershipSteps().stream().anyMatch(BrokerMembershipStep::successful))) {
+            return BrokerClusterDecision.rejected(operation,
+                    new DecisionReason("membership lifecycle requires permit completion"));
+        }
+        if (operation.nativeMembershipChange()
+                && nextPhase.terminal()
+                && nextPhase != BrokerClusterOperationPhase.FAILED
+                && !operation.membershipReadyToCommit()) {
+            return BrokerClusterDecision.rejected(operation,
+                    new DecisionReason("membership lifecycle requires permit completion"));
+        }
+        /* 2. 故障恢复的验证与完成必须核对当前证据，不能用通用阶段推进绕过。 */
         if (operation.type() == BrokerClusterOperationType.FAIL_BROKER
                 && (nextPhase == BrokerClusterOperationPhase.VERIFYING
                 || nextPhase == BrokerClusterOperationPhase.SUCCEEDED
@@ -589,13 +689,14 @@ public final class BrokerCluster {
             return BrokerClusterDecision.rejected(operation,
                     new DecisionReason("route recovery requires verification or completion behavior"));
         }
+        /* 3. 专用协议守卫优先于重复识别，随后核对调用方预期阶段。 */
         if (operation.phase() == nextPhase) {
             return BrokerClusterDecision.duplicate(operation, new DecisionReason("operation phase was already committed"));
         }
         if (operation.phase() != expectedPhase) {
             return BrokerClusterDecision.conflict(operation, new DecisionReason("operation phase does not match expected phase"));
         }
-        // 先构造合法的下一阶段；领域拒绝不能逃逸为 Raft 状态机执行错误。
+        /* 4. 先构造合法下一阶段，再保存；非法迁移映射为领域拒绝。 */
         BrokerClusterOperation advanced;
         try {
             advanced = operation.advance(nextPhase, detail, changedAt);
@@ -611,6 +712,12 @@ public final class BrokerCluster {
         return BrokerClusterDecision.applied(advanced);
     }
 
+    /**
+     * 为正在隔离旧 epoch 的操作登记 fence，隔离集合必须匹配当前 ACTIVE 节点。
+     *
+     * <p>同一事实返回重复；同操作、同代次和同集合仅允许以更高任期、
+     * 更高 quorum ReadIndex 接续，不能用较旧事实覆盖已登记隔离。</p>
+     */
     public BrokerClusterDecision commitRoutingFence(RoutingEpochFence operation) {
         if (operation == null) {
             throw new IllegalArgumentException("routing epoch fence is required");
@@ -632,6 +739,7 @@ public final class BrokerCluster {
             return BrokerClusterDecision.conflict(clusterOperation,
                     new DecisionReason("fence brokers do not match committed ACTIVE brokers"));
         }
+        /* 身份、代次与集合校验通过后，区分首次登记、重复及换届接续。 */
         if (routingFence == null) {
             routingFence = operation;
             return BrokerClusterDecision.applied(clusterOperation);
@@ -652,6 +760,12 @@ public final class BrokerCluster {
         return BrokerClusterDecision.applied(clusterOperation);
     }
 
+    /**
+     * 更新路由重建或验证阶段的排空进度，并在完成条件满足时进入 VERIFYING。
+     *
+     * <p>故障恢复汇总必须匹配当前 Gateway 检查点；重复更新返回重复结果，
+     * 无效证据或进度迁移返回拒绝，不保存候选进度。</p>
+     */
     public BrokerClusterDecision updateDrainProgress(
             ClusterOperationId operationId,
             CommandDigest commandDigest,
@@ -736,6 +850,10 @@ public final class BrokerCluster {
         }
     }
 
+    /**
+     * 完成已满足证据与期限要求的优雅排空，将 DRAINING 节点置为 INACTIVE。
+     * 正常完成须处于 VERIFYING；首次接受时同时推进操作终态与聚合 revision。
+     */
     public BrokerClusterDecision completeDrain(ClusterOperationId operationId,
                                                CommandDigest commandDigest,
                                                ClusterRevision expectedRevision,
@@ -744,6 +862,10 @@ public final class BrokerCluster {
                 changedAt, false);
     }
 
+    /**
+     * 依据显式原因强制结束 FAILED 排空，将仍为 DRAINING 的节点置为 INACTIVE。
+     * 不要求正常完成证据，但仍核对操作身份、当前 revision 和目标节点状态。
+     */
     public BrokerClusterDecision forceDrain(ClusterOperationId operationId,
                                             CommandDigest commandDigest,
                                             ClusterRevision expectedRevision,
@@ -753,6 +875,93 @@ public final class BrokerCluster {
                 changedAt, true);
     }
 
+    /**
+     * 从已提交节点与绑定端点冻结完整目标，角色转换必须先移除旧角色。
+     */
+    private List<BrokerMembershipStep> membershipStepsFor(BrokerClusterOperationProposal proposal) {
+        ConsensusMembership expected = expectedMembership();
+        Set<MembershipEndpoint> voters = new HashSet<>(expected.voters());
+        Set<MembershipEndpoint> learners = new HashSet<>(expected.learners());
+        MembershipEndpoint target = proposal.learnerJoin()
+                ? proposal.membershipEndpoint()
+                : membershipEndpoints.get(proposal.targetBrokerId());
+        if (target == null) {
+            throw new IllegalStateException("target membership binding is missing");
+        }
+        List<BrokerMembershipStep> steps = new ArrayList<>();
+        switch (proposal.operationType()) {
+            case ADD_LEARNER, START_LEARNER_SYNC -> learners.add(target);
+            case REMOVE_BROKER -> {
+                voters.remove(target);
+                learners.remove(target);
+            }
+            case PROMOTE_LEARNER, PROMOTE_BROKER -> {
+                learners.remove(target);
+                steps.add(new BrokerMembershipStep(REMOVE_OLD_ROLE_STEP,
+                        new ConsensusMembership(voters, learners), List.of()));
+                voters.add(target);
+            }
+            case DEMOTE_VOTER, DEMOTE_BROKER -> {
+                voters.remove(target);
+                steps.add(new BrokerMembershipStep(REMOVE_OLD_ROLE_STEP,
+                        new ConsensusMembership(voters, learners), List.of()));
+                learners.add(target);
+            }
+            default -> throw new IllegalArgumentException("operation does not change native membership");
+        }
+        steps.add(new BrokerMembershipStep(FINAL_TARGET_STEP,
+                new ConsensusMembership(voters, learners), List.of()));
+        return List.copyOf(steps);
+    }
+
+    /**
+     * 用新的许可事实替换步骤，并递增聚合 revision 形成可重放状态。
+     */
+    private BrokerClusterDecision replaceMembershipStep(BrokerClusterOperation operation, BrokerMembershipStep replacement) {
+        List<BrokerMembershipStep> steps = operation.membershipSteps().stream()
+                .map(step -> step.stepId().equals(replacement.stepId()) ? replacement : step).toList();
+        BrokerClusterOperation updated = operation.withMembershipSteps(steps);
+        ClusterRevision nextRevision = revision.next();
+        operations.put(updated.id(), updated);
+        revision = nextRevision;
+        return BrokerClusterDecision.applied(updated);
+    }
+
+    /**
+     * 新操作的准入判断，按 revision、端点绑定、并行操作、节点规则的顺序返回拒绝结果。
+     */
+    private Optional<BrokerClusterDecision> checkAdmission(BrokerClusterOperationProposal proposal) {
+        // 1. 新请求必须基于当前 revision。
+        if (!revision.equals(proposal.expectedRevision())) {
+            return Optional.of(BrokerClusterDecision.conflict(null,
+                    new DecisionReason("expected revision does not match committed state")));
+        }
+
+        // 2. 检查成员端点绑定，保持具体规则只返回原因。
+        if (proposal.learnerJoin()) {
+            Optional<DecisionReason> violation = checkEndpointBinding(
+                    proposal.targetBrokerId(), proposal.membershipEndpoint());
+            if (violation.isPresent()) {
+                return Optional.of(BrokerClusterDecision.rejected(null, violation.get()));
+            }
+        }
+
+        // 3. 共识中的操作生命周期决定互斥，不依赖 Leader 进程内标记。
+        if (hasBlockingOperation()) {
+            return Optional.of(BrokerClusterDecision.conflict(null,
+                    new DecisionReason("another cluster change is awaiting topology commit or authorization")));
+        }
+
+        // 4. 校验节点资格、流量状态和最低 voter 数量；这一阶段不修改节点。
+        Optional<DecisionReason> violation = checkOperationConstraints(
+                proposal.operationType(), proposal.targetBrokerId(),
+                proposal.routeEndpoint(), proposal.minimumVoterCount());
+        return violation.map(decisionReason -> BrokerClusterDecision.rejected(null, decisionReason));
+    }
+
+    /**
+     * 共用正常与强制排空的终态写入边界；校验和 revision 计算先于节点变更。
+     */
     private BrokerClusterDecision finishDrain(ClusterOperationId operationId,
                                               CommandDigest commandDigest,
                                               ClusterRevision expectedRevision,
@@ -764,6 +973,7 @@ public final class BrokerCluster {
         if (invalid != null) {
             return invalid;
         }
+        /* 1. 分别核对正常完成与强制完成的阶段要求，重复终态直接返回。 */
         BrokerClusterOperationPhase terminalPhase = force
                 ? BrokerClusterOperationPhase.FORCED : BrokerClusterOperationPhase.SUCCEEDED;
         if (existing.phase() == terminalPhase) {
@@ -786,6 +996,7 @@ public final class BrokerCluster {
                     new DecisionReason("expected revision does not match committed state"));
         }
 
+        /* 2. 节点必须仍在排空；操作版本匹配也不能代替节点状态检查。 */
         BrokerNode target = brokers.stream()
                 .filter(node -> node.id().equals(existing.targetBrokerId()))
                 .findFirst().orElse(null);
@@ -794,6 +1005,7 @@ public final class BrokerCluster {
                     new DecisionReason("drain target must be DRAINING"));
         }
         try {
+            /* 3. 先构造终态并计算下一 revision，再修改节点并保存操作。 */
             BrokerClusterOperation completed = existing.advance(
                     terminalPhase, reason, changedAt);
             ClusterRevision completedRevision = revision.next();
@@ -980,6 +1192,71 @@ public final class BrokerCluster {
         if (operation != null
                 && operation.epoch().value() > epoch.value()) {
             throw new IllegalArgumentException("fence does not belong to broker cluster state");
+        }
+    }
+
+    /**
+     * BrokerCluster 聚合恢复 Builder。
+     */
+    public static final class Builder {
+        private final BrokerCluster cluster = new BrokerCluster();
+        private List<BrokerClusterOperation> operationSnapshot;
+
+        public Builder revision(ClusterRevision value) {
+            cluster.revision = value;
+            return this;
+        }
+
+        public Builder epoch(RoutingEpoch value) {
+            cluster.epoch = value;
+            return this;
+        }
+
+        public Builder algorithm(BrokerSelectionAlgorithm value) {
+            cluster.algorithm = value;
+            return this;
+        }
+
+        public Builder brokers(List<BrokerNode> value) {
+            cluster.brokers = value;
+            return this;
+        }
+
+        public Builder operations(List<BrokerClusterOperation> value) {
+            operationSnapshot = value;
+            return this;
+        }
+
+        public Builder membershipEndpoints(Map<BrokerId, MembershipEndpoint> value) {
+            cluster.membershipEndpoints = value;
+            return this;
+        }
+
+        public Builder routingFence(RoutingEpochFence value) {
+            cluster.routingFence = value;
+            return this;
+        }
+
+        public Builder operationHistoryCapacity(OperationHistoryCapacity value) {
+            cluster.operationHistoryCapacity = value;
+            return this;
+        }
+
+        public BrokerCluster build() {
+            AssertUtils.allDomainPropNotNull("broker cluster builder is incomplete",
+                    cluster.revision, cluster.epoch, cluster.algorithm,
+                    cluster.brokers, operationSnapshot, cluster.operationHistoryCapacity);
+            cluster.brokers = cluster.validateAndSortBrokers(cluster.brokers);
+            cluster.operations = cluster.restoreOperationHistory(operationSnapshot, cluster.operationHistoryCapacity);
+            cluster.membershipEndpoints = new LinkedHashMap<>(cluster.membershipEndpoints == null ? Map.of() : cluster.membershipEndpoints);
+            if (!cluster.brokers.stream().map(BrokerNode::id).collect(Collectors.toSet()).containsAll(cluster.membershipEndpoints.keySet())) {
+                throw new IllegalArgumentException("membership endpoint is bound to an unknown broker");
+            }
+            if (Set.copyOf(cluster.membershipEndpoints.values()).size() != cluster.membershipEndpoints.size()) {
+                throw new IllegalArgumentException("membership endpoint is bound to multiple brokers");
+            }
+            cluster.validateFence(cluster.routingFence);
+            return cluster;
         }
     }
 }

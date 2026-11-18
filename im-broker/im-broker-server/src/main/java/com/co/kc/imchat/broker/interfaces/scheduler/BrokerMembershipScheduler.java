@@ -49,7 +49,10 @@ public final class BrokerMembershipScheduler {
                             || (operation.phase() == BrokerClusterOperationPhase.PENDING
                             && operation.createdAt().isBefore(pendingBefore)))
                     .findFirst()
-                    .ifPresentOrElse(this::resume, () -> running.set(false));
+                    .ifPresentOrElse(this::resume, () -> {
+                        service.diagnoseMembershipConfiguration();
+                        running.set(false);
+                    });
         } catch (RuntimeException exception) {
             running.set(false);
             throw exception;

@@ -29,4 +29,6 @@ public interface BrokerManagementClient {
                                    String scope);
 
     BrokerClusterStatePayload clusterState(BrokerManagementEndpoint endpoint);
+
+    BrokerOperationPayload.Query queryOperation(BrokerManagementEndpoint endpoint, String operationId);
 }

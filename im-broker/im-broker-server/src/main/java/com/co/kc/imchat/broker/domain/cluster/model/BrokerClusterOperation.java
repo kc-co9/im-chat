@@ -16,7 +16,10 @@ import java.io.Serializable;
 import java.time.Instant;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.Optional;
 
 /**
  * Broker 集群操作的生命周期实体。
@@ -65,6 +68,8 @@ public final class BrokerClusterOperation implements Serializable {
     private BrokerRouteEndpoint routeEndpoint;
     /* 降级或移除时冻结的最低 voter 数量。 */
     private MinimumVoterCount minimumVoterCount;
+    /* 原生成员变更按顺序执行的配置步骤和许可历史。 */
+    private List<BrokerMembershipStep> membershipSteps = List.of();
 
     private BrokerClusterOperation() {
     }
@@ -84,7 +89,8 @@ public final class BrokerClusterOperation implements Serializable {
                                    DrainProgress drainProgress,
                                    MembershipEndpoint membershipEndpoint,
                                    BrokerRouteEndpoint routeEndpoint,
-                                   MinimumVoterCount minimumVoterCount) {
+                                   MinimumVoterCount minimumVoterCount,
+                                   List<BrokerMembershipStep> membershipSteps) {
         this.id = id;
         this.commandDigest = commandDigest;
         this.type = type;
@@ -100,6 +106,7 @@ public final class BrokerClusterOperation implements Serializable {
         this.membershipEndpoint = membershipEndpoint;
         this.routeEndpoint = routeEndpoint;
         this.minimumVoterCount = minimumVoterCount;
+        this.membershipSteps = List.copyOf(membershipSteps);
         validate();
     }
 
@@ -210,15 +217,14 @@ public final class BrokerClusterOperation implements Serializable {
     public BrokerClusterOperation advance(BrokerClusterOperationPhase next,
                                           OperationFailureReason nextError,
                                           Instant changedAt) {
+        ensureMembershipPermitProtocolComplete(next);
         if (!canAdvanceTo(next)) {
             throw new IllegalArgumentException("operation phase cannot advance");
         }
-        // 故障恢复的 VERIFYING 也可能承载降级意图，不能仅凭阶段合法就提交正常成功。
-        if (type == BrokerClusterOperationType.FAIL_BROKER && next == BrokerClusterOperationPhase.SUCCEEDED
-                && (error != null || !drainProgress.readyToComplete(changedAt))) {
-            throw new IllegalStateException("failure recovery evidence does not allow successful completion");
-        }
-        return copyBuilder().phase(next).error(nextError)
+        ensureFailureRecoveryCanSucceed(next, changedAt);
+        return copyBuilder()
+                .phase(next)
+                .error(nextError)
                 .completedAt(next.terminal() ? changedAt : null)
                 .build();
     }
@@ -298,14 +304,144 @@ public final class BrokerClusterOperation implements Serializable {
         return advance(completion, error, changedAt);
     }
 
+    /** 只有实际变更原生成员配置的分支使用许可协议。 */
+    public boolean nativeMembershipChange() {
+        return type.membershipChange() && type != BrokerClusterOperationType.COMPLETE_LEARNER_SYNC;
+    }
+
+    /** 返回第一个尚未成功且仍需要执行许可的成员步骤。 */
+    public BrokerMembershipStep currentMembershipStep() {
+        return membershipSteps.stream().filter(step -> !step.successful()).findFirst().orElse(null);
+    }
+
+    public Optional<BrokerMembershipPermit> findCurrentMembershipPermit(String stepId) {
+        return findMembershipStep(stepId).map(BrokerMembershipStep::currentPermit);
+    }
+
+    public Optional<BrokerMembershipStep> findMembershipStep(String stepId) {
+        return membershipSteps.stream().filter(step -> step.stepId().equals(stepId)).findFirst();
+    }
+
+    /**
+     * 校验步骤顺序与待确认许可唯一性，返回唯一当前未排空步骤。
+     * 保留防御性扫描，不依赖构建后对象不会被修改的假设。
+     */
+    public Optional<BrokerMembershipStep> findPendingMembershipConfirmation() {
+        BrokerMembershipStep selected = null;
+        boolean incomplete = false;
+        for (BrokerMembershipStep step : membershipSteps) {
+            BrokerMembershipPermit permit = step.currentPermit();
+            if (incomplete && permit != null) {
+                throw new SecurityException("membership step order is invalid");
+            }
+            if (!step.successful()) {
+                incomplete = true;
+            }
+            if (permit != null && !permit.drained()) {
+                if (selected != null || step != currentMembershipStep()) {
+                    throw new SecurityException("membership pending permit is ambiguous");
+                }
+                selected = step;
+            }
+        }
+        return Optional.ofNullable(selected);
+    }
+
+    /** 判断所有成员步骤都已应用目标配置且许可历史已经排空。 */
+    public boolean membershipReadyToCommit() {
+        return !membershipSteps.isEmpty()
+                && allMembershipStepsSuccessful()
+                && allMembershipPermitsDrained();
+    }
+
+    private void ensureMembershipPermitProtocolComplete(BrokerClusterOperationPhase next) {
+        if (!nativeMembershipChange()) {
+            return;
+        }
+        ensureMembershipCommitReady(next);
+        ensureMembershipPermitsDrained(next);
+        ensureMembershipFailureAllowed(next);
+    }
+
+    private void ensureMembershipCommitReady(BrokerClusterOperationPhase next) {
+        if (requiresCommittedMembership(next) && !membershipReadyToCommit()) {
+            rejectIncompleteMembershipProtocol();
+        }
+    }
+
+    private void ensureMembershipPermitsDrained(BrokerClusterOperationPhase next) {
+        if (next.terminal() && hasUndrainedMembershipPermit()) {
+            rejectIncompleteMembershipProtocol();
+        }
+    }
+
+    private void ensureMembershipFailureAllowed(BrokerClusterOperationPhase next) {
+        if (next == BrokerClusterOperationPhase.FAILED
+                && (!canFailOnRejection() || hasSuccessfulMembershipStep())) {
+            rejectIncompleteMembershipProtocol();
+        }
+    }
+
+    private boolean requiresCommittedMembership(BrokerClusterOperationPhase phase) {
+        return phase == BrokerClusterOperationPhase.RAFT_COMMITTED
+                || isMembershipCompletion(phase);
+    }
+
+    private boolean allMembershipStepsSuccessful() {
+        return membershipSteps.stream().allMatch(BrokerMembershipStep::successful);
+    }
+
+    private boolean allMembershipPermitsDrained() {
+        return membershipSteps.stream().noneMatch(BrokerMembershipStep::hasUndrainedPermit);
+    }
+
+    private boolean hasUndrainedMembershipPermit() {
+        return !allMembershipPermitsDrained();
+    }
+
+    private boolean hasSuccessfulMembershipStep() {
+        return membershipSteps.stream().anyMatch(BrokerMembershipStep::successful);
+    }
+
+    private void rejectIncompleteMembershipProtocol() {
+        throw new IllegalStateException("membership permit protocol is incomplete");
+    }
+
+    private boolean isMembershipCompletion(BrokerClusterOperationPhase phase) {
+        return phase == BrokerClusterOperationPhase.SUCCEEDED
+                || phase == BrokerClusterOperationPhase.FORCED
+                || phase == BrokerClusterOperationPhase.DEGRADED;
+    }
+
+    private void ensureFailureRecoveryCanSucceed(BrokerClusterOperationPhase next, Instant changedAt) {
+        boolean completingFailureRecovery = type == BrokerClusterOperationType.FAIL_BROKER
+                && next == BrokerClusterOperationPhase.SUCCEEDED;
+        if (completingFailureRecovery
+                && (error != null || !drainProgress.readyToComplete(changedAt))) {
+            throw new IllegalStateException("failure recovery evidence does not allow successful completion");
+        }
+    }
+
+    BrokerClusterOperation withMembershipSteps(List<BrokerMembershipStep> steps) {
+        return copyBuilder().membershipSteps(steps).build();
+    }
+
     private Builder copyBuilder() {
-        return builder().id(id).commandDigest(commandDigest).type(type)
-                .targetBrokerId(targetBrokerId).acceptedEpoch(acceptedEpoch)
-                .acceptedRevision(acceptedRevision).resultEpoch(resultEpoch).phase(phase)
+        return builder()
+                .id(id)
+                .commandDigest(commandDigest)
+                .type(type)
+                .targetBrokerId(targetBrokerId)
+                .acceptedEpoch(acceptedEpoch)
+                .acceptedRevision(acceptedRevision)
+                .resultEpoch(resultEpoch).phase(phase)
                 .error(error).createdAt(createdAt)
                 .completedAt(completedAt)
-                .drainProgress(drainProgress).membershipEndpoint(membershipEndpoint)
-                .routeEndpoint(routeEndpoint).minimumVoterCount(minimumVoterCount);
+                .drainProgress(drainProgress)
+                .membershipEndpoint(membershipEndpoint)
+                .routeEndpoint(routeEndpoint)
+                .minimumVoterCount(minimumVoterCount)
+                .membershipSteps(membershipSteps);
     }
 
     private boolean canAdvanceTo(BrokerClusterOperationPhase next) {
@@ -336,6 +472,24 @@ public final class BrokerClusterOperation implements Serializable {
         AssertUtils.allDomainPropNotNull("cluster operation is invalid", id, commandDigest,
                 type, targetBrokerId, acceptedEpoch, acceptedRevision, resultEpoch, phase);
         AssertUtils.domainPropNotNull("cluster operation creation time is required", createdAt);
+        membershipSteps = List.copyOf(membershipSteps);
+        if (!nativeMembershipChange() && !membershipSteps.isEmpty()) {
+            throw new IllegalArgumentException("non-native operation cannot have membership steps");
+        }
+        Set<String> stepIds = new HashSet<>();
+        Set<String> permitIds = new HashSet<>();
+        boolean incomplete = false;
+        for (BrokerMembershipStep step : membershipSteps) {
+            if (!stepIds.add(step.stepId()) || (incomplete && !step.permits().isEmpty())) {
+                throw new IllegalArgumentException("membership steps are out of order");
+            }
+            for (BrokerMembershipPermit permit : step.permits()) {
+                if (!id.equals(permit.operationId()) || !permitIds.add(permit.permitId())) {
+                    throw new IllegalArgumentException("membership permit identity is inconsistent");
+                }
+            }
+            incomplete |= !step.successful();
+        }
         // operation 的共识时间字段采用毫秒精度，构建与 JSON 重建保持一致。
         createdAt = createdAt.truncatedTo(ChronoUnit.MILLIS);
         if (completedAt != null) {
@@ -410,6 +564,12 @@ public final class BrokerClusterOperation implements Serializable {
         }
         public Builder membershipEndpoint(MembershipEndpoint value) {
             operation.membershipEndpoint = value;
+            return this;
+        }
+
+        /** 设置持久化成员步骤列表，并在构建时统一校验顺序和许可身份。 */
+        public Builder membershipSteps(List<BrokerMembershipStep> value) {
+            operation.membershipSteps = List.copyOf(value);
             return this;
         }
 

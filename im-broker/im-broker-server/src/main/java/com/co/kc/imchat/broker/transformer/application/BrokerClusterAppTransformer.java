@@ -2,7 +2,6 @@ package com.co.kc.imchat.broker.transformer.application;
 
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
-import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerConsensusMembershipResult;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterDecision;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerNode;
@@ -20,7 +19,6 @@ import com.co.kc.imchat.broker.model.cqrs.result.ForceDeactivateBrokerResult;
 import com.co.kc.imchat.broker.model.cqrs.result.PromoteLearnerResult;
 import com.co.kc.imchat.broker.model.cqrs.result.DemoteVoterResult;
 import com.co.kc.imchat.broker.model.cqrs.result.RemoveBrokerResult;
-import com.co.kc.imchat.broker.model.cqrs.command.AdvanceClusterOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.ActivateRoutingLeaseCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.AddLearnerCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.ConfirmLearnerCommand;
@@ -205,18 +203,6 @@ public final class BrokerClusterAppTransformer {
         return new RemoveBrokerResult(operationId.value(), result.status().name(),
                 operation == null ? epoch.value() : operation.acceptedEpoch().value(),
                 operation == null ? null : operation.resultEpoch().value(), result.leaderEndpoint(), result.message());
-    }
-
-    public BrokerClusterConsensusResult consensusResultFrom(
-            BrokerConsensusMembershipResult source) {
-        Status status = switch (source.status()) {
-            case NOT_LEADER -> Status.NOT_LEADER;
-            case REJECTED -> Status.REJECTED;
-            case UNAVAILABLE -> Status.UNAVAILABLE;
-            case APPLIED, DUPLICATE -> throw new IllegalArgumentException(
-                    "accepted membership result must continue state submission");
-        };
-        return new BrokerClusterConsensusResult(status, null, source.leaderEndpoint(), source.message());
     }
 
     /**

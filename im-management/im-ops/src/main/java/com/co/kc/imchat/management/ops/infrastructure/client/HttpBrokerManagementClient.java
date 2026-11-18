@@ -18,7 +18,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import org.springframework.web.util.UriUtils;
+
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -88,6 +91,18 @@ public class HttpBrokerManagementClient implements BrokerManagementClient {
     public BrokerClusterStatePayload clusterState(BrokerManagementEndpoint endpoint) {
         HttpResult<BrokerClusterStatePayload> response = call(() -> restClient.get()
                 .uri(uri(endpoint, "/management/cluster-state"))
+                .retrieve()
+                .body(new ParameterizedTypeReference<>() { }));
+        return data(response);
+    }
+
+    @Override
+    /** 查询 Broker 已登记 operation；响应缺失或网络失败由调用方解释为未知。 */
+    public BrokerOperationPayload.Query queryOperation(BrokerManagementEndpoint endpoint, String operationId) {
+        HttpResult<BrokerOperationPayload.Query> response = call(() -> restClient.get()
+                .uri(uri(endpoint, "/management/cluster-state/operations/"
+                        + UriUtils.encodePathSegment(operationId,
+                        StandardCharsets.UTF_8)))
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() { }));
         return data(response);

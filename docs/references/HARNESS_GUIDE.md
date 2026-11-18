@@ -1,6 +1,72 @@
 # Harness Guide
 
+成员执行能力使用具体adapter.cluster.membership.BrokerMembershipExecutor，不建立同形接口/Default配对。LayerBoundary不放宽，ModuleBoundary恢复禁止执行器依赖application，并新增禁止CQRS/SDK及Raft core/model，允许既有角色SPI。应用仍编排Begin/Commit，执行器仅维护本机执行能力；同步进入Runtime由BrokerRaftAdapterTest.membershipConfigurationEntersRuntimeSynchronouslyOnCallingThread验证，映射全字段由BrokerMembershipTransformerTest保护，取消/预算/generation沿用执行器和Workflow行为回归。
+
+已准入成员流程的阶段队列与永久 Permit 预算分别有界，最后一份合法预留不得阻断其收尾；同步 Future 通知必须完全离开执行器锁，包括错误/关闭分支的外层锁。自动回归为 `BrokerMembershipExecutorTest.admittedContinuationCanFinishAfterLastPermanentPermitReservation` 与 `sendCompletionNotifiesOutsideExecutorLock`（正常及同步异常，跨线程重入获取真实公开观察）；fault/close 后允许 pending 的批准契约不因此扩大。Bolt heartbeat 入站探针和 EventLoop barrier 不等于原生异步 processor 完成，`nativeIdleHeartbeatAndAckRemainUsable` 在写出 heartbeat 前捕获原始 InvokeFuture，确认其完成响应为同一个真实 ACK，再使用有界等待校验 future 消费与计数；不能仅凭 future 缺失和零计数排除 timeout 路径，不降低断言或引入 sleep。
+
+跨模块成员写契约必须验证入口请求、不可变恢复记录和真实接收端的组合保真，不能用两端分别 Mock 成功替代。五个 CLI 成员动作均原样传递端点，缺端点恢复记录拒绝且不改写；应用服务同步结果必须区分本轮撤回与历史停用，重复目录不得重复失效授权。窄自动证据为 `OpsCliClientTest` 保存/发送/retry 五动作矩阵、`OperationRequestFileTest`、`OpsCliControllerTest`、`OpsBrokerManagementContractE2ETest` 真实 HTTP 拒绝分类及 `ApplicationPermissionAppServiceTest` 连续同步回归；组合测试不替代真实成功成员迁移或 MySQL 事务验收。
+
+成员诊断指标由 `support.monitoring.MembershipDiagnosticMetrics` 保存和注册，应用服务不读取采样状态作准入凭据。`BrokerClusterConfigurationTest` 验证 Gauge 初始值、不可用、漂移与恢复；`BrokerMembershipDriftTest` 验证失效采样不发布漂移。监控状态是否被业务流程误用继续由 Review 检查，暂不新增跨调用数据流静态规则；可靠正反 fixture 可用后再自动化。
+
+成员请求的本地尝试与永久许可记录不能混为一体：提交前确定拒绝不应耗尽 operationId 容量，Begin 已调用或结果未知时不得按空结果盲目回收。`BrokerMembershipDriftTest` 的 REJECTED_CAPACITY 场景覆盖 4096 次漂移拒绝后的新请求恢复；DRIFT_TERM_CHANGED / DRIFT_REVISION_CHANGED 覆盖不相等配置的失效采样不得发布 drift。回收时点、历史提交标记继承及未知提交安全性继续由独立 Review 检查。
+
+成员 operation 的首次准入 generation 必须贯穿 Begin 返回、后续阶段和结果发布；同 term 重启不能重开旧阶段。`BrokerMembershipWorkflowTest#delayedBeginCannotReservePermitAfterSameTermRoleRestart`、`delayedBeginDoesNotPublishOnCallbackWhenWorkerUnavailable` 及 `BrokerMembershipExecutorTest#queuedApplicationStageInvalidatesOnWorkerAfterRoleRestart` 分别保护迟到回调、fault/close pending 和 worker 消费边界。跨方法完整数据流仍由独立 Review 验证，不新增类名例外或放宽已有门禁。
+
+Broker 的 `adapter.cluster.membership` 执行组件只拥有 worker、角色事件、永久预算计数和待执行队列，不依赖 `application` 类型，不保存 learner 业务身份或结果。业务尝试、在途共享、Future 流程编排、失败映射和稳定重放归应用服务。`ModuleBoundaryTest#brokerClusterExecutionMustNotDependOnApplicationWorkflows` 检查依赖方向，`BrokerMembershipWorkflowTest` 保护共享永久预算、generation、在途共享与重放行为，`BrokerMembershipExecutorTest#learnerExecutionReturnsAsyncContinuationToWorkerAndInvalidatesAfterRoleRestart` 及 `learnerExecutionRejectsSecondPendingStageAndAcceptsNextStageAfterConsumption` 保护标准 Executor 的 worker 发布、代际失效和单 pending 约束。业务策略是否完整留在应用层仍需 Review，包依赖检查不能证明完整行为等价。
+
 项目采用 Harness 的原因和设计原则见根 [README](../../README.md#harness-与质量门禁)。本文维护 Harness 运行流程：将现有仓库入口映射为五个子系统，并定义验证入口、规则生命周期、失败归因、反馈维护与清洁状态。规则所有者、当前传感器及 Review 边界统一登记在[规则矩阵](HARNESS_RULE_MATRIX.md)；业务、架构和编码规则由 [Architecture](../../ARCHITECTURE.md)、[Coding Guide](CODING_GUIDE.md)、[SQL Guide](SQL_GUIDE.md)、[Unit Test Guide](UNIT_TEST_GUIDE.md)、[Security](../SECURITY.md)、[Reliability](../RELIABILITY.md)或当前批准的所属设计定义。
+
+## B2 本地工具来源信任范围
+
+Docker 间接调用的凭据助手也是执行来源，不因 Docker CLI 已批准而自动授信。本批仅准入固定 `docker-credential-desktop` 安装及 lexical／canonical 权限链、binary SHA 和源码 launcher，沿用用户 Docker 原协议，不扩大 PATH 或修改配置。来源文件在 aggregate 只引用一次；正式 reader 只读校验与合成 fixture 分开记录，override reader 的 GREEN 不证明本地来源 schema 可消费。隔离 fixture 保护未知助手、来源／链接 metadata／launcher 漂移及 argv、stdin／stdout／stderr、退出码转发；不调用真实助手取证，不记录凭据。具体来源及运行授权归 owning 覆盖率设计与活跃计划。
+
+间接启动的助手 launcher 必须在解释器初始化前固定其所需的最小系统 PATH；本批仅助手子进程使用 `/usr/bin:/bin`。转发协议 stdin 的 wrapper 不用 heredoc 承载解释器源码；使用 `-e` 保留 stdin。隔离回归直接执行真实 launcher bytes，在缺失／错误 PATH 下严格比较协议标准流和退出码，不放宽 stderr 断言掩盖初始化或转发错误。
+
+共享 reactor reader 对 Java 源码、HA 场景表、JSON manifest、Surefire／JaCoCo XML 显式按 UTF-8 读取，不依赖调用者 locale；二进制 class／exec 及摘要仍按原字节处理。不通过继承 LANG 绕开 reader 缺陷。`scripts/test-reactor-evidence.sh` 以 C locale 的独立 CLI 读取中文启动／测试源码、场景与报告，并校验 startup 清单和 manifest check；非法内容仍由原解析及校验拒绝。
+
+full 的模型/Maven、readiness、clean、自测及报告阶段保持 HOME/JAVA_HOME/PATH 三键。仅 HA 受控子阶段按覆盖率设计「HA 现有宿主代理补充」增加固定 `HTTPS_PROXY=http://127.0.0.1:7890`，由 HA 宿主后代继承；这不是域名白名单，不改变 Docker 配置、应用容器环境或 TLS 校验。父进程任意大小写代理和 Docker 覆盖变量不继承，代理失败保持原失败，不回退或跳过。`test-full-orchestration-harness.sh` 在读取 fixture 控制前断言实际子环境，保护固定值、非 HA 缺席、污染隔离及失败传播。设计 Review 与隔离回归不代替实际窄 build 或完整 full/HA。
+
+本轮 B2 采用[覆盖率设计的集中修订](../design-docs/2026-11-03-owned-namespace-coverage-instrumentation-design.md#b2-验收合同集中修订用户已确认实施与选择观测另审)：用户明确接受精确 rg/PCRE、Docker CLI/Compose 安装及相应管理者/共享写入主体作为本地执行信任根，不泛信任整个 Homebrew；这不是官方认证，不防御恶意同机/同 UID 或观察间 TOCTOU。全祖先 `022`、通用动态闭包和精确插件源码不再作为该精确批准安装的默认前提；未知来源仍失败关闭，不能全局删除权限规则。安装链须按独立固定记录核对实际身份、metadata、已知依赖/links 与观察点漂移；私有输出 0700/0600、独占创建与安全目录规则不变。
+
+来源固定、有限环境/九注入拒绝、全部 reader、同环境真实三采、成功前零删除、锁/取消、实际 Compose 选择及真实 coverage/full 义务不变。用户随后选择仅两处纯 config 自测固定 Compose 直调，取消 OS tracing/插件转发机制；这两处消除 CLI 插件发现层，部署/HA Docker 不变。隔离 fake 不证明实际 standalone 协议/JSON 兼容，新 standalone 合同的真实无 daemon config 实测仍待许可和验证；不能将直调自测扩成 HA 插件选择已证明。合同已确认不等于实现已通过或真实执行获准；当前仅授权最小实现、隔离测试和独立 Review，插件观测/真实工具/清理/full 另需许可。旧 Revise/Accept、网络与权限拒绝保持历史原义。当前实现候选为固定 aggregate v2、精确安装 metadata/bytes 校验、专用源码 `scripts/bin/rg` / `docker` 薄 exec 入口及两处固定 Compose config；专用 bin 纳入有限 PATH，不加入原 Homebrew bin。隔离 fixture 覆盖精确工具/PCRE/launcher 漂移、共享链 metadata、薄入口 argv/退出码和固定 config context/失败传播；整批实际结果及独立 Review 由计划登记，未完成前不宣称新合同已验收，真实兼容性仍待证。
+
+2026-11-04 用户明确批准两处结构自测收敛为 standalone 合同，不再要求原 Docker CLI 等价；输入闭包设计独立 Accept，实施/实测未验收。固定 `--env-file /dev/null` 禁用自动 dotenv，明确改变两处自测的默认插值语义；部署/HA 不变。HOME 必须匹配批准 layout，子环境仅 HOME/PATH/DOCKER_CONFIG；YAML 须在 spawn 前符合源码固定的已审 SHA、普通非链接及 canonical 路径，变更须重新审查，不能动态学习当前 bytes。两处 `.env` 的 metadata/SHA 前后观察继续保留，但不作为插值输入；不记录正文。规则正文及精确 SHA 归覆盖率设计，`test-reactor-evidence.sh` 保护零调用拒绝、固定 argv/环境和既有后置漂移。fake 不证明精确工具确实屏蔽 dotenv，新合同真实无 daemon config 另需许可；旧实测保留旧语义与原指纹。普通前后守卫不保证恶意同用户 replace-and-restore 的原子隔离。
+
+## 普通生产源码所有权首片
+
+报告清单按[已批准 synthetic 补充](../design-docs/2026-11-05-jacoco-synthetic-report-inventory-design.md)接入原 validate/check：完整 class 清单 C 绑定 header flags 与 SHA，固定 JaCoCo 0.8.13 的 synthetic class 分类 F 额外记录原因，XML 唯一 class 集合必须等于 C-F。顶层 MapStruct 实现不得进入 F；实际 counter 类型唯一、数值非负，允许无指令 counter 的 class 保留记录。运行测试的生产模块缺 exec/report 拒绝，两产物必须成对、非空且在本轮时间窗口；无测试无产物模块不伪造 coverage。产物摘要、R 与 F 均进入同一 manifest，check 重派生并比对。原隔离 self-test 保护集合／counter及 verify 后替换和伪造；真实 provenance 及固定未执行类 missed 仍需原正式验收，不以合成 exec 内容冒充实际 JaCoCo 数据。
+
+validate/check 对生产 class 和默认 annotations 下全部 generated Java 记录非空、mtime 不早于本轮 startedAt 且不晚于检查时刻；generated 源集合及 SHA 与 class／mapper 一起进入原 manifest。check 重枚举，拒绝新增、缺失和内容替换。时间检查只是补充：真实同轮 provenance 仍来自正式 prepare 的整批清除与后续重建，不能 touch 旧文件冒充鲜度。隔离 fixture 的旧 class／旧生成源／空生成源及验证后新增源回归保护该子合同，真实 full 和 report manifest 义务保持开放。
+
+正式 `prepare_approved_model` 将本轮受控有效模型的 jar 模块交给既有 prepare，加入 classes、generated-sources/annotations、maven-status/maven-compiler-plugin、jacoco.exec 与 site/jacoco 五种固定输出。旧 XML/JAR、exec 及状态文件只允许普通文件，四种目录槽只允许目录；所有存在祖先须为目录，所有后代拒绝链接及特殊文件。整批预检包括旧 manifest／summary，全部通过后才删除；startup 仍仅清原报告文件。隔离 fixture 保护目录清理、类型互换、晚链接／非目录祖先零部分删除与正式模型接线；真实清除和同轮鲜度须另有运行证据，不能用 fixture 替代。预检不防恶意同 UID 并发替换，沿用已审信任范围。
+
+实际插桩由 `CoverageInstrumentationTest` 随 architecture 测试：真实执行 NestedMapUtils、OpsCliHttpTransformerImpl 与 JSqlParser，核对恰好 JaCoCo／Mockito 两 agent、精确 namespace、保留 VM 参数、live exec 两自有类 true probes、HashUtils／parser 无记录及 session。独享 smoke 必须另行核对退出后 exec 的 classId 与 owner class、唯一 distinct session、唯一实际测试，以及 common／Ops 未过滤 XML 的具体方法计数；重复 dump 的同 session 块不等于多个 fork。具体授权与证据归活跃计划，不把增量编译变成 generated 鲜度或完整 full 证据。自动测试保护 live 合同；退出后读取、owner report 与源码/class 摘要绑定目前为限定实测和独立 Review，不新增通用编排框架。
+
+规则所有者为[自有 namespace 覆盖设计](../design-docs/2026-11-03-owned-namespace-coverage-instrumentation-design.md)。`check-java-style.sh` 对普通 `src/main/java` 及默认 `target/generated-sources/annotations` 复用相同词法器：先消费注释、字符串、字符和 text block，再提取唯一 package，要求 `com.co.kc.imchat` 边界与相对目录一致；拒绝 default／lookalike／错路径／重复声明、Unicode escape 与 JPMS descriptor。生成源码只检查所有权，不套用普通源码的结构反模式规则。该有限词法检查不代替 Java 编译器。标准 `test-java-style-harness.sh` 对两种根使用独立正反例，既有结构断言不变。扫描当前 generated 文件不能证明正式 reactor 集合、生成期待集、产物存在性或同轮鲜度；class 当前身份检查见下段，实际 agent／未过滤 report 及鲜度仍须 B3 后续证明，不以源码通过关闭 coverage 缺口。
+
+`ReactorEvidence.validate` 按既有 canonical raw POM oracle 枚举正式 52 项默认 `target/classes`，与已受控有效模型的默认输出合同一致，不递归加入实验或 test-classes。存在的 class 通过长度受界的 constant pool／`this_class` reader 检查 magic、版本头、全部已定义 tag／双槽和名称引用；内部名仅接受 ASCII Java 标识符路径、嵌套／匿名类及 package-info，必须属于 `com/co/kc/imchat/`、匹配相对路径且跨模块不重复。拒绝 symlink 和特殊文件；每模块清单记录路径、内部名及完整文件 SHA256，接入原 manifest 的 summaries／sha256；`check` 重枚举后拒绝新增、删除或替换。`test-reactor-evidence.sh` 包含目录合法但内部越界的实际漏报 RED、合法 header／全部 tag、错误头／截断／索引、清单变化与链接反例，并检查 manifest／外部 sentinel 未被改写。此 reader 不解析方法体、完整 constant pool 语义或 modified UTF-8，不是 JVM verifier。缺失输出目前显式记空；这不是生产输出存在性、MapStruct 期待集、prepare 清除或同轮鲜度证明，B3 仍未验收。
+
+上述 class 身份首片的「缺失记空」已由 B3 存在性增量收紧：默认生产根中有普通 Java 源码时，class 清单必须非空，资源文件不能充当 class。不存在源码根或仅有无注解文档型 `package-info.java` 可保持空；带注解的包文件仍要求产物。源根及遍历条目拒绝链接、非目录根和特殊文件；普通源码路径清单进入 summaries，`check` 重新枚举后拒绝源集合变化。此处只要求模块非空，不实现每个普通源文件与 class 一一对应，也不证明清除后鲜度。MapStruct 的独立期待集见下文，实际 agent／report 仍开放。
+
+根配置结构子片由 `RuntimeDependencyPolicyTest.rootPomLimitsJacocoInstrumentationToPrepareAgentOnly` 读取真实根 POM，要求唯一 JaCoCo plugin／prepare-agent execution 的直接 goals 精确仅为 prepare-agent，配置只包含精确 namespace include，global／report 无覆盖配置；同一 DOM 函数的内存 XML 正反例拒绝 include 删除、缩窄、移到 global/report、excludes／skip，以及 prepare-agent＋report 混合 execution（七种 mutation）。根 `pom.xml` include 仅落在 prepare-agent execution，原 report 与 Surefire 双 agent 不改。此传感器仅证明根结构，不证明 child/profile/pluginManagement 的有效继承、实际 fork／exec／report 或 generated 鲜度；这些仍属完整设计后续义务。
+
+child 普通声明子片通过同一 root＋child DOM 组合检查，拒绝 child 直接 `build/plugins` 的任何 JaCoCo 重声明；合法无声明和无关 plugin 通过。`childJacocoConfigurationFixturesRejectOverrides` 保护真实 root＋child skip 覆盖负例，根七种 mutation 保留；`reactorChildPomsDoNotOverrideJacocoAgentAndReport` 从默认 modules 逐项递归，检查 canonical containment／无 symlink／重复及有限字面 module 路径，不递归扫描所有 POM，不硬编码52替代遍历。该真实路径正例不代替路径校验各拒绝分支的专门 fixture，也不证明完整 effective 模型；属性间接覆盖、Surefire／processor／额外 roots 等后续义务仍未关闭。
+
+managed／profile 有限子片同样复用组合 DOM：root＋child 每个 POM 的 `build/pluginManagement/plugins` 可无 JaCoCo，或严格唯一 `org.jacoco:jacoco-maven-plugin:0.8.13` 的 G:A:version-only 声明，三字段各恰一次；拒绝 configuration（skip／report include）、executions、dependencies／extensions／inherited／未知字段、重复声明／字段、缺失／不同／动态版本。不解析 `${jacoco.version}`。`managedJacocoConfigurationFixturesRejectOverrides` 在 root／child 各有无声明、version-only、无关插件正例及17种 mutation。`projectProfileFixturesRequireEmptyEntries` 在 root／child 验证无／空 profiles 合法，拒绝任意项目 profile entry，包括无 activation 的无关 profile、仅版本、JaCoCo skip 与 managed 声明；这不表示 settings profiles 为空。真实默认 modules 传感器检查同一合同，不替代 effective/settings/invocation 来源、完整属性、实际双 agent、generated／class／同轮鲜度与 report 证明。
+
+字面身份／属性子片在分类前收集 root／child 所有直接普通及 managed plugin：artifactId 恰一次、groupId 至多一次（省略按 Maven 默认 group），纯文本有限字面 `[A-Za-z0-9_.-]+`；表达式、重复、嵌套或非法字符拒绝，其他插件的合法 version 表达式不受影响。`pluginCoordinateFixturesRejectDynamicIdentity` 保护表达式 JaCoCo skip 遗漏反例及四位置正反例；managed G/A/version 三项嵌套 mutation 已补齐（共17种）。coverage 专用 `coverageScalar` 不改变通用 `childText`。
+
+`jacocoPropertyFixturesRejectIndirectOverrides` 收集全部直接 properties 中的 jacoco.*：根仅唯一纯文本 jacoco.version=0.8.13，child 不得重声明，任何其他 jacoco.* 均拒绝。根普通 JaCoCo version 必须唯一纯文本 `${jacoco.version}`；managed 仍仅字面0.8.13。该固定字段绑定不做通用插值；无关 property、其他插件版本与 Surefire 原模板不改。正反例覆盖 child skip 实际遗漏、双容器重写、缺失／重复／嵌套／不同／动态版本。settings／invocation 属性、argLine 与其他跳过参数、完整 effective 模型和实际 agent／generated／class／鲜度／report 仍待后片，不能由本片宣布 coverage 完整。
+
+Surefire 受保护静态槽由 `surefireArgLineFixturesRejectOverrides`／`surefirePropertyFixturesRejectTestBypass` 及真实默认 modules 组合函数检查。根 managed Surefire 必须唯一声明、唯一 configuration、唯一纯文本 argLine，trim 边缘后与既有完整模板逐字符相等；保留 `@{argLine}`、`${settings.localRepository}` 和 `${mockito.version}`，不以 contains 放行。其他普通／managed 声明及所有 execution configuration 不得覆盖 argLine；所有直接容器均参与。各 Surefire plugin／execution configuration 禁止 skip／skipTests／skipExec／maven.test.skip／forkCount／forkMode，即使值为 false，也不做表达式或数值求值。architecture 既有 additionalClasspathElements 以及其他未受保护配置继续允许。所有受检 Surefire plugin／execution configuration 显式拒绝 `combine.self`／`combine.children` 属性，不按值放行，避免无 argLine 声明也能丢弃继承模板；root 模板 owner 同样受限。fixture 包含真实 classpath＋combine.self=override 遗漏 RED，以及 root／child 普通／managed／execution、owner 位置与 override／append／空值 mutation。此有限拒绝不实现通用 Maven 合并器。
+
+全部项目 properties 容器拒绝确切 argLine、maven.test.skip、maven.test.skip.exec、skipTests、skipExec、forkCount、forkMode 及 surefire.*；普通版本与 Mockito 属性不受此规则禁止。正反例覆盖完整模板修改、重复／嵌套 argLine、第二 managed／configuration 容器、root／child 普通／managed 及 execution 受保护槽、第二 properties 容器。这里只保护列明静态槽，不是完整 Surefire 白名单；settings／invocation／外部属性来源、Mockito 版本与 JAR 来源、实际 fork 双 agent 仍需后续模型与 smoke，不能以静态模板替代。effective 模型 reader 的 Architecture 额外 classpath 另按所属 POM 固定为有序 Admin/Audit 两个 `target/classes`，plugin 与默认 test execution 两层均比较；`scripts/test-reactor-evidence.sh` 的独立正例及每层旧值/缺项/额外/反序/重复负例保护该有限合同。所属 POM 合法变化时须同步设计、reader 和独立 fixture，不从实际输出自动学习白名单。
+
+compiler processor 固定输入由 `compilerProcessorFixturesRejectOverrides`／`compilerPropertyFixturesRejectIndirectOverrides` 与真实默认 modules 组合函数检查。根 managed 默认 Maven group 的 compiler 必须唯一 owner／configuration，直接字段精确为 release=`${maven.compiler.release}`、parameters=`true`、annotationProcessorPaths。paths 精确包含 `org.projectlombok:lombok:${lombok.version}` 与 `org.mapstruct:mapstruct-processor:${mapstruct.version}`，允许交换顺序；各 path 仅唯一纯文本 groupId／artifactId／version。configuration、release／parameters、paths、path 及坐标元素均拒绝 `combine.self`／`combine.children`，不按值豁免。非 owner 的 root 普通及 child 普通／managed compiler 可无配置声明，但 plugin configuration 与所有 execution configuration 均拒绝，owner execution 也不例外。
+
+全部直接 properties 容器参与：根唯一纯文本 `maven.compiler.release=21`、`lombok.version=1.18.42`、`mapstruct.version=1.5.5.Final`；child 不得重声明这三个 key，其他 `maven.compiler.*` 拒绝，无关业务属性仍合法。正反例覆盖实际 child 第三方 processor 遗漏、child MapStruct 版本重写、各声明位置、缺失／重复／嵌套／不同／动态字段、未知 compiler 配置与合并控制。Lombok 是合法 processor，不要求其单独生成 Java 文件。此片不证明 execution phase／goal 全合同、source roots／output、完整 effective 模型、generated／class 所有权及鲜度，实际 fork 双 agent 与 report 仍须独立证据，不能以固定静态输入替代。
+
+有效模型 reader 片目前是 inert 纯输入边界：`ReactorEvidence#read_effective_model` 只消费调用方提供的有效 POM XML、独立 raw GAV／canonical POM／basedir／packaging／modules oracle 与已审 invocation/source context，返回有限语义摘要或拒绝；不采集 Maven、不写 manifest、不接 `prepare`／`validate`／`check`，不清理既有 XML／JAR，也不证明本轮 full。合同一次覆盖 `<projects>` wrapper、独立完整集合、GAV／canonical path／packaging／modules、默认 source/test/output、Lombok＋MapStruct processor、字段化晚绑定、JaCoCo／Surefire/compiler、有限 lifecycle phase／goal、CLI Shade 的 Manifest-only／provided scope／三个签名资源过滤／Boot plugin dependency、UI `exec` 命令与目录以及无 execution 的 load-test `exec`。未知 wrapper、身份、路径、processor、goal／phase、配置或 invocation/source context 失败关闭；不实现通用 Maven resolver；小 fixture 调用时显式 `contract: :local`，`contract: :formal` 绑定reader 实现与测试各自独立冻结的受审 canonical 52-entry GAV→canonical POM→basedir identity set；fixture 不引用 reader 常量；formal 的 52 个 effective XML project 也由独立冻结输入维护，不得由 oracle、reader 常量或历史 XML `.map` 生成，并以独立 GAV/path/module 断言防止 oracle/XML 同步漂移；逐项比较集合与排序，不能以 local 小 oracle 或仅数 52 替代设计附录 D 的正式集合。现有 self-test 仅使用 `$CLAUDE_JOB_DIR/tmp` 专属临时根，当前片不启动 Maven、不新增 manifest、不调用 prepare，来源 bootstrap／真实模型采集／正式绑定与 reader 通过后才 clear 仍属后续片。当前后续片仅增加 inert `bind_model_provenance`／`read_bound_effective_model`：只校验未受信 caller 描述的结构及内容绑定：cwd/canonical root 必须为当前 root，dotMvn 必须为 root/.mvn；实际 verify argv 为 `mvn -q verify`，resolved launcher 单独记录；消费端重验完整 schema、输入键和 SHA 格式、重算 binding digest，并比对 XML bytes SHA 与 effective-pom output path。它仅拒绝描述中的额外 argv/MAVEN_ARGS，不证明宿主 settings、profile、extensions 或真实 launcher 来源可信。它不启动 Maven、不采集宿主配置、不接 prepare/verify/check、不清理旧输出，真实命令采集与 manifest wiring 仍未闭合。
 
 ## 五个子系统
 
@@ -37,7 +103,7 @@ GitHub Actions 的 Verify 与 Harness GC job 在调用 `readiness`、`clean`、`
 
 ## 第三方构建输入证据
 
-第三方 recipe 的审核区分原始声明、descriptor 有效模型、物化输入与实际解析/执行上下文；任何一层不自动替代另一层。先按 parent/dependency/dependencyManagement/plugin dependency 角色判断传播，再核验有效值，不能把外部库自建插件当消费时执行，或用缺少对应 JAR 证明未解析。JRaft 的 owning 契约见 `third-party/jraft-applied-membership/README.md` 和私有制品设计；capture、input review、verify-lock、消费者与采用分别保留结论。外部模型参与边界为 Review-only，自动化须具备真实 Maven descriptor/profile/管理覆盖的可靠正反 fixture，不引入通用 resolver 或字符串豁免。现有 `test_build.py` 的保留 profile 缺版本矩阵只保护该窄规则，不代表输入审核完成。
+第三方 recipe 的审核区分原始声明、descriptor 有效模型、物化输入与实际解析/执行上下文；任何一层不自动替代另一层。先按 parent/dependency/dependencyManagement/plugin dependency 角色判断传播，再核验有效值，不能把外部库自建插件当消费时执行，或用缺少对应 JAR 证明未解析。JRaft 私有制品已随官方依赖切换彻底退役；相关 capture、input review、verify-lock、消费者与采用结论仅保留在执行历史中，不再作为当前自动传感器或采用依据。外部模型参与边界为 Review-only，自动化须具备真实 Maven descriptor/profile/管理覆盖的可靠正反 fixture，不引入通用 resolver 或字符串豁免。第三方输入审核通则及其 Review-only 自动化条件保持不变。
 
 ## 固定收口批次与阶段冻结
 
@@ -57,6 +123,29 @@ Routing HA 在构建前执行有界 Engine `docker info` 前检（默认8秒）�
 4. **重跑要有新的依据。** 修复、环境恢复、独占窗口建立或最小失败层复核成功后，才恢复所属较宽门禁；记录重跑原因及预期消除的失败。同一原因再次出现且没有新证据或前提变化时停止，不能以反复执行碰到一次绿色作为解决，也不能用单独复跑成功覆盖原失败的稳定性风险。
 5. **范围扩展与环境操作单独决策。** 新暴露的无关模块问题先归因并列为阻塞；超出当前任务权限时请求批准，不为收尾无限扩散变更。Docker 重启、全机代理等操作先记录运行资源、自动删除策略、挂载及恢复办法；不能只记录容器名就假定能够恢复。任务实现、后续设计和环境修复在计划中分开，不混成一份无法审查的提交范围。
 6. **没有可执行下一步就停止并交接。** 长门禁启动前说明目的与预计覆盖范围；中途遇到新阻塞及时说明，不等多轮全套结束才反馈。若缺少权限、网络、稳定输入或失败定位证据，保留 blocked/Revise 与最小下一步，不标完成、不无限后台轮询。未通过的必要门禁仍阻止正式归档。
+
+### MapStruct 生成期待集
+
+`ReactorEvidence.generated_mapper_inventory` 从正式 raw POM oracle 的默认生产源码根提取 MapStruct 任务，不从旧生成目录反推。有限词法器跳过注释与 Java 字面量，接受显式 `org.mapstruct.Mapper` import 或全限定注解的顶层接口，以及 `imports`、`uses`、`unmappedTargetPolicy` 参数；拒绝通配／冲突绑定、嵌套或 abstract class mapper、config／实现命名／包定制及未知参数。每项要求默认同包 `InterfaceImpl.java` 与内部名一致的 class；生成源码须有唯一预期顶层 class 并直接 implements 原接口。源码／生成源码／class 的路径和摘要接入原 manifest，`check` 重新派生期待集。此合同只证明当前对应与存在性，不证明本轮生成、清除后鲜度、实际 agent 或 report；B3 仍未验收。
+
+### 迭代入口与耗时控制
+
+按本轮修改的责任选择入口，不把 quick 当作默认的单测试替代品。`quick` 实际包含 drift、全部父 Harness 和 architecture；focused 失败时先修复或归因，再扩大范围。
+
+| 修改范围 | 优先反馈入口 | 边界 |
+|---|---|---|
+| 单个 Java 模块 | 所属模块的聚焦 Maven 测试 | 不替代跨模块与风险适用验收 |
+| 混合 Java 工作树 | `./scripts/verify.sh affected` | 共享输入可能使范围保守升级，不能承诺始终便宜 |
+| full 编排合成 fixture | `/bin/bash scripts/test-full-orchestration-harness.sh` | 与父 Harness 共用完整 setup→断言→cleanup，不运行真实 full |
+| 其他 Harness fixture | 对应现有 `scripts/test-*-harness.sh` | 先核对该入口的环境及真实工具要求，不默认所有 fixture 均离线 |
+| 跨边界稳定批次 | `quick` 或所属较宽验证 | 不对每个小编辑重复运行；quick 不是 full 的必需前置 |
+| 最终验收 | 规定的 `clean` 与 `full` | 先定稿并冻结输入，不在运行中更新状态文档 |
+
+模型 reader 比较有限合同的语义值，不把某种序列化写法当作业务不变量：effective-pom 可省略默认 packaging `jar`，仅此命名字段缺失时补默认，显式空/重复/错误值及独立 oracle 不匹配仍拒绝。`scripts/test-reactor-evidence.sh` 以缺省/显式等价正例和缺失 `pom`、空、重复、错误包装负例保护；不推广成通用缺字段容错。
+
+耗时归因先使用既有命令起止、Maven 日志和 HA `steps.jsonl`，区分实际串行执行与同轮报告的派生记录；不可把 architecture/startup/behavior/e2e 共用 Maven 窗口的 duration 相加。尚无同输入阶段数据时，不承诺收益比例，也不新增跨轮缓存或调度框架。取消 fixture 的正常观察预算与应急超时分别记账，后者不是正常路径固定睡眠；分层优化必须保留阶段/信号覆盖、实际后代存活证据及异常回收语义。
+
+CI 去重以新 full 的实际验收为前提：验收后再统一 `.github/workflows/verify.yml` 与 `scripts/test-harness.sh` 的合同及正反 fixture，移除 full job 外重复的独立 startup/E2E 执行，保留独立诊断入口及 full 自包含。当前尚未取得该真实验收，不先删除现行 CI 保护。迭代选择和有效重跑理由继续采用上述 Review-only 边界，不通过放宽检查器或删除测试降低耗时。
 
 一次最终门禁窗口可以包含多个规定命令；“一次”是冻结输入后的一个验证批次，不代表失败后永不重跑，也不承诺每次只执行一个脚本。状态回填和归档之后需要刷新哪些证据，按 [计划生命周期](../PLANS.md#生命周期)及实际 review scope 判断；不能因为只改文档就把原工具认定 stale 的结果手工改成 fresh，也不能仅为状态措辞反复编辑、再全量重跑。
 
@@ -110,7 +199,7 @@ Broker 应用服务不得依赖 `infrastructure.*` 的 typed properties，也不
 | `scripts/verify.sh handoff` | 当前 report、Git 改动、active plan 恢复状态和下一步命令 | 生成下一会话可直接读取的 JSON/Markdown 交接 |
 | `scripts/verify.sh startup` / `init` | 全部 Spring Boot application 的 startup-smoke；环境、基础门禁和启动命令 | 发现新增 Server 漏测；不替代外部基础设施全栈启动 |
 | `scripts/verify.sh cleanup [--apply]` | Harness 自有 tmp/PID allowlist、canonical path、provenance 及压测恢复现场 | 默认只读；apply 只清理明确安全目标，压测凭据/锁/中断批次只诊断并指向 runner 恢复 |
-| `scripts/verify.sh quality` | AI Reviewer request/response、机器三维分数和硬性上限 | 生成模块 A/B/C/D 快照；缺 response 返回 `review_required` |
+| `scripts/verify.sh quality` | AI Reviewer request/response、机器三维分数和硬性上限 | 生成模块 A/B/C/D 快照；request 为每个单元列出其 fingerprint 完整 Git 可见证据闭包，response 只能引用这些 allowlist 路径；缺 response 返回 `review_required` |
 | `docs/exec-plans/TEMPLATE.md` | Sprint Contract、事实源、验证、任务状态、恢复和风险的统一骨架 | active plan 实例；模板本身不作为完成证据 |
 
 脚本只负责它能准确识别的范围。规范中存在但矩阵标记为 Review 的规则，不得在文档中暗示已自动执行。
@@ -157,11 +246,11 @@ BrokerPeerAdapterTest 的协议/预算/身份/失败断言与 LayerBoundaryTest 
 
 ## Broker 健康观察安全输入边界
 
-Broker 自动健康观察另行批准精确 `support.health`（不允许后代包），当前具体实现为 `BrokerHealthObservationTracker`，允许 Tracker 后缀，不建 Repository、port/实现对或兼容壳。它只维护按当前目标裁剪的有界采样、结构化上下文、freshness 与快照；观察非权威，但属于安全决策输入，不是可选诊断。成员一致性由聚合 `BrokerCluster.findConsistentVoters` 判定，最新事实、多数与稳定窗口由领域服务 `BrokerFailureObservationService.evaluate` 判定，应用层编排。允许依赖领域 model、common 和 JDK 时间/集合；禁止 application、interfaces、infrastructure、config/configuration、lifecycle、Adapter、领域 service/repository、Spring、client/network、plugin 及运行资源拥有，domain 不得反向依赖 support。装配归配置、入口归 Handler/Application；此例外不放宽 Gossip、Monitoring 或其他 support。精确包和稳定依赖由生产/fixture 共用架构规则保护；有界性、无决策及实际完成回调语义由聚焦测试和 Review 保护，待可靠资源/决策数据流分析后自动化。
+Broker 自动健康观察另行批准精确 `support.health`（不允许后代包），当前具体实现为 `BrokerHealthObservationTracker`，允许 Tracker 后缀，不建 Repository、port/实现对或兼容壳。它只维护按当前目标裁剪的有界采样、结构化上下文、freshness 与快照；观察非权威，但属于安全决策输入，不是可选诊断。观察资格由聚合 `BrokerCluster.findObservers` 按已提交业务状态判定：存在非终态成员操作、`LEARNER_SYNCING` 节点或角色/端点绑定不一致时返回空集，否则返回同一 revision 的完整业务 `VOTER` 集合，不读取原生成员配置。领域服务 `BrokerFailureObservationService.evaluate` 判定最新事实、多数与稳定窗口；多数阈值始终为该完整集合大小的一半向下取整加一，不因失联、缺失响应或排除目标自身报告而缩小分母。该业务观察阈值不替代原生 JRaft quorum；应用层仍以同任期 ReadIndex 和 revision/epoch 前后重验确认权威性。允许依赖领域 model、common 和 JDK 时间/集合；禁止 application、interfaces、infrastructure、config/configuration、lifecycle、Adapter、领域 service/repository、Spring、client/network、plugin 及运行资源拥有，domain 不得反向依赖 support。装配归配置、入口归 Handler/Application；此例外不放宽 Gossip、Monitoring 或其他 support。精确包和稳定依赖由生产/fixture 共用架构规则保护；有界性、无决策及实际完成回调语义由聚焦测试和 Review 保护，待可靠资源/决策数据流分析后自动化。
 
 `LayerBoundaryTest.brokerHealthSupportIsAnExactSafetyInputBoundary` 与 `healthSupportRulesAcceptSamplesAndRejectOwnershipLeaks` 共用 `brokerSupportPackages`/`brokerHealthSupportDependencies`/领域反向规则：生产精确包、合法 model/common/time/集合采样、14 个逐名依赖负例、后代包、领域反向依赖。Config、Configuration 与 Lifecycle 负例位于各自独立顶层路径，不依靠 infrastructure 重叠命中。有界性、旧上下文/断档/回退及不可变快照由 BrokerHealthObservationTrackerTest 保护；实际完成闸门由观察 App 用例测试保护，不将安全输入误当可丢弃诊断。规范所有者为 CODING_GUIDE、MODULE_STRUCTURE_GUIDE 与 Broker Architecture，登记见规则矩阵。
 
-成员容器与采样上下文语义采用 **聚焦行为测试 + Review-only**：Broker `ConsensusMembership` 的不可变 Set 归一化同角色重复，构造时拒绝跨角色交叠；Raft 原始快照保留 List<String>，聚合只检查自身角色/绑定一致性。Context 结构化保存 revision、BrokerClusterTopology、targets，使用值相等判断，不再依赖 generation/toString；Topology 的节点副本隔离、Map/Set内容相等和冷却不含revision保持。ConsensusMembershipTest、BrokerHealthObservationContextTest、Tracker/Transformer及观察用例覆盖独立字段变化、集合排列不变、迟到读写拒绝、采样与冷却区别。异常读取/异步重验仍须失败关闭并释放闸门。规范所有者为 Broker Architecture 与共识成员边界设计；不新增按类名静态豁免，通用集合/状态身份数据流判断仍为 Review-only，待可关联契约语义、相等性与状态消费并具备正反 fixture 后再自动化。
+成员容器与采样上下文语义采用 **聚焦行为测试 + Review-only**：Broker `ConsensusMembership` 的不可变 Set 归一化同角色重复，构造时拒绝跨角色交叠；Raft 原始快照保留 List<String>，聚合只检查自身角色/绑定一致性。Context 结构化保存 revision 与仅含业务节点、角色及端点绑定的 BrokerClusterTopology，targets 从业务拓扑派生，使用值相等判断，不再依赖 generation/toString 或原生成员快照；Topology 的节点副本隔离、Map/Set 内容相等和冷却不含 revision 保持。ConsensusMembershipTest、BrokerHealthObservationContextTest、Tracker/Transformer及观察用例覆盖独立字段变化、集合排列不变、迟到读写拒绝、采样与冷却区别。业务状态异常读取/异步重验仍须失败关闭并释放闸门；原生成员配置差异、变化或读取失败不影响业务观察资格、采样窗口或冷却。原生成员读取仍供既有成员维护使用。规范所有者为 Broker Architecture 与共识成员边界设计；不新增按类名静态豁免，通用集合/状态身份数据流判断仍为 Review-only，待可关联契约语义、相等性与状态消费并具备正反 fixture 后再自动化。
 
 ## 有界非权威诊断辅助边界
 
@@ -187,7 +276,7 @@ Broker 的 `support.monitoring` 是另行批准的精确技术观察例外：保
 
 CQRS 边界值规则当前处于 **Observed**：历史 Command/Query 仍有直接使用业务枚举和值对象的情况，而 `im-common` 中稳定通用边界值对象可以合法复用。现阶段 Review 检查新增或触碰的 CQRS 输入是否把聚合、业务值对象或 Repository 查询条件泄漏到应用边界。只有能够区分业务领域类型与允许的通用边界类型，并完成历史基线收敛及正反 fixture 后，才升级为 ArchUnit 或结构化检查。
 
-框架回调用例规则采用 **聚焦结构/行为测试 + Review-only**：IAM OAuth 边界测试证明 Spring Authorization Server 的 `save` 回调只提交已经完成协议处理的最终授权状态，统一转换为 `OAuthAuthorizationSaveCmd`，不再执行第二遍授权码兑换或 Refresh Token 刷新。Review 先判断回调表达的是最终状态持久化还是要求应用执行业务动作，再决定使用统一保存或独立 Command；仅按 `type`、`save`、`handle` 或空字段扫描无法作出该判断，只有结构化分析能够关联框架回调契约和应用方法后才升级为通用门禁。
+框架回调用例规则采用 **聚焦结构/行为测试 + Review-only**：IAM OAuth 边界测试证明 Spring Authorization Server 的 `save` 回调只提交已经完成协议处理的最终授权状态，统一转换为 `OAuthAuthorizationSaveCmd`，不再执行第二遍授权码兑换或 Refresh Token 刷新。T7 批准设计进一步要求快照的原读版本经不可变内部属性传入保存命令，锁内核对后再修改，不能重新加载最新版本替旧快照补齐前提；仅 requested／current 均为 REVOKED 时允许只读终态幂等。版本传递由 boundary／adapter 聚焦测试验证，并发单赢家、撤销两种锁顺序、回滚及重复撤销由真实 MySQL 用例验证；opt-in 跳过不算该项验收。通用版本来源是否被 rebase 的语义目前由 Review 核对，只有能可靠追踪快照读取、转换和条件写入的数据流并有正反 fixture 后才升级自动检查。Review 先判断回调表达的是最终状态持久化还是要求应用执行业务动作，再决定使用统一保存或独立 Command；仅按 `type`、`save`、`handle` 或空字段扫描无法作出该判断，只有结构化分析能够关联框架回调契约和应用方法后才升级为通用门禁。
 
 应用服务入口转换规则采用 **聚焦行为测试 + Review-only**：Review 检查公开用例是否先将 Command/Query 的基础边界值统一构造成领域值对象和内部查询条件，再执行 Repository 查询与业务编排；后续代码不应同时传播同义的原始值和领域值。聚焦测试应证明无效边界值在访问 Repository 前即由领域构造入口拒绝。通用静态扫描无法可靠判断 `String`、数值和集合是否具有领域语义，也无法区分合法的输出转换与遗漏的输入转换；只有结构化分析能够关联 CQRS 字段、领域构造入口和后续调用数据流，并覆盖可选值、通用 `Paging`/`TimeRange` 与纯技术参数等正反 fixture 后，才升级为自动门禁。
 
@@ -223,7 +312,7 @@ HTTP 聚合查询请求规则当前为 **Review-only**：Review 检查参数较�
 
 数据库 JSON 格式规则当前为 **Review-only**：Review 检查数据库 JSON 列是否由 MyBatis TypeHandler 等持久化机制编解码，Entity 是否使用持久化原生属性承接数据，以及领域 Transformer 是否只做对象映射。`JsonUtils` 在 Bolt、Gossip、缓存和第三方协议适配中仍是合法用法，无法按包名可靠判断某次 JSON 转换是否对应数据库列。只有结构化分析能够关联 Entity 字段、TypeHandler、Transformer 映射并排除非持久化 JSON 场景，且具备正反 fixture 后，才升级为自动检查。
 
-MyBatis JSON TypeHandler 采用 **插件统一装配 + 聚焦测试**：`im-datasource` 将应用 `ObjectMapper` 设置给 `JacksonTypeHandler`，保证 Java Time 与项目 Jackson 配置一致；`ImDatasourceAutoConfigurationTest` 使用包含 `Instant` 的 Claims 验证序列化。业务 Repository 不得为规避 TypeHandler 配置而手工改写时间或 JSON 结构。
+MyBatis JSON TypeHandler 采用 **插件统一装配 + 聚焦测试**：`im-datasource` 将应用 `ObjectMapper` 设置给 `JacksonTypeHandler`，保证 Java Time 与项目 Jackson 配置一致；`ImDatasourceAutoConfigurationTest` 使用包含 `Instant` 的 Claims 验证序列化。业务 Repository 不得为规避 TypeHandler 配置而手工改写时间或 JSON 结构。受限自动配置的 Repository 测试也须装配应用 Jackson 配置，不能依赖其他测试先设置静态 TypeHandler Mapper；IAM adapter 往返保存的真实 MySQL 基线覆盖包含 `Instant` 的 Claims。事务并发测试只在首写成功后释放后续参与者，等待期间还须暴露首 worker 的异常，并在失败时释放 gate；异常不能被泛化为锁等待超时。测试上下文与生产装配是否等价目前由 Review 核对，只有能可靠解析条件自动配置、静态初始化及测试顺序依赖并具备缺失／完整装配正反 fixture 后，才升级通用检查。
 
 数据库 Entity 枚举与基类规则采用 **Enforced + Review-only** 边界：SQL checker 强制每个建表语句声明 `id/create_time/update_time/is_deleted/version`，Java style checker 拦截 MyBatis Entity 中以 `String` 声明的 `action/status/result/outcome/kind/type` 字段，以及同时重复声明公共字段却未继承 `BaseEntity` 的标准形状；`BaseEntityTest` 固定 `AUTO` 与 `@Version`。`PersistenceConcurrencyArchitectureTest` 固定 Message 更新含分片键、集合撤销递增 version；具体调用方是否需要检查返回值由 Repository 业务语义决定，公共 Service 不统一将 false 解释为异常。
 
@@ -283,11 +372,20 @@ Review finding 同时满足以下条件时，才适合转为自动门禁：
 
 ### 管理端 IAM 边界
 
+独立 Ops CLI 的标准流承载公开命令交互，不沿用服务端禁止所有控制台输出的适用范围。`check-drift.sh` 仅允许根路径 `im-management/im-ops-cli/src/main/java/**` 的 `System.out/err`；不按类名、包名或任意同名模块放行。所有生产源的 `printStackTrace()` 和其他生产目录的标准流输出仍被拒绝，测试控制台规则不变。`test-harness.sh` 用两个标准流正例和五个负例保护该边界；CLI 无 Spring／Server 依赖继续由架构传感器保护。该许可只区分交互与诊断，不证明输出无秘密；授权 URL fallback 可用，授权码、verifier 和 Token 禁止输出，内容数据流由 Review 与 CLI 行为测试检查。只有具备低误报跨调用数据流分析及可靠正反 fixture 后才自动化；批准的独立 CLI 交互边界被新设计替代时撤销该目录许可，不扩大服务端排除范围。
+
+CLI 的可信来源必须在相应边界保留：权限目录常量经薄组合注解同时约束 scope／authority；操作审计读取本次认证主体与可信 Introspection Client，不接受终端自报身份；Leader 跟随只允许精确发现的受支持端点，并保留同一操作语义。查询失败只说明结果未知，不能证明未提交。Ops 的 `OpsCliControllerTest`、`OpsCliAuditTest` 和真实 RestClient 的 `HttpBrokerManagementClientTest` 分别保护 HTTP 授权／投影、审计失败隔离和 Broker 查询协议；`im-e2e-test` 的 `OpsBrokerManagementContractE2ETest` 连接正式出站客户端与真实 Broker HTTP／Raft，保护成功 learner 加入、查询／幂等及五写 epoch 不匹配拒绝，外部设施和未启动 learner 的限制由模块 README 明示。IAM SDK／Server、Ops 和独立 CLI 变更经 `affected-modules.sh` 带入该 E2E 模块，`test-harness.sh` 的各拥有方独立路径 fixture 保护映射，避免混合工作树中其他路径掩盖漏选；映射不代表真实 IAM 登录旅程已通过，沿用现有 e2e tag 和入口；跨模块同类代码的数据流仍属 Review-only，自动化条件是出现能区分可信服务发现与任意提示、认证属性与自报 Header 的低误报正反 fixture，不增加类名白名单。
+
+跨服务成员写的业务目标与管理 HTTP 接收者必须分离：首次只从正式可信发现中选首个受支持端点，不用目标身份伪造发现别名，不覆盖原 command／scope；无候选时零写，首次失败不自动换普通节点。仅具名 NOT_LEADER 保留至多一次可信 HTTP origin 跟随及发现重验。`BrokerClusterOperationAdapterTest` 保护首次接收选择与失败边界，既有 `OpsCliControllerTest` 保护可信单跳／不可信提示拒绝；真实 CLI 组合证据由 `OpsCliGovernanceE2ETest` 与活跃计划拥有。受支持不证明存活，单 voter 不证明 Raft PeerId 到 HTTP origin 映射正确。跨模块身份／参数来源的数据流仍为 Review-only；只有出现能可靠区分业务目标、发现身份与出站接收者的低成本正反 fixture 后才自动化，不新增类名例外。
+
 | 规则 | 所有者 | 当前传感器 | 退出条件 |
 |---|---|---|---|
+| 独立 Ops CLI 仅依赖 JDK、Jackson 和受控的 `im-common` JSON 工具，不依赖 Server、Spring 或管理端 SDK 实现 | CLI authentication design | `ModuleBoundaryTest.opsCliDependsOnlyOnJdkJacksonAndCommonJsonContracts` 导入 CLI 实际字节码；`RuntimeDependencyPolicyTest` 精确登记 management 子模块并检查非 test POM 依赖仅为 `im-common` 与 Jackson，不把 CLI 纳入服务 Nacos 清单；CLI 使用 `JsonUtils` 的严格对象／树入口，`OperationRequestFileTest` 的重复／必填 epoch／null／尾随／类型正反例继续约束恢复安全。目录信任由 root→leaf owner／mode／真实目录及不安全祖先拒绝测试约束；仅常规 POSIX、当前 UID/root 可信，不保证 ACL/NFS 或同 UID 对手 | CLI 客户端技术栈或文件威胁边界经新设计批准替代 |
 | `im-iam-sdk` 不依赖 `im-iam-server` 实现 | Architecture | Maven/ArchUnit 模块依赖检查 | IAM 模块边界被新协议替代 |
 | Admin、Ops 不实现第二套管理员密码认证与安全 Session | IAM design | `RuntimeDependencyPolicyTest` 所有权包路径检查与 Review | 引入能识别认证语义且保持低误报的结构化检查 |
-| 健康请求实时 Introspection，仅可用性错误使用不超过五分钟缓存 | IAM reliability | SDK 行为测试 | 授权协议或失效模型变更 |
+| OAuth `client_secret_basic` 在 Basic 编码前分别对 Client ID／Secret 做 UTF-8 表单编码，不通过收窄 Secret 字符集规避编码错误 | Security / IAM SDK README | `HttpIamIntrospectionClientTest#formEncodesOAuthClientCredentialsBeforeBasicBase64` 使用真实 RestClient 与 HTTP mock 校验含 `+` 的固定非敏感凭证；其他 OAuth 出站认证路径的协议一致性 Review-only | 认证方式替换；跨路径自动化需具备覆盖各正式出站客户端的低成本确定性 fixture |
+| BFF 健康请求实时 Introspection，仅可用性错误使用不超过五分钟缓存；管理员 CLI 不得复用缓存或故障降级 | IAM reliability / Security | SDK 行为测试、Ops 完整双链集成测试 | 授权协议或失效模型变更 |
+| 显式多安全链必须保留 BFF 兜底、精确 CLI matcher 和禁用 Servlet Filter 自动注册；可信身份字段必须按原始 JSON 类型校验；Actuator 放行由实际 BFF 配置所有者持有，SDK 默认链与 Ops 兜底必须显式委托该配置 | Security / IAM SDK README | `HttpIamIntrospectionClientTest`、`IamSecurityFilterTest`、`ImIamSdkAutoConfigurationTest`、真实 Tomcat 的 `OpsCliSecurityIntegrationTest`、`ObservabilityConfigurationTest` 的实际配置所有者与委托检查；其他应用新增组合链的完整性 Review-only | 具备能可靠识别自定义安全链及条件默认链退让的低成本正反 fixture |
 | Token 加密、权限语义和撤销覆盖；授权状态变为撤销后，本地资源认证与远程 Introspection 都必须立即返回失效 | Security | OAuth2 授权持久化、撤销、本地 Introspector 与远程 Introspection 聚焦行为测试；跨存储数据流 Review-only | 能低误报跟踪跨存储数据流 |
 | IAM Token 的 `appKey` 表达来源应用，`aud` 表达目标应用；Spring 默认 Introspection Provider 返回签发 Claims，资源服务按自身应用标识校验 `aud`，不使用自定义 Provider 重复标准协议 | IAM security design/Security | IAM Claims Customizer、SDK 标准响应映射与 Audience 拒绝测试；协议语义 Review-only | OAuth Token、资源受众或 Introspection 主体模型变更 |
 | Spring 默认 Introspection 以未知 Token 类型查询授权时，仅将原始 Token 恢复到摘要匹配的凭据，避免已消费授权码遮蔽有效 Access Token | IAM security design/Security | `OAuthAuthorizationServiceAdapterTest` 浏览器授权回归测试；摘要匹配语义 Review-only | Spring Authorization Server 不再使用 `findByToken(token, null)` |
@@ -496,3 +594,63 @@ D10 会话数组、严格叶 URI、typed gate、资源/终态排空、后台禁�
 ### HA 测试材料所有权
 
 真实 HA 不用 DEV 替代默认 MTLS。`scripts/lib/routing-ha-tls.rb` 仅在 runner 新建私有空目录内签发测试 CA/独立叶库，移除 CA 私钥，启动前只读校验全部材料及精确部署配对；材料非生产供应，也不实现 D13。`scripts/test-routing-ha-tls.sh` 保护独立密钥、严格 URI/DNS、证书/信任/有效期、缺失/损坏/公开权限/配置篡改拒绝和生成失败。`test-routing-ha-process.sh` 保护 TLS check 必须早于 Compose up、前检失败无创建、down 成功删除材料而 down 失败保留；同轮manifest分支自测用显式stub，不复用真实证书当网络成功。真实 mount 权限、容器 JRE 互操作及多 Broker 互认证须由实际 HA 证明，不能由离线 GREEN 推导。SIGKILL/崩溃残留人工确认后清理，不新增旧目录自动接管规则。
+
+## 可信 Leader 映射与 following 纯拒绝
+
+规范所有者为[可信提示设计 H1—H8](../design-docs/2026-11-02-ops-trusted-leader-hint-mapping-design.md)、[Security](../SECURITY.md#ops-可信-leader-提示) 与 [Reliability](../RELIABILITY.md#管理-leader-提示的可用性边界)。实际初始化 Node 的完整 PeerId 必须先于官方首次 registration 发布；保留键同值保留、冲突失败关闭，管理 origin 独立。Ops 原始列表去重前拒绝歧义，完整字符串唯一配对、不归一化或猜端口；旧 HTTP 精确可信路径保持，最多一次原 command／scope 跟随。
+
+机械约束复用 `RaftRuntimeTest`、`BrokerClusterConfigurationTest` 的实际身份／首次注册装配测试，`NacosBrokerDiscoveryTest` 的 priority／IPv6 文本差异、非法值、HTTP 不回退与无关缺失对照，及正式 `OpsCliLeaderHintMappingTest` 的原始 DiscoveryClient→公共 HTTP 链。`BrokerClusterOperationAdapterTest` 保护原请求与单跳；`OpsCliGovernanceE2ETest` 的真实三 voter 成功／缺失／冲突证明实际两写或一次写零 follow。官方 registration 捕获与受控 NamingService 不等于真实 Nacos 网络证明。
+
+H7／H8 只允许 caller 原子无锁读取事件快照以纯拒绝；冲突／共享、closed／roleFault／满额优先，roleStopped 加有效同 generation 观察才返回 NOT_LEADER，零工作流／永久预算／队列／pump／许可／native。锁序 `rolePublication → listener → executor mutex` 不反锁；独立 FSM failure 与 roleFault 永久失效，事件延迟不证明实时健康，worker／native 门禁保留。机械传感器为 `BrokerMembershipWorkflowTest.healthyFollowerRejectsWithoutWorkerOrNodeAccess`、`followerHintNeverOverridesHardRefusal`，`RaftRuntimeTest.followingObservationIsInvalidatedAndPermanentGatesRejectLateStart`、`followingRejectsInvalidEventAndSwitchesLeaderWithoutChangingGeneration`、`followingGetterDoesNotWaitForBlockedRolePublication`、`firstOfficialConfigurationClosureClearsEstablishedFollowingOnFsmConsumer`，覆盖实际 Runtime 发布→listener 等待 executor mutex 及官方首次配置 closure／FSM consumer。
+
+多 customizer／热更新保留键的全装配后续写者、跨模块 command／scope 来源及任意间接 Node／锁数据流仍为 Review-only；只有能可靠识别实际写者、上下文和副作用的低成本正反 fixture 后才自动化，不新增类名例外或放宽现有 checker。当前 E2E 响应关联仅支持每 Broker 一次 POST，不能外推通用并发／重试场景。
+
+## 成员许可 callback 与角色证据复验
+
+成员配置 native closure 只记录 status/code/message，不得读取 Node；诊断 Leader hint 必须在 native 前由 worker 捕获，并明确可能 stale/null。专用 drain 读取的 term/generation/index 必须通过 Adapter 完整保留，worker 消费和提交 CAS 前复验同一角色快照，不能仅靠任期相等。共享 Lease/learner 读取不因此改变语义。
+
+具名确定性回归为 `RaftRuntimeTest.configurationClosurePreservesNativeCodeAndLeaderHint`（callback 线程零 Node 交互）和 `BrokerMembershipPermitAdmissionTest.successfulReadCallbackThenSameTermRoleRestartBeforeWorkerConsumptionMustNotCas`（callback 成功、worker 暂停、同 term 重启后零 CAS）。通用跨方法数据流仍为 Review-only；自动化须可靠关联 callback 执行上下文、Node 间接调用、证据 generation 的 Adapter 传递与最终消费位置，并有正反 fixture，不能用类名例外或字符串检查替代。
+
+
+### 本机许可固定视图、等待预算与装配（T4）
+
+规范由[已批准治理设计](../design-docs/2026-10-28-official-jraft-governance-simplification-design.md)、Broker Server README 和 im-raft README 拥有。4096 永久事实槽、实际 RPC 等待者／本次期限、历史重复请求留下的 completion 依赖是三个独立边界，不能以槽容量或同时等待者 cap 推导历史 relay 有界。`BrokerMembershipExecutorTest.duplicateExecuteRequestsShareReadOnlyViewWithoutRepeatingNative`、`duplicateConfirmationRequestsShareReadOnlyViewAndStartExplicitNewRound` 保护固定只读视图；`duplicateConfirmationWaitsDoNotAccumulateRelays`、`confirmationWaitingViewsKeepCompletedRoundsIsolated` 保护每确认轮固定不可取消等待桥、依赖不增长和新旧轮隔离。`runtimeAndExecutorShareFirstFaultAfterPartialRoleAccountingAndNeverReopen` 以真实角色记账前／中途遍历故障验证共享终身 fault，不以完整记账后抛错代替部分交错。
+
+`BrokerMembershipPermitAdmissionTest.pendingRemoteConfirmationsRejectExcessWaitersWithoutCallingApplication`、`remoteConfirmationTimeoutReleasesOnlyRequestBudget`、`remoteConfirmationFailurePreservesCauseAndReleasesBudget`、`interruptedRemoteWaitRetainsFiniteDeadlineAndRestoresInterrupt` 分别约束非阻塞等待者准入、同一 deadline、异常传播及期限内处理中断后恢复标志。超额／超时仅返回 UNKNOWN 并释放本次等待预算，不取消或完成共享事实、不释放永久槽或新增 worker。`BrokerMembershipExecutorTest.queuedCommittedPermitCannotStartNativeAfterLeadershipLoss` 与 `queuedCommittedPermitStartsNativeWithoutLeadershipLoss` 以真实 committed／queued 前提及恰一次 native 正向对照保护失权反例。默认等待数／期限不是实测容量或 SLA，也不约束全部上游队列或抢占任意同步代码。
+
+`BrokerPropertiesTest` 验证独立 inbound typed 配置默认／覆盖及非法值；`BrokerObservationRequestConfigurationTest.membershipConfirmationHandlerUsesOneConfiguredBean`、`invalidMembershipConfirmationBudgetFailsContextStartup` 验证真实 factory、绑定、唯一 Handler／列表身份、processor 装配、参数快照及启动拒绝。配置层提取 typed 值，Handler 不依赖 infrastructure；原分层检查仍由 `LayerBoundaryTest.brokerInterfacesMustNotDependOnConcreteInfrastructure` 承担。扫描候选断言直接以默认 `AnnotationTypeFilter(Component.class)` 检查 Handler metadata，包含组合注解，不以同名 Bean 合并后的实例数证明不存在扫描注册路径；仅加回 Component 的有效断言 RED 证明该断言敏感性。
+
+以上具名测试承担局部机械证明，不替代完整启动、真实 MTLS／HA 或最终验收。通用资源依赖、跨轮所有权和角色回调数据流仍为 Review-only；自动化须能可靠关联 Future 依赖、实际等待、故障交错与最终副作用并具备低成本正反 fixture，不增加类名豁免、通用框架或字符串推断。
+
+### 成员显式重投与固定结果视图（T5）
+
+成员用例不得因入口差异绕开持久化完整目标／许可／排空链；native 最终 Commit 使用当前 revision，learner-sync 保持 acceptedRevision。learner 本地表仅共享在途请求，完成后精确移除；成功重放通过已提交身份检查保持 DUPLICATE 与原 epochs，不重复 Begin、Commit 或证据。不同内容的在途请求立即拒绝，未提交拒绝不长期缓存。`BrokerMembershipWorkflowTest#terminalLearnerReplayUsesCommittedIdentityWithoutNewBegin` 与 `learnerIdentityConflictRejectsInflightImmediatelyAndChecksCommittedIdentityAfterCompletion` 保护这些约束；共享永久预算不随表清理回收。
+
+旧 holder 事实重投只消费本机精确 DRAINED slot，不将未知 native、超时或新 Leader 当作排空。operationId 多 slot 必须按持久化步骤选择：唯一当前待确认优先，无待确认才取最高步骤的精确已确认 currentPermit；不按 map 顺序或 caller target 挑选。operation 发送 owner 在首次 reservation 建立，后续 reservation 只继承；自动／显式同 receiver 共享当前 view，不覆盖 pending、不留多轮历史。`explicitDrainedRetransmissionSelectsPendingStepBeforeHistoricalSlots`、`explicitDrainedRetransmissionNewReservationCannotCreateSecondSendOwner`、`explicitDrainedRetransmissionSharesAutomaticAndExplicitInflightWithoutGrowth` 保护选择与有界引用，`explicitDrainedRetransmissionRevalidatesLifecycleBeforeSendAndPublication` 保护 fault／close 两窗口。跨 slot／publication 数据流仍为 Review-only：可靠自动化条件是能识别 ownership 和 callback 捕获链的低成本正反 fixture，不能用 class-name 字符串豁免替代。
+
+诊断不能调用配置修复或改变普通故障观察；所有 Node 阶段由唯一 worker 执行，合并诊断 pending 在消费时复验 generation／fault／close。`periodicDiagnosticPendingFactCannotReadNodeAfterLifecycleInvalidation` 与 `periodicDiagnosticUsesWorkerAndDoesNotRepairDriftOrChangeObservers` 提供局部自动化。真实 self reduction fixture 证明原配置改变、精确 drain 和迟到不回退；其中替代 peer transport 的测试不承担真实 MTLS 网络或公开 Ops 可达性证明。T5 仍须整体规格与质量 Review，不以矩阵存在代替实际验收。
+
+
+### Raft 完整初始化后的退出与角色封闭
+
+im-raft 的关闭必须先原子封闭角色 publication：非 Leader observation 与新 generation 先于资源等待，迟到 callback 不重开准入，fault 首因保留；不得持 publication monitor 进入 Node 或等待 join。`closeInvalidatesRoleBeforeBlockedJoinAndLateLeaderCallbackCannotReopenIt` 用保存的真实 StateMachine callback 与阻塞 join 验证。
+
+请求 executor 的 shutdownRequested 不等于 terminated。只有精确自有 Node、RPC 和 executor 退出已确认，才释放 endpoint；中断继续其余非阻塞清理，保留地址并允许后续 close 续等，统一主异常与 suppressed，不能在 finally 中丢失后续失败。`closeWaitsForExactOwnedRequestExecutorBeforeReleasingEndpoint` 用精确自有 executor 阻塞任务验证；`joinInterruptionPreservesLaterRequestShutdownFailureAndInterrupt` 验证未预置 interrupt 的 join 中断与后续 shutdown 失败组合。`occupiedRpcPortFailureReleasesOwnedNodeAndResources` 覆盖完整 init 后真实 bind 失败的精确资源及同目录重启。partial-init 与工厂返回前异常仍是上游公开生命周期限制，不以该测试推导任意阶段全部回收。
+
+learner fixture 不能把 Leader addLearner 的完成当作 follower applied-ready。`learnerReceivesCommittedLogsAndCanBeRemoved` 先提交原业务命令并 bounded 等待 learnerState 真实 apply，再保留实际 apply、ReadIndex、nonleader、完整目标移除与 Leader 观察不可变值断言；旧 follower applied-membership API 专属断言随私有接口退役，不能把 Leader 列表冒称 follower applied 配置；不 ignoreExceptions，不把初始配置当已应用配置。该前提修订不证明已排除所有生产时序回归。跨组件 ownership／异常数据流保持 Review-only；自动化需能可靠识别准确 owner、阶段及异常链的正反 fixture，不能按类名例外跳过规则。
+
+IAM PUBLIC Client 与单向撤销采用 **聚焦协议／真实 MySQL 行为测试 + Review-only**：`IamPublicClientProtocolTest` 通过生产 OAuth 安全链与 Token Generator 验证 NONE、S256、精确 redirect、码单用与完整 Introspection Claims；`IamPublicClientRevocationProtocolTest` 通过实际授权应用服务和 MySQL 验证 HTTP revoke、数据库写失败及提交后 Introspection，可信登录和业务 Claims 查询仍为受控 fixture。`OAuthAuthorizationRevocationConcurrencyTest` 与 `IamAuthorizationInvalidationTransactionTest` 验证不可逆更新、真实锁等待、事务回滚及 Client／管理员／角色／权限撤回。测试连接必须为任务专属数据库，故障注入 trigger 在 finally 删除。Review 核对受影响授权选择、事务提交和已准入请求边界；普通静态扫描不能可靠证明跨请求／事务时序，只有具备低成本确定性数据库时序 fixture 后，才将通用一致性规则升级为共享自动门禁。现有 Maven 枚举测试，未配置专属 MySQL 时这些测试跳过，不将跳过记为真实数据库验收。
+
+### 模型来源与输出合同的验证边界
+
+模型来源与格式检查沿用现有 `ReactorEvidence` 和隔离 self-test。内部 filesystem/模拟 runner seam 不等于生产防绕过；正式 wrapper 固定 `system_root=/`，不开放 caller override。PATH 选择首个普通且当前 UID 可执行 launcher；权限是现场谓词，不由内容 SHA 证明，目录链与 TOCTOU 也不由摘要自动解决。
+
+正式来源只接受独立受审的精确成员/SHA 清单，未知来源先停止 Review，不动态扫描后自动接受。synthetic settings 摘要不证明宿主已审摘要。settings 先比整文件 SHA 再有限语义检查，身份由同次 bytes 解析返回并关联，不 trim/normalize/case-fold；错误固定，不输出 XML、身份或 URL。
+
+raw reader 在受审 canonical 路径读取有限 XML、重算 SHA 并推导继承/packaging/modules；formal/bound 及正文消费每次重读，比较 GAV/pom/basedir/packaging/modules/SHA 后使用新事实，不信 caller 标志或自填摘要，不实现通用 resolver。raw/oracle/effective/body fixtures 保持独立，不能从 reader 常量或同一 map 同时生成输入与预期。
+
+展示投影取同一 SHA 绑定并通过 formal/raw 验证的 XML 原顺序，不从排序 oracle/stdout 自证；name 缺席 fallback artifactId、存在空串保留、不 trim，有限形状失败关闭。填充按 Java UTF-16 code unit；单次 logger INFO 前缀不逐行剥离。段 API 不能证明完整 stdout 的顺序、唯一段、summary/time 与最终 EOF，更不能证明真实采集来源。
+
+保留细粒度确定性正反例，按完整合同/信任边界批次验收，不为每个展示字段冻结 Review。完整纯输入输出、真实来源/生命周期接线、实际 agent/产物/report 分开验收，不跨边界扩大局部 Accept。新能力测试先行；真实缺陷 RED 必须命中原行为，刻意宽松变体只算敏感性/mutation 证明，禁止为拿 RED 故意加入已知错误。missing-method/setup/语法失败不算行为 RED；原证据不改写，误分类由计划账本更正。
+
+运行日志、时间、Review 与当前状态由计划及 `.harness/` 拥有，不在规范逐轮追加。批次划分、原行为与 mutation 归属、授权语义暂为 Review-only；自动化需可靠合同边界/证据归属正反 fixture，不按类名豁免或放宽 freshness。

@@ -75,7 +75,7 @@ class BrokerAutomaticFailureFlowTest {
         BrokerClusterState initial = new BrokerClusterState(0L, 0L, BrokerSelectionAlgorithm.RENDEZVOUS_HASH,
                 List.of(node("a"), node("b"), node("c")));
         StatefulClusterAdapterFixture fixture = new StatefulClusterAdapterFixture(initial);
-        fixture.stateMachine.restore(new BrokerClusterSnapshot(2, "cluster-a", initial, List.of(), null,
+        fixture.stateMachine.restore(new BrokerClusterSnapshot(BrokerClusterSnapshot.CURRENT_FORMAT_VERSION, "cluster-a", initial, List.of(), null,
                 Map.of("a", "a:18120", "b", "b:18120", "c", "c:18120")));
         fixture.voters.addAll(List.of("a:18120", "b:18120", "c:18120"));
         when(BrokerRaftTestBindings.bindLocalBroker(fixture.adapter).isLeader()).thenReturn(true);

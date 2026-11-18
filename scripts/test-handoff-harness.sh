@@ -81,7 +81,7 @@ HARNESS_ROOT_DIR="$FIXTURE_ROOT" \
 
 handoff_json="$FIXTURE_ROOT/.harness/session-handoff.json"
 handoff_md="$FIXTURE_ROOT/.harness/session-handoff.md"
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '# encoding: UTF-8
   report = JSON.parse(File.read(ARGV.fetch(0)))
   valid = report["evidenceFreshness"] == "fresh" &&
     report.dig("currentlyVerified", "status") == "passed" &&
@@ -109,7 +109,7 @@ HARNESS_ROOT_DIR="$FIXTURE_ROOT" \
   HARNESS_CURRENT_HEAD="fixture-head" \
   HARNESS_CURRENT_WORKTREE_FINGERPRINT="changed-fingerprint" \
   "$FIXTURE_ROOT/scripts/harness-handoff.sh" >/dev/null
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   report = JSON.parse(File.read(ARGV.fetch(0)))
   exit(report["evidenceFreshness"] == "stale" &&
     report.dig("currentlyVerified", "status") == "stale" ? 0 : 1)
@@ -119,7 +119,7 @@ if ! ruby -rjson -e '
 fi
 
 # 当前报告失败时，handoff 必须列出失败模式供下一会话直接定位。
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   path = ARGV.fetch(0)
   report = JSON.parse(File.read(path))
   report["status"] = "failed"
@@ -130,7 +130,7 @@ HARNESS_ROOT_DIR="$FIXTURE_ROOT" \
   HARNESS_CURRENT_HEAD="fixture-head" \
   HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
   "$FIXTURE_ROOT/scripts/harness-handoff.sh" >/dev/null
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   report = JSON.parse(File.read(ARGV.fetch(0)))
   exit(report.dig("currentlyVerified", "status") == "failed" &&
     report.dig("unverified", "failedVerifications") == ["full"] ? 0 : 1)
@@ -162,7 +162,7 @@ HARNESS_ROOT_DIR="$FIXTURE_ROOT" \
   HARNESS_CURRENT_HEAD="fixture-head" \
   HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
   "$FIXTURE_ROOT/scripts/harness-handoff.sh" >/dev/null
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '# encoding: UTF-8
   report = JSON.parse(File.read(ARGV.fetch(0)))
   exit(report.dig("workState", "activePlan").nil? &&
     report.dig("nextAction", "priority").include?("等待下一个") ? 0 : 1)

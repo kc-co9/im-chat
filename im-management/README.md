@@ -6,6 +6,7 @@
 |---|---|---|
 | `im-iam` | 统一管理端身份、OAuth2/OIDC、应用级 RBAC；聚合 `im-iam-server` 与 `im-iam-sdk` | 已实现基础闭环 |
 | `im-ops` | 聚合 Broker 诊断并发起受控集群 operation，提供运行控制台 | 已接入 IAM 与集中审计 |
+| `im-ops-cli` | 独立 Java 21 前台客户端，通过 IAM／Ops HTTP 执行固定命令 | 客户端实现与 T10 范围验收完成；真实跨服务旅程由 T11 验证，尚未完成 |
 | `im-admin` | IAM 接入、普通用户管理和管理 UI | 已接入 IAM 与集中审计 |
 | `im-audit` | 集中审计契约、接收、追加存储、查询、独立 UI 和 Excel 导出 | 已实现基础闭环 |
 

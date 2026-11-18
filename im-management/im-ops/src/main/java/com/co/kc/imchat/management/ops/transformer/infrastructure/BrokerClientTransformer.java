@@ -14,6 +14,8 @@ import com.co.kc.imchat.management.ops.infrastructure.client.model.BrokerInstanc
 import com.co.kc.imchat.management.ops.infrastructure.client.model.DiagnosticSummaryPayload;
 import com.co.kc.imchat.management.ops.model.cqrs.dto.BrokerInstanceDTO;
 import com.co.kc.imchat.management.ops.model.cqrs.dto.DiagnosticSummaryDTO;
+import com.co.kc.imchat.management.ops.model.cqrs.dto.BrokerOperationDTO;
+import com.co.kc.imchat.management.ops.infrastructure.client.model.BrokerOperationPayload;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;
@@ -22,10 +24,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
-/** Broker 协议载荷与 Ops 投影转换器。 */
+/**
+ * Broker 协议载荷与 Ops 投影转换器。
+ */
 @Mapper
 public interface BrokerClientTransformer {
     BrokerClientTransformer INSTANCE = Mappers.getMapper(BrokerClientTransformer.class);
+
+    @Mapping(target = "createdAt", source = "createdAtMs")
+    @Mapping(target = "completedAt", source = "completedAtMs")
+    BrokerOperationDTO.Query operationQueryFrom(BrokerOperationPayload.Query payload);
 
     BrokerOverviewDTO brokerOverviewDataFrom(BrokerOverviewPayload payload);
 
@@ -65,6 +73,7 @@ public interface BrokerClientTransformer {
     default Instant instantFrom(Long value) {
         return value == null ? null : Instant.ofEpochMilli(value);
     }
+
     default Duration durationFrom(Long value) {
         return value == null ? null : Duration.ofMillis(value);
     }

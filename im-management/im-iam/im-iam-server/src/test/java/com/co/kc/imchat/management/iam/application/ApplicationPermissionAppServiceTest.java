@@ -1,5 +1,6 @@
 package com.co.kc.imchat.management.iam.application;
 
+import com.co.kc.imchat.management.iam.domain.session.repository.OAuthSessionRepository;
 import com.co.kc.imchat.common.exception.NotFoundException;
 import com.co.kc.imchat.common.model.page.Paging;
 import com.co.kc.imchat.common.model.page.PagingResult;
@@ -55,7 +56,7 @@ class ApplicationPermissionAppServiceTest {
                 applications,
                 mock(OAuthClientRepository.class),
                 permissions,
-                mock(ApplicationPermissionService.class));
+                mock(ApplicationPermissionService.class), mock(OAuthSessionRepository.class));
 
         PagingResult<?> result = service.page(new ApplicationPermissionPageQuery(
                 1L,
@@ -83,7 +84,7 @@ class ApplicationPermissionAppServiceTest {
                 applications,
                 mock(OAuthClientRepository.class),
                 permissions,
-                mock(ApplicationPermissionService.class));
+                mock(ApplicationPermissionService.class), mock(OAuthSessionRepository.class));
 
         service.page(new ApplicationPermissionPageQuery(1L, null, paging));
 
@@ -103,7 +104,7 @@ class ApplicationPermissionAppServiceTest {
                 applications,
                 mock(OAuthClientRepository.class),
                 permissions,
-                mock(ApplicationPermissionService.class));
+                mock(ApplicationPermissionService.class), mock(OAuthSessionRepository.class));
 
         assertThatThrownBy(() -> service.page(
                 new ApplicationPermissionPageQuery(404L, "user", paging)))
@@ -120,7 +121,7 @@ class ApplicationPermissionAppServiceTest {
                 permission(11L, "user:delete")));
         ApplicationPermissionAppService service = new ApplicationPermissionAppService(
                 applications, oauthClientRepository(), permissions,
-                new ApplicationPermissionService(permissions, snowflakeId(12L)));
+                new ApplicationPermissionService(permissions, snowflakeId(12L)), mock(OAuthSessionRepository.class));
 
         service.synchronize(new ApplicationPermissionCatalogSyncCmd(
                 "im-admin-client",
@@ -147,7 +148,7 @@ class ApplicationPermissionAppServiceTest {
                 permission(10L, "user:read")));
         ApplicationPermissionAppService service = new ApplicationPermissionAppService(
                 applications, oauthClientRepository(), permissions,
-                new ApplicationPermissionService(permissions, snowflakeId(12L)));
+                new ApplicationPermissionService(permissions, snowflakeId(12L)), mock(OAuthSessionRepository.class));
         ApplicationPermissionCatalogSyncCmd command = new ApplicationPermissionCatalogSyncCmd(
                 "im-admin-client", List.of(
                 new ApplicationPermissionDefinitionDTO("user:read", "查询用户", "查询普通用户")));
@@ -158,6 +159,31 @@ class ApplicationPermissionAppServiceTest {
         assertThat(permissions.permissions).singleElement()
                 .extracting(ApplicationPermission::getId)
                 .isEqualTo(new ApplicationPermissionId(10L));
+    }
+
+    @Test
+    void repeatedWithdrawalSnapshotRevokesAudienceOnlyOnFirstTransition() {
+        MemoryPermissionRepository permissions = new MemoryPermissionRepository(List.of(
+                permission(10L, "user:read"), permission(11L, "user:delete")));
+        OAuthSessionRepository sessions = mock(OAuthSessionRepository.class);
+        ApplicationPermissionAppService service = new ApplicationPermissionAppService(
+                new MemoryApplicationRepository(application()), oauthClientRepository(), permissions,
+                new ApplicationPermissionService(permissions, snowflakeId(12L)), sessions);
+        ApplicationPermissionCatalogSyncCmd command = new ApplicationPermissionCatalogSyncCmd(
+                "im-admin-client", List.of(
+                new ApplicationPermissionDefinitionDTO("user:read", "查询用户", "查询普通用户")));
+
+        service.synchronize(command);
+        verify(sessions).revokeAudience(org.mockito.ArgumentMatchers.eq(new AppId(1L)),
+                org.mockito.ArgumentMatchers.any(java.time.Instant.class));
+        service.synchronize(command);
+
+        verify(sessions).revokeAudience(org.mockito.ArgumentMatchers.eq(new AppId(1L)),
+                org.mockito.ArgumentMatchers.any(java.time.Instant.class));
+        assertThat(permissions.find(new ApplicationPermissionId(11L)).orElseThrow().getStatus())
+                .isEqualTo(ApplicationPermissionStatus.INACTIVE);
+        assertThat(permissions.find(new ApplicationPermissionId(10L)).orElseThrow().getStatus())
+                .isEqualTo(ApplicationPermissionStatus.ACTIVE);
     }
 
     private static Application application() {

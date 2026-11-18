@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 用途：用最小 Java/POM fixture 验证 Java style checker 的正例、反例和误报保护。
+# 用途：用最小普通/生成 Java 与 POM fixture 验证 checker 的正例、反例和误报保护。
 # 输入：无位置参数；fixture 在临时目录内生成。
 # 输出/副作用：打印 checker 自测结果并在退出时删除临时目录。
 # 依赖：bash、mktemp、check-java-style.sh 及其 Ruby 运行环境。
@@ -11,10 +11,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fixture_root="$(mktemp -d)"
 trap 'rm -rf "$fixture_root"' EXIT
 
-mkdir -p "$fixture_root/module/src/main/java/example"
+mkdir -p "$fixture_root/module/src/main/java/com/co/kc/imchat/example"
 
-cat > "$fixture_root/module/src/main/java/example/AcceptedModels.java" <<'EOF'
-package example;
+cat > "$fixture_root/module/src/main/java/com/co/kc/imchat/example/AcceptedModels.java" <<'EOF'
+package com.co.kc.imchat.example;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -47,10 +47,10 @@ EOF
 
 "$ROOT_DIR/scripts/check-java-style.sh" "$fixture_root"
 
-http_package="$fixture_root/module/src/main/java/example/interfaces/http"
+http_package="$fixture_root/module/src/main/java/com/co/kc/imchat/example/interfaces/http"
 mkdir -p "$http_package"
 cat > "$http_package/AcceptedController.java" <<'EOF'
-package example.interfaces.http;
+package com.co.kc.imchat.example.interfaces.http;
 
 class AcceptedController {
     void create(@RequestBody CreateUserRequest request) {
@@ -64,7 +64,7 @@ EOF
 "$ROOT_DIR/scripts/check-java-style.sh" "$fixture_root"
 
 cat > "$http_package/InvalidController.java" <<'EOF'
-package example.interfaces.http;
+package com.co.kc.imchat.example.interfaces.http;
 
 class InvalidController {
     void ingest(@RequestBody AuditEvent event) {
@@ -85,10 +85,10 @@ if [[ "$output" != *"HTTP request body types must use the Request suffix"* ]]; t
 fi
 rm -rf "$http_package"
 
-rpc_package="$fixture_root/module/src/main/java/example/sdk/rpc"
+rpc_package="$fixture_root/module/src/main/java/com/co/kc/imchat/example/sdk/rpc"
 mkdir -p "$rpc_package"
 cat > "$rpc_package/InvalidRpcService.java" <<'EOF'
-package example.sdk.rpc;
+package com.co.kc.imchat.example.sdk.rpc;
 
 interface InvalidRpcService {
     void submit(AuditEvent event);
@@ -108,10 +108,10 @@ if [[ "$output" != *"RPC contract input types must use the Params suffix"* ]]; t
 fi
 rm -rf "$rpc_package"
 
-facade_query_package="$fixture_root/sample-facade/src/main/java/example/facade/query"
+facade_query_package="$fixture_root/sample-facade/src/main/java/com/co/kc/imchat/example/facade/query"
 mkdir -p "$facade_query_package"
 cat > "$facade_query_package/UserQuery.java" <<'EOF'
-package example.facade.query;
+package com.co.kc.imchat.example.facade.query;
 
 public record UserQuery(Long userId) {
 }
@@ -127,11 +127,11 @@ if [[ "$output" != *"Facade request contracts must use a params package"* ]]; th
 fi
 rm -rf "$fixture_root/sample-facade"
 
-mixed_package="$fixture_root/module/src/main/java/example/mixed"
+mixed_package="$fixture_root/module/src/main/java/com/co/kc/imchat/example/mixed"
 mkdir -p "$mixed_package"
 for type in TokenService JwtTokenCodec TokenDTO TokenClaims TokenType TokenStatus; do
   cat > "$mixed_package/$type.java" <<EOF
-package example.mixed;
+package com.co.kc.imchat.example.mixed;
 
 class $type {
 }
@@ -148,8 +148,8 @@ if [[ "$output" != *"package mixes contracts, implementations and models"* ]]; t
 fi
 rm -rf "$mixed_package"
 
-cat > "$fixture_root/module/src/main/java/example/ManualBean.java" <<'EOF'
-package example;
+cat > "$fixture_root/module/src/main/java/com/co/kc/imchat/example/ManualBean.java" <<'EOF'
+package com.co.kc.imchat.example;
 
 class ManualBean {
     private String issuer;
@@ -181,12 +181,12 @@ if [[ "$output" != *"use Lombok or a record"* ]]; then
   printf 'Expected Lombok guidance, got:\n%s\n' "$output" >&2
   exit 1
 fi
-rm "$fixture_root/module/src/main/java/example/ManualBean.java"
+rm "$fixture_root/module/src/main/java/com/co/kc/imchat/example/ManualBean.java"
 
-application_package="$fixture_root/module/src/main/java/example/application"
+application_package="$fixture_root/module/src/main/java/com/co/kc/imchat/example/application"
 mkdir -p "$application_package"
 cat > "$application_package/ValidAppService.java" <<'EOF'
-package example.application;
+package com.co.kc.imchat.example.application;
 
 class ValidAppService {
     public void signIn(SignInCmd command) {
@@ -210,7 +210,7 @@ EOF
 "$ROOT_DIR/scripts/check-java-style.sh" "$fixture_root"
 
 cat > "$application_package/InvalidAppService.java" <<'EOF'
-package example.application;
+package com.co.kc.imchat.example.application;
 
 class InvalidAppService {
     public SignInResult refresh(String refreshToken) {
@@ -233,7 +233,7 @@ fi
 rm "$application_package/InvalidAppService.java"
 
 cat > "$application_package/InvalidLockKeyAppService.java" <<'EOF'
-package example.application;
+package com.co.kc.imchat.example.application;
 
 class InvalidLockKeyAppService {
     @DistributeLock(scene = "im:account:user:write", key = "#command.userId().toString()")
@@ -255,10 +255,10 @@ if [[ "$output" != *"Declarative lock keys must rely on the lock aspect string c
 fi
 rm "$application_package/InvalidLockKeyAppService.java"
 
-plugin_config_package="$fixture_root/im-plugin/sample/src/main/java/example/config"
+plugin_config_package="$fixture_root/im-plugin/sample/src/main/java/com/co/kc/imchat/example/config"
 mkdir -p "$plugin_config_package"
 cat > "$plugin_config_package/OptionalPluginConfig.java" <<'EOF'
-package example.config;
+package com.co.kc.imchat.example.config;
 
 class OptionalPluginConfig {
     @ConditionalOnProperty(prefix = "example.plugin", name = "enabled")
@@ -270,17 +270,17 @@ EOF
 
 "$ROOT_DIR/scripts/check-java-style.sh" "$fixture_root"
 
-business_config_package="$fixture_root/im-service/sample/sample-server/src/main/java/example/config"
+business_config_package="$fixture_root/im-service/sample/sample-server/src/main/java/com/co/kc/imchat/example/config"
 mkdir -p "$business_config_package"
-cat > "$fixture_root/im-service/sample/sample-server/src/main/java/example/SampleApplication.java" <<'EOF'
-package example;
+cat > "$fixture_root/im-service/sample/sample-server/src/main/java/com/co/kc/imchat/example/SampleApplication.java" <<'EOF'
+package com.co.kc.imchat.example;
 
 @SpringBootApplication
 class SampleApplication {
 }
 EOF
 cat > "$business_config_package/InvalidBusinessConfig.java" <<'EOF'
-package example.config;
+package com.co.kc.imchat.example.config;
 
 @ConditionalOnProperty(prefix = "example.business", name = "enabled")
 class InvalidBusinessConfig {
@@ -297,12 +297,12 @@ if [[ "$output" != *"Deployable applications must fail fast instead of condition
 fi
 rm -rf "$fixture_root/im-service"
 
-repository_package="$fixture_root/module/src/main/java/example/infrastructure/domain/repository"
+repository_package="$fixture_root/module/src/main/java/com/co/kc/imchat/example/infrastructure/domain/repository"
 mkdir -p "$repository_package"
 cat > "$repository_package/InvalidUserRepository.java" <<'EOF'
-package example.infrastructure.domain.repository;
+package com.co.kc.imchat.example.infrastructure.domain.repository;
 
-import example.infrastructure.mybatis.mapper.DbUserMapper;
+import com.co.kc.imchat.example.infrastructure.mybatis.mapper.DbUserMapper;
 
 class InvalidUserRepository {
     private DbUserMapper mapper;
@@ -319,21 +319,21 @@ if [[ "$output" != *"must use MyBatis Service"* ]]; then
 fi
 rm -rf "$repository_package"
 
-mapper_package="$fixture_root/module/src/main/java/example/infrastructure/mybatis/mapper"
-config_package="$fixture_root/module/src/main/java/example/infrastructure/config"
+mapper_package="$fixture_root/module/src/main/java/com/co/kc/imchat/example/infrastructure/mybatis/mapper"
+config_package="$fixture_root/module/src/main/java/com/co/kc/imchat/example/infrastructure/config"
 mkdir -p "$mapper_package" "$config_package"
 cat > "$mapper_package/DbUserMapper.java" <<'EOF'
-package example.infrastructure.mybatis.mapper;
+package com.co.kc.imchat.example.infrastructure.mybatis.mapper;
 
 @Mapper
 interface DbUserMapper {
 }
 EOF
 cat > "$config_package/RedundantMapperScanConfig.java" <<'EOF'
-package example.infrastructure.config;
+package com.co.kc.imchat.example.infrastructure.config;
 
 @Configuration
-@MapperScan("example.infrastructure.mybatis.mapper")
+@MapperScan("com.co.kc.imchat.example.infrastructure.mybatis.mapper")
 class RedundantMapperScanConfig {
 }
 EOF
@@ -348,16 +348,16 @@ if [[ "$output" != *"remove the redundant empty @MapperScan configuration"* ]]; 
 fi
 rm -rf "$mapper_package" "$config_package"
 
-aggregate_package="$fixture_root/module/src/main/java/example/domain/model"
+aggregate_package="$fixture_root/module/src/main/java/com/co/kc/imchat/example/domain/model"
 mkdir -p "$aggregate_package"
 cat > "$aggregate_package/Identification.java" <<'EOF'
-package example.domain.model;
+package com.co.kc.imchat.example.domain.model;
 
 class Identification {
 }
 EOF
 cat > "$aggregate_package/AcceptedAggregate.java" <<'EOF'
-package example.domain.model;
+package com.co.kc.imchat.example.domain.model;
 
 class AcceptedAggregate extends Identification {
     private final Long id = 1L;
@@ -367,7 +367,7 @@ EOF
 "$ROOT_DIR/scripts/check-java-style.sh" "$fixture_root"
 
 cat > "$aggregate_package/InvalidAggregate.java" <<'EOF'
-package example.domain.model;
+package com.co.kc.imchat.example.domain.model;
 
 @EqualsAndHashCode(callSuper = false, onlyExplicitlyIncluded = true)
 class InvalidAggregate extends Identification {
@@ -386,10 +386,10 @@ if [[ "$output" != *"Aggregates extending Identification must not define busines
 fi
 rm -rf "$aggregate_package"
 
-db_entity_package="$fixture_root/module/src/main/java/example/infrastructure/mybatis/entity"
+db_entity_package="$fixture_root/module/src/main/java/com/co/kc/imchat/example/infrastructure/mybatis/entity"
 mkdir -p "$db_entity_package"
 cat > "$db_entity_package/AcceptedDbEvent.java" <<'EOF'
-package example.infrastructure.mybatis.entity;
+package com.co.kc.imchat.example.infrastructure.mybatis.entity;
 
 class AcceptedDbEvent {
     private DbEventAction action;
@@ -404,7 +404,7 @@ EOF
 "$ROOT_DIR/scripts/check-java-style.sh" "$fixture_root"
 
 cat > "$db_entity_package/InvalidDbEvent.java" <<'EOF'
-package example.infrastructure.mybatis.entity;
+package com.co.kc.imchat.example.infrastructure.mybatis.entity;
 
 class InvalidDbEvent {
     private String action;
@@ -428,7 +428,7 @@ done
 rm "$db_entity_package/InvalidDbEvent.java"
 
 cat > "$db_entity_package/InvalidDbUser.java" <<'EOF'
-package example.infrastructure.mybatis.entity;
+package com.co.kc.imchat.example.infrastructure.mybatis.entity;
 
 class InvalidDbUser {
     private Long id;
@@ -446,5 +446,93 @@ if [[ "$output" != *"Entities with the standard persistence fields must extend B
   printf 'Expected BaseEntity guidance, got:\n%s\n' "$output" >&2
   exit 1
 fi
+
+# 每个所有权样例独立，避免其他结构规则掩盖 namespace／词法诊断。
+for scenario in accepted default wrong-path duplicate unicode module-info comment-string text-block package-info; do
+  case_root="$fixture_root/ownership-$scenario"
+  source_dir="$case_root/module/src/main/java/com/co/kc/imchat/sample"
+  mkdir -p "$source_dir"
+  case "$scenario" in
+    accepted) source='package com.co.kc.imchat.sample; class Sample {}' ;;
+    default) source='class Sample {}' ;;
+    wrong-path) source='package com.co.kc.imchat.other; class Sample {}' ;;
+    duplicate) source='package com.co.kc.imchat.sample; package com.co.kc.imchat.sample; class Sample {}' ;;
+    unicode) source='package com.co.kc.imchat.sample; class Sample { String value = "package"; }' ;;
+    module-info) source='module sample {}' ;;
+    comment-string) source='/* package foreign; */ package com.co.kc.imchat.sample; class Sample { String value = "package foreign;"; char marker = '\''"'\''; }' ;;
+    text-block) source='package com.co.kc.imchat.sample; class Sample { String value = """
+package foreign;
+"""; }' ;;
+    package-info) source='/** package foreign; */ package com.co.kc.imchat.sample;' ;;
+  esac
+  filename=Sample.java
+  [[ "$scenario" != module-info && "$scenario" != package-info ]] || filename="$scenario.java"
+  printf '%s\n' "$source" > "$source_dir/$filename"
+  if [[ "$scenario" == unicode ]]; then
+    printf '// \\%s0070ackage foreign;\n' 'u' >> "$source_dir/$filename"
+  fi
+  case "$scenario" in
+    accepted|comment-string|text-block|package-info)
+      "$ROOT_DIR/scripts/check-java-style.sh" "$case_root" ;;
+    *)
+      if output="$("$ROOT_DIR/scripts/check-java-style.sh" "$case_root" 2>&1)"; then
+        printf 'Expected ownership scenario %s to fail.\n' "$scenario" >&2
+        exit 1
+      fi
+      [[ "$output" == *"Production source ownership"* ]] || { printf 'Missing ownership diagnostic for %s.\n' "$scenario" >&2; exit 1; } ;;
+  esac
+done
+
+# 所有权反例独立于前面的结构反例，确保失败只能来自 namespace 边界。
+ownership_root="$fixture_root/ownership-lookalike"
+mkdir -p "$ownership_root/module/src/main/java/com/co/kc/imchatOther"
+cat > "$ownership_root/module/src/main/java/com/co/kc/imchatOther/Foreign.java" <<'EOF'
+package com.co.kc.imchatOther;
+class Foreign {}
+EOF
+if output="$("$ROOT_DIR/scripts/check-java-style.sh" "$ownership_root" 2>&1)"; then
+  printf 'Expected lookalike production namespace to fail.\n' >&2
+  exit 1
+fi
+if [[ "$output" != *"Production source ownership"* ]]; then
+  printf 'Expected production ownership guidance.\n' >&2
+  exit 1
+fi
+
+for scenario in accepted lookalike default wrong-path duplicate unicode module-info comment-string text-block package-info; do
+  case_root="$fixture_root/generated-$scenario"
+  source_dir="$case_root/module/target/generated-sources/annotations/com/co/kc/imchat/sample"
+  mkdir -p "$source_dir"
+  case "$scenario" in
+    accepted) source='package com.co.kc.imchat.sample; class Generated {}' ;;
+    lookalike) source='package com.co.kc.imchatOther; class Generated {}' ;;
+    default) source='class Generated {}' ;;
+    wrong-path) source='package com.co.kc.imchat.other; class Generated {}' ;;
+    duplicate) source='package com.co.kc.imchat.sample; package com.co.kc.imchat.sample; class Generated {}' ;;
+    unicode) source='package com.co.kc.imchat.sample; class Generated {}' ;;
+    module-info) source='module sample {}' ;;
+    comment-string) source='/* package foreign; */ package com.co.kc.imchat.sample; class Generated { String value = "package foreign;"; }' ;;
+    text-block) source='package com.co.kc.imchat.sample; class Generated { String value = """
+package foreign;
+"""; }' ;;
+    package-info) source='/** package foreign; */ package com.co.kc.imchat.sample;' ;;
+  esac
+  filename=Generated.java
+  [[ "$scenario" != module-info && "$scenario" != package-info ]] || filename="$scenario.java"
+  printf '%s\n' "$source" > "$source_dir/$filename"
+  if [[ "$scenario" == unicode ]]; then
+    printf '// \\%s0070ackage foreign;\n' 'u' >> "$source_dir/$filename"
+  fi
+  case "$scenario" in
+    accepted|comment-string|text-block|package-info)
+      "$ROOT_DIR/scripts/check-java-style.sh" "$case_root" ;;
+    *)
+      if output="$("$ROOT_DIR/scripts/check-java-style.sh" "$case_root" 2>&1)"; then
+        printf 'Expected generated ownership scenario %s to fail.\n' "$scenario" >&2
+        exit 1
+      fi
+      [[ "$output" == *"Production source ownership"* ]] || { printf 'Missing generated ownership diagnostic for %s.\n' "$scenario" >&2; exit 1; } ;;
+  esac
+done
 
 printf 'Java style Harness tests passed.\n'

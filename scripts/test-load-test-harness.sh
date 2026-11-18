@@ -3,7 +3,7 @@
 # 输入：无位置参数；解析 Compose 并运行隔离 fake fixture，不启动真实容器或产生真实负载。
 # 输出/副作用：契约满足时返回 0；临时验证 doctor/锁/timeout/signal/cleanup/restore/resource，退出时清理。
 # 非预期失败在 stderr 输出原退出码、脚本行号和 fixture 命令；set +e 的预期失败保持原处理。
-# 依赖：bash、docker compose、Ruby、rg。
+# 依赖：bash、固定受审 Compose（仅 config）、Ruby、rg；runner fake Docker 合同不变。
 
 set -euo pipefail
 
@@ -199,7 +199,7 @@ LOAD_TEST_FIXTURE_ROOT="$evidence_root" \
   DOCKER_BIN="$evidence_root/bin/docker" K6_BIN="$evidence_root/bin/k6" \
   PATH="$evidence_root/bin:$PATH" "$evidence_root/scripts/verify.sh" load-test-smoke >/dev/null
 smoke_evidence="$evidence_root/.harness/verifications/load-test-smoke.json"
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   evidence=JSON.parse(File.read(ARGV.fetch(0)))
   abort "batch missing" unless evidence["batchId"] == "smk001"
   abort "config digest missing" unless evidence["configDigest"]&.match?(/\A[0-9a-f]{64}\z/)
@@ -219,7 +219,7 @@ FAKE_SMOKE_MESSAGE_DECISION=service_failed \
   LOAD_TEST_CONFIG_DIGEST_VALUE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
   DOCKER_BIN="$evidence_root/bin/docker" K6_BIN="$evidence_root/bin/k6" \
   PATH="$evidence_root/bin:$PATH" "$evidence_root/scripts/verify.sh" load-test-smoke >/dev/null
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   evidence=JSON.parse(File.read(ARGV.fetch(0)))
   abort "service failure smoke must retain passing workflow evidence" unless evidence["status"] == "passed"
   abort "message service failure was lost" unless
@@ -239,7 +239,7 @@ set -e
   printf 'unstable worktree/data/cleanup smoke fixture must fail\n' >&2
   exit 1
 }
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   evidence=JSON.parse(File.read(ARGV.fetch(0)))
   abort unless evidence["status"] == "failed"
   abort unless evidence["worktreeStable"] == false
@@ -257,7 +257,7 @@ rg -q -- '--web.enable-remote-write-receiver' "$BASE_COMPOSE" || {
   exit 1
 }
 
-compose_json="$(docker compose -f "$BASE_COMPOSE" -f "$LOAD_COMPOSE" --profile full config --format json)"
+compose_json="$(/usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" compose-config "$ROOT_DIR" load)"
 ruby -rjson -e '
   config = JSON.parse(STDIN.read)
   services = config.fetch("services")
@@ -291,7 +291,7 @@ ruby -rjson -e '
     command.include?("--web.enable-remote-write-receiver")
 ' <<<"$compose_json"
 
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   dashboard = JSON.parse(File.read(ARGV.fetch(0)))
   abort "dashboard title missing" unless dashboard.fetch("title").include?("Load Test")
   text = JSON.generate(dashboard)
@@ -629,7 +629,7 @@ ruby -rtimeout -e '
     end
   end
 ' "$RESOURCE_SAMPLER" "$temp_dir/bin/sample-docker" "$sample_file" "$temp_dir/sample-counter"
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   path=ARGV.fetch(0)
   abort "resource sample mode must be 0600" unless (File.stat(path).mode & 0777) == 0600
   lines=File.readlines(path)
@@ -899,7 +899,7 @@ transient_health_state="$(tail -1 "$temp_dir/runtime/runtime-state.jsonl" | ruby
   exit 1
 }
 
-ruby -e '
+ruby -E UTF-8 -e '
   rows=File.readlines(ARGV.fetch(0)).map(&:split)
   expected=%w[im-audit-server im-admin im-ops]
   abort "health sequence must cover restored management services" unless rows.map(&:first).uniq.sort == expected.sort
@@ -931,7 +931,7 @@ else
 fi
 [[ "$health_negative_status" == 124 ]] || { printf 'unhealthy restore must exit124, got %s\n' "$health_negative_status" >&2; exit 1; }
 grep -Fxq 'im-audit-server did not become healthy within 3s' "$temp_dir/health-negative.log"
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   state=JSON.parse(File.readlines(ARGV.fetch(0)).last).fetch("state")
   abort "failed health restore must retain RESTORING" unless state == "RESTORING"
   rows=File.readlines(ARGV.fetch(1)).map(&:split)

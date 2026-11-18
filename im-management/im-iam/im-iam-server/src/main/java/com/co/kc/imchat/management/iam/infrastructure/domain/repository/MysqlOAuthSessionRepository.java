@@ -7,6 +7,7 @@ import com.co.kc.imchat.common.model.page.Paging;
 import com.co.kc.imchat.common.model.page.PagingResult;
 import com.co.kc.imchat.management.iam.domain.administrator.model.AdministratorId;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientId;
+import com.co.kc.imchat.management.iam.domain.application.model.AppId;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.entity.DbIamAdministrator;
 import com.co.kc.imchat.management.iam.infrastructure.mybatis.service.DbIamAdministratorService;
 import com.co.kc.imchat.management.iam.domain.session.model.OAuthSession;
@@ -101,6 +102,11 @@ public class MysqlOAuthSessionRepository implements OAuthSessionRepository {
         authorizationService.update(revoked(revokedAt)
                 .eq(DbIamOAuthAuthorization::getOauthClientId, clientId.value())
                 .eq(DbIamOAuthAuthorization::getStatus, DbIamOAuthAuthorizationStatus.ACTIVE));
+    }
+
+    @Override
+    public void revokeAudience(AppId appId, Instant revokedAt) {
+        authorizationService.getBaseMapper().revokeAudience(appId.value(), revokedAt);
     }
 
     private LambdaUpdateWrapper<DbIamOAuthAuthorization> revoked(Instant revokedAt) {

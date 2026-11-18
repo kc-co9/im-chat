@@ -2,7 +2,7 @@
 # 用途：验证本地 infra/full Compose、初始化文件和启停脚本契约。
 # 输入：无位置参数；通过临时 fake docker/mvn 验证脚本调用，不启动真实容器。
 # 输出/副作用：读取 deploy/local，创建并清理临时命令目录，不修改业务源码或 Docker 状态。
-# 依赖：bash、docker compose、Ruby、rg、mktemp。
+# 依赖：bash、固定受审 Compose（仅 config）、Ruby、rg、mktemp；部署 fake Docker 合同不变。
 # 退出码：配置和脚本契约全部满足返回 0，否则返回非 0。
 
 set -euo pipefail
@@ -93,7 +93,7 @@ for ddl in \
 done
 
 initializer="$ROOT_DIR/deploy/local/mysql/init/00-initialize.sql"
-ruby -e '
+ruby -E UTF-8 -e '
   expected = %w[
     ddl/01-account.sql ddl/02-social.sql ddl/03-message.sql
     ddl/04-iam.sql ddl/05-audit.sql dml/06-iam-seed.sql
@@ -113,7 +113,7 @@ for seed_value in imIam imAdmin imAudit imOps \
   fi
 done
 
-compose_json="$(docker compose -f "$COMPOSE_FILE" --profile infra --profile full config --format json)"
+compose_json="$(/usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" compose-config "$ROOT_DIR" local)"
 ruby -rjson -e '
   config = JSON.parse(STDIN.read)
   services = config.fetch("services")
@@ -480,7 +480,7 @@ rg -q -- 'probe -z 127.0.0.1 18010' "$command_log"
 rg -q '^curl .*groupName=IM_CHAT_GROUP' "$command_log"
 rg -q '^curl .*groupName=DUBBO_GROUP' "$command_log"
 rg -q '^curl .*--connect-timeout 1 --max-time 1' "$command_log"
-ruby -e '
+ruby -E UTF-8 -e '
   lines = File.readlines(ARGV.fetch(0))
   removal = lines.index { |line| line.include?("rm -s -f prometheus-full") }
   port_probe = lines.index { |line| line.include?("probe -z 127.0.0.1 18010") }

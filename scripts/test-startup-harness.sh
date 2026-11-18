@@ -114,7 +114,7 @@ sed 's/classes = BetaApplication.class, //; s/BetaApplicationTest/IamAuthorizati
   "$beta_test" > "$FIXTURE_ROOT/module-b/src/test/java/example/IamAuthorizationServerProtocolTest.java"
 rm "$beta_test"
 ruby "$FIXTURE_ROOT/scripts/lib/harness-reactor-evidence.rb" startup-manifest "$FIXTURE_ROOT" "$FIXTURE_ROOT/fallback.json"
-ruby -rjson -e 'abort "IAM fallback missing" unless JSON.parse(File.read(ARGV[0]))["applications"].any? { |e| e["testClass"] == "example.IamAuthorizationServerProtocolTest" }' "$FIXTURE_ROOT/fallback.json"
+ruby -E UTF-8 -rjson -e 'abort "IAM fallback missing" unless JSON.parse(File.read(ARGV[0]))["applications"].any? { |e| e["testClass"] == "example.IamAuthorizationServerProtocolTest" }' "$FIXTURE_ROOT/fallback.json"
 sed 's/IamAuthorizationServerProtocolTest/OtherProtocolTest/g' \
   "$FIXTURE_ROOT/module-b/src/test/java/example/IamAuthorizationServerProtocolTest.java" > "$FIXTURE_ROOT/module-b/src/test/java/example/OtherProtocolTest.java"
 if ruby "$FIXTURE_ROOT/scripts/lib/harness-reactor-evidence.rb" startup-manifest "$FIXTURE_ROOT" "$FIXTURE_ROOT/fallback.json" >/dev/null 2>&1; then
@@ -140,7 +140,7 @@ for expected in 'WHAT:' 'WHY:' 'FIX:' 'BetaApplication'; do
     exit 1
   fi
 done
-ruby -e '
+ruby -E UTF-8 -e '
   path = ARGV.fetch(0)
   source = File.read(path)
   File.write(path, source.sub("@org.springframework.boot.test.context.SpringBootTest",

@@ -15,7 +15,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.context.annotation.Import;
-import com.co.kc.imchat.management.ops.infrastructure.config.beans.OpsSecurityBeans;
 import com.co.kc.imchat.plugin.web.advice.ErrorAdvice;
 import com.co.kc.imchat.plugin.web.advice.ResultAdvice;
 import com.co.kc.imchat.management.iam.sdk.security.IamSecurityExceptionHandler;
@@ -33,8 +32,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(OpsController.class)
-@Import({OpsSecurityBeans.class, ErrorAdvice.class, ResultAdvice.class,
+@WebMvcTest(controllers = OpsController.class, properties = "im.iam.enabled=false",
+        excludeFilters = @org.springframework.context.annotation.ComponentScan.Filter(
+                type = org.springframework.context.annotation.FilterType.ASSIGNABLE_TYPE,
+                classes = com.co.kc.imchat.management.ops.infrastructure.config.beans.OpsSecurityBeans.CliSecurityConfiguration.class))
+@Import({ErrorAdvice.class, ResultAdvice.class,
         IamSecurityExceptionHandler.class, OpsControllerTest.SecurityTestConfig.class})
 class OpsControllerTest {
     @Autowired
@@ -99,6 +101,7 @@ class OpsControllerTest {
     }
 
     @TestConfiguration(proxyBeanMethods = false)
+    @org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
     static class SecurityTestConfig {
 
         @Bean

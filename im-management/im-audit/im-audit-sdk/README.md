@@ -10,7 +10,7 @@
 - `@Audited` 只使用注解中显式声明的动作、目标和说明；`targetId` SpEL 使用方法声明的真实参数名，例如 `#request.clientId()` 或 `#command.userId()`；标注 `@AuditAttribute` 的参数会按参数名采集，参数对象的一层属性和成功返回值也会采集。
 - 密码、Secret、Cookie、Session/CSRF、Access/Refresh Token、授权码、签名材料、SQL 和调用栈
   不得进入属性或说明；敏感字段应在字段或 record component 上使用 `@AuditAttribute(include = false)` 显式排除。
-- 事务成功只在提交后投递；回滚不投递成功。失败事件保留并重新抛出原业务异常。
+- 切面按方法是否正常返回记录 `SUCCESS` 或 `FAILURE`，不解释返回对象的业务状态。事务成功只在提交后投递；回滚不投递成功。失败事件保留并重新抛出原业务异常。对含敏感信息的结果，应使用只含允许审计字段的返回投影，或显式排除敏感字段。
 - 收集、构造和传输失败会记录日志及有限基数指标，但不会替换业务结果。
 - 生产者一次只选择 Kafka 或异步 HTTP；两种传输不会自动回退。
 

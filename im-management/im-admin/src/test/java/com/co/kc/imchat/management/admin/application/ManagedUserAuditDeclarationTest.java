@@ -5,6 +5,7 @@ import com.co.kc.imchat.management.admin.model.cqrs.command.ManagedUserDeleteCmd
 import com.co.kc.imchat.management.admin.model.cqrs.command.ManagedUserPasswordResetCmd;
 import com.co.kc.imchat.management.admin.model.cqrs.command.ManagedUserUnbanCmd;
 import com.co.kc.imchat.management.admin.model.cqrs.command.ManagedUserUpdateCmd;
+import com.co.kc.imchat.management.audit.sdk.annotation.AuditAttribute;
 import com.co.kc.imchat.management.audit.sdk.annotation.Audited;
 import com.co.kc.imchat.management.audit.sdk.model.AuditType;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,8 @@ class ManagedUserAuditDeclarationTest {
             Method method = ManagedUserAppService.class.getMethod(
                     entry.getKey(), entry.getValue());
             Audited audited = method.getAnnotation(Audited.class);
+            assertThat(method.getParameters()[0].isAnnotationPresent(AuditAttribute.class))
+                    .as("command payload capture for %s", entry.getKey()).isFalse();
             assertThat(audited).isNotNull();
             assertThat(audited.type()).isEqualTo(AuditType.BUSINESS);
             assertThat(audited.targetType()).isEqualTo("USER");

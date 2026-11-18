@@ -119,16 +119,23 @@ public final class GatewayRouteSnapshotCoordinator implements GatewayRouteSnapsh
                                 usersByBroker.getOrDefault(brokerId, List.of())), executor))
                 .toList();
         boolean routeMoved = false;
+        CompletionException firstFailure = null;
         for (CompletableFuture<Boolean> send : sends) {
             try {
                 routeMoved |= send.join();
             } catch (CompletionException exception) {
-                Throwable cause = exception.getCause();
-                if (cause instanceof RuntimeException runtimeException) {
-                    throw runtimeException;
+                // 等本轮已提交的分片全部结束，再释放同步周期。
+                if (firstFailure == null) {
+                    firstFailure = exception;
                 }
-                throw new IllegalStateException("Gateway route snapshot send failed", cause);
             }
+        }
+        if (firstFailure != null) {
+            Throwable cause = firstFailure.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("Gateway route snapshot send failed", cause);
         }
         if (!routeMoved) {
             GatewayRouteSnapshotAckResult acknowledgement = client.acknowledge(

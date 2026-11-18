@@ -47,6 +47,12 @@ class BrokerAdmissionContractValidatorTest {
     @Test
     void controlOperationsAcceptOnlyTheirTypedRequests() {
         assertThatCode(() -> BrokerAdmissionContractValidator.validateRequestType(
+                BrokerBoltOperation.CONFIRM_MEMBERSHIP_PERMIT_DRAINED,
+                com.co.kc.imchat.broker.sdk.model.params.ConfirmMembershipPermitDrainedParams.class)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> BrokerAdmissionContractValidator.validateRequestType(
+                BrokerBoltOperation.CONFIRM_MEMBERSHIP_PERMIT_DRAINED, QuorumReadIndexParams.class))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("capability");
+        assertThatCode(() -> BrokerAdmissionContractValidator.validateRequestType(
                 BrokerBoltOperation.FETCH_QUORUM_READ_INDEX, QuorumReadIndexParams.class))
                 .doesNotThrowAnyException();
         assertThatCode(() -> BrokerAdmissionContractValidator.validateRequestType(

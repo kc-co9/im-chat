@@ -12,6 +12,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BrokerManagementHttpTransformerTest {
 
     @org.junit.jupiter.api.Test
+    void inProgressPreservesAbsentEpochsAcrossJsonBoundary() {
+        CompleteLearnerSyncResult result = new CompleteLearnerSyncResult(
+                "sync", Status.IN_PROGRESS, null, null, null, "in progress locally");
+        BrokerManagementOperationResponse response = BrokerManagementHttpTransformer.INSTANCE
+                .completeLearnerSyncResponseFrom(result);
+        com.fasterxml.jackson.databind.JsonNode json = com.co.kc.imchat.common.utils.JsonUtils.convertValue(
+                response, com.fasterxml.jackson.databind.JsonNode.class);
+        assertThat(json.path("status").asText()).isEqualTo("IN_PROGRESS");
+        assertThat(json.path("acceptedEpoch").isNull() || json.path("acceptedEpoch").isMissingNode()).isTrue();
+        assertThat(json.path("targetEpoch").isNull() || json.path("targetEpoch").isMissingNode()).isTrue();
+    }
+
+    @org.junit.jupiter.api.Test
     void mapsMillisecondsAndNullableDiagnostics() {
         java.time.Instant at = java.time.Instant.ofEpochMilli(1787446800123L);
         com.co.kc.imchat.broker.model.io.BrokerInstanceResponse instance =

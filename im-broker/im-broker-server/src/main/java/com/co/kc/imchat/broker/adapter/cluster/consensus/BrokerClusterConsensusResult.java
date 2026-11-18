@@ -31,7 +31,9 @@ public record BrokerClusterConsensusResult(
         /** 当前节点不是 leader，调用方应使用 leaderEndpoint 重试。 */
         NOT_LEADER,
         /** 集群当前不能提供可靠的提交结果。 */
-        UNAVAILABLE
+        UNAVAILABLE,
+        /** 相同请求正在本进程处理，不证明操作已经提交。 */
+        IN_PROGRESS
     }
 
     /** 当前节点不是 Leader，且附带本次读取失败的具体原因。 */
@@ -60,6 +62,12 @@ public record BrokerClusterConsensusResult(
     public static BrokerClusterConsensusResult applied(
             BrokerClusterOperation operation) {
         return new BrokerClusterConsensusResult(Status.APPLIED, operation, null, null);
+    }
+
+    /** 相同 operation 已登记；调用方根据自身用例决定是否继续推进。 */
+    public static BrokerClusterConsensusResult duplicate(
+            BrokerClusterOperation operation, String message) {
+        return new BrokerClusterConsensusResult(Status.DUPLICATE, operation, null, message);
     }
 
     public boolean accepted() {

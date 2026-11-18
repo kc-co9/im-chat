@@ -9,7 +9,8 @@ set -euo pipefail
 
 ROOT_DIR="${SQL_HARNESS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-ruby - "$ROOT_DIR" <<'RUBY'
+ruby -E UTF-8 - "$ROOT_DIR" <<'RUBY'
+# encoding: UTF-8
 root = File.expand_path(ARGV.fetch(0))
 groups = Hash.new { |hash, key| hash[key] = [] }
 

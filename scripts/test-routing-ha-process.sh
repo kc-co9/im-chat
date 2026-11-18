@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # 用途：纯 stub 验证命令组期限、取消及实际 runner 的前检/清理；不启动 Maven 或容器。
-# 输出：临时目录退出时删除；任何退出码、时间边界或进程所有权断言不符即失败。
+# 输出：临时目录退出时删除；失败输出对应模式的日志/步骤/所有权现场，变异 RED 输出到 stderr，不覆盖共享临时文件。
+#       任何退出码、时间边界或进程所有权断言不符即失败，不因诊断调整期限或预期结果。
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ruby - "$ROOT_DIR" <<'RUBY'
+ruby -E UTF-8 - "$ROOT_DIR" <<'RUBY'
+# encoding: UTF-8
 require 'tmpdir'
 require 'fileutils'
 require 'json'
@@ -149,13 +151,19 @@ Dir.mktmpdir('ha-process') do |dir|
   retirement_failures = []
   %w[read identity known unowned].each do |mode|
     state = File.join(dir,"retire-#{mode}")
+    began = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     child = Process.spawn(env.merge('ROUTING_HA_STATE_DIR'=>state,'RETIRE_MODE'=>mode,
       'ROUTING_HA_LOGS_TIMEOUT_SECONDS'=>'0.3','ROUTING_HA_DOWN_TIMEOUT_SECONDS'=>'0.3',
       'ROUTING_HA_SUPERVISOR_OVERHEAD_SECONDS'=>'0.15','ROUTING_HA_CLEANUP_GRACE_SECONDS'=>'1',
       'RUBYOPT'=>"-r#{guard} -r#{retire_guard}"),'ruby',helper,'supervise','2',retire_scene,
       out:File.join(dir,"retire-#{mode}.log"),err:[:child,:out])
     Timeout.timeout(4) { Process.wait(child) }
-    retirement_failures << "#{mode} healthy retirement returned #{$?.exitstatus}" unless $?.exitstatus == (mode == 'unowned' ? 1 : 0)
+    status = $?.exitstatus
+    unless status == (mode == 'unowned' ? 1 : 0)
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - began
+      logs = Dir.glob(File.join(state,'**','*.json*')).sort.map { |path| "#{path}: #{File.read(path)}" }
+      retirement_failures << "#{mode} healthy retirement returned #{status}; elapsed=#{elapsed}; log=#{File.read(File.join(dir,"retire-#{mode}.log"))}; state=#{logs.join("\n")}"
+    end
     if mode == 'known'
       probes = File.join(state,'probes')
       retirement_failures << 'known live group forgotten after unlink' unless File.exist?(probes) && Integer(File.read(probes)) >= 5
@@ -223,7 +231,11 @@ Dir.mktmpdir('ha-process') do |dir|
     material_path = File.join(state,'tls-path')
     if File.exist?(material_path)
       material = File.read(material_path)
-      assert(File.directory?(material) == (mode == 'down'), 'material cleanup ownership/order mismatch')
+      unless File.directory?(material) == (mode == 'down')
+        steps = File.join(state,'diagnostics/steps.jsonl')
+        ledger = File.join(state,'resources.jsonl')
+        abort "material cleanup ownership/order mismatch: mode=#{mode}; status=#{status}; material=#{material}; exists=#{File.directory?(material)}; elapsed=#{Process.clock_gettime(Process::CLOCK_MONOTONIC) - began}; runner=#{File.read(File.join(dir,'runner.log'))}; calls=#{calls}; steps=#{File.exist?(steps) ? File.read(steps) : 'missing'}; ledger=#{File.exist?(ledger) ? File.read(ledger) : 'missing'}"
+      end
       # down失败应保留私有材料；本测试只删除自身记录的新mktemp目录。
       FileUtils.remove_entry_secure(material) if mode == 'down'
     end
@@ -632,7 +644,7 @@ Dir.mktmpdir('ha-process') do |dir|
       abort "mutation survived: #{original}"
     end
   end
-  File.write('/tmp/ha-reap-budget-red.log', red_log.join("\n") + "\n")
+  warn red_log.join("\n")
   # 模拟内核在 KILL 后仍未返回 wait 状态：不得转为阻塞 wait 或清空登记。
   unreaped = File.join(dir,'unreaped-guard.rb')
   File.write(unreaped, <<~CODE)

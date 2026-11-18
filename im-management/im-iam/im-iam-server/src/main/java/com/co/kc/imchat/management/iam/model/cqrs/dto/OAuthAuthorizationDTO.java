@@ -22,7 +22,9 @@ public record OAuthAuthorizationDTO(
         OAuthCredentialDTO idToken,
         Set<String> scopes,
         OAuthAuthorizationStatus status,
-        Instant revokedAt
+        Instant revokedAt,
+        /* 本次读取的持久化版本，不随框架保存回写。 */
+        Long rowVersion
 ) {
     public OAuthAuthorizationDTO {
         scopes = scopes == null ? Set.of() : Set.copyOf(scopes);

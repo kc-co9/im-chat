@@ -1,7 +1,7 @@
 package com.co.kc.imchat.broker.infrastructure.config;
 
-import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
 import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
+import com.co.kc.imchat.broker.application.cluster.BrokerMembershipAppService;
 import com.co.kc.imchat.broker.domain.authority.service.LocalRoutingLeaseService;
 import com.co.kc.imchat.broker.domain.connection.repository.GatewayRegistry;
 import com.co.kc.imchat.broker.infrastructure.chain.BrokerRequestInterceptorChain;
@@ -14,28 +14,42 @@ import com.co.kc.imchat.broker.infrastructure.chain.interceptor.GatewayRegistrat
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.GatewayRouteAuthorizationInterceptor;
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.RouteBrokerExecutionInterceptor;
 import com.co.kc.imchat.broker.infrastructure.chain.interceptor.ServiceCallerRoleInterceptor;
+import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRaftProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerRoutingProperties;
 import com.co.kc.imchat.broker.infrastructure.config.properties.RegistryProperties;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
+import com.co.kc.imchat.broker.interfaces.handler.broker.MembershipPermitDrainedHandler;
 import com.co.kc.imchat.broker.model.properties.BrokerGossipSettings;
 import com.co.kc.imchat.broker.sdk.access.BrokerAdmissionType;
-import com.co.kc.imchat.plugin.bolt.server.BoltRequestProcessor;
+import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
 import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
+import com.co.kc.imchat.plugin.bolt.server.BoltRequestProcessor;
 import com.co.kc.imchat.plugin.bolt.spi.BoltRequestHandler;
-
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+
+
 
 /**
  * 按 operation 组装 Broker Bolt 入口：前置准入节点依次执行，业务 Handler 位于链尾。
  */
 @Configuration
 public class BrokerRequestConfiguration {
+
+    @Bean
+    public MembershipPermitDrainedHandler membershipPermitDrainedHandler(
+            BrokerMembershipAppService service,
+            BrokerProperties properties) {
+        BrokerProperties.MembershipConfirmation settings =
+                properties.getMembershipConfirmation();
+        return new MembershipPermitDrainedHandler(
+                service, settings.getMaxConcurrentWaiters(), settings.getTimeoutMs());
+    }
 
     @Bean(destroyMethod = "")
     public BoltRequestProcessor brokerBoltRequestProcessor(

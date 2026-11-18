@@ -24,6 +24,9 @@ import com.co.kc.imchat.management.iam.model.cqrs.command.OAuthAuthorizationSave
 import com.co.kc.imchat.management.iam.transformer.application.OAuthAuthorizationAppTransformer;
 import com.co.kc.imchat.management.iam.transformer.infrastructure.OAuthAuthorizationTransformer;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import com.co.kc.imchat.management.iam.infrastructure.security.oauth.attributes.OAuthAuthorizationAttributes;
+import com.co.kc.imchat.management.iam.model.cqrs.dto.OAuthAuthorizationDTO;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.OAuth2AccessToken;
@@ -95,7 +98,10 @@ class OAuthAuthorizationServiceAdapterTest {
 
         service.save(oauthAuthorization());
 
-        verify(appService).save(any(OAuthAuthorizationSaveCmd.class));
+        ArgumentCaptor<OAuthAuthorizationSaveCmd> saved = ArgumentCaptor.forClass(OAuthAuthorizationSaveCmd.class);
+        verify(appService).save(saved.capture());
+        assertThat(saved.getValue().authorizationId()).isEqualTo("authorization-1");
+        assertThat(saved.getValue().expectedRowVersion()).isNull();
     }
 
     @Test
@@ -137,6 +143,34 @@ class OAuthAuthorizationServiceAdapterTest {
         assertThat(authorization.getRefreshToken().isActive()).isFalse();
         assertThat(authorization.getToken(OAuth2AuthorizationCode.class).isActive()).isFalse();
         assertThat(authorization.getToken(OidcIdToken.class).isActive()).isFalse();
+    }
+
+    @Test
+    void originalReadVersionSurvivesFrameworkCopyAndSuccessfulSaveWithoutRebase() {
+        OAuthAuthorizationAppService appService = mock(OAuthAuthorizationAppService.class);
+        RegisteredClientRepository clients = mock(RegisteredClientRepository.class);
+        Sha256OAuthTokenDigester digester = new Sha256OAuthTokenDigester();
+        OAuthAuthorization stored = revokedAuthorization(digester);
+        stored.setRowVersion(9L);
+        OAuthAuthorizationDTO snapshot = OAuthAuthorizationAppTransformer.INSTANCE.oauthAuthorizationDtoFrom(stored);
+        assertThat(snapshot.rowVersion()).isEqualTo(9L);
+        when(appService.queryById(any())).thenReturn(Optional.of(snapshot));
+        RegisteredClient client = oauthClient(stored.getClientId().value());
+        when(clients.findById(client.getId())).thenReturn(client);
+        OAuthAuthorizationServiceAdapter adapter = service(appService, clients, digester);
+
+        OAuth2Authorization read = adapter.findById(stored.getId().value());
+        stored.setRowVersion(10L);
+        OAuth2Authorization copied = OAuth2Authorization.from(read).build();
+        adapter.save(copied);
+
+        ArgumentCaptor<OAuthAuthorizationSaveCmd> saved = ArgumentCaptor.forClass(OAuthAuthorizationSaveCmd.class);
+        verify(appService).save(saved.capture());
+        assertThat(saved.getValue().expectedRowVersion()).isEqualTo(9L);
+        assertThat(saved.getValue().status()).isEqualTo(OAuthAuthorizationStatus.REVOKED);
+        assertThat((Long) read.getAttribute(OAuthAuthorizationAttributes.ROW_VERSION)).isEqualTo(9L);
+        assertThat((Long) copied.getAttribute(OAuthAuthorizationAttributes.ROW_VERSION)).isEqualTo(9L);
+        assertThat(snapshot.rowVersion()).isEqualTo(9L);
     }
 
     @Test
@@ -182,6 +216,7 @@ class OAuthAuthorizationServiceAdapterTest {
                 .scopes(scopes)
                 .status(OAuthAuthorizationStatus.ACTIVE)
                 .build();
+        stored.setRowVersion(7L);
         RegisteredClient client = browserClient(stored.getClientId().value());
         when(appService.queryByToken(any())).thenReturn(Optional.of(
                 OAuthAuthorizationAppTransformer.INSTANCE.oauthAuthorizationDtoFrom(stored)));
@@ -202,6 +237,7 @@ class OAuthAuthorizationServiceAdapterTest {
                 .containsEntry("appKey", "imAudit");
         assertThat(authorization.getToken(OAuth2AuthorizationCode.class).getToken().getTokenValue())
                 .isNotEqualTo(RAW_ACCESS_TOKEN);
+        assertThat((Long) authorization.getAttribute(OAuthAuthorizationAttributes.ROW_VERSION)).isEqualTo(7L);
     }
 
     private OAuthAuthorizationServiceAdapter service(
@@ -218,12 +254,42 @@ class OAuthAuthorizationServiceAdapterTest {
                 tokenDigester);
     }
 
+    @Test
+    void invalidatedAccessTokenMapsToRevokedAuthorization() {
+        OAuth2Authorization authorization = OAuth2Authorization.from(oauthAuthorization())
+                .token(new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER,
+                        "revoked-access", NOW.minusSeconds(60), NOW.plusSeconds(300)),
+                        metadata -> metadata.put(OAuth2Authorization.Token.INVALIDATED_METADATA_NAME, true))
+                .build();
+        OAuthAuthorizationSaveCmd command = new OAuthAuthorizationTransformer(
+                new Sha256OAuthTokenDigester(), Clock.fixed(NOW, ZoneOffset.UTC))
+                .saveCommandFrom(authorization);
+
+        assertThat(command.status()).isEqualTo(OAuthAuthorizationStatus.REVOKED);
+        assertThat(command.revokedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void consumedCodeDoesNotRevokeAuthorization() {
+        OAuth2Authorization authorization = OAuth2Authorization.from(oauthAuthorization())
+                .token(new OAuth2AuthorizationCode("consumed-code", NOW.minusSeconds(60), NOW.plusSeconds(60)),
+                        metadata -> metadata.put(OAuth2Authorization.Token.INVALIDATED_METADATA_NAME, true))
+                .build();
+        OAuthAuthorizationSaveCmd command = new OAuthAuthorizationTransformer(
+                new Sha256OAuthTokenDigester(), Clock.fixed(NOW, ZoneOffset.UTC))
+                .saveCommandFrom(authorization);
+
+        assertThat(command.status()).isEqualTo(OAuthAuthorizationStatus.ACTIVE);
+        assertThat(command.revokedAt()).isNull();
+        assertThat(command.authorizationCode().usedAt()).isEqualTo(NOW);
+    }
+
     private OAuthAuthorization revokedAuthorization(
             Sha256OAuthTokenDigester tokenDigester
     ) {
         Instant issuedAt = Instant.parse("2020-01-01T00:00:00Z");
         Instant expiresAt = Instant.parse("2030-01-01T00:00:00Z");
-        return OAuthAuthorization.builder()
+        OAuthAuthorization authorization = OAuthAuthorization.builder()
                 .id(new OAuthAuthorizationId("authorization-1"))
                 .appId(new AppId(1L))
                 .clientId(new OAuthClientId("audit-producer"))
@@ -246,6 +312,8 @@ class OAuthAuthorizationServiceAdapterTest {
                 .status(OAuthAuthorizationStatus.REVOKED)
                 .revokedAt(NOW.minusSeconds(60))
                 .build();
+        authorization.setRowVersion(3L);
+        return authorization;
     }
 
     private OAuth2Authorization oauthAuthorization() {

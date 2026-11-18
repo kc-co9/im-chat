@@ -11,7 +11,7 @@ public record CommitBrokerOperationCommand(
         ClusterOperationId operationId,
         /* 本次提交必须匹配的命令摘要。 */
         String commandDigest,
-        /* Begin 接收时冻结的 revision。 */
+        /* 原生成员变更使用当前 revision；其余分支使用 Begin 接收时 revision。 */
         ClusterRevision expectedRevision,
         /* 本次提交的领域事实时间。 */
         Instant changedAt) implements BrokerClusterConsensusCommand {

@@ -1,5 +1,9 @@
 package com.co.kc.imchat.management.iam.transformer.interfaces;
 
+import com.co.kc.imchat.management.iam.model.enums.IamOAuthClientTypeEnum;
+
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientType;
+
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientStatus;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthGrantType;
 import com.co.kc.imchat.management.iam.model.cqrs.dto.OAuthClientListDTO;
@@ -16,7 +20,7 @@ class OAuthClientHttpTransformerTest {
     @Test
     void mapsCompleteClientListResponseWithoutSensitiveFields() {
         OAuthClientListDTO client = new OAuthClientListDTO(
-                "im-admin-web",
+                "im-admin-web", OAuthClientType.CONFIDENTIAL,
                 9_007_199_254_740_993L,
                 9_007_199_254_740_994L,
                 "imAdmin",
@@ -31,7 +35,7 @@ class OAuthClientHttpTransformerTest {
                 OAuthClientHttpTransformer.INSTANCE.listResponseFrom(client);
 
         assertThat(response).isEqualTo(new OAuthClientListResponse(
-                "im-admin-web",
+                "im-admin-web", IamOAuthClientTypeEnum.CONFIDENTIAL,
                 9_007_199_254_740_993L,
                 9_007_199_254_740_994L,
                 "imAdmin",

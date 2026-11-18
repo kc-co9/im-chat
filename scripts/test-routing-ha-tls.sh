@@ -3,7 +3,8 @@
 # 输出：仅通过标记；材料位于新建0700临时目录，退出时删除，任一正反断言失败即非零。
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-ruby - "$ROOT_DIR" <<'RUBY'
+ruby -E UTF-8 - "$ROOT_DIR" <<'RUBY'
+# encoding: UTF-8
 require 'tmpdir'
 require 'fileutils'
 root = ARGV.fetch(0)

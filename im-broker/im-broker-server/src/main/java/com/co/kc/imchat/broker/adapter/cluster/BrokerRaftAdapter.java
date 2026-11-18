@@ -1,7 +1,14 @@
 package com.co.kc.imchat.broker.adapter.cluster;
 
+import java.util.stream.Collectors;
+
+import com.co.kc.imchat.broker.adapter.cluster.membership.MembershipConfigurationResult;
+import com.co.kc.imchat.broker.transformer.adapter.BrokerMembershipTransformer;
+import com.co.kc.imchat.plugin.raft.model.RaftConfiguration;
+import com.co.kc.imchat.broker.model.cqrs.command.RegisterMembershipPermitCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.ConfirmMembershipPermitDrainedCommand;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
-import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerConsensusMembershipResult;
+import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerMembershipPermitDrain;
 import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantRequest;
 import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantResult;
 import com.co.kc.imchat.broker.domain.authority.model.QuorumRead;
@@ -29,10 +36,8 @@ import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.support.raft.codec.BrokerClusterCommandCodec;
 import com.co.kc.imchat.broker.support.raft.statemachine.RaftBrokerClusterStateMachine;
 import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterRaftTransformer;
-import com.co.kc.imchat.broker.transformer.adapter.BrokerClusterStateTransformer;
 import com.co.kc.imchat.common.utils.GeneratorUtils;
 import com.co.kc.imchat.plugin.raft.core.RaftRuntime;
-import com.co.kc.imchat.plugin.raft.model.RaftMembership;
 import com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership;
 import com.co.kc.imchat.plugin.raft.model.RaftNodeSettings;
 import com.co.kc.imchat.plugin.raft.model.RaftResult;
@@ -64,6 +69,7 @@ public final class BrokerRaftAdapter implements AutoCloseable {
     private final RaftBrokerClusterStateMachine clusterStateMachine;
     private final RaftRuntime<BrokerClusterConsensusCommand, BrokerClusterConsensusResult> raftRuntime;
     private final RoutingLeaseGrantService routingLeaseGrantService;
+    /** JRaft 成员配置的唯一串行执行入口。 */
     /**
      * -- GETTER --
      * 返回本机 Broker 查询视图；视图复用唯一 Raft Runtime，不缓存动态角色。
@@ -77,7 +83,8 @@ public final class BrokerRaftAdapter implements AutoCloseable {
     public BrokerRaftAdapter(
             BrokerRaftProperties properties,
             BrokerClusterState clusterState,
-            RoutingLeaseGrantService routingLeaseGrantService) throws IOException {
+            RoutingLeaseGrantService routingLeaseGrantService,
+            com.co.kc.imchat.plugin.raft.spi.RaftRoleListener roleListener) throws IOException {
         properties.validate();
         this.clusterId = new BrokerClusterId(properties.getClusterId());
         this.routingLeaseGrantService = routingLeaseGrantService;
@@ -97,7 +104,7 @@ public final class BrokerRaftAdapter implements AutoCloseable {
                 .commandTimeoutMillis(properties.getCommandTimeoutMs())
                 .snapshotFileName(SNAPSHOT_FILE)
                 .build();
-        this.raftRuntime = new RaftRuntime<>(settings, BrokerClusterCommandCodec.INSTANCE, clusterStateMachine);
+        this.raftRuntime = new RaftRuntime<>(settings, BrokerClusterCommandCodec.INSTANCE, clusterStateMachine, roleListener);
         this.localBroker = new LocalBroker(raftRuntime);
     }
 
@@ -106,6 +113,27 @@ public final class BrokerRaftAdapter implements AutoCloseable {
      */
     public String getLeaderEndpoint() {
         return raftRuntime.leaderEndpoint();
+    }
+
+    /**
+     * 无 Node 访问的跟随事件观察，仅供成员请求的无副作用拒绝。
+     */
+    public FollowingObservation getFollowingObservation() {
+        RaftRuntime.Following following = raftRuntime.followingObservation();
+        return following == null ? null : new FollowingObservation(following.leaderEndpoint(), following.generation());
+    }
+
+    /**
+     * Adapter自有跟随事件观察，只用于无副作用拒绝，不提供Node或quorum证明。
+     */
+    public record FollowingObservation(String leaderEndpoint, long generation) {
+    }
+
+    /**
+     * 返回已初始化本机 Raft Node 的完整身份，供首次服务注册发布。
+     */
+    public String getLocalRaftPeerId() {
+        return raftRuntime.localPeerId();
     }
 
     /**
@@ -121,6 +149,23 @@ public final class BrokerRaftAdapter implements AutoCloseable {
     public CompletionStage<QuorumRead> confirmLeadership(QuorumReadNonce nonce) {
         return raftRuntime.confirmLeadership(nonce.value().getBytes(StandardCharsets.UTF_8))
                 .thenApply(read -> new QuorumRead(new LeaderTerm(read.term()), new QuorumReadIndex(read.index())));
+    }
+
+    /**
+     * 仅为完整成员许可排空 CAS 取得读取事实，不用于 lease 或 learner。
+     */
+    public CompletionStage<BrokerMembershipPermitDrain> confirmMembershipPermitDrain(QuorumReadNonce nonce) {
+        return raftRuntime.confirmMembershipPermitDrain(nonce.value().getBytes(StandardCharsets.UTF_8))
+                .thenApply(read -> new BrokerMembershipPermitDrain(new LeaderTerm(read.term()), read.generation(), new QuorumReadIndex(read.index())));
+    }
+
+    /**
+     * 消费专用 drain 事实时复验本机角色；仅在成员 worker 调用。
+     */
+    public boolean isMembershipPermitDrainCurrent(BrokerMembershipPermitDrain proof) {
+        RaftRuntime.Role current = raftRuntime.roleObservation();
+        return !raftRuntime.roleFault().faulted() && current.term() == proof.leaderTerm().value()
+                && current.generation() == proof.generation();
     }
 
     /**
@@ -189,12 +234,14 @@ public final class BrokerRaftAdapter implements AutoCloseable {
     }
 
     /**
-     * 记录单步成员配置的明确拒绝，阶段资格仍由聚合核对。
+     * 原生成员步骤全部成功排空后，以当前 revision 提交业务拓扑。
      */
-    public CompletionStage<BrokerClusterConsensusResult> failMembershipOperation(
-            BrokerClusterOperation operation, BrokerConsensusMembershipResult membership) {
-        return submitCommand(BrokerClusterRaftTransformer.INSTANCE.membershipFailureCommandFrom(operation, membership, Instant.now()));
+    public CompletionStage<BrokerClusterConsensusResult> commitOperation(
+            BrokerClusterOperation operation, ClusterRevision currentRevision) {
+        return submitCommand(BrokerClusterRaftTransformer.INSTANCE.commitCommandFrom(
+                operation, currentRevision, Instant.now()));
     }
+
 
     /**
      * 成员拓扑已提交后登记成功终态；不执行成员配置变更。
@@ -283,88 +330,59 @@ public final class BrokerRaftAdapter implements AutoCloseable {
     }
 
     /**
-     * 读取 Raft 当前成员配置，不能替代 Broker 路由拓扑的 committedState。
+     * Leader 诊断列表，不表示原子稳定配置或许可排空事实。
      */
-    public ConsensusMembership getConsensusMembership() {
-        return BrokerClusterStateTransformer.INSTANCE.consensusMembershipFrom(raftRuntime.membership());
+    public ConsensusMembership readLeaderMembershipConfiguration() {
+        RaftConfiguration configuration = raftRuntime.leaderConfiguration();
+        return new ConsensusMembership(configuration.voters().stream().map(MembershipEndpoint::new)
+                .collect(Collectors.toSet()),
+                configuration.learners().stream().map(MembershipEndpoint::new)
+                        .collect(Collectors.toSet()));
     }
 
     /**
-     * 幂等加入 learner；已有 voter 明确拒绝，已有 learner 返回重复成功。
+     * 登记已在本机预留的执行身份；最终资格仍由 FSM CAS 核对。
      */
-    public CompletionStage<BrokerConsensusMembershipResult> addLearner(MembershipEndpoint endpoint) {
-        RaftMembership membership = raftRuntime.membership();
-        if (membership.voters().contains(endpoint.value())) {
-            return CompletableFuture.completedFuture(BrokerConsensusMembershipResult.rejected(
-                    getLeaderEndpoint(), "endpoint is already a voter"));
-        }
-        if (membership.learners().contains(endpoint.value())) {
-            return CompletableFuture.completedFuture(BrokerConsensusMembershipResult.duplicate(getLeaderEndpoint(), "endpoint is already a learner"));
-        }
-        return raftRuntime.addLearner(endpoint.value()).thenApply(BrokerClusterRaftTransformer.INSTANCE::membershipResultFrom);
+    public CompletionStage<BrokerClusterConsensusResult> registerMembershipPermit(
+            RegisterMembershipPermitCommand command) {
+        return submitCommand(command);
     }
 
     /**
-     * 先移除 learner 再加入 voter；只完成第一步时重试从当前配置继续。
+     * 提交精确排空事实，不等待本机执行器，不触发原生配置。
      */
-    public CompletionStage<BrokerConsensusMembershipResult> promoteLearner(MembershipEndpoint endpoint) {
-        RaftMembership membership = raftRuntime.membership();
-        if (membership.voters().contains(endpoint.value())) {
-            return CompletableFuture.completedFuture(BrokerConsensusMembershipResult.duplicate(
-                    getLeaderEndpoint(), "endpoint is already a voter"));
-        }
-        if (!membership.learners().contains(endpoint.value())) {
-            return raftRuntime.addVoter(endpoint.value()).thenApply(BrokerClusterRaftTransformer.INSTANCE::membershipResultFrom);
-        }
-        // 首步成功、次步失败时不回滚已提交配置；重试走上面的缺失 learner 分支。
-        return raftRuntime.removeLearner(endpoint.value())
-                .thenApply(BrokerClusterRaftTransformer.INSTANCE::membershipResultFrom)
-                .thenCompose(result -> {
-                    if (!result.accepted()) {
-                        return CompletableFuture.completedFuture(result);
-                    }
-                    return raftRuntime.addVoter(endpoint.value())
-                            .thenApply(BrokerClusterRaftTransformer.INSTANCE::membershipResultFrom);
-                });
+    public CompletionStage<BrokerClusterConsensusResult> confirmMembershipPermitDrained(
+            ConfirmMembershipPermitDrainedCommand command) {
+        return submitCommand(command);
     }
 
     /**
-     * 先移除 voter 再加入 learner；只完成第一步时重试补齐第二步。
+     * 仅由专用成员工作线程同步进入；返回真实完成观察，不附请求超时。
      */
-    public CompletionStage<BrokerConsensusMembershipResult> demoteVoter(MembershipEndpoint endpoint) {
-        RaftMembership membership = raftRuntime.membership();
-        if (membership.learners().contains(endpoint.value())) {
-            return CompletableFuture.completedFuture(BrokerConsensusMembershipResult.duplicate(getLeaderEndpoint(), "endpoint is already a learner"));
-        }
-        if (!membership.voters().contains(endpoint.value())) {
-            return raftRuntime.addLearner(endpoint.value()).thenApply(BrokerClusterRaftTransformer.INSTANCE::membershipResultFrom);
-        }
-        // 首步成功、次步失败时不伪造整体成功；重试按当前配置补加入 learner。
-        return raftRuntime.removeVoter(endpoint.value())
-                .thenApply(BrokerClusterRaftTransformer.INSTANCE::membershipResultFrom)
-                .thenCompose(result -> {
-                    if (!result.accepted()) {
-                        return CompletableFuture.completedFuture(result);
-                    }
-                    return raftRuntime.addLearner(endpoint.value())
-                            .thenApply(BrokerClusterRaftTransformer.INSTANCE::membershipResultFrom);
-                });
+    public CompletionStage<MembershipConfigurationResult> changeMembershipConfiguration(
+            ConsensusMembership target) {
+        CompletableFuture<MembershipConfigurationResult> result = new CompletableFuture<>();
+        invokeMembershipConfiguration(target, result);
+        return result.minimalCompletionStage();
     }
 
-    /**
-     * 按当前角色移除 Raft 成员；已不存在视为重复完成，不改 Broker 路由拓扑。
-     */
-    public CompletionStage<BrokerConsensusMembershipResult> removeMember(MembershipEndpoint endpoint) {
-        RaftMembership membership = raftRuntime.membership();
-        if (membership.voters().contains(endpoint.value())) {
-            return raftRuntime.removeVoter(endpoint.value()).thenApply(BrokerClusterRaftTransformer.INSTANCE::membershipResultFrom);
+    /** 在成员执行器中调用 JRaft；调用方不获得线程资源或 native 调用控制权。 */
+    private void invokeMembershipConfiguration(
+            ConsensusMembership target, CompletableFuture<MembershipConfigurationResult> result) {
+        try {
+            raftRuntime.changeConfiguration(new RaftConfiguration(
+                    target.voters().stream().map(MembershipEndpoint::value).toList(),
+                    target.learners().stream().map(MembershipEndpoint::value).toList()))
+                    .whenComplete((value, failure) -> {
+                        if (failure == null) {
+                            result.complete(BrokerMembershipTransformer.INSTANCE.membershipConfigurationResultFrom(value));
+                        } else {
+                            result.completeExceptionally(failure);
+                        }
+                    });
+        } catch (RuntimeException failure) {
+            result.completeExceptionally(failure);
         }
-        if (membership.learners().contains(endpoint.value())) {
-            return raftRuntime.removeLearner(endpoint.value())
-                    .thenApply(BrokerClusterRaftTransformer.INSTANCE::membershipResultFrom);
-        }
-        return CompletableFuture.completedFuture(BrokerConsensusMembershipResult.duplicate(
-                getLeaderEndpoint(), "endpoint is not a consensus member"));
     }
 
     /**

@@ -3,14 +3,18 @@ package com.co.kc.imchat.management.ops.infrastructure.discovery;
 import com.co.kc.imchat.management.ops.infrastructure.config.properties.OpsBrokerProperties;
 import com.co.kc.imchat.management.ops.domain.model.BrokerManagementEndpoint;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.cloud.client.DefaultServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class NacosBrokerDiscoveryTest {
 
@@ -66,6 +70,116 @@ class NacosBrokerDiscoveryTest {
                 .singleElement()
                 .extracting(endpoint -> endpoint.baseUri().toString())
                 .isEqualTo("http://[::1]:12201");
+    }
+
+    @Test
+    void differentPriorityTextRejectsLeaderPair() {
+        DiscoveryClient discoveryClient = mock(DiscoveryClient.class);
+        DefaultServiceInstance leader = instance("broker-2", "127.0.0.1", 18021);
+        leader.getMetadata().put("management-host", "127.0.0.1");
+        leader.getMetadata().put("management-port", "19021");
+        leader.getMetadata().put("raft-peer-id", "127.0.0.1:18121:2:10");
+        when(discoveryClient.getInstances("im-broker")).thenReturn(List.of(leader));
+
+        assertThatThrownBy(() -> new NacosBrokerDiscovery(discoveryClient, new OpsBrokerProperties())
+                .resolveLeader("127.0.0.1:18121:2:20"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Broker returned an untrusted Leader hint");
+    }
+
+    @Test
+    void equivalentIpv6AddressWithDifferentTextRejectsLeaderPair() {
+        DiscoveryClient discoveryClient = mock(DiscoveryClient.class);
+        DefaultServiceInstance leader = instance("broker-v6", "::1", 18021);
+        leader.getMetadata().put("management-host", "::1");
+        leader.getMetadata().put("management-port", "19021");
+        leader.getMetadata().put("raft-peer-id", "[::1]:18121:2");
+        when(discoveryClient.getInstances("im-broker")).thenReturn(List.of(leader));
+
+        assertThatThrownBy(() -> new NacosBrokerDiscovery(discoveryClient, new OpsBrokerProperties())
+                .resolveLeader("[0:0:0:0:0:0:0:1]:18121:2"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Broker returned an untrusted Leader hint");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {" 127.0.0.1:18121:2", "127.0.0.1:18121:2 ",
+            "127.0.0.1:\t18121:2", "127.0.0.1:18121:2\n", "127.0.0.1:18121:2\u0001"})
+    void whitespaceOrControlHintRejectsBeforeDiscoveryEvenWhenMetadataMatches(String hint) {
+        DiscoveryClient discoveryClient = mock(DiscoveryClient.class);
+        DefaultServiceInstance leader = instance("broker-2", "127.0.0.1", 18021);
+        leader.getMetadata().put("management-host", "127.0.0.1");
+        leader.getMetadata().put("management-port", "19021");
+        leader.getMetadata().put("raft-peer-id", hint);
+        when(discoveryClient.getInstances("im-broker")).thenReturn(List.of(leader));
+
+        assertThatThrownBy(() -> new NacosBrokerDiscovery(discoveryClient, new OpsBrokerProperties())
+                .resolveLeader(hint))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Broker returned an invalid Leader hint");
+        verifyNoInteractions(discoveryClient);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"not-a-port", "0", "65536", ""})
+    void matchingPeerIdWithInvalidManagementPortRejectsLeaderPair(String port) {
+        DiscoveryClient discoveryClient = mock(DiscoveryClient.class);
+        DefaultServiceInstance leader = instance("broker-2", "127.0.0.1", 18021);
+        leader.getMetadata().put("management-host", "127.0.0.1");
+        leader.getMetadata().put("management-port", port);
+        leader.getMetadata().put("raft-peer-id", "127.0.0.1:18121:2");
+        when(discoveryClient.getInstances("im-broker")).thenReturn(List.of(leader));
+
+        assertThatThrownBy(() -> new NacosBrokerDiscovery(discoveryClient, new OpsBrokerProperties())
+                .resolveLeader("127.0.0.1:18121:2"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Broker returned an untrusted Leader hint");
+    }
+
+    @Test
+    void unrelatedMissingMetadataDoesNotBlockUniqueLeaderPair() {
+        DiscoveryClient discoveryClient = mock(DiscoveryClient.class);
+        DefaultServiceInstance unrelated = instance("broker-legacy", "127.0.0.1", 18020);
+        DefaultServiceInstance leader = instance("broker-2", "127.0.0.1", 18021);
+        leader.getMetadata().put("management-host", "127.0.0.1");
+        leader.getMetadata().put("management-port", "19021");
+        leader.getMetadata().put("raft-peer-id", "127.0.0.1:18121:2");
+        when(discoveryClient.getInstances("im-broker")).thenReturn(List.of(unrelated, leader));
+
+        assertThat(new NacosBrokerDiscovery(discoveryClient, new OpsBrokerProperties())
+                .resolveLeader("127.0.0.1:18121:2"))
+                .isEqualTo(new BrokerManagementEndpoint(
+                        "broker-2", java.net.URI.create("http://127.0.0.1:19021"), null));
+    }
+
+    @Test
+    void trustedHttpOriginResolvesWithoutPeerIdMetadata() {
+        DiscoveryClient discoveryClient = mock(DiscoveryClient.class);
+        DefaultServiceInstance leader = instance("broker-2", "127.0.0.1", 18021);
+        leader.getMetadata().put("management-host", "127.0.0.1");
+        leader.getMetadata().put("management-port", "19021");
+        when(discoveryClient.getInstances("im-broker")).thenReturn(List.of(leader));
+
+        assertThat(new NacosBrokerDiscovery(discoveryClient, new OpsBrokerProperties())
+                .resolveLeader("http://127.0.0.1:19021"))
+                .isEqualTo(new BrokerManagementEndpoint(
+                        "broker-2", java.net.URI.create("http://127.0.0.1:19021"), null));
+    }
+
+    @Test
+    void unknownHttpOriginDoesNotFallBackToMatchingPeerId() {
+        DiscoveryClient discoveryClient = mock(DiscoveryClient.class);
+        String hint = "http://untrusted.example:19020";
+        DefaultServiceInstance leader = instance("broker-2", "127.0.0.1", 18021);
+        leader.getMetadata().put("management-host", "127.0.0.1");
+        leader.getMetadata().put("management-port", "19021");
+        leader.getMetadata().put("raft-peer-id", hint);
+        when(discoveryClient.getInstances("im-broker")).thenReturn(List.of(leader));
+
+        assertThatThrownBy(() -> new NacosBrokerDiscovery(discoveryClient, new OpsBrokerProperties())
+                .resolveLeader(hint))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Broker returned an untrusted Leader hint");
     }
 
     private DefaultServiceInstance instance(String id, String host, int port) {

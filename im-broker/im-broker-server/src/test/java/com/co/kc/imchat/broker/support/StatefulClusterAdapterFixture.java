@@ -8,10 +8,7 @@ import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
 import com.co.kc.imchat.broker.adapter.cluster.BrokerRaftAdapter;
 import com.co.kc.imchat.broker.adapter.cluster.BrokerPeerAdapter;
 import com.co.kc.imchat.broker.support.raft.statemachine.RaftBrokerClusterStateMachine;
-import com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership;
-import com.co.kc.imchat.broker.adapter.cluster.membership.BrokerConsensusMembershipResult;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
-import com.co.kc.imchat.common.domain.cluster.model.MembershipEndpoint;
 import com.co.kc.imchat.broker.domain.authority.model.QuorumRead;
 import com.co.kc.imchat.broker.domain.authority.service.RoutingLeaseGrantService;
 import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
@@ -63,39 +60,9 @@ public final class StatefulClusterAdapterFixture {
                     BrokerClusterRaftTransformer.INSTANCE.commitCommandFrom(
                             operation, changedAt)));
         }).when(adapter).commitOperation(any());
-        doAnswer(ignored -> membership()).when(adapter).getConsensusMembership();
         doAnswer(ignored -> CompletableFuture.completedFuture(new QuorumRead(term(1), readIndex(1))))
                 .when(adapter).confirmLeadership(any(QuorumReadNonce.class));
-        doAnswer(invocation -> {
-            learners.add(((MembershipEndpoint) invocation.getArgument(0)).value());
-            return applied();
-        }).when(adapter).addLearner(any(MembershipEndpoint.class));
-        doAnswer(invocation -> {
-            String endpoint = ((MembershipEndpoint) invocation.getArgument(0)).value();
-            learners.remove(endpoint);
-            voters.add(endpoint);
-            return applied();
-        }).when(adapter).promoteLearner(any(MembershipEndpoint.class));
-        doAnswer(invocation -> {
-            String endpoint = ((MembershipEndpoint) invocation.getArgument(0)).value();
-            voters.remove(endpoint);
-            learners.add(endpoint);
-            return applied();
-        }).when(adapter).demoteVoter(any(MembershipEndpoint.class));
-        doAnswer(invocation -> {
-            String endpoint = ((MembershipEndpoint) invocation.getArgument(0)).value();
-            voters.remove(endpoint);
-            learners.remove(endpoint);
-            return applied();
-        }).when(adapter).removeMember(any(MembershipEndpoint.class));
+
     }
 
-    private ConsensusMembership membership() {
-        return new ConsensusMembership(voters.stream().map(MembershipEndpoint::new).collect(java.util.stream.Collectors.toSet()),
-                learners.stream().map(MembershipEndpoint::new).collect(java.util.stream.Collectors.toSet()));
-    }
-
-    private CompletableFuture<BrokerConsensusMembershipResult> applied() {
-        return CompletableFuture.completedFuture(new BrokerConsensusMembershipResult(BrokerConsensusMembershipResult.Status.APPLIED, null, null));
-    }
 }

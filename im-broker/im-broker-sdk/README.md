@@ -2,6 +2,12 @@
 
 `im-broker-sdk` 定义 Broker 的内部调用契约和默认客户端，不包含 Broker 服务端、Registry 或 Handler 实现。
 
+## 成员许可排空确认契约
+
+`CONFIRM_MEMBERSHIP_PERMIT_DRAINED` 是专用 typed CONTROL，使用 `ConfirmMembershipPermitDrainedParams` 和 `MembershipPermitDrainedResult`；结果位于 `sdk.model.result`，不属于 Request/Response 模型。请求绑定 cluster、caller、receiver、operation、step、permit、executor、incarnation、targetDigest 和已知结果；远程仅允许精确 MTLS BROKER 身份，DEV/TRUSTED_NETWORK 不可生成排空证明。自移除持有者仅凭存储的精确许可获得确认权限，不扩大其他 CONTROL 权限。
+
+响应区分 `COMMITTED`、`DUPLICATE`、`NOT_LEADER`、`REJECTED` 和 `UNKNOWN`。超时或 UNKNOWN 不证明未提交，只允许向当前 Leader 重投同一许可和同一结果，不授权再次执行原生配置。SDK 只定义契约，不创建本地执行能力或决定排空。
+
 ## 接入顺序
 
 调用方通过 SDK 取得用户的 RouteBroker，不自行轮询 Broker 或广播业务帧。以三 Broker A/B/C 为例：即使 A 是 Leader，只要用户被分配给 B，Gateway 的连接更新和 Message 的下行都直达 B。SDK 缓存的只是已提交集群投影，不是用户在线表；真正的连接仍在 Gateway。

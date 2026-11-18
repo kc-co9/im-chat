@@ -75,7 +75,7 @@ class IamIntrospectionServiceTest {
         when(client.introspect(TOKEN)).thenReturn(new IamIntrospectionResult(
                 true, 1L, "root", "imAdmin", "im-admin-client",
                 Set.of("imOps"),
-                Set.of("ops.overview.read"), NOW.plusSeconds(900)));
+                Set.of("ops.overview.read"), NOW.plusSeconds(900), "ADMINISTRATOR", Set.of()));
 
         assertThat(service(client, cache).introspect(TOKEN, NOW).active()).isFalse();
         verify(cache).remove(TOKEN, "imAdmin");
@@ -104,6 +104,6 @@ class IamIntrospectionServiceTest {
                 "im-admin-client",
                 Set.of("imAdmin"),
                 Set.of("admin.user.read"),
-                NOW.plusSeconds(900));
+                NOW.plusSeconds(900), "ADMINISTRATOR", Set.of());
     }
 }

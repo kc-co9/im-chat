@@ -7,10 +7,24 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 
 class ModuleBoundaryTest {
     private static final JavaClasses CLASSES = new ClassFileImporter()
             .importPackages("com.co.kc.imchat");
+
+    @Test
+    void brokerClusterExecutionMustNotDependOnApplicationWorkflows() {
+        JavaClasses executionClasses = new ClassFileImporter().importPath(repoRoot().resolve(
+                "im-broker/im-broker-server/target/classes/com/co/kc/imchat/broker/adapter/cluster/membership"));
+        noClasses().should().dependOnClassesThat().resideInAnyPackage(
+                        "com.co.kc.imchat.broker.application..",
+                        "com.co.kc.imchat.broker.model.cqrs..",
+                        "com.co.kc.imchat.broker.sdk..",
+                        "com.co.kc.imchat.plugin.raft.core..",
+                        "com.co.kc.imchat.plugin.raft.model..")
+                .check(executionClasses);
+    }
 
     @Test
     void commonMustNotDependOnRuntimeModules() {
@@ -62,6 +76,19 @@ class ModuleBoundaryTest {
                         "com.co.kc.imchat.gateway..",
                         "com.co.kc.imchat.service..")
                 .check(raftClasses);
+    }
+
+    @Test
+    void opsCliDependsOnlyOnJdkJacksonAndCommonJsonContracts() {
+        JavaClasses cliClasses = new ClassFileImporter().importPath(repoRoot().resolve(
+                "im-management/im-ops-cli/target/classes"));
+        classes()
+                .that().resideInAPackage("com.co.kc.imchat.management.ops.cli..")
+                .should().onlyDependOnClassesThat().resideInAnyPackage(
+                        "com.co.kc.imchat.management.ops.cli..",
+                        "com.co.kc.imchat.common.utils..",
+                        "java..", "javax..", "com.fasterxml.jackson..")
+                .check(cliClasses);
     }
 
     @Test

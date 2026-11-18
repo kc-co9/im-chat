@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 用途：扫描 Java 生产源码中的稳定结构反模式和模块边界违规。
+# 用途：扫描普通及 annotation processor 生成 Java 的 package／路径所有权，并检查普通源码结构和模块边界。
 # 输入：可选仓库根目录，默认脚本父目录；测试 Harness 可传入隔离 fixture 根目录。
 # 输出/副作用：按规则分组输出文件与修复方向；只读扫描，不修改源码。
 # 依赖：Ruby 标准库、Maven POM/XML 与项目约定的 Java 包结构。
@@ -9,7 +9,8 @@ set -euo pipefail
 
 ROOT_DIR="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-ruby - "$ROOT_DIR" <<'RUBY'
+ruby -E UTF-8 - "$ROOT_DIR" <<'RUBY'
+# encoding: UTF-8
 root = ARGV.fetch(0)
 violations = []
 application_scalar_violations = []
@@ -23,6 +24,41 @@ redundant_mapper_scan_candidates = []
 aggregate_equality_violations = []
 http_request_name_violations = []
 rpc_contract_input_violations = []
+ownership_violations = []
+
+# 仅提取 package token；先消费注释和 Java 字面量，不能把其中的伪声明当作所有权。
+# Unicode escape 在 Java 分词前展开；此有限扫描器不展开它，保守拒绝以免误判。
+def production_package(source)
+  return nil if source.match?(/\\u+[0-9a-fA-F]{4}/)
+
+  tokens = []
+  remaining = source.dup
+  until remaining.empty?
+    if remaining.sub!(/\A(?:\s+|\/\/[^\n]*(?:\n|\z)|\/\*.*?\*\/)/m, "")
+      next
+    elsif remaining.sub!(/\A"""(?:\\.|(?!""").)*"""/m, "") ||
+        remaining.sub!(/\A"(?:\\.|[^"\\\r\n])*"/, "") ||
+        remaining.sub!(/\A'(?:\\.|[^'\\\r\n])*'/, "")
+      next
+    elsif remaining.start_with?('"', "'", '/*')
+      return nil
+    elsif (token = remaining.slice!(/\A[A-Za-z_$][A-Za-z0-9_$]*/))
+      tokens << token
+    else
+      tokens << remaining.slice!(0)
+    end
+  end
+  declarations = tokens.each_index.select { |index| tokens[index] == 'package' }
+  return nil unless declarations.length == 1
+
+  declaration = tokens[(declarations.first + 1)..-1].take_while { |token| token != ';' }
+  return nil unless tokens[declarations.first + declaration.length + 1] == ';'
+
+  name = declaration.join
+  name if name.match?(/\Acom\.co\.kc\.imchat(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*\z/) &&
+    declaration.each_with_index.all? { |token, index| index.odd? ? token == '.' : token.match?(/\A[A-Za-z_$][A-Za-z0-9_$]*\z/) }
+end
+
 package_types = Hash.new { |types, package_name| types[package_name] = [] }
 deployable_source_roots = []
 
@@ -36,6 +72,13 @@ end
 # 单次遍历生产源码收集文件级违规和包内类型形状，避免每条规则重复扫描全仓。
 Dir.glob(File.join(root, "**/src/main/java/**/*.java")).sort.each do |path|
   source = File.read(path)
+  owned_package = production_package(source)
+  relative_java = path.split('/src/main/java/', 2).last
+  expected_directory = File.dirname(relative_java)
+  if File.basename(path) == 'module-info.java' || !owned_package ||
+      expected_directory != owned_package.tr('.', '/')
+    ownership_violations << path.delete_prefix(root + File::SEPARATOR)
+  end
   package_name = source[/^package\s+([^;]+);/, 1]
   package_types[package_name] << File.basename(path, ".java") if package_name
 
@@ -173,7 +216,8 @@ all_violation_sets = [
   aggregate_equality_violations,
   http_request_name_violations,
   rpc_contract_input_violations,
-  mixed_package_violations
+  mixed_package_violations,
+  ownership_violations
 ]
 if all_violation_sets.any? { |items| !items.empty? }
   warn "[java-style] WHAT: Java 生产源码违反了可机械判断的结构或分层规则。"
@@ -257,6 +301,21 @@ end
 unless mixed_package_violations.empty?
   warn "[java-style] package mixes contracts, implementations and models; split by responsibility:"
   mixed_package_violations.sort.each { |package_name| warn package_name }
+  exit 1
+end
+
+Dir.glob(File.join(root, "**/target/generated-sources/annotations/**/*.java")).sort.each do |path|
+  owned_package = production_package(File.read(path))
+  relative_java = path.split('/target/generated-sources/annotations/', 2).last
+  if File.basename(path) == 'module-info.java' || !owned_package ||
+      File.dirname(relative_java) != owned_package.tr('.', '/')
+    ownership_violations << path.delete_prefix(root + File::SEPARATOR)
+  end
+end
+
+unless ownership_violations.empty?
+  warn "[java-style] Production source ownership requires a unique com.co.kc.imchat package matching its source path; unsupported lexical forms and JPMS require Review:"
+  ownership_violations.each { |path| warn path }
   exit 1
 end
 

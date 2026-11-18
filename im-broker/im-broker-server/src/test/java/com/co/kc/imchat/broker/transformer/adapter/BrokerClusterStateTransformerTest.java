@@ -1,8 +1,17 @@
 package com.co.kc.imchat.broker.transformer.adapter;
 
+import com.co.kc.imchat.broker.domain.cluster.model.RoutingEpoch;
+import com.co.kc.imchat.broker.domain.cluster.model.CommandDigest;
+import com.co.kc.imchat.broker.domain.cluster.model.ClusterRevision;
+import com.co.kc.imchat.broker.domain.cluster.model.ClusterOperationId;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipStep;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipPermit;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerId;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationType;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperationPhase;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerClusterOperation;
 import com.co.kc.imchat.broker.domain.cluster.model.BrokerCluster;
 import com.co.kc.imchat.broker.domain.cluster.model.ConsensusMembership;
-import com.co.kc.imchat.plugin.raft.model.RaftMembership;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerClusterState;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole;
 import com.co.kc.imchat.broker.sdk.cluster.BrokerNode;
@@ -28,28 +37,6 @@ class BrokerClusterStateTransformerTest {
     }
 
     @Test
-    void mapsBothMembershipListsToSetsNormalizingDuplicatesAndPreservingOpaqueStrings() {
-        RaftMembership raw = new RaftMembership(
-                List.of("z:18120:2:90", " host:18120:3:100 ", "z:18120:2:90"),
-                List.of("learner:18120:3:100", "learner:18120:3:100"));
-
-        ConsensusMembership membership = transformer.consensusMembershipFrom(raw);
-
-        assertThat(membership.voters()).containsExactlyInAnyOrder(
-                new MembershipEndpoint("z:18120:2:90"), new MembershipEndpoint(" host:18120:3:100 "));
-        assertThat(membership.learners()).containsExactly(new MembershipEndpoint("learner:18120:3:100"));
-        assertThat(transformer.consensusMembershipFrom(new RaftMembership(List.of(), List.of())))
-                .isEqualTo(new ConsensusMembership(Set.of(), Set.of()));
-    }
-
-    @Test
-    void rejectsCrossRoleOverlapAtMappingBoundary() {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> transformer.consensusMembershipFrom(
-                new RaftMembership(List.of("a:18120", "a:18120"), List.of("a:18120"))))
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("overlap");
-    }
-
-    @Test
     void restoresDomainAggregateAndProjectsSdkStateWithoutLosingMeaning() {
         BrokerClusterState sdkState = new BrokerClusterState(4L, 7L,
                 BrokerSelectionAlgorithm.RENDEZVOUS_HASH,
@@ -61,5 +48,40 @@ class BrokerClusterStateTransformerTest {
         BrokerClusterState projected = transformer.brokerClusterStateFrom(aggregate);
 
         assertThat(projected).isEqualTo(sdkState);
+    }
+
+    @Test
+    void restoresStepsPermitsDigestAndIncarnationWithoutChangingSdkTopology() {
+        ClusterOperationId id =
+                new ClusterOperationId("join");
+        ConsensusMembership target = new ConsensusMembership(Set.of(new MembershipEndpoint("a:18120")),
+                Set.of(new MembershipEndpoint("b:18120")));
+        BrokerMembershipPermit permit =
+                new BrokerMembershipPermit("permit", id, "final-target", target,
+                        new BrokerId("a"), "original-process",
+                        BrokerMembershipPermit.Result.UNKNOWN);
+        BrokerMembershipStep step =
+                new BrokerMembershipStep("final-target", target, List.of(permit));
+        BrokerClusterOperation operation =
+                BrokerClusterOperation.builder().id(id)
+                        .commandDigest(new CommandDigest("digest"))
+                        .type(BrokerClusterOperationType.START_LEARNER_SYNC)
+                        .targetBrokerId(new BrokerId("b"))
+                        .acceptedRevision(new ClusterRevision(0L))
+                        .acceptedEpoch(new RoutingEpoch(0L))
+                        .resultEpoch(new RoutingEpoch(0L))
+                        .phase(BrokerClusterOperationPhase.PENDING)
+                        .membershipEndpoint(new MembershipEndpoint("b:18120")).createdAt(java.time.Instant.EPOCH)
+                        .membershipSteps(List.of(step)).build();
+        BrokerClusterState state = new BrokerClusterState(2L, 0L, BrokerSelectionAlgorithm.RENDEZVOUS_HASH,
+                List.of(new BrokerNode("a", "a:18020", BrokerMembershipRole.VOTER, BrokerRoutingState.ACTIVE),
+                        new BrokerNode("b", "b:18020", BrokerMembershipRole.DISCOVERED, BrokerRoutingState.INACTIVE)));
+        BrokerCluster restored = transformer.brokerClusterFrom(state, List.of(operation), null, 100,
+                java.util.Map.of("a", "a:18120", "b", "b:18120"));
+        assertThat(restored.findOperation(id).orElseThrow().membershipSteps()).containsExactly(step);
+        assertThat(restored.findOperation(id).orElseThrow().currentMembershipStep().currentPermit()).isEqualTo(permit);
+        assertThat(restored.findOperation(id).orElseThrow().currentMembershipStep().targetDigest()).isEqualTo(step.targetDigest());
+        assertThat(transformer.brokerClusterStateFrom(restored)).isEqualTo(state);
+        assertThat(permit.drained()).isFalse();
     }
 }

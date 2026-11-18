@@ -71,7 +71,6 @@ class BrokerObservationStateTest {
     }
 
     private static BrokerClusterTopology topology(long epoch) {
-        return new BrokerClusterTopology(new RoutingEpoch(epoch), List.of(), Map.of(),
-                new ConsensusMembership(Set.of(), Set.of()));
+        return new BrokerClusterTopology(new RoutingEpoch(epoch), List.of(), Map.of());
     }
 }

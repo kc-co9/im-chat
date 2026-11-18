@@ -8,7 +8,24 @@
 
 ## Current Designs
 
-- [Broker 治理职责简化与官方 JRaft 迁移设计](2026-10-28-official-jraft-governance-simplification-design.md)：草案，待独立设计 Review。按 D9 删除私有 JRaft 补丁：观察资格改由已提交 Broker 业务状态决定；显式成员维护持久化完整目标配置，经官方 `changePeers` 幂等收敛；Leader 用官方 `listPeers`/`listLearners` 诊断漂移；`im-raft` 只保留官方能力封装。O1–O4 待用户决定；历史研究移入附录 C。未批准前不授权生产修改、换依赖或创建执行计划。
+- [群聊会话补偿与通知对象](2026-11-18-group-chat-recovery-and-notification-design.md)：独立草案。记录 Social 群变更交接失败与 Message 通知对象偏差，比较恢复和资格过滤方案。候选方案待批准与独立 Review，未实施。
+- [Learner 同步确认与后台恢复职责分离](2026-11-12-learner-confirmation-explicit-recovery-design.md)：已批准。用户批准保留 scheduler/resume 自动恢复、不新增恢复 HTTP 接口，并批准 CLI 确认端点保存/传递修复；独立 Review 第二轮 Approved、findings none，首轮 Revise 保留。已在[Broker 成员应用流程计划](../exec-plans/completed/2026-11-09-broker-membership-flow-readability.md)完成实施验收，T1–T3 均为 `passing`；冻结 full、真实 HA 与独立 quality Accept 的原件及历史限制见已归档计划。
+
+- [Broker 用户路由分片与 Gossip 连接观察收敛](2026-11-05-broker-sharded-route-observation-design.md)：草案。区分当前职责分片与连接观察全局复制，推荐取消 CONNECTION Gossip 发布、存储和转发，保留 Gateway 分片重报、单跳 Lookup 及既有 Raft/Lease/fence 安全契约；发布方式、消费者审计与验收阈值待确认，尚无全文批准、独立 Review 或实施授权，不改变现有活跃任务。
+
+- [JaCoCo synthetic class 报告清单补充](2026-11-05-jacoco-synthetic-report-inventory-design.md)：用户已批准窄 checker／隔离 fixture 实施，独立技术 Review Approved／findings none；原件 `.harness/t11/b3-synthetic-design/review.json`，批准前受审 SHA `1795a23bd341edd3ec35314d8d70165f717b7214e098f13e81bca62b22249089`。保留完整 class inventory，按固定 JaCoCo 0.8.13 官方 class-level 规则区分报告期待集；实施与验证见 T11/B3，不新增真实运行授权。
+
+- 自有 namespace 设计的 Raw POM oracle 补充：原 Reviewer 技术 Approved/findings none，原件 `.harness/t11/coverage-raw-pom-design-review-attempt2.json`，受审 SHA `486378fca88387426306a24b513688473cb9245b23cf55a131124199b8494312`。首次 Revise 保留；仅既有非破坏性 checker/fixture 范围，不是新用户授权或运行验收。
+
+- [自有 namespace 覆盖插桩边界设计](2026-11-03-owned-namespace-coverage-instrumentation-design.md)：草案（Proposed），Reviewer 技术必修全部闭合、技术结论 Approved，待本次最小事实回填精确复核确认，尚无用户 include、实施或输出清理授权。离线 Help 3.5.1 的真实 52 项模型、有限 Shade/晚绑定/插件合同及后续两条来源 probe 已独立核验；每个 project 激活同一已审 external repository-only profile，实际 local repo 与 Mockito JAR 摘要已记录。原时间/SHA256 和全部旧 Revise 保留，来源前后仅 exists/SHA，mtime/size 为 post 观察，不倒推原模型采集。正式 full 必须采集当轮模型/来源，不复用旧 probe。无 coverage 实现、实际 agent/report 或 full 新证据，不关闭外部 MethodTooLarge 或整体 T11。
+
+- [Ops 可信 Leader 提示映射补充设计](2026-11-02-ops-trusted-leader-hint-mapping-design.md)：已批准。2026-11-02 用户明确批准保守映射，独立技术设计 Review Approved、无安全／架构必修项；实际 Node PeerId 与可信管理发现 origin 唯一配对、去重前歧义拒绝、首次注册发布及冲突 fail-fast 纳入现有 T11。尚未实施或运行验收，不改写已批准接收节点切片的原范围。
+
+- [Ops 成员写请求的业务目标与接收节点解耦](2026-11-02-ops-membership-receiver-routing-design.md)：2026-11-02 用户批准解耦首次接收节点与业务目标，独立设计 Reviewer `ace3b628dc0670655` Approved、必修 findings none；现有联合计划 T11 实施。不伪造发现身份、不新增未加入启动、不放宽鉴权或可信单跳；设计批准不是运行验收，原真实 CLI 旅程失败和 Leader 提示映射缺口保留。
+
+- [自有运维 CLI 与 IAM 接入设计](2026-10-30-ops-cli-authentication-design.md)：已批准，2026-10-30 用户最终确认；独立复核 Accept、findings none，历史 Block 保留。public client／PKCE S256、Ops 窄 Bearer 双链、可靠撤销及有权限管理员可接续契约纳入[联合实施计划](../exec-plans/completed/2026-10-30-official-jraft-and-ops-cli.md)，原批准时点尚未实施或运行验收。
+
+- [Broker 治理职责简化与官方 JRaft 迁移设计](2026-10-28-official-jraft-governance-simplification-design.md)：已批准，2026-10-30 用户最终确认，与 CLI 安全补充设计共同进入[联合实施计划](../exec-plans/completed/2026-10-30-official-jraft-and-ops-cli.md)。独立全文复核 Accept、findings none，历史 Block 与被否决方案保留；D10/D16 长期阻塞代价、D18 不做兼容、D19 自有 CLI 保留。上述未实施叙述属于原批准时点，当前实现／验收由已归档计划拥有。2026-10-31 T4 远程确认等待预算与共享等待桥补充已独立设计 Accept、findings none，用户随后回复「可以」确认独立 inbound 配置及 8／3000 ms 本地默认、固定只读等待桥和中断策略，已允许进入准确范围实施；原实现 QUALITY Block 未关闭，设计 Accept 不代表运行验收。
 
 - [Bolt TLS 拒绝证据修正](2026-10-28-bolt-tls-rejection-proof-design.md)：用户批准测试侧严格取证方向，独立设计 Reviewer `aefe0c40fa1d38c8e` Approved；以连接关联的原生服务端拒绝和客户端实际选链观察替代 TLS 1.3 成功后读取的时序假设，不修改生产 TLS，实施验收见现有 T3。
 
@@ -114,3 +131,7 @@
 New documents use `YYYY-MM-DD-<topic>-design.md` and must link to their execution plan when implementation begins.
 
 - [Peer 身份 URI 前缀统一命名](2026-10-25-peer-identity-uri-prefix-design.md)：用户批准，独立设计 Reviewer `a0b58853328dc8e68` Approved，无必须项；在现有 T3 实施，无旧别名，clean/full 暂停。
+
+Settings repository-only 有限语义补充已技术 Approved，原件 `.harness/t11/coverage-settings-design-review-attempt2.json`；无新增执行授权，原 Revise 与设计 SHA 归属边界保留。
+
+Active-profiles 有限输出补充已技术 Approved/findings none，原件 `.harness/t11/coverage-active-profiles-design-review-attempt1.json`；受审设计 SHA256 `b307f1f891a83dd080cab42c5058abf3c0ae23af6f72d556bfb40cc94ed90e39`。技术批准不当新用户授权；T11 先 inert 正文/settings 同轮关联，外壳独立后续验收，bootstrapComplete=false。

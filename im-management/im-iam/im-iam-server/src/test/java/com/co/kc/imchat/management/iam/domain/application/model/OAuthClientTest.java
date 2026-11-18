@@ -7,9 +7,69 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OAuthClientTest {
+
+    @Test
+    void publicOpsClientAcceptsNoSecret() {
+        assertThatCode(() -> OAuthClient.builder()
+                .clientType(OAuthClientType.PUBLIC)
+                .clientId(new OAuthClientId("im-ops-cli"))
+                .appId(new AppId(1L)).audienceAppId(new AppId(1L))
+                .name(new OAuthClientName("Ops CLI"))
+                .grantTypes(Set.of(OAuthGrantType.AUTHORIZATION_CODE))
+                .scopes(Set.of(new OAuthScope("ops:broker:read")))
+                .redirectUris(Set.of(new RedirectUri(java.net.URI.create("http://127.0.0.1:8765/oauth/callback"))))
+                .postLogoutRedirectUris(Set.of())
+                .status(OAuthClientStatus.ACTIVE).build()).doesNotThrowAnyException();
+    }
+
+    @Test
+    void publicClientRejectsSecretsRefreshMachineGrantsAndNonOpsScopes() {
+        assertThatThrownBy(() -> publicClientBuilder().clientSecret(new OAuthClientSecret("digest")).build())
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> publicClientBuilder().grantTypes(Set.of(OAuthGrantType.AUTHORIZATION_CODE,
+                        OAuthGrantType.REFRESH_TOKEN)).build()).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> publicClientBuilder().grantTypes(Set.of(OAuthGrantType.CLIENT_CREDENTIALS)).build())
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> publicClientBuilder().scopes(Set.of(new OAuthScope("openid"))).build())
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> publicClientBuilder().build().rotateSecret(new OAuthClientSecret("digest")))
+                .isInstanceOf(TransitionException.class);
+    }
+
+    @Test
+    void publicClientRejectsNonExactLoopbackRedirectShapes() {
+        for (String redirect : Set.of("https://127.0.0.1:8765/oauth/callback",
+                "http://localhost:8765/oauth/callback", "http://127.0.0.1/oauth/callback",
+                "http://127.0.0.1:8765/other", "http://127.0.0.1:8765/oauth/callback?x=1",
+                "http://127.0.0.1:8765/oauth/callback#fragment", "http://user@127.0.0.1:8765/oauth/callback")) {
+            assertThatThrownBy(() -> publicClientBuilder().redirectUris(
+                    Set.of(new RedirectUri(java.net.URI.create(redirect)))).build())
+                    .as("reject redirect %s", redirect).isInstanceOf(IllegalStateException.class);
+        }
+        assertThatThrownBy(() -> publicClientBuilder().redirectUris(Set.of()).build())
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> publicClientBuilder().redirectUris(Set.of(
+                new RedirectUri(java.net.URI.create("http://127.0.0.1:8765/oauth/callback")),
+                new RedirectUri(java.net.URI.create("http://127.0.0.1:8766/oauth/callback")))).build())
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> publicClientBuilder().postLogoutRedirectUris(Set.of(
+                new RedirectUri(java.net.URI.create("http://127.0.0.1:8765/oauth/callback")))).build())
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    private OAuthClient.Builder publicClientBuilder() {
+        return OAuthClient.builder().clientType(OAuthClientType.PUBLIC)
+                .clientId(new OAuthClientId("im-ops-cli"))
+                .appId(new AppId(1L)).audienceAppId(new AppId(1L)).name(new OAuthClientName("Ops CLI"))
+                .grantTypes(Set.of(OAuthGrantType.AUTHORIZATION_CODE))
+                .scopes(Set.of(new OAuthScope("ops:broker:read")))
+                .redirectUris(Set.of(new RedirectUri(java.net.URI.create("http://127.0.0.1:8765/oauth/callback"))))
+                .postLogoutRedirectUris(Set.of()).status(OAuthClientStatus.ACTIVE);
+    }
 
     @Test
     void keepsAnImmutableExactScopeSetAndSupportsSecretRotation() {

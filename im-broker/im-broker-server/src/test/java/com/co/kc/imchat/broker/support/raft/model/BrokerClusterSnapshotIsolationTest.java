@@ -67,15 +67,15 @@ class BrokerClusterSnapshotIsolationTest {
         RaftBrokerClusterStateMachine machine = new RaftBrokerClusterStateMachine("cluster-a", initial, 1000, Map.of());
         BrokerClusterSnapshot snapshot = machine.snapshotState();
 
-        assertThat(snapshot.formatVersion()).isEqualTo(2);
+        assertThat(snapshot.formatVersion()).isEqualTo(3);
         assertThat(snapshot.clusterId()).isEqualTo("cluster-a");
         assertThat(BrokerClusterSnapshot.decode(BrokerClusterSnapshot.encode(snapshot)))
                 .isEqualTo(snapshot);
-        assertThatThrownBy(() -> new BrokerClusterSnapshot(2, " ", initial,
+        assertThatThrownBy(() -> new BrokerClusterSnapshot(3, " ", initial,
                 List.of(), null, java.util.Map.of())).isInstanceOf(IllegalArgumentException.class);
         ObjectNode oldFormat = (ObjectNode) JsonUtils.getMapper()
                 .readTree(BrokerClusterSnapshot.encode(snapshot));
-        oldFormat.put("formatVersion", 1);
+        oldFormat.put("formatVersion", 2);
         byte[] oldBytes = JsonUtils.getMapper().writeValueAsBytes(oldFormat);
         assertThatThrownBy(() -> BrokerClusterSnapshot.decode(oldBytes))
                 .isInstanceOf(RuntimeException.class);
@@ -90,7 +90,7 @@ class BrokerClusterSnapshotIsolationTest {
                 JsonUtils.getMapper().writeValueAsBytes(missingIdentity)))
                 .isInstanceOf(RuntimeException.class);
 
-        BrokerClusterSnapshot foreign = new BrokerClusterSnapshot(2, "cluster-b", initial,
+        BrokerClusterSnapshot foreign = new BrokerClusterSnapshot(3, "cluster-b", initial,
                 List.of(), null, java.util.Map.of());
         assertThatThrownBy(() -> machine.restore(foreign))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -133,7 +133,7 @@ class BrokerClusterSnapshotIsolationTest {
                 new BrokerNode("broker-b", "10.0.0.2:18020",
                         com.co.kc.imchat.broker.sdk.cluster.BrokerMembershipRole.DISCOVERED,
                         BrokerRoutingState.INACTIVE)));
-        RaftBrokerClusterStateMachine first = new RaftBrokerClusterStateMachine("cluster-a", initial, 1000, Map.of());
+        RaftBrokerClusterStateMachine first = new RaftBrokerClusterStateMachine("cluster-a", initial, 1000, Map.of("broker-a", "10.0.0.1:18120"));
         BrokerCluster cluster = first.getCluster();
         BrokerId targetId = new BrokerId("broker-b");
         BrokerClusterOperation operation = cluster.addLearner(LearnerJoinIntent.builder()
@@ -143,15 +143,22 @@ class BrokerClusterSnapshotIsolationTest {
                 .membershipEndpoint(new MembershipEndpoint("10.0.0.2:18120"))
                 .changedAt(Instant.ofEpochMilli(1_000L)).build()).operation();
         assertThat(first.apply(BrokerClusterRaftTransformer.INSTANCE.beginCommandFrom(operation)).accepted()).isTrue();
+        com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipStep step = operation.currentMembershipStep();
+        assertThat(first.apply(new com.co.kc.imchat.broker.model.cqrs.command.RegisterMembershipPermitCommand(
+                operation.id(), step.stepId(), "permit", new BrokerId("broker-a"), "process-1",
+                first.getCluster().revision())).accepted()).isTrue();
+        assertThat(first.apply(new com.co.kc.imchat.broker.model.cqrs.command.ConfirmMembershipPermitDrainedCommand(
+                operation.id(), step.stepId(), "permit", new BrokerId("broker-a"), "process-1", step.targetDigest(),
+                com.co.kc.imchat.broker.domain.cluster.model.BrokerMembershipPermit.Result.TARGET_APPLIED)).accepted()).isTrue();
         assertThat(first.apply(new CommitBrokerOperationCommand(operation.id(), operation.commandDigest().value(),
-                operation.acceptedRevision(), Instant.ofEpochMilli(1_100L))).accepted()).isTrue();
+                first.getCluster().revision(), Instant.ofEpochMilli(1_100L))).accepted()).isTrue();
 
         BrokerClusterSnapshot saved = BrokerClusterSnapshot.decode(
                 BrokerClusterSnapshot.encode(first.snapshotState()));
         ObjectNode operationJson = JsonUtils.getMapper().valueToTree(saved.operations().getFirst());
         assertThat(operationJson.has("resultEpoch")).isTrue();
         assertThat(operationJson.has("targetEpoch")).isFalse();
-        RaftBrokerClusterStateMachine restored = new RaftBrokerClusterStateMachine("cluster-a", initial, 1000, Map.of());
+        RaftBrokerClusterStateMachine restored = new RaftBrokerClusterStateMachine("cluster-a", initial, 1000, Map.of("broker-a", "10.0.0.1:18120"));
         restored.restore(saved);
         restored.getCluster().findNode(targetId).orElseThrow().completeLearnerSync();
 

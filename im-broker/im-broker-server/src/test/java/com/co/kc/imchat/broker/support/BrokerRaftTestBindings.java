@@ -135,9 +135,6 @@ public final class BrokerRaftTestBindings {
                 .when(adapter).completeRouteRecovery(any());
         doAnswer(i -> submit.apply(mapper.membershipCompletionCommandFrom(i.getArgument(0), Instant.now())))
                 .when(adapter).completeMembershipOperation(any());
-        doAnswer(i -> submit.apply(mapper.membershipFailureCommandFrom(
-                i.getArgument(0), i.getArgument(1), Instant.now())))
-                .when(adapter).failMembershipOperation(any(), any());
         doAnswer(i -> submit.apply(new CommitRoutingEpochFenceCommand(i.getArgument(0)))
                 .thenApply(result -> {
                     if (!result.accepted()) {

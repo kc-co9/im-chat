@@ -1,6 +1,6 @@
 # Broker 治理职责简化与官方 JRaft 迁移设计
 
-> 状态：草案，待独立设计 Review。D1–D9 已由用户确认（见附录 B）。「摘要」至「开放问题」为当前设计正文；附录 C 是历史研究，只作追溯，不再作为当前推荐。设计获批前不创建 execution plan，不修改生产代码，不切换依赖，也不删除补丁。当前 Bolt 计划 T3 仍按私有补丁实现收口，本文不改变其验收要求。
+> 状态：已批准。2026-10-30 用户最终确认继续；独立设计复核 Accept，findings none。历史 Block 与修订记录保留。本次批准覆盖与[自有 CLI 安全设计](2026-10-30-ops-cli-authentication-design.md)及[治理迁移设计](2026-10-28-official-jraft-governance-simplification-design.md)组合后的最终方案；允许创建执行计划，不代表运行验收。实施计划：[治理迁移与自有 CLI](../exec-plans/completed/2026-10-30-official-jraft-and-ops-cli.md)。
 
 ## 摘要
 
@@ -9,13 +9,13 @@
 核心方案分四点：
 
 1. **观察资格由已提交业务状态决定。** 观察者集合取已提交 Broker 状态中的 VOTER 角色节点，不再逐项比对真实 Raft voter 列表。故障阈值是业务策略；共识多数由 JRaft 在每次业务状态提交时负责。
-2. **显式成员维护改为提交完整目标配置。** 登记操作时确定完整目标配置并持久化，由 Leader 调用官方 `changePeers(目标)`。官方实现对进行中的变更返回 EBUSY，对与当前配置相同的目标立即返回 OK，因此按同一目标重试即可收敛，不需要先读本机已应用配置。
+2. **显式成员维护改为提交持久化目标配置序列。** 登记操作时确定每一步的完整目标配置，由 Leader 调用官方 `changePeers(目标)`。晋升和降级必须拆成先移除旧角色、再加入新角色两步，不能依赖一次调用完成角色转换。官方 BUSY 和同目标 OK 只支持局部重试，不能证明操作最终完成，也不能阻止旧执行者覆盖后续配置。
 3. **Leader 侧做漂移诊断。** Leader 用官方 `listPeers`/`listLearners` 比对实际配置与业务期望配置。不一致时告警，并拒绝新的成员维护；自动路由接管不受影响。
 4. **`im-raft` 只保留官方能力的通用封装。** 删除 `membership()` 与单步增删接口，新增 `changeConfiguration` 和 `leaderConfiguration`；依赖切回官方 `jraft-core`，删除补丁与 recipe 的有效入口。
 
-关键取舍：不再证明「观察者恰好是本机已应用配置中的 voter」。业务记录与 Raft 实际配置的差异改由 Leader 诊断显式暴露，而不是在每个节点上隐式取消观察资格。旧执行者迟到调用的问题（附录 C 已调查）本方案不解决，补丁同样不解决；本方案以单一调用路径和漂移诊断限制其影响，列为残余风险。
+关键取舍：不再证明「观察者恰好是本机已应用配置中的 voter」。业务记录与 Raft 实际配置的差异改由 Leader 诊断显式暴露，而不是在每个节点上隐式取消观察资格。2026-10-29 用户不接受把旧执行者迟到调用作为首版残余风险，要求先补齐防护设计；单一调用路径和漂移诊断不能充当该防护。防护未通过审查前，目标配置迁移不得实施。
 
-发布边界：不支持新旧版本混跑；升级前要求没有未终态的成员维护操作。
+发布边界：尚未上线，不考虑旧版本兼容，不支持混跑；新格式自身的重放和恢复必须可靠。
 
 ## 背景
 
@@ -43,7 +43,7 @@
   - `im-raft` 只暴露官方公开能力的通用封装，不含 Broker 语义（D9）。
 - 非目标：
   - 不重写路由算法，不调整 Lease/quarantine 时长、消息幂等或 Gateway 协议；附录 C 的 G1 问题维持现状，不随本迁移变化。
-  - 不解决旧执行者迟到调用（D8 已暂停）。
+  - 不新增通用执行平台；旧执行者防护只围绕成员维护协议展开（D11 已取代 D8 的暂停边界）。
   - 不新增在线成员管理 API，不自动删除 voter（D3）。
   - 不承诺 RTO 数值（D4）。
 
@@ -72,7 +72,7 @@
  （VOTER 角色且已绑定端点）  （含完整目标配置）             （不变）
         │                      │
  Follower 服务端、Leader     Leader: changePeers(目标)
- 决策、入站准入共用            按官方 BUSY / 同目标语义收敛
+ 决策、入站准入共用            逐步受理；未知结果不承诺收敛
                                │
                      Leader 漂移诊断：listPeers / listLearners
 ```
@@ -96,8 +96,8 @@
 
 新增：
 
-- `RaftConfiguration(List<String> voters, List<String> learners)`：构造时规范化排序，校验 voters 非空且与 learners 不相交。
-- `CompletionStage<RaftResult<Void>> changeConfiguration(RaftConfiguration target)`：仅限 Leader，调用 `Node.changePeers`。Status 映射：OK → `APPLIED`；EPERM → `NOT_LEADER`；EBUSY → 新增 `BUSY`；其他 → `UNAVAILABLE`；`orTimeout` 到期表示结果未知。之所以新增 `BUSY`，是因为调用方需要区分「稍后按同一目标重试」与「失败」。
+- `RaftConfiguration(List<String> voters, List<String> learners)`：框架无关公共模型，构造时防御复制、按输入字符串去重排序，拒绝 null/blank、空 voters 及字面角色交集。JRaft endpoint 解析、别名规范化去重及规范化后的角色交集由 Runtime/core 在 Node 启动或配置调用之前统一校验；初始和目标使用相同转换规则，不在 model/spi 中依赖 PeerId。模型构造成功不代表原生 endpoint 已有效。
+- `CompletionStage<RaftConfigurationResult> changeConfiguration(RaftConfiguration target)`：仅限 Leader，直接同步进入 `Node.changePeers`，不在 Runtime 内排队，不作自动重试。返回只读的底层完成观察，不对底层 Future 使用 `orTimeout`，也不把调用方取消传播到原生工作。`RaftConfigurationResult` 记录 `APPLIED / BUSY / NOT_LEADER / UNAVAILABLE`、原始错误码、leaderEndpoint 与 message；它是单次请求结果，不声称配置全局稳定或许可排空。正常返回只证明同步原生入口已退出，底层完成还须单独观察。调用方的有界等待使用派生 Future，不能修改此完成观察。同步异常保留为未知，除非能证明发生在调用原生方法之前；未知结果不得排空。
 - `RaftConfiguration leaderConfiguration()`：仅限 Leader，读取 `listPeers` 和 `listLearners`，非 Leader 时抛 `IllegalStateException`。注释写明：两次读取不是原子快照，变更进行中可能包含未提交配置，只能用于诊断和失败即关闭的前置检查。
 - 初始配置按 `RaftConfiguration` 的同一规则排序构造，保证后续同目标调用能命中 `equals` 立即返回 OK（V3）。
 
@@ -109,13 +109,13 @@
 
 | 入口 | 现状 | 迁移后 |
 |---|---|---|
-| `BrokerCluster.findConsistentVoters(ConsensusMembership)` | 业务角色与实际配置逐项一致才返回 voter | 改为 `findObservers()`：返回已提交状态中 `membershipRole=VOTER` 且已绑定成员端点的 Broker；存在 `LEARNER_SYNCING` 或未终态成员变更时仍返回空（保持现有门禁，见 O1）；不再读实际配置 |
+| `BrokerCluster.findConsistentVoters(ConsensusMembership)` | 业务角色与实际配置逐项一致才返回 voter | 改为 `findObservers()`：返回已提交状态中 `membershipRole=VOTER` 且已绑定成员端点的 Broker；存在 `LEARNER_SYNCING` 或未终态成员变更时仍返回空（保持完整门禁，见 D10）；不再读实际配置 |
 | `BrokerCluster.topology(membership)` / `BrokerClusterTopology.membership` | Context 含实际配置 | 删除 membership 字段，Context 为 revision 加已提交拓扑 |
 | `probeFailures` | 实际 voter 才探测；探测前后比较 Context | 改用 `findObservers` 和新 Context |
 | `reconcileFailures` | 实际 voter 作为分母；ReadIndex 后重验 | 同上；同任期 ReadIndex 证明保留 |
 | `probeBroker` / `getHealthReport` | Follower 校验调用方是实际 voter | 改用 `findObservers` |
 | `BrokerPeerAdmissionInterceptor.validateObservation` | 调用方与报告方是实际 voter | 改用 `findObservers`；入站前后 revision/epoch 一致检查保留 |
-| `validateControl` | 不读实际配置 | 不变 |
+| `validateControl` | 不读实际配置 | 普通 CONTROL 不变；增加仅供精确许可持有者提交排空确认的专用认证分支（§3） |
 
 阈值维持现有 `ObservationQuorum` 规则：超过观察者集合的一半，排除目标自报；分母取完整观察者集合，不按响应数缩小。
 
@@ -136,24 +136,88 @@
 
   | 返回 | 处理 |
   |---|---|
-  | `APPLIED` | 提交 `RAFT_COMMITTED`，后续阶段不变 |
-  | `BUSY` / 超时 / `UNAVAILABLE` | 保持 `PENDING`；`BrokerMembershipScheduler` 下一轮按同一 operationId、同一目标重试；没有进行中变更且目标与当前配置相同时，官方立即返回 OK，重试因此收敛 |
-  | `NOT_LEADER` | 由新 Leader 的 Scheduler 执行 `resume` |
+  | `APPLIED` | 记录当前调用结果；仍须不可逆封闭、排空并提交许可排空事实，之后才可推进下一步或 `RAFT_COMMITTED` |
+  | `BUSY` / 超时 / `UNAVAILABLE` | 保持 `PENDING`；只能针对同一 operationId 和当前持久化步骤恢复。官方同目标 OK 不证明最终收敛；失去多数派、目标永久不可达或遗留执行都可能阻止完成。D11 的防护协议未通过审查前，不批准具体重试实现 |
+  | `NOT_LEADER` | 只证明当前调用被拒绝，不转移许可；持有者封闭并确认全部原生工作结束后，才可经共识许可后续恢复 |
 
-- **晋升/降级**：从两步变为一次 `changePeers`，voter 与 learner 角色同时变化，并删除「只完成第一步」的恢复分支。`ConfigurationCtx` 是否正确处理这种变化由 V2 验证；不成立时退回为两个持久化目标（target1、target2），每一步仍提交完整目标。
+- **晋升/降级**：采用两个持久化完整目标，先移除旧角色，再加入新角色；禁止单次 `changePeers` 跨角色转换。官方 1.4.1 在配置执行开始前校验角色交集：完整跨角色目标在 joint entry 校验被拒绝，向已有 learner 调用 `addPeer` 则因新配置自身交集被拒绝；两者都不能用作进入配置阶段后 replicator 失效的证据。必须记录当前步骤，每步结果未知时不得跳到下一步，两步之间超时、换届和重启均从持久化步骤恢复协议协调，但恢复不等于重新授予原生执行权，仍须遵守许可排空前置条件。过期执行防护尚未完成设计（D11），本段只是协议约束，不是已批准的实现方案。
 - **Adapter**：删除所有 `membership()` 前置读取。
 - **learner 进度检查**：`checkLearnerProgress` 中的 `getConsensusMembership().learners().contains` 改为 `leaderConfiguration().learners().contains`；该方法本来就要求本机是 Leader。
 - **失去多数派**：`changePeers` 无法完成，操作保持 `PENDING`，与现状一致（D2）。
-- **互斥**：保留 `hasBlockingOperation`，不新增锁。
+- **互斥**：保留 `hasBlockingOperation`；不在 FSM monitor 内调用 JRaft。成员步骤另受下述不可自动转移的执行许可约束，不能只靠 operation 登记互斥。
 
-已知缺口：旧执行者迟到调用 `changePeers(旧目标)` 可能覆盖后续目标。附录 C 已构造并调查该时序；现状的单步调用同样存在此问题，补丁也不解决。本方案让所有外部配置调用只经 `BrokerMembershipAppService` 单一路径，并由 §4 的漂移诊断发现回退；该问题列为残余风险 R1，不在本迁移中解决（D8）。
+#### 仅确认 learner 同步的操作
+
+`COMPLETE_LEARNER_SYNC` 不修改原生配置，不创建目标步骤或执行许可。保留 `confirmLearner` 的独立证据流程：校验 operationId/digest、目标身份、绑定端点和 expectedEpoch，检查目标在 Leader 查询的 learners 中，取得同任期 quorum ReadIndex，通过已认证的目标查询确认 applied index 不小于该 ReadIndex。配置查询只是前置检查，不是已应用配置证明。新操作只在证据成立后，以读取时 revision 提交 Begin；状态机 CAS 拒绝取证期间的版本变化，不能把空步骤当作同步成功证据。Begin 登记表示可信应用流程已完成证据检查，不新增对外直接构造 Begin 的入口。
+
+此分支保留原 revision 规则：Begin 将接受 revision 加一，Commit 核对原 acceptedRevision 及当前 `acceptedRevision.next()`，再推进 revision 并将 `LEARNER_SYNCING` 改为 READY；既有终态推进规则保持。它不进入原生配置操作的新 Commit 分支。已登记同 operationId/digest 的重试及快照恢复复用已提交 Begin，不重新创建许可或调用原生配置 API；尚未登记成功的请求须重新取证，不盲目续用旧证据。重复 Commit／终态推进幂等，不重复修改节点状态。D10 只在没有未终态成员操作且没有 `LEARNER_SYNCING` 时解除；确认失败或未发生时仍可长期暂停，Scheduler 不代替显式确认。验证覆盖加入成功 → 显式确认 → READY → 终态 → 解除门禁，以及证据不足、版本冲突、重复确认和 Begin 后重启恢复。
+
+#### 执行许可候选：先封闭排空，再允许后续目标
+
+2026-10-29 用户确认 D16 的可用性取舍；以下精确协议已取得后文记录的独立设计 Accept 与 2026-10-30 用户最终批准，尚未实施验证。它不试图让官方 API 校验业务 operationId，而是禁止后续步骤越过仍有执行能力的旧许可。
+
+- **持久化身份**：每次登记均生成不可复用的 permitId，绑定 operationId、stepId、固定目标、executorBrokerId 和进程 incarnation；同一步同目标重试若重新登记许可，也必须使用新 permitId，防止迟到排空确认产生 ABA。incarnation 不能仅用 brokerId，进程重启必须产生新身份。许可由共识登记，新 Leader 不因换届改写持有者；所有确认必须匹配完整 permitId 及绑定事实。
+- **本地准入**：持有者为许可维护 OPEN → CLOSING → DRAINED 的单向状态。准入与封闭在同一本地短临界区原子互斥；任何能在未来调用原生 API 的任务必须先登记 in-flight，不能先拿到 Runnable 再登记。离开临界区后才调用 JRaft，不持有该锁、FSM monitor 或领域锁等待 Node 写锁、closure、ReadIndex 或提交 Future。状态机应用只更新持久化事实，不等待本地排空。
+- **单一在途调用**：同一许可最多一个原生成员调用在途；请求超时只结束请求等待，不删除 in-flight，不替换底层完成通知，不重新发起未知调用。`im-raft` 必须保留真实原生完成信号，不能把被 `orTimeout` 改写的 Future 当作排空证明；技术完成观察采用 §1 的 `CompletionStage<RaftConfigurationResult>`，接口契约正在独立 Review，尚未授权实现。
+- **封闭条件**：发起封闭后永久拒绝旧请求、Scheduler、重试及 continuation 的新准入；不得重新开放该 step。必须确认所有已准入同步入口退出、所有尚能调用的任务解除执行能力、所有原生异步变更明确结束，且后续 callback 不会继续发起旧调用。相同配置查询、超时、失去 Leader 或进程不可达都不构成此证明。无法分类的原生结果一律保持未排空，不用猜测放行。
+- **确认与推进**：持有者只有在本地不可逆 DRAINED 后，才能请求当前 Leader 提交排空事实。状态机校验完整许可身份及步骤；重复确认幂等，旧 step/incarnation 的确认不能释放新许可。排空只是安全前提，不是业务成功：目标明确成功且排空事实已提交，才能推进下一固定目标或 `RAFT_COMMITTED`；目标未成功但明确排空，只能经状态机单一共识转换重新登记同一步、同一固定目标的许可，或进入已有具名失败处理。结果未知或未排空时，不得推进、移交或成功结束；不能以调用方提交一个 drained 布尔值放行。结束操作或登记后续操作还须满足原有领域成功／失败条件，不能仅凭排空放行。
+- **换届与自移除**：持有者失去 Leader 后不得新调用，但仍可封闭和收集原生完成信号，并将排空事实交给新 Leader 提交。新 Leader 不能替持有者推断排空；自降级或移除当前 Leader 同样遵循此规则。确认投递复用认证 CONTROL 边界，身份须与许可持有者及 incarnation 匹配，不对外开放通用修复能力；请求与命令契约见下节；身份例外仅用于当前绑定许可的结束确认，不用于发起成员变更。
+- **失联与重启**：许可持有者失联、原生结果未知、封闭后尚未提交确认即崩溃，均可能无限期阻塞维护。重启不能复活旧许可；换届不自动续租或超时抢占。外部 fencing 必须证明旧执行域及原生工作已不再有执行能力，并处理未结束配置变更，不能用心跳失败或等待时长代替。本次不新增 fencing/强制解锁 API；未有批准恢复流程时保持 blocked。
+- **与业务门禁组合**：正常情况下仍支持在线维护；异常许可阻塞导致 operation 未终态时，D10 同时暂停自动观察与接管。D16 明确接受该长期暂停可能性，不表示执行协议已经获批。
+
+原生结果按四个维度分别记账，不能把单次 closure 直接映射为许可排空：
+
+| 结果 | 同步调用能力 | 本次原生工作 | 目标成功 | 许可排空 |
+|---|---|---|---|---|
+| 同目标 OK 或提交完成 OK | 原生方法返回前仍记 in-flight；回调先到也不提前退出 | 只记录该请求的完成证据，不替其他调用背书 | 可记录该请求成功；仍须核对所属许可、步骤和结果来源 | 必须另行永久封闭并检查全部任务、入口及原生工作 |
+| BUSY | 同步返回后才能结束本次入口记账 | 本次未启动新变更；使其 BUSY 的其他原生工作不因此结束 | 不成功 | 不能直接确认排空 |
+| NOT_LEADER / EPERM | 同步返回后才能结束本次入口记账 | 可能入口拒绝，也可能已启动上下文因失权 reset；只收到状态码不足以证明原生工作全部结束 | 不证明成功或配置稳定 | 未能证明所有原生工作结束时保持 blocked |
+| 请求超时、同步异常、丢失回调 | 不按包装 Future 完成删除记账 | 发生位置与原生受理情况无法证明时为未知 | 未知 | 不确认排空、不移交 |
+
+排空逻辑必须同时检查永久封闭、同步入口全部退出、所有准入任务失去未来调用能力、原生工作明确结束，以及 callback 不再生成旧调用。不能把同目标 OK、BUSY、NOT_LEADER 或任一单次结果单独作为该合取条件。若固定官方 API 无法提供某一路径所需证明，该路径按 D16 永久阻塞，不能以配置查询相同推断结束。
+
+证明目标：若旧调用仍可能发生，则许可未排空，后续目标不能合法开始；若后续目标已开始，则旧许可已有不可撤销排空事实，旧调用已无执行能力。该论证依赖准入、封闭及原生完成信号契约全部成立，不能仅凭持久化一个 owner 字段宣称满足 D11。
+
+必需反例：暂停已准入线程后换届，验证后续目标被阻止；封闭与准入竞争；请求超时但原生调用仍活跃；成功 callback 与同步返回乱序；迟到 callback 不重开许可；持有者自移除后跨节点提交确认；确认前崩溃及 incarnation 重用拒绝；FSM 队列压力下仍可应用业务日志。最终断言真实成员配置未被旧目标回退，而不只是业务 Commit 拒绝。
+
+#### 许可命令与确认接口（设计复核已通过）
+
+以下名称固定职责和数据契约，具体文件由批准后的 execution plan 列出；不引入通用执行平台。
+
+线程边界：同步原生成员入口不得运行在 FSM callback、状态机应用线程及其同步 continuation 上。Broker 配置层装配专用受控执行器，应用服务依赖注入的执行能力；固定一个工作线程、一个有界等待槽，拒绝时禁止 caller-runs、内联执行或 common pool 回退。Runtime 仍直接同步进入原生 API，不增加内部队列。任务获得未来调用能力前须在短许可互斥内计入准入任务，排队任务同样阻止排空，重复调度不得再次入队。执行器拒绝时解除该任务的未来执行能力，记录未进入原生入口，再按完整封闭／排空条件处理，不推断其他工作结束。关闭先封闭准入并撤销排队任务能力，已有工作仍计入在途；不得在 FSM 线程等待退出，也不得另起替代线程越过卡住的旧许可。确定性验证须构造登记 Future 在 FSM 线程完成、Node 写锁持有者向满 FSM 队列投递 LEADER_STOP 的时序，断言 FSM 线程不等待原生入口，并覆盖拒绝、排队取消和关闭竞争。
+
+| 所有者／入口 | 契约与状态机约束 |
+|---|---|
+| `BrokerCluster`／`RegisterMembershipPermitCommand` | 请求携带 operationId、stepId、permitId、executorBrokerId、executorIncarnation、expectedRevision；目标只从已登记 operation 的固定步骤读取，不接受请求覆盖。聚合要求 operation 为当前非终态成员操作、步骤未完成、没有未排空许可；首次或同一步失败重试才允许新许可。相同 permitId 与相同事实重复登记返回原事实，身份冲突拒绝。stepId 与 permitId 均随新格式日志／快照保存。 |
+| `BrokerMembershipAppService`／本机执行 | 首次请求、resume、Scheduler、continuation 都只通过同一个成员许可执行入口。只有许可已提交且绑定本进程 incarnation 才能创建本地执行槽；每个 permitId 至多创建一次，封闭槽不能重建。本进程内保留封闭记录，不按 TTL 或容量驱逐；容量准入见下文。进程重启产生新 incarnation，拒绝恢复旧执行能力。异步回调只能记录结果或请求提交确认，不能直接再次调用原生成员 API。 |
+| `BrokerCluster`／`ConfirmMembershipPermitDrainedCommand` | 完整匹配 operationId、stepId、permitId、executorBrokerId、executorIncarnation，附固定目标摘要及 `TARGET_APPLIED / TARGET_NOT_APPLIED` 结果；聚合拒绝 UNKNOWN，且只处理当前许可。首次确认持久化排空和步骤结果；完全相同的重复确认幂等，矛盾结果拒绝。目标成功且排空才可成功推进，未成功且排空仅允许同一步同目标登记新 permitId。确认不会自动变更业务拓扑，也不能以通用 phase advance 绕过。 |
+| `BrokerPeerAdapter`／`ConfirmMembershipPermitDrainedParams` | 新增专用 `CONFIRM_MEMBERSHIP_PERMIT_DRAINED` typed CONTROL 操作。请求含 clusterId、callerBrokerId、receiverBrokerId、上述完整许可身份、targetDigest 和结果。响应明确区分已提交、重复已提交、非 Leader、拒绝、未知；请求超时以同一许可及结果重复提交，不再次执行成员配置。当前 Leader 将已认证身份附为命令执行上下文，再提交共识确认，RPC handler 不直接修改状态。 |
+
+确认入站要求 MTLS BROKER 身份，认证 URI 的 brokerId 必须等于 callerBrokerId 及许可 executorBrokerId；禁止 DEV/TRUSTED_NETWORK 作为远程排空证明。校验 clusterId、receiver、参数类型及 operation 能力；当前 Leader 在一致读后校验持久化许可并提交，最终以状态机许可 CAS 为准，不能只依赖 RPC 时的检查。incarnation 是绑定在许可中的进程标识，不是证书宣称的身份，也不提供同 JVM 恶意代码隔离。可信 Broker 进程必须只有本地不可逆 DRAINED 才能构造确认。
+
+确认请求**不要求持有者此时仍为 voter、观察者或当前 Leader**：自降级／自移除后仍须能报告旧许可结束。此例外只针对持久化许可已绑定的精确 executor 身份，不扩大其他 CONTROL 权限；必须在 `BrokerPeerAdmissionInterceptor` 的专用分支校验，而不是先被通用 `isCommitted` 拒绝。请求所指许可不存在、已替换或 incarnation 不同均拒绝，不能借此加入集群或修改目标。许可仍占用 operation，成员操作未成功收口前不因原生配置移除而删除执行者的确认路由信息。确认可重投当前 Leader，旧 Leader 不转发通用成员调用。
+
+同进程持有者走相同应用校验和共识命令，不伪造 MTLS 请求；认证责任分为远程传输身份校验与本机可信调用。领域命令只包含领域值，不依赖 Spring、RPC principal 或 Plugin 类型。命令编码使用显式白名单，未知类型／旧格式拒绝，不添加兼容分支。
+
+版本与业务提交规则：Begin、首次许可登记、首次排空确认、成员业务 Commit 各自作为一次聚合状态转换，将当前 revision 加一；拒绝及完全相同的幂等重复不推进 revision。成功确认在同一次转换中记录步骤成功并选择下一固定步骤，不另发可绕过许可的步骤 advance。Register 的 expectedRevision 必须在状态机中与当前 revision 比较；幂等命中只返回既有事实，不重新授权执行。Confirm 不依赖发送时的旧 revision，而以当前完整许可身份、固定目标摘要及已有结果作 CAS，首次应用时推进当时 revision。新格式快照与重放必须保留这些版本事实。
+
+最终成员业务 Commit 的 expectedRevision 改为提交时读取的当前 revision，不再要求 `acceptedRevision.next()`；acceptedRevision 仅保留原请求的接受事实，不作为许可协议完成后的当前版本。聚合必须同时验证 operationId 与原 commandDigest、当前占用操作、当前 revision、所有固定步骤成功、所有许可排空且无未决执行，以及既有 epoch/fence 与领域约束，然后原子修改业务拓扑并推进 revision。本分支仅用于修改原生配置的成员操作；`COMPLETE_LEARNER_SYNC` 与其他非配置操作不套用全部目标／许可要求。成员操作的通用 phase advance、失败结束及其他终态入口均不得绕过未排空许可；重复业务 Commit 返回既有结果，不再次改拓扑。
+
+资源上界：全局至多一个未排空成员许可，本地每许可至多一个在途原生调用。本次不实现封闭记录回收，以免回收与迟到调度产生新的 ABA；本进程的执行槽与封闭记录总计最多 4096 条，作为实现常量，而非已测容量结论。登记新许可前必须在短本地互斥内预留容量，再发共识登记；并发请求共享此上限。预留记录在本进程内也不复用，提交未知不能释放；满额时在新许可登记前明确拒绝新维护，不驱逐记录，不影响已有许可的封闭与确认。所有执行入口仍须核对当前持久化许可及 incarnation，不能仅凭本地缺少槽创建执行能力。已提交许可只能消费对应预留槽，缺少槽时失败关闭，不隐式重建。新 Leader 若要登记自身许可同样先预留；不能接管旧的未排空许可。
+
+重启只更换 incarnation 并释放本机内存，不是未排空许可的恢复手段；若持有未排空许可，重启后仍按 D16 保持 blocked。只有已无未排空许可时，后续新进程才可为新许可重新提供容量；不在本任务新增自动重启、清理或解锁平台。若未来引入记录回收，必须另行证明迟到任务不能在回收后重建槽，并补齐确定性反例，不能直接删除记录以绕过此上界。
+
+接口反例补充：两个固定步骤分别登记／确认后，最终业务 Commit 在新 revision 上成功；旧 revision 登记被拒绝，重复命令不推进 revision；容量耗尽在登记前拒绝且不驱逐旧记录，提交未知不释放预留，旧调度不能因本地无槽重建；同许可重复调度不产生第二次原生调用；同一步新 permitId 不接受旧确认；封闭后重投旧许可不重建执行槽；自移除持有者可提交精确排空确认但不能调用其他 CONTROL；请求者伪造 incarnation／targetDigest、DEV 远程确认与通用 advance 绕过均被拒绝；确认提交超时后重投只重复提交事实，不执行原生目标。
+
+阻断问题 R1：旧执行者迟到调用 `changePeers(旧目标)` 可能覆盖后续目标，完整旧目标还可能回退多次后续成员变化。附录 C 的调查和本轮 Review 均不支持用单一路径或漂移诊断阻止该行为。D11 已重新打开这一段防护设计，取代 D8 的暂停边界；防护未证明前，不能把此问题登记为已接受残余风险，也不能进入实施。
 
 ### 4. Leader 漂移诊断
 
 - 复用 `BrokerMembershipScheduler` 现有扫描周期：Leader 在没有未终态成员操作时读取 `leaderConfiguration()`，与已提交业务状态的期望配置比较。
 - 不一致时：输出告警与指标，内容包含期望配置、实际配置、revision 和 leaderTerm；拒绝登记新的成员维护操作并返回明确原因；不影响自动故障接管和路由。
+- 新维护请求不得把「扫描未发现漂移」当作准入证明；启动、换届、读取失败和结果未知一律不能授权维护。请求应直接核对配置，并在登记前重验 leaderTerm/revision；该前置检查仍不能阻止登记后的迟到调用，最终执行防护由 D11 协议负责。详细时序须随 D11 一并审查。
 - 不自动修复，即不自动把配置改回业务目标；修复方式见 O2。
-- 读取失败（例如本机已不是 Leader）时跳过本轮。
+- 读取失败（例如本机已不是 Leader）时诊断跳过本轮，新维护请求失败关闭。
 
 ### 5. 依赖与制品
 
@@ -167,35 +231,60 @@
 - 隔离：fencing、quarantine 与 Lease 不变（D6）。
 - 重试与幂等：成员维护按 operationId 加固定目标重试；自动接管沿用现有 operation 幂等。
 - 超时：`changeConfiguration` 超时表示结果未知，不推断失败，也不推断回滚。
-- 授权：MTLS 身份与 `validateControl` 不变；观察准入从「实际 voter」改为「已提交观察者」，仍要求认证身份与请求一致。
+- 授权：保留 MTLS 身份校验；普通 CONTROL 权限不变，排空确认增加 §3 的精确许可持有者分支；观察准入从「实际 voter」改为「已提交观察者」，仍要求认证身份与请求一致。
 - 审计：成员维护 operation 记录目标配置；漂移告警记录期望配置与实际配置。
-- 资源：不新增线程或调度器。
+- 资源：复用现有调度入口，不新增通用执行平台；本地执行槽采用 §3 的 4096 条保守上限，满额拒绝新维护，不驱逐安全记录。该上限未作容量测试，不能据此宣称已测内存预算。
 
 ## 运维与交付
 
-- 升级前置条件：没有未终态成员维护操作；集群整批升级，不支持混跑。新命令编码含 `targetConfiguration`，旧版本无法解码。
-- 快照兼容：旧快照中的 operation 没有 `targetConfiguration`。终态操作不需要该字段；若存在未终态成员操作，节点拒绝启动并提示先完成操作或回退版本（V5）。
-- 回滚：二进制与依赖必须一起回滚。升级后已执行的 Raft 配置变更不会随回滚撤销，需由运维确认。若升级后已写入新格式快照，回退前需评估旧版本能否读取（V5）。
-- 可观测性：新增漂移告警，以及成员维护 BUSY 重试次数指标。
-- 配置：不新增配置项，复用 Scheduler 扫描间隔。
+- 发布事实：用户确认尚未上线，不考虑旧版本兼容（D18）。本次不支持混跑，不增加 v2 兼容解码、旧快照转换、迁移启用屏障、双格式写入或降级窗口。
+- 持久化格式：目标序列、步骤与执行许可进入新的显式命令／快照格式；旧格式和未知格式明确拒绝，不默默补默认目标。新版本自身的日志重放、快照恢复、许可身份恢复和未知状态阻塞仍必须验证，这不是旧版本兼容。
+- 本地历史数据：按可重建开发／测试数据处理；若需重建，必须先确认具体目录及其归属，不在本任务擅自删除或覆盖已有 Raft 数据。
+- 回退：代码和依赖作为同一逻辑变更回退，不承诺用旧二进制读取新格式开发数据；不建设旧数据迁移或恢复平台。
+- 可观测性：新增漂移、执行许可未排空、成员维护阻塞及 BUSY 的告警／指标，明确 D10/D16 可能连带暂停自动接管。
+- 配置：复用 Scheduler 扫描间隔。`im-raft` 的 `RaftRuntime` 在每个本地 Node 启动前统一设置 `NodeOptions.setDisableCli(true)`，包括初始及重建实例，不提供线上覆盖开关；通用插件负责原生选项装配，Broker 不依赖实现类。原生 CLI 读写请求均不作为支持入口，不承诺只禁写而保留只读 CLI。诊断使用现有日志、指标和 Broker Leader 的 `leaderConfiguration()` 只读诊断；无 Leader 时读取失败关闭，不临时开启 CLI，不新增配置修复 RPC。受许可的 `Node.changePeers` 调用不走 CLI guard，仍受 §3 约束；外部管理程序不得取得进程内 Node 写能力，不承诺同 JVM 恶意代码隔离。
+- CLI 验证：所有节点及重建实例的原生 CLI 写请求不能改变配置，原生 CLI 只读请求也被拒绝；Broker 受许可成员调用仍能工作，诊断不开放写能力。
+
+### 自有运维 CLI（D19，独立补充设计）
+
+2026-10-30 用户确认浏览器登录／public client／PKCE 与 Ops 窄 Bearer 入口方向，准确安全契约集中于[自有运维 CLI 与 IAM 接入设计](2026-10-30-ops-cli-authentication-design.md)，已取得独立设计复核 Accept 与用户最终批准；本节仅保留治理边界，不作为独立的认证规范。
+
+用户选择自有 CLI，作为 Broker 受控管理接口的客户端，而不是原生 JRaft CLI 的直连替代品。原生 CLI 继续禁用；「禁止管理旁路」不等于「禁止运维命令」。CLI 不持有 Node，不直接调用 `changePeers/resetPeers`，不自行计算完整目标配置，不维护另一份权威成员状态。
+
+调用链为：运维 CLI → Ops 管理边界的 IAM 身份认证、逐操作授权与集中审计 → Broker 现有 management HTTP → 对应应用用例／领域校验 → 受执行许可约束的 im-raft 调用。操作权限与执行许可分别检查：管理员权限不能跳过旧许可排空、revision、epoch/fence 或 quorum 条件，也不复用 Broker 节点 CONTROL 身份作为人的管理权限。成员写操作复用已有 operationId/digest、幂等与结果未知语义；CLI 超时只能查询／以同一 operationId 及固定请求语义重试操作，不创建新的并发目标或强制解锁。
+
+首版范围候选限定为本次治理所需命令，不复制整个运维控制台：
+
+| 命令职责 | 对应能力与边界 |
+|---|---|
+| 查询集群 | 复用 Ops `GET /api/cluster-state`，明确为带来源、revision/epoch 的运行投影，不声称线性一致读取 |
+| 查询 operation | 通过 Ops 读取 Broker 已有 operation 查询；Ops 当前尚无对应公开 GET，需补窄查询，不把 Broker 内部对象暴露到终端 |
+| 加入 learner、显式确认同步、晋升、降级、移除 | 复用 Ops 现有 `/api/brokers/{brokerId}/raft/{action}` 白名单和应用服务，不开放任意 action 或原生完整配置参数 |
+
+每个写命令显式携带 operationId、expectedEpoch 及用例所需参数；CLI 不自动刷新 epoch 后重新提交写入。提交前展示目标与操作，交互确认或显式非交互确认参数只表示用户意图，不代替服务端授权。首次发送前保存不含凭据的重试身份与原请求语义；超时后报告结果未知，保留 operationId，不把未知当失败生成新操作。操作受理与操作完成分开展示，查询不能修复、释放或转移许可。Ops 继续只跟随一次可信 Leader 提示，CLI 不持有 Broker 地址或服务凭证，也不叠加 Broker 重定向链。日志与集中审计不含 Token、Cookie、证书私钥或完整请求 Body，沿用现有脱敏约束。
+
+用户已明确同意按自有 CLI 方向继续推进设计；这不是对尚未固定的管理接口及认证协议的整体实现批准。已核实仓库存在 Broker management HTTP 及 `im-ops` 运维应用：CLI 应经 Ops 复用已有成员用例，Ops 再调用 Broker，不新增直接绕过 Ops/IAM/Audit 的终端写入口，不向终端分发 Ops 到 Broker 的服务凭证。当前 Ops 只接受 IAM BFF Session，不能把 CLI 的 Bearer Token 接入当作现成功能，也不能靠导出浏览器 Cookie 代替正式登录设计。具体首版命令清单、管理传输协议、认证授权机制、凭据保管、审计载荷、只读结果一致性及 CLI 模块归属尚未固定，需补充设计和独立 Review 后才能进入 execution plan。不据此默认新增管理平台、审批系统或全部原生 CLI 功能。手动转移 Leader、触发 snapshot、强制恢复不自动纳入本次范围；D12 不新增漂移修复 API、D16 不自动移交未排空许可的决定不变。验证需覆盖未授权拒绝、授权后仍受许可约束、同一 operation 的超时重试，以及没有直连原生写旁路。
+
 
 ## 风险与回滚
 
 - 风险：
   - R1：旧执行者迟到调用，见 §3。
   - R2：观察资格与实际 voter 分离后，外部 CLI 造成的漂移不再自动停止接管，依赖漂移告警和运维处理。
-  - R3：若一次 `changePeers` 完成晋升/降级的行为与预期不符，需要退回两步目标（V2）。
+  - R3：跨角色单次变更已被否决；分步协议仍需证明持续复制、真实计票和每步恢复（V2）。
   - R4：peers 顺序不一致会导致「同目标」未被识别，产生一条无害的空配置变更日志（V3）。
   - R5：HA 拓扑和 E2E 需要重新取证，现有补丁版证据不可复用。
 - 回滚：见「运维与交付」。
-- 延后事项：`Task.expectedTerm`、旧执行者 fencing、维护期间允许自动接管（O1）、漂移自动修复（O2）、RTO 测量。
+- 延后事项：`Task.expectedTerm`、维护期间允许自动接管、漂移自动修复、RTO 测量。旧执行者防护是 D11 要求的批准前置条件，不再列为延期。
 
 ## 验证策略
 
 以下是设计层面的待证项，准确命令在 execution plan 中固定。
 
 - **V1 官方制品**：确认坐标、SHA、对应 commit 与 JDK 21 兼容；dependency tree 只有单一实现，没有 imchat 私有坐标残留。
-- **V2 RaftRuntime 真实多节点测试**：learner→voter、voter→learner 都能通过一次 `changePeers` 完成；同目标重复调用立即 `APPLIED`；变更进行中的第二次调用返回 `BUSY`；非 Leader 返回 `NOT_LEADER`；移除当前 Leader 后，新 Leader 的配置正确。
+- **V2a 单步拒绝契约**：真实官方 Node 分别验证完整目标跨角色 `changePeers` 与已有 learner 的 `addPeer` 被拒绝、配置与配置日志未变、后续业务复制正常。这是进入配置执行前的拒绝，不要求或声称进入阶段后的 quorum 故障。
+- **V2 RaftRuntime 真实多节点测试**：learner→voter、voter→learner 分两步完成；晋升后继续写业务日志，且新 voter 的票必须成为形成 quorum 的必要条件；降级后 learner 持续复制；覆盖两步之间换届、超时和重启。另验证同目标重复调用、进行中第二次调用 `BUSY`、非 Leader `NOT_LEADER`、移除当前 Leader 后新 Leader 配置。必须以 D11 最终防护协议补充迟到目标确定性反例，未通过前不切依赖。
+- **V2b 完成顺序与未知结果**：通用适配器以受控 Node 回调分别覆盖 closure 先于同步返回与同步返回先于 closure；断言底层完成观察只读、调用方取消或派生超时不改写底层结果、同步异常保持未知。真实网络实验不靠调度碰运气证明两种顺序，日志观察不是断言，也不是排空证明。
 - **V3 顺序规范化**：初始配置与目标按同一规则排序后，重复调用不产生新的配置日志（观察 `lastLogIndex` 不变）。
 - **V4 Broker 观察资格**：
   - `findObservers` 规则：角色、端点绑定、未终态门。
@@ -203,7 +292,7 @@
   - Follower 服务端、Leader 决策、入站准入三处使用同一观察者集合。
   - revision 不一致时拒绝；revision 前进后旧观察者被拒绝。
   - RED 先行：现有依赖 `ConsensusMembership` 的测试先改为新契约并确认失败。
-- **V5 成员维护**：首次成功；超时后重试；BUSY 后重试；Leader 切换后 resume；失去多数派时保持 `PENDING`；旧快照含未终态成员操作时拒绝启动。
+- **V5 成员维护与恢复**：首次成功、分步目标、封闭排空、成功与失败区分、请求超时但底层仍存活、换届不抢占许可、重启不复活旧 incarnation、失去多数派及未知结果保持阻塞。验证新格式日志／快照恢复完整许可与步骤；旧格式、未知格式明确拒绝，不做旧格式兼容。门禁测试覆盖 operation 已终态但仍 `LEARNER_SYNCING` 的长期暂停及显式确认后的恢复。
 - **V6 漂移诊断**：配置一致时无告警；外部修改配置后告警并拒绝新维护，同时自动故障接管仍能完成。
 - **真实拓扑/HA**：三节点中单 Broker 崩溃后自动接管、Leader 崩溃、learner 加入追平并晋升、显式移除、快照安装、分区恢复；核对 voter 没有被自动删除。
 - **完整门禁**：readiness → 聚焦测试 → affected（behavior、startup、E2E 均适用）→ clean → full；独立 quality Review。
@@ -220,9 +309,9 @@
 - `docs/SECURITY.md`：观察准入。
 - `docs/references/HARNESS_GUIDE.md`、`docs/references/HARNESS_RULE_MATRIX.md`：移除私有制品规则。
 - `deploy/local`：若引用私有制品，一并修改。
-- `docs/design-docs/index.md`：更新本文状态；批准后把 `2026-10-16-jraft-applied-membership-patched-artifact-design.md` 标记为已取代。
+- `docs/design-docs/index.md`：更新本文状态；此前私有制品设计已彻底删除，历史事实仅保留在执行历史中。
 
-执行条件：本设计获批，且当前 Bolt 计划收口、用户自行提交后，才创建 `docs/exec-plans/active/<date>-official-jraft-migration.md`。
+执行条件：上一项 Bolt 计划已收口，当前基线工作区干净；本设计仍需关闭 Block findings、完成开放决策并取得用户批准与独立 Review，之后才创建 `docs/exec-plans/active/<date>-official-jraft-migration.md`。
 
 建议的任务顺序是先改业务、最后切依赖。原因是 `changePeers` 和 `listPeers`/`listLearners` 在补丁版中同样存在，T1a 到 T4 可以在补丁依赖上完成，并保留与现状的差分回归能力：
 
@@ -238,10 +327,53 @@
 
 以下问题需要用户决定后，设计才能批准：
 
-- **O1 维护进行中是否允许自动接管？** 现状不允许（门禁返回空集合）。首版建议保持现状：维护操作由 Scheduler 自动收敛，不会永久阻塞；代价是维护卡在 BUSY 或超时期间，即使多数派健在，自动接管也会被推迟。需确认是否接受。
-- **O2 漂移出现后怎么处理？** 推荐只告警并阻止新维护；另一种是增加显式的「按业务目标修复」运维操作。
-- **O3 官方版本选哪个？** 推荐沿用 1.4.1，变化最小；另一种是升级到更新版本。
-- **O4 是否接受 R1 作为首版的已知残余风险？**
+- **O1 已决定，见 D10。** 保留完整维护门禁：未终态成员操作或任一 `LEARNER_SYNCING` 都暂停自动观察与接管。多数派健康也可能长期暂停，Scheduler 不保证解除；不能把本项确认理解为批准其他迁移风险。
+- **O2 已决定，见 D12。** 仅告警并拒绝新成员维护，不增加自动修复或在线修复 API；异常配置按另行明确的运维恢复流程处理。
+- **O3 已决定，见 D15。** 先以官方 1.4.1 为迁移候选，不顺带升级；制品来源、源码对应与 JDK 21 兼容必须实测，失败保持阻塞，不自动换版。
+- **O4 已决定，见 D11。** 不接受 R1 为首版残余风险；先补齐过期执行防护设计，证明不成立前保留补丁、不实施目标配置迁移。
+
+## 设计 Review
+
+2026-10-29 首轮独立 Reviewer `afb14c7962f5b6789` 结论 **Block**，基线 `359b5893522997edc382a70f214fc80bed4c4090`，只读审查，未运行构建。固定 upstream 归档 SHA-256 与本文引用一致。
+
+| ID | 问题与证据 | 处理状态 |
+|---|---|---|
+| F1 | 单次跨角色 `changePeers` 可能复用原角色 replicator；`ReplicatorGroupImpl.addReplicator` 对已有端点直接成功，Learner 响应不计票，配置清理还可能停止该 replicator | 摘要、详细设计与 V2 已改为分步约束；具体执行防护仍由 D11 阻塞，未取得复审 Accept，不授权实施 |
+| F2 | 原草案承诺旧数据升级却遗漏旧日志重放 | 用户确认未上线、不考虑兼容（D18），旧数据迁移与兼容已移出范围；撤回兼容承诺和启用屏障候选。保留新格式自身恢复与旧格式明确拒绝测试 |
+| F3 | PENDING 可无限重试；操作终态后 `LEARNER_SYNCING` 仍会使观察集合为空，Scheduler 不自动确认同步 | 用户已按真实长期暂停语义确认 D10；正文恢复条件、告警和测试尚待补全 |
+| F4 | 漂移扫描与新维护登记之间的未知状态和时序未定义 | 必须明确新维护请求的 fail-closed 核对，不把未检测视为一致 |
+
+审查同时指出：完整旧目标迟到可能覆盖多个后续成员变化并影响多数派；漂移诊断不是执行 fencing。审查后用户确认 D10–D16：保留完整门禁，不接受 R1，保留在线维护并禁止外部并发配置写，漂移只告警拒绝维护，官方候选先用 1.4.1；接受不可自动移交执行许可可能长期阻塞的代价。具体防护和恢复协议仍待 Review。官方制品对应关系、JDK 21、真实角色切换、HA/E2E 均未验证。上述 finding 未关闭前，其他正文中的旧推荐不构成实施授权。
+
+### 本轮执行许可局部复审
+
+2026-10-29，同一独立 Reviewer 对「先封闭排空，再允许后续目标」候选最终给出 **局部 Accept，findings none**：上层结果处理不再绕过许可，安全排空与业务成功分开，单次 closure 不等于许可排空，无法证明的路径按 D16 保持 blocked。仅接受协议约束，不代表整体设计获批或 R1 运行验证通过。后续已显式补充每次重新登记使用新 permitId 防止 ABA。
+
+技术完成信号、许可登记／确认命令与认证 CONTROL 请求候选已写入 §1、§3。2026-10-29 接口首轮 Review 为 Revise：指出新增许可转换与原 `acceptedRevision.next()` Commit 条件冲突、本地封闭记录缺少资源上界。修订为各次转换推进 revision、最终成员 Commit 校验当前版本及全部成功排空事实，以及登记前预留且不驱逐的 4096 条本地上限后，同一 Reviewer 对这两项给出局部 Accept、findings none；其余接口重点未发现新的否决反例。该结论不等于整体设计批准，失败登记亦消耗名额的保守限制保留。真实多节点与确定性反例均未运行。旧格式恢复候选曾取得的局部 Accept 随 D18 撤回，不复用为当前证据。
+
+### 全文复审与修订
+
+2026-10-29 独立全文 Reviewer `a13cd6eb2101dd1b7` 对设计指纹 `9812aa1eab9fee73e4316d490f5bf956e11051bb228d52aa2e766860a307f13a` 给出 **Block**：FSM 同步 continuation 可能进入原生调用形成锁环，`COMPLETE_LEARNER_SYNC` 的 Commit 分支缺失，CLI 禁用仍未定案。现已分别补充有界专用执行器与拒绝策略、同步确认独立 revision／恢复分支、每个 Node 启动禁用原生 CLI 的装配责任及验证要求。随后同一 Reviewer 对设计指纹 `17908397752e44e42fb5ef336c4a76c7cf77831eb77b8c870a0763bf0cbcb880` 复核为 **Accept，尚存必须修正 findings none**，结合上一轮完整审查确认三项设计缺口已关闭，可以进入用户最终书面审阅。实际证据为只读段落核对、`git diff --check` 无输出和 SHA-256 计算；未构建、下载或运行反例。此 Accept 仅针对设计，不是生产实现或依赖切换验收；原生完成信号、并发反例、角色切换、新格式恢复、CLI 拒绝及 HA/E2E 仍须在实施阶段证明。D10/D16 的长期阻塞风险保留；新不变量须落为确定性测试，不另建通用框架。此为当时审查检查点；2026-10-30 用户最终批准与 CLI 补充组合后的方案，实施入口见页首计划，尚未修改生产实现。
+
+2026-10-29 用户在最终书面批准前选择自有 CLI（D19）。原设计 Accept 保留为历史，不能覆盖新增管理入口；当前重新打开这一部分设计，尚未确定首版接口及模块范围，未授权实施。
+
+### D11 防护候选复核与恢复入口
+
+独立 Reviewer 继续只读核对固定 upstream，结论仍为 **Block**。普通 single-flight、最后一次 revision/term 检查、取消 Future、单步增删接口均不能独立阻止旧执行者跨越后续操作；单步接口只能缩小覆盖范围，不能防止旧 add 撤销新 remove。
+
+曾提出的「业务状态应用与原生同步受理共用 monitor」候选已否决，不得实施：
+
+- 配置日志在 `FSMCallerImpl` 直接处理，不经过 Broker 的业务 `apply` monitor，不能泛称持锁必然阻止 Leader 初始化完成。
+- 存在锁环：维护线程持 Broker monitor 等 Node 写锁；失权线程持 Node 写锁向已满 FSM 队列投递 `LEADER_STOP`；FSM 消费线程等待 Broker monitor。即使不持锁等待异步 closure，原生同步入口仍可能造成死锁。
+- 增大队列、给调用方 Future 超时、扩大回调 monitor 均不消除该锁环。
+
+证据来自归档 `NodeImpl.java:1311–1325,3166–3174,3382–3385`、`FSMCallerImpl.java:244–251,300–304,542–558`，以及当前 `RaftBrokerClusterStateMachine.apply/restore` 的同步边界。未运行反例测试，不把源码分析写成运行验收。
+
+生命周期隔离候选继续复核后仍为 **Block**：旧任务即使永久绑定旧 Node，异步退役任务也可能尚未执行，旧实例已经再次当选；旧调用越过最后一次 retired 检查后仍能被受理。`onLeaderStop` 经 FSM 队列异步通知，不是失权时的原子退役钩子；在 FSM 回调等待 shutdown/join 也不能作为无阻塞方案。只有确认旧 Node 已永久停止且任务不能转向新实例，才能证明该实例不再借新任期执行。不得实施「失权后最终 shutdown 即安全」的方案。
+
+补充 API 事实：固定官方 `Node` 无公开 `getCurrentTerm()`；实现类中的测试方法不能作为生产契约。`NodeOptions.setDisableCli(true)` 可关闭该节点 CLI 请求，已选定为 D14 的启动约束（见「运维与交付」），但不阻止 Broker 内部旧调用，也不保留原生 CLI 只读请求。
+
+**当前恢复入口**：重新检查维护推进条件是否必须等待旧执行许可明确封闭，而不是让新 Leader 在旧调用结果未知时继续后续目标；该方向尚无批准协议，可能牺牲成员维护在失联时的自动恢复，不得静默引入。下一轮须给出原生受理及旧许可排空边界、跨任期/重启/超时证明和无死锁锁序；确定性反例须断言实际 Raft 配置未回退，而不只是业务 Commit 被拒绝。覆盖首次推进、每个角色切换步骤、resume、Scheduler、continuation、关闭和快照恢复。若无法满足 D11，保持私有补丁与现有实现，不通过缩减验收或默认接受风险解锁。
 
 ## 附录 A：备选方案
 
@@ -277,7 +409,24 @@
 | ID | 来源/问题 | 用户确认的决策 | 理由与影响 |
 |---|---|---|---|
 | D8 | 研究偏离治理简化主线，是否继续扩展维护协议 | 暂停扩展 stale-executor 调查和官方迁移细节研究 | 保留调查作为历史证据，不把它升级为当前生产修复任务；不新增锁、执行平台或成员 API |
-| D9 | 谁负责业务治理，谁负责框架能力 | 业务模块负责故障观察、自动摘流、路由接管和业务状态恢复；通用 `im-raft` 只提供官方公开的通用共识能力；删除私有 JRaft 补丁；Raft 成员调整独立受控，不自动删除 voter | 避免把 Broker 业务语义塞进通用框架，也避免业务层复制 JRaft 内部状态机；自动接管不依赖自动成员删除；整体设计和生产实施仍待批准 |
+| D9 | 谁负责业务治理，谁负责框架能力 | 业务模块负责故障观察、自动摘流、路由接管和业务状态恢复；通用 `im-raft` 只提供官方公开的通用共识能力；删除私有 JRaft 补丁；Raft 成员调整独立受控，不自动删除 voter | 避免把 Broker 业务语义塞进通用框架，也避免业务层复制 JRaft 内部状态机；自动接管不依赖自动成员删除；整体设计已获最终批准，生产实施与运行验收尚未完成 |
+
+| D10 | 2026-10-29：成员维护与 learner 同步期间是否继续暂停接管 | 保留完整既有门禁：存在未终态成员操作，或任一 Broker 仍为 `LEARNER_SYNCING` 时，暂停自动故障观察与接管 | 即使多数派健康也可能长期暂停；不保证 Scheduler 自动解除。必须恢复成员操作，并显式确认 learner 同步或经受控维护解除状态；需补充告警、解除条件和行为测试。本例外不批准 R1 或其他未决迁移方案 |
+| D11 | 2026-10-29：是否接受旧执行者迟到完整目标覆盖后续成员配置 | 不接受为首版残余风险，先补齐防护设计 | 重新打开这一小段维护协议研究；要求证明过期目标不能覆盖后续变更，证明不成立前保留补丁、不实施目标配置迁移。取代 D8 在该问题上的暂停边界；不授权新增执行平台或生产代码 |
+
+| D12 | 2026-10-29：配置漂移处理范围 | 仅告警并拒绝新成员维护，不新增自动修复或在线修复 API | 异常配置的恢复另走明确的运维流程；不以自动覆盖掩盖未知结果 |
+| D13 | 2026-10-29：是否保留在线成员维护 | 保留 learner 加入、晋升、降级和移除的在线维护能力 | 继续验证共用状态应用／原生同步受理边界候选；锁序、换届和停顿风险未通过审查前不实施；不改为仅停机维护 |
+| D14 | 2026-10-29：外部成员配置写入口 | 禁止外部 JRaft CLI 或其他管理程序并发修改成员配置，Broker 为唯一在线成员变更入口 | 外部工具限允许的日志／指标与 Broker 只读诊断；原生 CLI 读写均禁用，具体装配见「运维与交付」。异常修复另走受控停机流程，不靠文档约定代替入口禁用 |
+
+| D15 | 2026-10-29：官方依赖版本候选 | 先以官方 1.4.1 为迁移候选，不顺带升级 | 制品来源、固定源码对应和 JDK 21 兼容需实测；失败保持阻塞，不自动换版 |
+
+| D16 | 2026-10-29：以不可自动转移执行许可消除迟到覆盖的可用性代价 | 接受执行者失联或原生结果未知时不因换届／重启自动转移许可；只在明确封闭排空，或另行设计并批准外部 fencing 后恢复 | 成员维护可能无限期阻塞，并因 D10 同时长期暂停自动故障接管。继续完善协议及独立 Review，不视为实现授权；不接受把不可达或超时当作排空 |
+
+| D17 | 2026-10-29：是否保留直接降级窗口 | 接受新格式首次写入即不可直接降级；该写入可能来自维护启用前的快照、业务日志或失败的启用请求 | 不新增兼容写入模式。升级前完成旧成员维护并检查数据；写新格式后仅走另行验证的数据恢复流程，禁止用恢复旧备份丢弃后续已确认数据。不代表具体恢复协议已经获批 |
+
+| D18 | 2026-10-29：用户澄清尚未上线 | 不考虑旧版本兼容；撤回旧日志／快照兼容、共识启用屏障与降级窗口设计 | 取代 D17 及相关迁移候选；不新增兼容层或启用命令。新格式自身重放／恢复和格式拒绝仍须验证，本地旧数据不擅自删除 |
+
+| D19 | 2026-10-29：安全许可下的运维入口 | 选择自有 CLI，经 Broker 受控管理接口执行操作，不直接开放原生 JRaft 管理旁路 | 原生 CLI 仍关闭，但保留受控运维能力的设计方向。操作权限不能替代执行许可；命令范围、认证授权及模块归属须补齐并独立复审。不代表整体设计最终批准或实现授权，不改变 D12/D16 |
 
 ## 附录 C：历史研究（已被正文取代）
 
@@ -812,3 +961,468 @@ Reviewer `ad812e4285644eabe` 认为原提案可作为延后讨论的 DRAFT 保�
 - 本轮核对 submitOperation/checkRepeatedIntent、hasPendingOperation、AppService.addLearner 与 Adapter 的检查后调用，构造不依赖换届的同 A 双推进、B 移除后旧 X 再添加时序；仅静态候选，未运行或登记为已复现问题。
 - 最新恢复：已找到既有固定归档并实测 SHA 与 provenance 一致，直接核验固定归档 Node.changePeers 签名及 ReadOnlySafe 默认值；源码来源缺口已部分解除。已读取最新原计划，capture 完成但输入审核/verify-lock/消费者仍未通过，不重复构建或擅自安装。
 - 当前推进限于设计研究和正文修订，不修改当前计划任务状态，不启动新的实施计划。
+
+### 官方单步角色校验事实修订（2026-10-30）
+
+用户批准按实测纠正验收前提，并继续实施。独立实验与规格复核表明：官方 1.4.1 的 NodeImpl.changePeers 在 confCtx.start 之前验证 ConfigurationEntry；完整跨角色目标的新旧角色并集重叠会被拒绝。NodeImpl.addPeer 保留原 learners 后增加 voter，新配置自身即无效。历史 F1 的 replicator 风险推导不构成这两个公开入口可到达的失效证明，保留历史记录但由本节纠正其适用性。
+
+协议仍要求两个持久化完整目标，先移除旧角色再添加新角色；真实新 voter 必要计票、降级复制、步骤之间换届/超时/重启、Leader 移除、迟到执行与许可排空验收均不减少。本次仅将不可成立的 post-stage 单步反例改为 V2a 的提前拒绝契约，并将顺序覆盖明确放在 V2b 的受控适配器测试。等待独立修订复核；此前实验 Review Revise 不改写为 Accept。
+
+### 公共配置模型的解析边界澄清（2026-10-30）
+
+架构门禁揭示初版实现将 PeerId 放入 model，违反既有公共契约框架隔离规则。按既有所有权约束澄清：公共模型只做不可变、字面去重排序及通用校验；Runtime/core 拥有 JRaft 语义解析、canonical 别名合并及跨角色冲突拒绝，且必须在 Node 启动/变更入口前完成。无效原生配置的拒绝不撤销，只改变拒绝所在边界。此澄清不增加兼容层、不复制 PeerId parser、不放宽架构规则；修改后须独立复核。
+
+
+### T4 线程与角色事件实现细化（2026-10-30，待独立设计复核）
+
+本节是原批准安全协议的实现候选补充，不改写原批准规则，也不代表新增范围已获代码实施批准。T4 保持唯一 active，局部实现的 BLOCKED 历史保留；T3–T5 仍为不可中途交付的原子批次。独立设计复核完成并获得实施授权之前，只修改本节和计划 T4 的准确范围，不编辑生产或测试代码。
+
+#### 角色事件所有权与延迟窗口
+
+`RaftRuntime.StateAdapter` 拥有原生角色回调；Broker 的 `BrokerRegistrationLifecycle` 只拥有注册表及 Gossip 生命周期，不接管 Raft 角色事件。新增 framework-neutral `RaftRoleListener`，仅接收任期开始和角色停止通知，不引用 Broker、Spring、RPC 或 JRaft 类型。监听器作为必需构造依赖在 `groupService.start()` 之前安装；同步更新现有构造调用方，不保留无调用者的兼容构造器。Broker 配置层先创建本机 permit executor，再经 `BrokerRaftAdapter` 向 runtime 注入监听器，不等待 AppService 创建，不形成循环依赖。
+
+`StateAdapter.onLeaderStart` 先发布新任期及角色 generation，再短回调；`onLeaderStop` 先发布任期 0 及新 generation，再短回调。角色观察使用一个不可变 `(term, generation)` 值的原子引用，避免两次独立原子写入形成混合快照；generation 每次 start/stop 都递增，包括同任期 transfer 超时后重新 start。监听器仅短锁记账及非阻塞唤醒，不能调用 Node、发布会同步执行应用 continuation 的完成通知，或等待 worker、Future、ReadIndex、RPC。
+
+已核查本机官方 1.4.1 source JAR 的 `NodeImpl.stepDown`：调用者持有 Node writeLock，先投递 `LEADER_STOP`，随后更新 follower soft state；`FSMCallerImpl` 经 `taskQueue.publishEvent` 入队，消费后才调用状态机 `onLeaderStop`。该通知存在延迟，不能声称 Node 失任瞬间即撤销 Java 调用能力。事件送达前已经准入或暂停的任务仍计入在途能力；它们没有精确排空证明时，持久化许可阻止后续目标。JRaft 自身角色拒绝不自动等于许可排空。
+
+Broker executor 在同一短 mutex 内关闭当前 generation 的新预留并将所有旧 OPEN 槽转为 CLOSING，包括只预留、已排队和已进入 native 的槽。未进入者撤销未来调用能力；已进入者保持 in-flight，直到同步入口退出及原生完成均可证明。DRAINED 事实、预留记录和未知记录永不删除。重新当选只允许新 generation 的新预留，不能重新打开旧槽；进程关闭才永久关闭 executor。原生入口前在 worker 上检查当前角色及预留 generation；该检查不是与 Node 状态切换原子的任期 CAS，检查后暂停仍按已准入能力处理。
+
+#### 监听异常的永久 fail-closed 边界（首轮 Review Revise 修订）
+
+本补充首轮独立设计 Review 为 Revise：角色监听异常后的 fail-closed 通路未定义。该结论作为历史保留，本次仅修订候选，等待原 Reviewer 窄复核，不将其改记 Accept。`FSMCallerImpl.doLeaderStart/doLeaderStop` 直接调用业务回调，不能依赖外层记录异常后自动重试。
+
+本轮收口 Review 对既有锁外通知／有界收尾契约的修正：成员发送结果须在 mutex 内固定本轮 completion 与结果后，完全离开全部外层锁再 complete；同步 continuation 可访问 Node，不能在锁内通知。已准入成员流程的待执行 continuation 队列独立上限为4096，不与永久槽相加拒绝本轮最后合法预留后的收尾；新执行准入、永久预算、generation、worker、fault/close 安全契约不变。两项确定性回归修复前失败、实现后通过；独立复审及完整验收由当前计划记录，不追改首轮Block。
+
+角色监听的正常实现先在 executor 的同一短 mutex 内完整完成不可逆记账，再在锁外尝试 pump 唤醒；短记账段不做 IO、Node 调用、Future.complete、用户回调、日志格式化或调度。调度的 `RejectedExecutionException`（含 shutdown 竞争）由唤醒方法内部处理：保留 pending／全部槽事实，清除未成功的入队标志，不向角色监听抛出，不回滚记账。shutdown 已永久关闭准入时不再唤醒，仍保留账本。
+
+为避免监听失败后 runtime 与 executor 各自恢复，`RaftRoleListener` 同时提供框架无关的终身 fault latch：一个初始化时分配的、只允许 healthy→faulted 的原子状态，由 runtime 事件包装器与 executor 的预留／native 准入共同读取。它不是可执行的第二个异常回调。该 latch 随必需监听依赖在 Node 启动前安装；无 listener 专用的空实现。runtime 在调用 listener 时捕获 `RuntimeException`，先设置该 latch 并保存首个异常引用，再发布 term=0 的新 generation，最后返回 FSM；executor 自身监听实现也在抛出 RuntimeException 前设置同一 latch。这样即使全槽遍历只完成一部分，所有尚未修改的槽也因同一个永久 gate 失去新准入能力；已进入者仍记为在途，不能伪造排空。
+
+fault 设置只做原子状态／引用写入，不获取 Node 锁、不调用 listener 的补救回调、不完成 Future、不等待 worker。所有 reserve、queued→entered、角色 start 处理和 pump 的 native 阶段在原短锁内检查该 gate；fault 后 start 只能更新观察信息，不得重新开放准入。runtime 的受限确认入口与其他读取证明出口也拒绝签发新证明。已开始的 native 不取消；其迟到 callback 仍只记录事实。账本、DRAINED 与 pending 全部保留，不由故障处理删槽、释放容量或重执行；永久 fault 的进程不承诺继续投递，未收到响应的确认调用方只获得超时／UNKNOWN，不从 fault callback 强行完成请求。
+
+通过 runtime／executor 的只读 fault 状态及首个 RuntimeException 原因暴露故障，供既有诊断／调用结果读取；不能只 log 后继续准入，不能自动清 fault，进程重启也不复活旧许可。此异常边界仅覆盖可恢复执行环境中的 RuntimeException；不捕获 Throwable 并宣称能可靠处理 OutOfMemoryError、StackOverflowError、VM 崩溃等 JVM 致命错误。若进程无法继续执行原子 gate 写入，维持原失联／未知许可永久 blocked 的协议边界，不承诺内存级故障恢复。
+
+#### 受限排空确认入口的精确非阻塞检查
+
+已核查官方 1.4.1 `Node` 公共 API 存在 `boolean isLeader(boolean blocking)`；`NodeImpl.isLeader(false)` 仅比较 `volatile State state` 与 `STATE_LEADER`，不获取 Node readLock；无参 `isLeader()` 则等同 `isLeader(true)` 并获取 readLock。来源为本机 `/tmp/jraft-artifact-m2/com/alipay/sofa/jraft-core/1.4.1/jraft-core-1.4.1-sources.jar` 的 `Node.java` 与 `core/NodeImpl.java`，是静态 API 证据，不是当前私有依赖的官方运行验收。
+
+共享 `confirmLeadership` 已被 lease、learner 等消费者使用；其现有角色检查和返回契约保持不变，不把下述 DRAINED 专属论证推广给这些消费者。本次选择新增 runtime 公共受限方法 `confirmMembershipPermitDrain(byte[] context)`，仅由 Broker adapter 同名入口调用，AppService 只有 typed drained 确认分阶段路径调用该入口；不替换共享方法，不迁移 lease／learner 调用方。方法产生的技术 ReadIndex 事实仅供该完整许可确认 CAS 使用，禁止用来授权 native 配置、lease 或 learner 业务推进。方法名表达用途，不让 plugin 引用 Broker 领域类型。共享角色事件 fault gate 只增加失败关闭，不放宽共享方法成功条件。
+
+`confirmMembershipPermitDrain` 发起阶段仍在唯一 worker：捕获正任期角色快照 `requested=(term,generation)`，检查未发生状态机错误及 `node.isLeader(false)`，再检查角色快照仍等于 requested，之后调用 `node.readIndex`。ReadIndex callback 不调用阻塞版 `isLeader()`，而是依次读取角色快照 before、检查原生 status OK／未发生状态机错误／`node.isLeader(false)`、读取角色快照 after；只有 before 与 after 均精确等于 requested 才记录该任期 ReadIndex 事实，否则记录失败。角色快照对象不可复用，generation 防止已送达的 stop/start（含同任期重新 start）产生 ABA。callback 不发起第二次 ReadIndex 或提交。
+
+安全依据分为三层，不能混为原子角色快照：ReadOnlySafe 的原生成功返回证明该请求的 quorum read；相同任期及 generation 的双采样拒绝已观察到的换届／角色中断；worker 消费事实时再次核对相同快照及当前角色，并在应用校验后提交完整身份的确认 CAS。FSM 事件尚未送达的窗口不能由 generation 消除，非阻塞角色检查也不承诺返回后 Leader 不变。窗口内可能提交的仅是不可逆 DRAINED 的既有完整事实，FSM CAS 再核对身份、摘要和结果；它不创建 native 执行能力，不推进未满足条件的目标。换届后的提交失败或未知保持原事实待重投，不能以该观察作为新 native 调用或业务成功授权。原批准的当前 Leader 同任期一致读验证保留，不删除验证、不称其为原子任期 fence。
+
+#### 唯一 worker、分阶段 pump 与满队列
+
+固定现有一 worker、一等待槽、AbortPolicy；不新增池、common pool、补线程、caller-runs 或阻塞入队。native callback、FSM Register continuation、ReadIndex callback 和提交完成 callback 只向永久槽写入事实／下一阶段 pending，再非阻塞请求 pump。所有可能进入 Node 的确认阶段，包括角色读取、Leader endpoint 查询、本机一致读发起、第二次 applied ReadIndex 发起和共识 submit，都由唯一 worker 执行；不在 worker 上 join/get 等待异步完成。接收远程 typed 确认也进入同一 worker 的分阶段入口，handler 只在 RPC 线程等待应用结果，不把 RPC caller 当作替代 Node worker。
+
+阶段至少区分：预留／Register 结果、唯一 native 准入、同步退出及 native 结果、本机 DRAINED、确认读取、确认 CAS、确认响应。确认请求使用既有持久化许可的有界槽，纯事实投递不能创建 native 执行权；远程入口占用有界等待预算，预算满返回 UNKNOWN，不创建无界接收队列。4096 永久槽上限继续包含失败与未知预留，不复用、不驱逐、不以确认重投绕过容量限制。若无法为远程确认取得本机有界事实槽则拒绝本次调度，发送方仍保留自己的 DRAINED 事实。
+
+至多一个 pump 正在等待队列，使用短 mutex 保护 pending 与唤醒状态；worker 每次退出前重查 pending，已接受的 native/pump 任务负责再次扫描。入队拒绝不能标记唤醒成功，也不能清除 pending；必须以 latch 覆盖拒绝与 worker 退出之间的 lost-wakeup 交错。待处理项存放于受上限约束的槽而不是另一条 Runnable 队列。完成应用 Future 也在 worker 边界发布，callback/FSM 不直接执行应用 thenCompose。旧 callback 永远不能创建新的 native 阶段。
+
+队列满仅拒绝本次调度，不能删除 DRAINED、清空事实、重新打开槽或重复 native。显式重投严格复用 permitId、operationId、stepId、executorBrokerId、incarnation、targetDigest 和结果；接收方与 Leader 路由变化只改变投递 envelope，不改变该事实。UNKNOWN／请求超时保留原事实，本节不新增自动 timer、重试周期或无人触发也最终成功的承诺。worker 被未知原生工作永久占用时保持 blocked，不允许绕过。
+
+#### 文件范围与验证落点
+
+新增生产文件只有 `im-plugin/im-raft/src/main/java/com/co/kc/imchat/plugin/raft/spi/RaftRoleListener.java`。修改生产文件：`im-plugin/im-raft/src/main/java/com/co/kc/imchat/plugin/raft/core/RaftRuntime.java`；原 T4 的 Broker `application/cluster/BrokerMembershipPermitExecutor.java`、`BrokerMembershipAppService.java`、`adapter/cluster/BrokerRaftAdapter.java`、`BrokerPeerAdapter.java`、`infrastructure/config/BrokerClusterConfiguration.java`、`infrastructure/chain/interceptor/BrokerPeerAdmissionInterceptor.java`、`interfaces/handler/broker/MembershipPermitDrainedHandler.java` 及 SDK operation/params/response 原范围不减少。
+
+必需构造调用方修改限定为现有 `im-plugin/im-raft/src/test/java/com/co/kc/imchat/plugin/raft/core/RaftRuntimeTest.java`、`RaftConfigurationIntegrationTest.java`，以及 Broker `adapter/cluster/BrokerRaftAdapter.java` 的直接 runtime 构造；`infrastructure/config/BrokerClusterConfiguration.java` 同步调整 Adapter／Executor 的启动前接线。已对 im-plugin/im-raft 与 im-broker 的 Java 源码检索 `new RaftRuntime`，当前直接构造仅这三个文件。若代码阶段搜索发现其他实际构造调用方，先报告精确路径，不以兼容构造器掩盖遗漏。测试继续修改原 T4 的 `BrokerMembershipPermitExecutorTest`、`BrokerMembershipPermitAdmissionTest`、`BrokerClusterConfigurationTest` 及 SDK admission 合同测试；不新增反向模块依赖。说明更新在 `im-plugin/im-raft/README.md`、Broker server/SDK 两份 README；不把本节写成已实现事实。
+
+先用 `RaftRuntimeTest` 确定性验证监听器启动前安装、任期先发布、受限入口非阻塞角色 API、双采样拒绝跨 generation、共享 confirmLeadership 的 lease／learner 契约不变；用 permit 两个测试类覆盖失任封闭预留／排队／在途、重新当选不复活、callback/FSM 不进 Node、队列满不丢事实、lost wakeup、同事实显式重投及 native 调用最多一次。另以 listener 在全槽记账前／中途抛 RuntimeException 的 fixture 验证同一 fault latch 立即永久关闭 runtime／executor，新 start、reserve 和排队旧 native 均不恢复，已有在途／DRAINED／pending 不丢失且无 Future continuation 在 FSM 执行；以 shutdown 与 pump enqueue 拒绝竞争的 fixture 验证异常内部处理、无虚假唤醒成功、无账本回滚。上述测试分别放现有 RaftRuntimeTest 与 permit 两类，不新增生产故障注入接口。命令分别为：
+
+```bash
+mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-plugin/im-raft -am -Dtest=RaftRuntimeTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-broker/im-broker-server -am -Dtest=BrokerMembershipPermitExecutorTest,BrokerMembershipPermitAdmissionTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-broker/im-broker-server -am -Dtest=BrokerBoltAccessContractTest,BrokerAdmissionContractValidatorTest,BrokerClusterConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+真实拓扑不回退证明放在 Broker server 的 `BrokerMembershipPermitExecutorTest`，使用真实 RaftRuntime、持久化状态机和许可执行器，在测试 supplier 边界暂停已准入旧线程，再真实换届；旧许可未确认时拒绝下一目标，精确排空 CAS 后执行下一真实配置，重放旧调度／callback 后核对当前 Leader 配置及后续业务日志均不回退。不得用手工追加 target history 或 mock Leader 替代此证明。原 im-raft `RaftConfigurationIntegrationTest` 的真实夹具仅作参考及构造迁移，不引入对 Broker 的反向依赖。当前私有坐标下的真实拓扑结果必须标注依赖事实，不冒称官方坐标验收；依赖切换仍不属于 T4。
+
+上述协议边界与真实不回退反例属于 T4；首次／resume／Scheduler／continuation 全入口迁移、多步推进、最终业务 Commit 和原子批次全链验收属于 T5。完整原 RED、启动、行为、E2E 与最终 full 要求均保留，不因补充窄命令而减少。本节尚未独立设计复核，不记录 Accept，不解除 T4 原 BLOCKED。
+
+
+#### T4 实现细化独立设计复核结果（2026-10-30）
+
+controller 转达原独立设计 Reviewer 对上述修订补充的结论为 **Accept，findings none，仅设计**。首轮 Revise 与修订原因保留；本次不代表实现 Review、运行验收或 T4 完成，T4 原 BLOCKED 与原子批次不可交付边界不变。controller 已按用户既有授权允许按小批次继续代码实施；计划与 PROGRESS 由 controller 管理。
+
+### T4 远程确认等待预算与共享等待桥补充（2026-10-31，已批准）
+
+本节修复已批准 T4「远程入口占用有界等待预算」的实现缺口，不新增 native 权限或自动恢复机制。当前独立 QUALITY 仍为 **Block**，原件 `.harness/t4-reaccept/quality-review.json` 保留；下述配置和等待视图是 controller 的候选决策，不是用户新批准或既有运行事实。独立设计复核及准确计划落地前不修改生产、测试或 README。T4 保持唯一 active，T1–T3 passing、T5–T7 blocked。
+
+#### 问题、目标与非目标
+
+现有 Handler 对应用返回的未完成 stage 执行无限 `join()`。4096 永久事实槽只限制许可身份数量，不能限制同一身份占用多少 RPC 线程；发送方超时也不会释放接收端线程。即使增加 Semaphore 和有限 `get`，每次将同一未完成 MinimalStage 转为 CompletableFuture 仍会新增源上的 relay；请求超时不保证 relay 解绑，串行重投也可能累积历史对象。必须同时约束实际请求等待、同轮持久依赖和永久事实槽，不能用其中一个预算代替另外两个。
+
+本补充只处理受限确认入口及其现有应用／Executor 返回边界，不修改 SDK 载荷、认证链、Node 阶段、worker 数量、4096 槽、不回收原则或 D16。UNKNOWN 不表示未提交；超时不取消、完成、删除共享事实，不重执行 native，不新增 retry、timer、线程池或通用等待框架。
+
+#### 配置所有权候选
+
+在现有 typed `BrokerProperties` 中增加固定嵌套 `MembershipConfirmation`，由 `im.broker.membership-confirmation.max-concurrent-waiters` 和 `im.broker.membership-confirmation.timeout-ms` 分别控制本 Handler 的同时等待数和单请求本地期限。候选本地默认分别为 **8** 和 **3000 ms**：这是本次待复核的保守配置选择，不是已测容量或 SLA，也不声称原设计已指定这些数字。Handler 构造时要求两值为正并快照，Nacos 可覆盖启动输入，不承诺在线 Semaphore 热缩容。
+
+不复用 `peerCall.maxConcurrentRequests`：它拥有 outbound 控制面 RPC executor，接收端等待预算应独立调节。独立 timeout 同样避免 outbound 调用配置变化意外改变接收方等待契约；二者期限相同不保证网络端到端按时响应。替代方案是让 peerCall 同时控制两个独立资源，文件较少但混淆所有权，故不推荐。仍使用既有配置扫描，不新增 Bean、YAML 重复默认或兼容构造器。
+
+#### 等待桥与生命周期候选
+
+现有 Executor 的每个确认轮拥有一个私有等待桥；共享确认完成结果只接入一次，重复接收请求复用同轮桥，不在每次请求上执行 `MinimalStage.toCompletableFuture()` 或追加永久 continuation。对外只提供有限等待所需的只读能力，不暴露 cancel、complete、obtrude 或可下转型修改源的共享 CompletableFuture。准确候选为 Executor 内包可见具体 `ConfirmationRound`，持有私有原始 completion、固定 `CompletionStage<MembershipPermitDrainedResult>` 和固定 `Future<MembershipPermitDrainedResult>` 等待视图。现有 `confirm` 返回该轮对象；AppService 现有 `confirmMembershipPermitDrained(command)` 保留 CompletionStage 签名，新增有 Handler 实际调用方的 `requestMembershipPermitDrainConfirmation(command)` 返回 Future；二者委托同一个私有轮次入口，复用原全部校验及拒绝逻辑。立即拒绝通过已完成轮对象返回，不进入永久槽。私有具体 WaitingView 只实现 JDK Future，get 直接委托原始 completion、cancel 恒 false，不是可下转型为 CompletableFuture 的对象；不得增加完整 CompletableFuture 子类框架。Future.get 的临时等待节点由 JDK 超时／中断清理，不安装每请求 relay；需由测试补充固定依赖数量证据，不能只凭相同包装器身份认定有界。
+
+桥与现有有界槽／当前确认轮共同生存；完成后的显式新轮使用新桥，旧轮结果不能串入新轮，不建按请求或历史轮次保留的表。原 CompletionStage 调用方仍保持 F1 已接受的同轮固定只读 view、派生取消隔离和显式新轮语义。立即拒绝／认证失败等无在途轮路径也必须闭合，不为拒绝创建永久槽或全局缓存。
+
+Handler 先执行原 principal 校验，再非阻塞取得私有请求预算；满额立即返回 typed UNKNOWN，不调用应用、不建立接收队列。已准入请求只等待同轮桥，使用 `System.nanoTime()` 的单一 deadline；超时返回 UNKNOWN。保持旧 join 的不取消语义：捕获中断后在同一剩余期限内继续等待，finally 恢复 interrupt bit；不因每次中断重置期限。所有正常、同步异常、异步异常、取消和超时出口均 finally 释放实际请求预算；不把认证或执行异常统一吞成 UNKNOWN。异步异常保留 join 的 CompletionException／CancellationException 形状。
+
+该预算只约束本 Handler 已准入的实际等待，不宣称隔离所有 Bolt 流量或消除上游 Processor 的既有队列。没有新 worker，也不把 RPC caller 当 Node worker；确认阶段仍只在原唯一 worker 执行。
+
+#### 验证与交付边界
+
+公共 admission／handleRequest 测试须证明：首请求确已进入应用且未完成时，超额请求立即 UNKNOWN 且不调用应用；准入请求期限退出后预算可再次使用；大量串行超时重投仍只保留同轮固定等待桥；共享事实与 native 均不取消／重复；解除 worker 屏障后原确认完成，显式新轮与旧轮结果隔离。补齐同步异常、异步 cause、取消和中断后的预算释放；配置默认、覆盖、非法值由绑定及构造测试验证。测试用受控等待结果与 latch，不用 sleep、进程挂死或墙钟耗时阈值充当 RED。
+
+Q2 只修正现有 `queuedCommittedPermitCannotStartNativeAfterLeadershipLoss` fixture：必须先让真实公开 workflow 完成 Begin／Register，在精确持久化许可及 queued native 屏障成立后失权，再证明零 native；增加不失权时精确一次 native 的正向对照，排除入口拒绝或测试屏障吞任务。此修正不追认旧测试为历史 RED，也不为制造 RED 弱化生产 gate。
+
+实施前须固定准确 API、完整文件范围及具名 RED／GREEN 命令并独立复核；之后按窄层、模块、architecture、冻结 clean／full 顺序重新取证。原模块与 architecture 通过仍只属于改前输入，原 full 不升级为 fresh。README 仅在实现后写当前事实。沿用已有有界资源与确定性测试规范，本补充尚未确立需新增 Harness 规则的通用惯例。
+
+| ID | 来源／问题 | 候选决策 | 理由与影响 |
+|---|---|---|---|
+| T4-W1 | outbound 配置不拥有 inbound 等待 | 独立 typed MembershipConfirmation，候选默认 8／3000 ms | 配置可独立调节；默认不是容量承诺，待复核 |
+| T4-W2 | timeout 不会清除历史 relay | 现有槽内每轮一次私有只读等待桥 | 同轮持久依赖不随历史重投次数增长，不建第二张历史表 |
+| T4-W3 | 有限等待不能修改协议事实 | 非阻塞准入、单一 deadline、恢复中断标志、finally 释放请求预算 | 仅满额／期限返回 UNKNOWN，不取消共享工作或重置期限 |
+
+2026-10-31 独立窄设计复核为 **Accept，仅设计，findings none**，原件 `.harness/t4-reaccept/quality-fix/design-review.json`。该结论不是用户新增批准，也不解除原 QUALITY Block 或授权实施。实施时 deadline 从取得请求预算起计算，应用入口返回后仅使用剩余期限；所有新旧轮 callback 捕获本轮，不重新读取 Slot 当前轮。期限不保证任意同步 Java 代码可被抢占或网络端到端 SLA。固定等待视图身份之外，必须补充未完成源依赖／安装次数的稳定性证据。配置默认、共享桥与 Q2 尚无实现或新运行证据；用户随后明确回复「可以」，确认上述新增独立配置、8／3000 ms 本地默认、共享等待桥及中断策略，并允许继续实施；本节据此转为已批准，进入既有活跃计划的 T4 修复批次。前文候选／待审文字保留为决策历史，不覆盖本条批准状态；实现、测试及原 QUALITY Block 尚未闭合。
+
+### T5 learner 确认的有界 worker 入口补充（2026-10-30，pending 独立 Review）
+
+本节仅为待审设计，不是实现事实。controller 已允许将 `BrokerMembershipPermitExecutor.java` 纳入 T5，并授权本次同步计划的准确范围；尚未授权按本节修改生产代码。PROGRESS 仍由 controller 管理。保留 T3–T5 原子批次、T4 已批准线程协议及 D10/D16，不增加 native 自动重试或可用性承诺。
+
+#### 已核实的缺口与最小扩展
+
+现有 executor 只有依赖 `BrokerMembershipPermit` 的 `confirmationExecutor`／`confirm` 阶段入口；`reserve` 创建 native 预留。`confirmLearner` 当前通过 `confirmLeadership`、对端 `fetchQuorumReadIndex`、Begin、Commit 和终态提交组成链，不能为获得线程入口伪造 permit，也不能让异步 callback 的内联 `thenCompose` 发起下一次 Node 调用。executor 继续拥有唯一 worker；不增加线程池、通用任务平台或新的生产文件。
+
+候选精确 API 如下，均为 `application.cluster` 包可见，不向接口层暴露 `Executor`、`Runnable` 或可注入 action：
+
+```java
+// BrokerMembershipPermitExecutor：唯一生产调用方是 AppService.confirmLearner。
+CompletionStage<CompleteLearnerSyncResult> confirmLearner(
+        ConfirmLearnerCommand command, BrokerMembershipAppService service);
+
+// BrokerMembershipAppService：仅由上述 typed 入口在 worker 上调用。
+CompletionStage<CompleteLearnerSyncResult> confirmLearnerOnWorker(
+        ConfirmLearnerCommand command, Executor stages);
+```
+
+AppService 的公开 `confirmLearner(command)` 只委托 typed 入口，不在调用线程读 Node。executor 内部将 action 固定为 `service.confirmLearnerOnWorker(command, stages)`，不接收外部 Supplier／Function；`stages` 只在这个内部链中使用。现有 native permit 入口不改为通用 workflow 入口。`resume` 对 COMPLETE_LEARNER_SYNC 的 PENDING 与 RAFT_COMMITTED 均须先分流到公开 `confirmLearner`，再处理其余类型既有的通用 phase 分支；不能保留位于 type switch 前的 RAFT_COMMITTED early return 作为该类型的终态提交旁路。Scheduler 仍经 `resume`，不新增绕行分支。配置层继续注入同一个 executor，不增加生产构造器或测试专用实现。
+
+#### 身份、永久预算与重复请求
+
+workflow 是独立的非 native 槽，不构造 `BrokerMembershipPermit`，不调用 `reserve`／Register，也不进入 native 槽映射。身份冻结为本进程 incarnation、operationId、完整 commandDigest、完整 `ConfirmLearnerCommand`、接纳时 role generation 和本机单调 attempt 序号。commandDigest 必须包含原有 brokerId、expectedEpoch、membershipEndpoint；不以摘要替代完整载荷比较。
+
+在现有同一 mutex 下检查并分配；native／远程确认永久槽与 workflow 永久槽的**总数**至多 4096，不是各自 4096。一个 workflow 从接纳、排队、异步在途、pending、失败到终态始终计一槽；所有失败、未知和已完成 attempt 永不删除或驱逐。operationId 到最新 attempt 的索引只引用这些槽，键数量不超过槽总数；不建立无界历史、等待者列表或第二条 Runnable 队列。满额拒绝本次新 attempt，不影响已有事实或 native 权限。
+
+同一 operationId 的完整同事实在途请求共享只读派生结果，不增加槽或重复阶段；派生取消不能取消账本链。相同 operationId 但不同摘要或不同载荷立即返回冲突，不覆盖原 attempt。成功／业务确定拒绝的终态可复用原结果；UNKNOWN／NOT_LEADER attempt 的显式重投可在旧 attempt 已发布终态且没有 pending 或在途阶段后分配新 attempt，仍计永久预算。新 attempt 必须重新进行既有领域幂等／恢复判断，不能把旧 ReadIndex 当新授权；不通过 timer、Scheduler 内部循环或 callback 自动重开 attempt。旧 attempt 不因重新当选或显式重投恢复执行权。
+
+#### 单 worker 阶段、异常和迟到结果
+
+沿用一 worker、一等待槽、AbortPolicy 及原分阶段 pump。每个 workflow 槽最多一个 next-stage pending 和一个未消费的异步完成事实；当前阶段只允许一个受跟踪的异步等待。重复投递不能覆盖已登记 pending，矛盾事实拒绝并保留原事实。callback 只记录完成值／异常并非阻塞请求 pump；事实存于对应永久槽，不能借回调创建其他 operation 或 native 调用。拒绝入队保留 pending、不误记唤醒成功，由既有 worker 退出重查处理 lost wakeup；无 common pool、caller-runs、fallback、阻塞入队、join/get 或额外 Runnable 集合。
+
+实际 Node 的角色读取、Leader hint 查询、native 配置诊断、ReadIndex 发起、Begin、Commit 及终态 submit 全部在 worker 阶段执行。唯一窄例外由[可信提示设计附录 D／H7／H8](2026-11-02-ops-trusted-leader-hint-mapping-design.md)拥有：caller 可在既有 executor mutex 内原子无锁读取无 Node 的 following 事件值，仅用于纯拒绝。摘要冲突、在途共享、closed／roleFault／满额硬拒绝优先，随后仅 `roleStopped` 且观察有效、generation 一致时返回 `NOT_LEADER`；零新增 workflow、永久预算、队列、pump、许可或 native。缺观察及独立 FSM failure 不提供提示。锁序仍为 `rolePublication → listener → executor mutex`，getter 不反锁 publication；事件延迟不证明实时健康或 quorum。该例外不授权任何新执行，不改变 worker 首检及后续 native 门禁。使用受槽约束的 `thenComposeAsync`／`thenApplyAsync`，不能重新引入 callback 上的内联 Node 调用。最终应用结果也在 worker 阶段发布；新接入或已注册的调用链不得在 ReadIndex／FSM callback 完成结果。对于已完成结果后才附着的外部 continuation，CompletionStage 本身不保证线程：AppService 内后续 Node 阶段仍必须显式通过对应有界 worker 入口，不能依赖完成线程推导安全性；接口层只转换／返回结果，不取得 Node 能力。
+
+请求方超时／取消只影响派生等待，不清除槽、pending 或在途事实，不重复 native 或自动重新执行 workflow。异步失败由 worker 转换为现有 `CompleteLearnerSyncResult` 状态；Begin／Commit 结果未知时保留领域 operation 的实际状态，显式恢复读取已提交事实。正常角色 stop 在短 mutex 中不可逆封闭旧 generation 的新业务阶段，但仍允许旧槽的结果消费与失败发布；晚到事实不得触发旧 generation 的 Begin／Commit。角色 start 只开放新 attempt，绝不重开旧槽。每个有副作用的阶段在 worker 上重验 role generation、当前 Leader 任期及相关 revision，不宣称与 Node 换届原子 CAS。
+
+close 永久关闭新 workflow 与新 Node 阶段，不 interrupt 已进入工作，不等待回调；已经提交的事实不得擦除。shutdown 后不能调度的迟到 pending 仍保留，派生结果允许保持未完成，不用调用线程补发完成。fault latch 一旦触发同样永久拒绝新 attempt／Node 阶段，保留全部事实，不新建线程或通过新 generation 恢复；不能为了给出终态而在 fault callback 上运行 continuation。未知工作永久占用时允许 blocked，与原安全优先边界一致。
+
+#### 不授予 native 权限与 learner 证据保真
+
+typed workflow 不接收目标配置或 native action；槽类型不满足 `execute` 的精确本机 native 预留／已提交 permit／incarnation 校验，不能转换成 native 槽。`confirmLearnerOnWorker` 的固定链只允许 learner 身份／已提交端点检查、Leader 配置诊断、同任期 quorum ReadIndex、经既有认证对端取得的应用进度、领域 Begin／Commit／终态提交，不得调用 `changeMembershipConfiguration` 或旧 native delta API。能力边界是受控 Java 调用方与现有 permit 校验，不是恶意同 JVM 代码 sandbox；不会声称 `Executor` 在 Java 类型系统中能阻止任意恶意 Runnable。测试和独立 Review 必须核对 typed 入口的唯一调用方及上述固定链，不能用「所有代码可信」取消原生 permit 检查。
+
+新请求先保留完整身份、端点、epoch、learner 配置及 catch-up 检查；quorum read 的任期和角色 generation 在对端进度返回后、Begin 前由 worker 重验，同时重验取证时的 revision 与端点绑定。证据不足或任期／revision 变化不登记新 Begin；不把较大应用位置单独当作同任期证明。历史 duplicate／PENDING 恢复保留原规则，不重新要求一份取代原 Begin 的证据。COMPLETE_LEARNER_SYNC 不是 native 维护，不生成步骤／permit；Commit 继续使用原 `acceptedRevision` 规则，不误用 native 最终 Commit 的当前 revision。成功仍须 READY 与操作终态均提交才解除 D10；未知或缺少显式确认仍暂停。
+
+#### 文件、fixture 与验证落点
+
+生产增量仅在 T5 原四文件及新增授权的 `application/cluster/BrokerMembershipPermitExecutor.java`；不自动扩大到 runtime、SDK、认证或 transformer。API 与有界槽的回归放 T5 已有新增 `BrokerMembershipWorkflowTest`，使用真实 executor、真实领域／FSM 提交边界及受控 Adapter/Peer 异步事实；不另加生产故障注入接口。既有 `BrokerMembershipSchedulerTest`／`BrokerMembershipChangeTest` 按原范围保留。需要修改共享 fixture 时，实施前另报精确文件及原因，本补充不预授权扩大 fixture 范围。
+
+新增确定性 RED 必须覆盖共享 4096 总预算（native 与 workflow 混合）、在途同事实去重／矛盾事实拒绝／派生取消、满队列 pending 与 lost wakeup、ReadIndex callback 不进 Node、同任期 stop/start generation 失效、晚到结果不提交、显式未知恢复、close／fault 不 fallback，以及不同 revision 下 learner Begin／Commit 仍沿用 acceptedRevision。typed workflow 全程验证零 native permit、零 native 配置调用；首次／resume／Scheduler 原三具名 RED 仍保留，continuation 与完整链在原 T5 继续补齐。
+
+窄验证命令（待设计独立 Accept 并获实施授权后运行）：
+
+```bash
+mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-broker/im-broker-server -am -Dtest=BrokerMembershipWorkflowTest,BrokerMembershipDriftTest,BrokerMembershipSchedulerTest,BrokerMembershipChangeTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-broker/im-broker-server -am -Dtest=BrokerMembershipPermitExecutorTest,BrokerMembershipPermitAdmissionTest,BrokerClusterConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+两条窄链通过后才按原 T5 执行 Broker 模块回归和 `affected`，不以本补充替代原验收。本次设计前实际证据为 `/tmp/im-chat-t5-uDxRui/`：readiness exit0；原指定聚焦命令 exit1，fresh XML 共 28 tests／4 failures／1 error／0 skipped。新增 `firstResumeAndSchedulerMustUseTheSamePersistedPermitEntry` 的 FIRST_REQUEST／RESUME／SCHEDULER 三项均为具名 assertion RED（permit 入口预期 1、实际 0）。另有既有 Scheduler 1 failure／1 error：前者为缺少已提交初始端点绑定的旧 fixture 准入断言失败，后者为旧 fixture 传入空 operation 导致 NPE；该归因来自源码检查，尚未通过修订 fixture 复验，不将四个 failure 一概称为新缺陷，也不抹除 error。尚无 GREEN、模块或 affected 证据。
+
+
+#### T5 补充首轮设计 Review Block 与窄修订（2026-10-30，pending 原 Reviewer 复审）
+
+controller 转达首轮独立设计 Review 为 **Block**：前版只覆盖 `resume` 的 type switch，遗漏其前置 RAFT_COMMITTED early return。源码已核实该 early return 直接调用 `completeMembershipOperation`，再进入 Adapter submit；因此仅修改 switch 不能保证 learner 终态恢复经过唯一 worker。保留本次 Block，不记录 Accept，不修改原 28 tests／4 failures／1 error 或三项具名 RED，也不将以下 fixture 计划写为已验证事实。
+
+准确修订仅涉及原 T5 的 AppService 分流及既定 typed 入口，不增加通用执行接口：`resume` 读到 COMPLETE_LEARNER_SYNC 后，无论 PENDING 或 RAFT_COMMITTED，均先用已提交 operation 与已提交端点构造原完整确认命令，进入公开 `confirmLearner`；该分流必须位于通用 RAFT_COMMITTED early return 之前。调用线程仅读取 committed snapshot／构造命令，不查询 Node 角色、Leader hint 或 submit。其他 operation 类型仍按原 T5 范围处理，本补充不替其新增入口或扩大授权。
+
+typed workflow 在 worker 上重新读取 operation 并核对完整命令身份、摘要、端点及当前阶段。若已为 RAFT_COMMITTED，读取已提交事实后**只推进成功终态**：不重新获取 learner 同步证据，不重新取 ReadIndex，不重新 Begin，不重做业务 Commit，不创建 native permit，也不调用配置变更。该分支不能先走新请求的 learner 资格判定或要求目标仍为 LEARNER_SYNCING；业务 Commit 已使节点 READY，但尚未终态的 operation 仍保留 D10 门禁。终态 submit 前仍需 worker 上核对 attempt 的 generation、当前角色及 fault／close；旧 attempt 不因同任期重新 start 而恢复资格。submit 未知则保留已提交事实和原恢复边界，不把 READY 单独视为维护完成。
+
+在 `BrokerMembershipWorkflowTest` 计划新增以下具名确定性 fixture（设计通过后先 RED，再最小 GREEN），不增加共享 fixture 或生产测试接口：
+
+- `raftCommittedLearnerResumeQueuesTerminalOnlyOnWorker`：通过真实领域／FSM 依次提交 learner 同步 Begin 与业务 Commit，确认 operation 实际为 RAFT_COMMITTED 且节点 READY；用 latch 暂停唯一 worker，分别参数化显式 `resume` 与 Scheduler 调用。记录调用线程，断言两种入口在 worker 释放前零 Node submit。释放 worker 后只提交一次终态，零新 Begin、零 ReadIndex、零业务 Commit、零 native permit／配置调用；终态提交前 D10 仍关闭，只有终态成功后才允许解除。
+- `raftCommittedLearnerRecoveryCannotSubmitAfterSameTermRoleRestart`：同样先实际提交至 RAFT_COMMITTED，暂停 worker 并接纳恢复 attempt，然后送达同任期 stop/start（generation 改变）；释放后断言旧 attempt 零终态 submit、零 fallback、零新 Begin／native 调用，D10 保留。显式新 attempt 的后续恢复不混入本条旧 attempt 断言。
+- `raftCommittedLearnerRecoveryCannotSubmitAfterFaultOrClose`：分别参数化 fault latch 与 close，在 worker 暂停且恢复已接纳后触发，随后释放 worker；旧 attempt 不 submit、不重新排入替代执行器、不在调用线程或 callback fallback。fault／close 下派生结果允许按既定边界保持未完成，测试不以等待 Future 完成代替安全断言；已提交 RAFT_COMMITTED／READY 事实和 D10 门禁保持不变。
+
+上述 fixture 还需在终态 worker 阶段前设置第二个受控 latch，复验「已接纳／已消费事实但未 submit」窗口中的同任期 stop/start、fault、close，避免仅测第一次排队失效而漏掉迟到 continuation。所有线程断言使用具名 worker／调用线程及有界 latch，不以 sleep 或 mock 调用顺序替代持久化阶段前提。窄命令仍为本节原两条；本轮只修设计与对应计划，不构建、不改代码，等待原 Reviewer 窄复审及 controller 后续实施授权。
+
+#### T5 补充窄复审结果与实施授权（2026-10-30）
+
+controller 转达原独立设计 Reviewer 的窄复审结果为 **Accept，findings none，仅设计层面**；复审设计指纹为 `e38f3edf6fd623616a5d25f9e22f6f548812cdc87d5af8655fdf3b4a75be1ddd`，计划指纹为 `e14cc54a2fb8d211f0f15e4587ed6453b740db1f63c5b6770ebae775d51fd219`，与交付一致。首轮 Block 和 RAFT_COMMITTED early return 的修订原因保留，不改写为首轮通过。controller 依据用户既有推进授权恢复 T5 实施：先按批准补充完成 typed 非 native worker 与 RAFT_COMMITTED 恢复具名 fixture 的 RED→GREEN，再接通原 T5 native 全入口、漂移准入及最终 Commit。本记录仅解除本补充的设计实施等待，不代表实现 Review、运行验收、T5 passing 或 T3–T5 原子批次可交付；PROGRESS 仍由 controller 管理。
+
+
+### T5 固定结果视图与既有幂等结果语义补充（2026-10-30，pending 独立窄设计 Review）
+
+本节仅修订待审设计和具名测试计划，未授权生产实施。此前 typed 实现的局部 Accept、native 规格 Review 的 Revise、首轮应用迁移 45 tests／11 failures／5 errors 均保留，不将结果缓存造成的语义变化归为旧 fixture。T5 仍为唯一 active；不修改 PROGRESS，不运行 full、不切依赖、不提交。
+
+#### 事实来源与不变量
+
+`BrokerCluster.submitOperation` 首先读取已登记 operation，再调用 `BrokerClusterOperation.checkRepeatedIntent`：摘要、类型和目标匹配返回 DUPLICATE，不匹配返回关联原 operation 的 REJECTED。`CompleteLearnerSyncResult.failure` 与 `BrokerClusterAppTransformer.completeLearnerSyncResultFrom` 保留原 operation 的 acceptedEpoch 和 resultEpoch，不以当前集群 epoch 或重复请求 expectedEpoch 替代。成功终态重复不得返回首次 APPLIED；身份冲突不得改为 CONFLICT。D10、acceptedRevision、原 UNKNOWN／NOT_LEADER 的显式恢复规则不变。
+
+#### 每永久槽三个固定只读 view
+
+每个 typed learner 永久槽至多预留三个 Future 及其唯一只读 view：首次执行／同事实在途、稳定终态同事实重放、身份冲突。每个 view 仅在创建槽时分配一次；重复请求不追加 dependent stage、不创建 attempt、不占新 worker 队列槽。三个 view 同属一个永久槽，仍与 native、远端确认事实、其他 workflow 共享 4096 总预算；不回收槽、不增加线程或等待槽。
+
+同事实在途仍返回首次 view，派生取消不改变账本。只有 worker 已确认存在已提交 operation、`checkRepeatedIntent` 明确匹配且该 operation 已处于稳定 SUCCEEDED 时，才能准备固定 DUPLICATE 重放结果。该结果保留原 acceptedEpoch／resultEpoch；后续业务操作或当前 epoch 改变不影响这些历史字段。不得用首次 APPLIED 简单改状态后猜测持久化成功，不缓存 RAFT_COMMITTED 或 PENDING 的阶段结果作为稳定终态。
+
+确定业务拒绝、尚未持久化、UNKNOWN、UNAVAILABLE、NOT_LEADER 沿用原规则：未形成稳定成功终态时，不转为 DUPLICATE，也不借重放隐式发起恢复。原有允许的显式恢复仍创建有预算的独立 attempt；未知 native 工作仍保留原许可，不自动重试。确定拒绝的同事实重复复用首次确定拒绝 view，不伪造成功终态。
+
+#### 身份冲突与并发边界
+
+同 operationId、不同完整命令或摘要的请求，在途与终态均按原领域身份规则返回 REJECTED，不回传冲突请求的 brokerId、endpoint 或 expectedEpoch。响应载荷只有原 operationId、状态、原接受与目标 epoch、Leader hint 和通用原因；因此固定冲突结果可使用 `operationId is already bound to another request`，不包含请求特定内容。已存在 operation 时必须关联原 operation，保留其 acceptedEpoch／resultEpoch。
+
+冲突到达时若当前 attempt 尚未取得已提交 operation，不能用调用线程读 Node，也不能将请求 epoch 当作已提交事实：仅在既有事实中设置幂等 `conflictRequested` 标志，多次冲突返回同一个固定冲突 view，不追加 Runnable 或 dependent stage。只要原 attempt 仍可能持久化，普通消费／阶段发布边界不得完成无关联 operation 的 REJECTED；该 view 保持等待原 attempt 的持久化结论。有已提交 operation 后，由原 worker 读取该 operation 并使用原 acceptedEpoch／resultEpoch 准备固定冲突结果。只有原 attempt 最终确定未持久化，才能在最终结果发布边界读取 committed snapshot，冻结未关联 operation 的 REJECTED（acceptedEpoch 为该快照 epoch、targetEpoch 为空）。必须区分「最终未持久化」与「尚未持久化」。stop／fault／close 若阻断此最终边界，则沿用既有未完成边界，不在 caller／callback fallback。新的显式 attempt 拥有自己的固定槽；此分支的身份排他不更改领域持久化合同。
+
+worker 发布首次完成事实前，同步读取已提交 operation 并准备适用的终态重放与冲突结果。在同一 worker 的 mutex 临界区内，先固定结果／完成 replay 与 conflict Future，再完成首次 Future；不允许出现首次 done=true 而稳定重放结果尚未准备的窗口。纯结果映射不新增 Node 阶段，不绕过 generation、fault、close，也不在 shutdown 后通过调用线程或 callback 补发布。若角色失效／fault／close 阻止原阶段继续，沿用原关闭与未知边界，不以新重放 Future 永久等待一个本来已经发布的成功结果。已发布的稳定只读结果可继续读取，不重新授予执行能力。
+
+#### 具名 fixture 与审查范围
+
+生产候选仅 `BrokerMembershipPermitExecutor.java` 和 `BrokerMembershipAppService.java`；测试仅原授权的 `BrokerMembershipWorkflowTest.java`、`BrokerClusterAppServiceChangeTest.java`。不修改共享 fixture，不扩大真实拓扑文件。设计获独立 Accept 和 controller 实施授权后，先取得下列真实缺陷 RED，再最小修复：
+
+- `terminalLearnerReplayPreservesDuplicateAndOriginalEpochWithoutNewAttempt`：真实 FSM 完成同步后推进当前 epoch；同事实多次重放为 DUPLICATE，原接受／目标 epoch 不变，零新 Begin／Commit／native／ReadIndex、总槽不增加。
+- `learnerIdentityConflictReusesFixedRejectedViewAndOriginalEpoch`：参数化在途已持久化与稳定终态，变化 expectedEpoch／endpoint／目标产生 REJECTED，原 epoch 不变；所有矛盾请求复用固定 view，必须覆盖 Begin 前冲突→同一 attempt 成功持久化→再次冲突：两次冲突返回同一个固定 view，使用原 operation epochs，零新 attempt／stage；另测最终确定未持久化时才使用最终快照 epoch 与空 targetEpoch，不能在普通阶段消费时提前冻结。
+- `terminalReplayPublicationIsAtomicWithFirstCompletion`：有界 latch 控制首次完成前后并发同事实／矛盾重投，验证三个固定 view、无新 stage／attempt 和无 done／replay 悬挂窗口；取消派生 Future 不取消执行事实。
+- `nonTerminalLearnerOutcomesRetainExplicitRecoveryBudget`：确定拒绝不转 DUPLICATE，UNAVAILABLE／NOT_LEADER 仅显式恢复，新 attempt 仍计入共享 4096，fault／close 不恢复资格。
+
+另外，六测试迁移已暴露 native 完成重试同样返回 APPLIED 的独立缺口：`advanceMembershipOnWorker` 对非 PENDING 阶段构建 applied。`successfulRemovalCanBeRetriedAfterEndpointBindingIsDeleted` 的既有 DUPLICATE 断言保留；本节不授权顺带修改 native 生产分支，需在整体 T5 修复范围中单独核实和复审。
+
+
+#### T5 终态重放补充首轮设计 Revise 与窄修订（2026-10-30）
+
+独立窄设计 Review 为 **Revise**：前版允许在普通阶段消费边界尚无 operation 时冻结固定冲突 view，同一 attempt 后续成功会永久丢失原 epochs。现仅修订本节与计划：Begin 前冲突仅置标志，仍可能持久化时不发布无关联拒绝；已持久化使用原 epochs，最终确定未持久化才在最终发布边界取快照。具名 fixture 补充同一 attempt 的 Begin 前／成功后冲突固定 view 身份与零新增依赖断言。保留本次 Revise，等待原 Reviewer 窄复审，未授权 learner 生产修改。
+
+
+## T5 旧执行者 DRAINED 事实的定向显式重投补充（待独立 Review）
+
+本节仅细化已批准的显式同事实恢复，不授权生产实施。2026-10-30 controller 要求先设计 Review；不增加 native 重试、管理面、SDK operation 或认证例外。T5 保持 active，D10／D16 不变。
+
+### 实测缺口与原有边界
+
+`BrokerRaftAdapterTest.selfReductionDrainsExactOldPermitOnNewLeaderWithoutLateConfigurationRollback` 两个真实三节点参数场景均完成自降级／自移除的首个完整目标并选出新 Leader。`/tmp/im-chat-t5-uDxRui/self-topology-diagnose-2.log`（exit1，两个等待超时）记录 native `APPLIED`、无异常、旧 executor 唯一 native slot 的 undrained 数为 0、新 Leader 中同 permit 仍为 UNKNOWN，旧业务 future 为 NOT_LEADER／`membership role generation changed`，旧 holder 的 Leader hint 为 null。此前 setup 失败日志保留，不算生产 RED；本次只证明明确的实现缺口，不以 15 秒无转发单独推断缺陷。
+
+准确调用链是：native supplier 同步返回使 returned=true；APPLIED completion 写 TARGET_APPLIED 并排空；worker 发布 slot 结果；既有 confirmationExecutor 执行 reportDrainedPermit；该方法只采样一次 Leader hint，null 时返回 UNKNOWN；旧 membership workflow generation 已关闭，resume 又进入仅当前 Leader 可准入的 native workflow，不能重投旧事实。自移除的节点不再收新配置消息，不能假设 hint 最终恢复。这里本机已经 DRAINED，不属于 D16 的未知 native；持久化 UNKNOWN 仍不能单独充当证明。
+
+### 最小 typed 入口与完整事实来源
+
+候选应用签名为 `CompletionStage<MembershipPermitDrainedResult> retransmitDrainedMembershipPermit(ClusterOperationId operationId, BrokerId receiverBrokerId)`，仅放在 `BrokerMembershipAppService`；不接受 endpoint、permitId、digest、incarnation、结果或任意 target。入口只识别一次显式请求，不循环找 Leader。
+
+executor 增加 package-private 的专用 typed 投递入口，接收 operationId、receiverBrokerId 与 owning service；在既有 native slot 上保存本次确认阶段和共享在途结果，不分配 native reservation／membership attempt，不增加池、队列或独立预算。caller 只做有界账本准入，不读 Node；worker 从该 operation 对应的原 native slot 读取不可变完整 permit 身份，要求 nativeReserved、executorBrokerId 为本机、executorIncarnation 为当前 executor incarnation、state=DRAINED 且 knownResult 为 TARGET_APPLIED 或 TARGET_NOT_APPLIED。UNKNOWN、旧 incarnation、缺 slot、远端事实槽均拒绝，不能根据持久化 UNKNOWN 猜测本机排空。slot 原身份与确定结果永不更新或重新开放。
+
+worker 从本机已提交 operation 的 membershipSteps 中按原 slot 的 stepId 查找历史步骤（不只查 currentMembershipStep），核对 currentPermit 的 permitId、operationId、stepId、完整 target、executorBrokerId、incarnation 及 step.targetDigest；不从 caller 重建目标。operation 无此精确许可或已换许可即拒绝。确切已确认历史事实允许幂等重投，由现有确认 CAS 返回 DUPLICATE；不创建或重执行任何 native。首次投递与本入口共用既有每 slot confirmation 机制，同事实在途共享，矛盾／并发占槽请求失败关闭，不覆盖 pending。4096 共享永久预算及单 worker／单等待槽不变。
+
+### 持久化步骤顺序与唯一许可选择
+
+独立首轮 Review 为 **Revise**：operationId 不能唯一定位多步骤／多次失败重试的永久 native slot；并发、有界性和生命周期发布矩阵也未充分固定。保留该结论，本轮仅文档修订，待原 Reviewer 复审。
+
+先核对既有领域合同：`BrokerClusterOperation.currentMembershipStep()` 取持久化 membershipSteps 中首个未成功步骤；`BrokerCluster.registerMembershipPermit` 只允许该步骤登记，并拒绝任何既有 undrained permit；`BrokerMembershipStep` 规定历史 permit 只能为 TARGET_NOT_APPLIED，currentPermit 是列表最后一个；`confirmMembershipPermitDrained` 仅确认每一步 currentPermit，精确已确认重复返回 DUPLICATE。因此不是任意历史 slot 都可投递，不能按 HashMap、slot 插入顺序或 permitId 字典序挑选。
+
+worker 读取本机已提交 operation 后，严格按 membershipSteps 持久化列表序号选择：
+
+1. 先校验步骤／许可身份一致性、成功前缀与 currentMembershipStep 顺序。扫描未持久化排空确认的 currentPermit；若超过一个、出现在非 currentMembershipStep、前序未成功却出现后序 permit、或本机事实与已持久化确定结果矛盾，拒绝而非择一。
+2. 若存在唯一未确认 currentPermit，它是唯一候选，且必须具有当前本机 incarnation 的精确 nativeReserved DRAINED 确定结果 slot。若本机尚 UNKNOWN／缺 slot／身份不符，拒绝，禁止回退到历史 A 或跳到后续步骤。即使历史 A 已确认且其 slot 后插入，也必须选待确认 B。
+3. 若没有未确认 permit，才允许历史幂等投递：仅考虑各步骤的 currentPermit（排除同一步已被后续 permit 替代的历史预留），要求持久化已 drained、本机精确 DRAINED slot 且结果完全一致，取其中持久化 step 序号最高者。最高候选的完整身份无法唯一消歧、存在矛盾或无符合候选则拒绝；不得因接收者不符合最高候选的 target 而回退较早步骤。多个已确认本机步骤时始终选最高序号，不按插入顺序。
+
+所有选择发生在 worker，caller 不读取 Node。caller 的固定有界准入只合并同 operation 的显式请求；一个 operation 的多个 native slot 不能同时承载独立重投链。既有 slot 可保存一个 operation 级 admission 标记／固定请求字段，worker 消费时按上述规则解析唯一事实；只在已有槽中记账，不增加槽或持久化新事实。解析后选择的 permit／receiver 对在该次投递完成前固定，后续快照不能把在途请求迁移到另一个 permit；若发现绑定变化失败关闭。原自动首次确认与显式确认也必须共用该许可的单一发送占用，不允许分别建立两条发送链。
+
+### 有界确认占用与发布协议
+
+每个 operation 同时最多一个发送占用，对应唯一选中 permit 和 receiverBrokerId；最多一组当前 in-flight completion／只读 view／pending。首次自动确认一旦持有占用，显式同 receiver 请求共享其固定 in-flight view，不附加 thenCompose／dependent stage，不增加 send；不同 receiver 在占用中拒绝，不修改原 receiver／target／pending。若尚在 worker 选择事实阶段，固定 operation+receiver 请求仍共享唯一准入 view，不能先为每个 slot 或每次 caller 建 Future。receiver 只有在本次完成并释放占用后，才能由下一次显式请求重新指定；自动确认不会因显式请求再次启动。
+
+完成后的显式投递允许下一轮创建一组当前 completion/view，但仅覆盖已无 pending／在途阶段的上一轮可变引用，不追加 attempt 集合、view 列表、回调链或结果历史；已返回给调用者的历史只读 view 不由 executor 累积保留。大量同轮重复请求零新增内部 stage；多轮显式请求的 executor 内部引用数保持常数，永久 slot 总数不增加。取消调用者派生 Future 不取消账本中的 completion、发送或 pending。
+
+准入、worker 消费、send 前及最终结果发布均复验 fault／close。纯 DRAINED 事实不以旧 native generation 授权任何工作；失任可发送，但 fault／close 不可绕过。准入后消费前 fault／close：零发送、保留原 DRAINED；已经发送后发布前 fault／close：远端可能已提交，但本机不能发布未经最终复验的 COMMITTED／DUPLICATE 成功，不自动重发、不清除事实。既有 worker 可发布 UNKNOWN／关闭结果时只发布非成功；若 close/fault 阻止 worker 发布，保留未完成边界，不 caller／callback fallback。成功只由 worker 在最终复验后发布。不得把超时或取消当作释放原 native 权限的证明。
+
+### 接收者、MTLS 与失任边界
+
+receiverBrokerId 必须对应本机已提交 BrokerNode，具有已提交 membership endpoint 绑定，且该 endpoint 属于该 step 完整 target.voters；learner、非目标、缺绑定和任意地址全部拒绝。地址取该可信 BrokerNode.routeEndpoint，不把 Raft membership endpoint 当 Bolt 地址。投递前在 worker 复核完整事实和接收者绑定；不将接收者参数当作其当前 Leader 身份证明，接收方仍执行现有同任期一致读及完整事实 CAS。
+
+现有 `BrokerPeerAdapter.confirmMembershipPermitDrained(receiver, request)` 已要求 MTLS observationsAllowed、本机 caller/executor 与 receiver 精确对应；`BoltTarget(receiver.routeEndpoint, BROKER_URI_PREFIX + receiver.id)` 将连接绑定至完整预期身份，`BoltInvoker` 不提供地址绕过。接收侧 `BrokerPeerAdmissionInterceptor.validatePermitConfirmation` 校验真实 MTLS、唯一 Broker URI、cluster/caller/executor/receiver 及持久化完整许可。它不要求旧执行者仍为当前 voter，因此无需恢复其成员资格。上述是静态能力核实，不是本次真实 MTLS 网络验收。
+
+本机接收者也先经过相同 target voter／可信绑定／完整事实校验，再调用现有 trusted-local confirm 入口；不能因为本机而跳过应用校验。远端只调用既有 peer operation，一次请求仅投递一次。NOT_LEADER／UNKNOWN／超时原样返回，调用者再次显式选择接收者；不遍历候选、不 timer／Scheduler 轮询、不自动使用返回 hint 再投。失任允许投递既有 DRAINED，不恢复 native 或 membership workflow 的旧 generation。fault latch、close 保持既有失败关闭；worker 消费及最终发布复验 fault／close，拒绝时保留事实，不 caller/FSM fallback。
+
+### 运维可达性与本次范围限制
+
+当前 `BrokerMembershipController` 只有 add／sync／promote／demote／remove，没有定向旧 holder 的重投或 resume HTTP endpoint；Scheduler 只恢复当前 Leader。因而新增应用方法不等于现有 Ops／CLI 已能触达旧 holder。最小实现范围仅 AppService、PermitExecutor 及两个现有测试文件；不直接扩大 SDK／HTTP／Ops／CLI／认证。公开运维接入须后续在既有 Ops 授权与审计路径上另行明确请求路由到原 executor 及接收 BrokerId 的合同并 Review，不能向终端分发服务凭据、直接请求 Bolt 或新建管理面。该接入缺口在闭合前不得声称完整 CLI 恢复可用。
+
+REMOVE_BROKER 的业务 Commit 才删除旧 holder 的 BrokerNode／membershipEndpoints；要完成该 Commit 必须先确认本 permit，因此缺口发生时原绑定仍在。被移出 Raft 的旧 holder 本机可能永久停留在 Commit 前快照；其 slot、operation 和目标中剩余 voter 绑定仍可核对，事实不是从新 Leader 反向伪造。接收者在后来也被移除或地址发生变化时失败关闭；本补充不承诺跨任意后续拓扑变化的可达性或无人工触发最终成功。
+
+### 精确文件与具名验证
+
+待本节独立 Accept 及 controller 实施授权后，生产仅修改 `im-broker/im-broker-server/src/main/java/com/co/kc/imchat/broker/application/cluster/BrokerMembershipAppService.java`、同目录 `BrokerMembershipPermitExecutor.java`。不改 plugin、shared fixture、SDK、认证 interceptor 或 peer adapter。测试仅现有 `application/cluster/BrokerMembershipWorkflowTest.java` 和 `adapter/cluster/BrokerRaftAdapterTest.java`。
+
+- `explicitDrainedRetransmissionUsesExactLocalFactWithoutNativeOrLeaderHint`：null hint、失任但未 fault／close、本机已 DRAINED；精确 receiver 一次投递，身份／target／incarnation／结果不变，native 计数不增；在途共享与拒绝不丢事实。
+- `explicitDrainedRetransmissionRejectsUnknownForeignAndUntrustedReceiver`：UNKNOWN native、非本机 incarnation／远端事实槽、缺精确持久化 permit、learner／非目标／缺 binding、fault／close 全部拒绝，零 native／零发送；本机接收者同校验。
+- `explicitDrainedRetransmissionSelectsPendingStepBeforeHistoricalSlots`：持久化历史 A 已确认、B 待确认，本机 A／B slot 正插与反插均选 B；B UNKNOWN 时拒绝不回退 A；多个待确认或非法跳步恢复快照拒绝。无待确认且多历史已确认时固定最高 step 序号的 currentPermit，排除同一步已替换旧 permit；无精确候选／矛盾身份拒绝。
+- `explicitDrainedRetransmissionSharesAutomaticAndExplicitInflightWithoutGrowth`：用有界 latch 保持首次自动确认在途，同 receiver 显式请求及 5000 次重复均返回同一只读 view、send 总数仍为 1；不同 receiver 占用中拒绝且 pending／target 不变；取消派生不影响链。再完成 100 轮显式投递，检查每轮一次 send、永久槽不增、内部最多一组当前 completion/view/pending、无 history／continuation 累积，不以仅检查槽数替代引用有界性。
+- `explicitDrainedRetransmissionRevalidatesLifecycleBeforeSendAndPublication`：参数化 close／fault；latch 分别卡在准入后消费前（零发送且事实保留）、send 后结果发布前（不发布未复验成功、send 不增、不丢 DRAINED）。失任而未 fault／close 对照允许纯事实发送，零新增 native；所有最终映射／发布仍在唯一 worker。
+- `selfReductionDrainsExactOldPermitOnNewLeaderWithoutLateConfigurationRollback`：真实自降级／自移除，明确 native APPLIED 与本机 DRAINED，hint null 后显式指定新 Leader，实际确认读取／CAS 精确 drain，后续固定步骤与最终业务 Commit；迟到重复事实不增加 native、真实配置不回退，降级后 learner 复制及后续日志可写。peer 本地转发不冒称真实 MTLS。
+
+先对新增具名恢复断言取得实际 RED，再最窄 GREEN；原 UNKNOWN／BUSY 阻塞断言不改为可恢复。命令按计划执行，最窄归因完成前不运行模块或 affected；本节设计不标任何实现 passing。
+
+
+2026-10-30 定向 DRAINED 重投设计原 Reviewer 窄复审 **Accept，findings none，仅设计**；首轮 Revise 保留。controller 依据既有用户授权恢复批准四文件实施，先具名 RED→GREEN，再全部窄验证、模块成功后 affected。当前只批准内部应用接缝，不代表公开 Ops／CLI 恢复可用，也不代表真实 MTLS 网络认证证据；原公开可达性缺口保留。不得恢复 UNKNOWN native 或新增自动重试权限。
+
+
+### T5 确认入口既有 CQRS 规范落实
+
+2026-10-30 affected exit1，在 Maven 前停止，实际唯一 Java-style 命中为 `confirmMembershipPermitDrained(ConfirmMembershipPermitDrainedParams, String authenticatedBrokerId)`；先前将其归因为重投入口不准确，保留原日志与纠正。重投入口两个领域值对象未命中该 scalar checker，原批准签名不变，不新增重投 command。
+
+确认公开应用入口改为 `confirmMembershipPermitDrained(AcceptMembershipPermitDrainedCommand command)`；仅落实既有 CODING_GUIDE 的单输入对象及边界字段规范，不改变许可、认证、CAS 或 native 行为。command 为 flat String 身份事实、自有封闭 Result 与独立 `authenticatedExecutorBrokerId`，不包含 SDK Params、security principal、endpoint、native target，不 implements consensus command。handler 将协议字段映射为 command，认证执行者仅取自已验证 principal；本机路径仅取自可信 slot 的原 executor。payload caller/executor 与独立认证身份、cluster/receiver 校验均保留，不允许 payload 补身份。executor 只将不可变 command 用于原在途事实 equals，不增加预算、链或重试。领域与原持久化 command/codec 不变。
+
+缺失身份或结果在应用入口确定返回 REJECTED，不由 record 构造异常泄漏为连接异常；协议 Params 原有未知／缺失结果参数拒绝保持不变。封闭 Result 不提供 UNKNOWN。既有 MTLS 准入、旧 holder 精确例外、本地同应用校验／CAS 仍须原样验证。旧模块1516项通过仅为改前输入历史证据；改后须 drift、三类 focused、模块、affected 重新验证。原设计 Accept 不自动覆盖本次改后输入。
+
+
+## T5 Runtime 部分启动失败的资源生命周期补充（待独立 Review）
+
+### 已证事实与非目标
+
+2026-10-30 CQRS 改后三类 focused 重跑 88 项全零；后续模块 exit1，fresh 报告 498 项、0 failures、1 error，Broker 尚未执行，affected 未启动，输入无漂移。失败为 `RaftRuntimeTest.minorityCannotSubmitPayloadOrConfirmLeadership` 在 `127.0.0.1:52137` RPC bind 时抛 `BindException: Address already in use`。失败后同 fork 的后续测试仍出现该节点 ElectionTimer，表明构造失败未清理已初始化 Node。原日志 `/tmp/im-chat-t5-uDxRui/cqrs-module.log` 与 XML 保留。此前另一配置测试端口 57336 bind 失败属于相同启动失败类别，不能推断相同占用来源。旧 holder 复制的 ConnectionClosed 根因尚未证明同源；原 88 项 1 error 及之后隔离、重跑成功分别保留。
+
+端口分配的 close-before-bind 有 TOCTOU，失败时占用者未知。本补充只修部分启动资源所有权，不调整两个测试 fixture 的 reservation、不增加重试或超时、不切依赖、不改变配置执行和 D10/D16。保留端口直到紧邻 bind 也不能消除外部竞争，不以 fixture 改善替代生产清理。
+
+### 上游核实与两条候选路径
+
+已逐文件比较本地官方 `com.alipay.sofa:jraft-core:1.4.1` 与当前私有 pin 的 source jar：`RaftGroupService.java`、`NodeManager.java`、`RaftServiceFactory.java`、`rpc/RaftRpcServerFactory.java` 内容一致。此为上述 API／实现核实，不是官方构建或 T6 验收。
+
+`RaftGroupService.start` 按 addAddress、createAndInitRaftNode、RPC init、started=true 排序。RPC bind 失败时 getRaftNode 可取已初始化 Node，但 shutdown 在 started=false 时直接返回。更早的 Node.init=false／抛异常发生在工厂内部，group 字段尚未得到局部 Node；工厂没有失败清理。默认 group 构造还隐式创建两个 RPC executor。其 shutdown 吞 RPC cleanup 异常，不能作为「全部资源已回收」的证明。
+
+- 路径 A：保留 group，显式传入本实例 RPC 与两个 executor；RPC init 失败时取 getRaftNode 后精确 shutdown/join，单独清 RPC、executor 和 address。此路径对本次 bind 失败足够窄，但不能回收工厂未返回的 init=false／抛异常 Node。若另以自定义 group override 重写 start 保存 Node，则实际已复制生命周期，还须处理 group 私有 started 状态；不采用反射获取私有 Node、不增加只为测试的构造器。A 只有在独立核实存在不丢失局部 Node 的官方扩展点后才可选，当前不冒称满足全部失败路径。
+- 路径 B（提交 Review 的推荐）：Runtime 显式拥有由 `RaftServiceFactory.createRaftNode` 返回的 Node，先保存引用再 init；显式创建与默认 group 相同的私有 RAFT／CLI executors，使用 `RaftRpcServerFactory.createRaftRpcServer(endpoint, raftExecutor, cliExecutor)` 安装原处理器；保留 getOptions 的配置、disableCli、线程池大小、StateAdapter、role listener 与 fault latch 语义。只替换不可见的 group 资源封装，不改变业务执行或共享 Node 行为。init=false 转为原同义启动失败，但不能与完整 init 后 RPC init 失败共用无条件 shutdown/join；具体保证按下述 Block 修订分层。
+
+独立 Reviewer 必须比较 A/B 的实际可行性与配置等价；本节不是生产实施授权，不预先认定 B 已通过。
+
+### 所有权、退出与异常合同
+
+Runtime 不支持共享 RPC server。address 是 NodeManager singleton 中的裸集合，addAddress 无所有权 token。为防止同 endpoint 已有实例被误删，Runtime 在创建任何 Node 前，以 NodeManager 同步边界检查 serverExists，并维护本 Runtime 路径的 endpoint 独占认领；已存在即拒绝且零 removeAddress。认领、注册、释放都在同一同步协议中，本实例仅清理自己成功登记的 address，Node shutdown 只针对保存的本实例 Node，不调用 clear 或按名字关闭其他实例。测试覆盖同 endpoint 的现存健康 Runtime 仍可提交、不会因第二实例失败被删登记。第三方绕过该协议并直接修改 singleton 的并发行为无法由裸集合 API 原子辨认；不承诺支持此类混用，不能将检查再删除误称全进程通用所有权。若实现需要额外生产 registry／锁对象，先由 Reviewer 确认最小必要性，不扩展成通用框架。
+
+仅完整 Node.init 成功后，启动异常才可进入本实例 RPC shutdown、Node shutdown/join、私有 executor shutdown/等待及 address 释放的完整退出路径；init 未成功的路径禁止套用此顺序，见下述 Block 修订。某一步失败不能跳过其他已证明安全的资源清理。Node join 未完成时不能释放 endpoint 认领、不能报告 CLOSED 或允许同 endpoint 重新准入。只有所有必需清理已确认才标完成，否则保留失败并明确资源可能残留，不宣称全部回收。原启动异常保持主异常，后续 cleanup 异常逐项 suppressed，不以 cleanup 覆盖主因；中断保留 cause、恢复线程标志，继续可执行的非阻塞清理，不以吞中断假称 join 完成。正常 close 的异常同样可观察，失败后保留可继续清理的状态，而非无条件置 closed。
+
+close 使用 Runtime 内部专用生命周期状态串行化，不在 Node 回调线程持有的角色锁上等待 join；并发 close 只能有一个清理者，后续 close 等待／观察同一终态，完成后重复 close 无额外资源操作。构造失败对象不发布；成功对象 close 开始即封闭本实例准入，角色 snapshot 置为非 Leader并推进 generation，后续原生角色事件不能重新开启已关闭准入。listener 短记账和同一 fault latch 保留，首因不覆盖、不因重试构造或 close 清除。不能为关闭重建 listener、绕过 fault 或新增 callback→Node 调用。如何处理 cleanup 中断后的再次 close 须通过状态与测试证明，不引入无限自动后台清理。
+
+### 确定性真实失败测试与证据边界
+
+在既有 `RaftRuntimeTest` 中用实际 `ServerSocket` 占住唯一 loopback 端口，保持到失败构造返回；使用真实 Node／Bolt server，不注入 fake native。测试不仅断言 BindException cause，还核对该 group+PeerId 的 NodeManager Node/address 已移除。修复前应在仍存活的 Node/address 断言上 RED，预期 bind 异常本身不是 RED。fixture finally 必须仅捕获并关闭自己 group+PeerId 的失败 Node，释放测试 socket，避免 RED 污染后续测试；不能 clear 全局状态。
+
+在失败返回后通过精确 group+endpoint 对应的 timer 对象／节点资源观测证明已 stopped/destroyed；若线程断言，只捕获实际 Node 持有的 timer/executor 所属线程对象，不扫描全局相似线程名。NodeManager absence 单独不等于线程退出；需结合 Node join、精确 timer 状态、角色事件不再增长及本实例目录 RocksDB 可重新打开。释放占用 socket 后，同 identity／目录的新 Runtime 能启动并提交，再正常 close；此为资源回收证据，不是自动启动重试。检查外部占用 socket 在失败清理后仍保持绑定，证明未清理他人资源。
+
+另覆盖同 endpoint 已有健康实例、真实 Node.init=false／抛异常可到达边界、正常／重复／并发 close 与调用线程预置 interrupt 的可观察结果。init 失败优先使用真实非法配置／不可用目录触发并保留 cause，不用仅测试用生产构造器；若找不到可确定触发的真实分支，报告覆盖缺口并由 Review 决定，不冒称覆盖。suppressed cleanup 异常优先现有真实可测边界；无法可靠触发时标 Review-only，不凭空添加无 caller seam。精确 Node 资源观察可用局部测试反射，不增加生产诊断公开 API；字段跨官方／私有差异在 T6 单独验证。
+
+### 精确文件范围与验证顺序
+
+生产仅 `im-plugin/im-raft/src/main/java/com/co/kc/imchat/plugin/raft/core/RaftRuntime.java`；测试仅同模块 `src/test/java/com/co/kc/imchat/plugin/raft/core/RaftRuntimeTest.java`。稳定文档为 `im-plugin/im-raft/README.md`、`docs/references/HARNESS_GUIDE.md`；规则 matrix 另列最小一行 `docs/references/HARNESS_RULE_MATRIX.md`，记录部分启动必须回收本实例资源与确定性占用端口 fixture，异常聚合／singleton 所有权先标 Review-only 条件。不改 RaftConfigurationIntegrationTest、端口分配、依赖或 checker。本设计与 active plan 在设计 Review 阶段先更新，README/Harness/matrix 待实施同任务沉淀。
+
+Review Accept 后仍须 controller 授权实施。先运行 `mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-plugin/im-raft -am '-Dtest=RaftRuntimeTest#occupiedRpcPortFailureReleasesOwnedNodeAndResources' -Dsurefire.failIfNoSpecifiedTests=false test` 记录真实资源残留 RED，再修复与同命令 GREEN；其后 Runtime 全类，再配置 integration 全类。前层失败停止，不直接模块重跑求绿。所有原失败／指纹保留，改后源码必须重新独立 Review；模块和 affected 另待实际窄证据后确认，不运行 full、不更新 PROGRESS、不提交。
+
+
+### 首轮独立 Review Block 与收窄候选（未获接受）
+
+首轮生命周期设计独立 Review 为 **Block**，原结论保留：保存 Node 引用并不能保证 partial-init 的 shutdown/join 安全。只读核实官方 1.4.1：Node.init 在启动 applyDisruptor、分配 FSMCaller 后调用 initLogStorage；LogManager.init 在 logStorage.init=false 时返回，diskQueue 尚未建立。其 shutdown 无条件调用 stopDiskThread，先创建 shutDownLatch，再通过 group executor 异步向 null diskQueue 发布；异步异常不能释放 latch，join 可永久等待。Node.shutdown 在此阶段还会尝试其他未完整初始化的组件，因此不能只去掉 join 后仍盲目调用 shutdown。当前不以反射拆生产组件补救，不修改依赖，不使用后台超时 cleanup 框架。
+
+修订候选将两类启动失败严格区分：
+
+1. **Node.init 已返回 true，之后 RPC bind 失败**：本批可确定修复的完整初始化退出路径。保存 initSucceeded 事实后才允许 Node.shutdown/join；所有权、异常聚合、interrupt、并发 close 与已有 endpoint 保护仍按本节合同。cleanup 任一步失败时不得报告全部回收，必须保留失败。真实占用端口 RED/GREEN 仍覆盖此路径。
+2. **Node.init 返回 false 或抛异常，尚未确认完整初始化**：不调用 Node.shutdown 或 join，不尝试推断具体内部初始化阶段。只关闭确定为本 Runtime 独有且生命周期可安全关闭的 RPC server 与两个私有请求 executor；若 RPC 自身 shutdown 失败，附加 suppressed 并明确保留。永久保留本 endpoint 的认领与已登记 address，禁止同进程复用或再次构造，原异常返回。不能将构造失败的责任交给不可达 close。保存 Node 引用仅用于诊断所有权，不因此宣称已清理。该路径可能残留 applyDisruptor、timer 对象／调度器、storage、FSMCaller、计数与后续阶段资源；具体已创建哪些取决于失败位置，不能承诺无活动线程、无连接或磁盘锁已释放。
+
+第二类仅为候选风险处置，不是已批准的可靠回收方案。Runtime 不擅自 System.exit、不终止用户进程；启动方收到异常必须中止服务启动并由其进程所有者终止／替换该进程，不能 catch 后继续提供服务或用新端口绕开 poisoned endpoint。通用插件无法强制宿主遵守，构造异常返回也不能证明进程可安全继续。当前范围内没有对任意 partial-init 提供安全完整退出的已证方法，原先「全部失败均回收」保证撤回。是否接受「完整 init 后清理、partial-init 进程不可继续复用」的收窄合同，需要 controller 与原 Reviewer 明确决策；在此之前保持 Block，不能标 passing 或先行实施。若产品要求任意 init 失败后进程仍安全可用，本范围方案不足，应另行评审上游生命周期修复，不能隐式扩大本批。
+
+### storage-init 失败的隔离验证计划（尚未执行）
+
+在 `RaftRuntimeTest` 的测试 JVM 中 fork 专用 Java 子进程运行具名 probe，父进程施加有界等待；仅对自己启动的 probe 超时进程做终止兜底，不是生产 cleanup timeout。probe 使用真实 Runtime／默认 storage：预先把 `dataDirectory/log` 建为普通文件，令 RocksDB 日志目录初始化失败。须先确认该路径实际到达 logStorage.init=false 而非更早抛异常；若观察为 throw，单独分类并报告，不能冒称 false 分支。不依赖文件权限（root 环境可能绕过），不 mock Node、不新增生产测试构造器。验证命令候选 `mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-plugin/im-raft -am '-Dtest=RaftRuntimeTest#storageInitFailureReturnsWithoutUnsafeJoinInIsolatedProcess' -Dsurefire.failIfNoSpecifiedTests=false test`，仅在独立 Review／实施授权后执行。
+
+子进程输出结构化阶段：init failure cause、构造异常已返回、endpoint 再次准入被拒、外部占用资源未被关闭；只在测试侧精确检查该 Node 的已创建 applyDisruptor／timer／storage 状态和 NodeManager/address。这些观察用于列残留，不把 absence of callback 当线程退出证明。父进程验证在限时内收到「原异常返回」标记而不是卡在 cleanup；然后要求 probe 明确退出，父进程只回收自己创建的子进程。若 probe 原异常无法返回、safe RPC shutdown 也挂住，记录实际栈与资源状态，候选失败、继续 Block，不加生产超时或吞异常。任意未测到的 partial-init 分支、cleanup suppressed 边界与进程终止依赖均写入残余风险；不将 probe 的进程退出包装成 Runtime 已自行回收。
+
+### 修订后的精确范围与决策边界
+
+本次仅改本设计和 active plan。原 endpoint monitor 协议、A 工厂局部 Node 不可见的核实结论不重做。未来候选实现仍仅 Runtime、RuntimeTest、README、Harness 与 matrix 最小行；稳定规范必须明确区分完整初始化清理保证与 partial-init 不可复用风险。先等待原 Reviewer 对收窄候选的判断，不启动任何 RED、隔离、模块或 affected。原模块 498 项／1 error、focused 88 通过与旧 learner 连接根因未知均保持。
+
+
+### RPC 阶段第二轮 Review Revise 与局部保证（待窄复审）
+
+原 Reviewer 第二轮结论为 **Revise**：partial-init 不 shutdown/join 的收窄方向成立，该遗留是上游既存缺陷，不是本批新增；但 RPC shutdown-before-start 不安全，已自清理后的重复 shutdown 也不能误报 cleanup 失败。controller 接受本批仅修完整 Node.init 后 RPC 失败回收，partial-init 不作为本局部修复的新增验收条件。它仍可能残留资源；宿主启动失败后不能复用该进程，须由进程所有者替换。插件不主动 exit、不强制全进程 poison、不承诺消除上游残留，不表示最终 full 通过或运行故障已被接受。此前要求隔离子进程证明 partial-init 的计划保留为后续诊断候选，不阻塞本局部修复且本轮不执行；不能用未执行计划宣称已覆盖。
+
+核实依据：官方与私有 pin 的 Node.init 对服务端仅检查 NodeManager.serverExists(endpoint)，不持有 RpcServer 引用；原 group 本来也在 Node.init 返回后才 RPC.init。因此可在成功登记 address 并完整 Node.init=true 后，才分配 RPC 对象与两个私有请求 executor；Node 自有 client／replicator 仍由 Node 管理，不改变其默认配置。NodeOptions.disableCli、默认线程池大小、RaftRpcServerFactory 的完整 processors 保持等价，绝不为 cleanup 主动启动 RPC。
+
+Bolt 1.6.6 source 与本地 1.6.12 字节码均显示 AbstractRemotingServer.startup 在 super.startup 后执行 doInit/doStart；catch 中调用自身 shutdown，只有 shutdown 正常返回，才构造 `IllegalStateException("ERROR: Failed to start the Server!", originalCause)`。shutdown 先调用 super.shutdown，再 doStop；shutdown-before-start 或已关闭后的重入会在前者抛 LifeCycleException，不执行 doStop。RpcServer 在对象字段初始化时已分配私有 bossGroup，不能把「从未 init」等同于「无资源」，也不能只看 started=false 判断回收。
+
+RPC 清理合同按阶段分开，取代此前不区分阶段的「关闭私有 RPC」表述：
+
+- **未创建**：Node.init 未成功时根本不分配 RPC 对象／两个请求 executor；因此 partial-init 路径不尝试 RpcServer.shutdown，避免制造 bossGroup 残留。已有 Node 内部残留按上述宿主处置限制报告。
+- **创建中／已创建未启动**：记录已取得的私有资源。构造／processor 注册异常可能使对象未完整返回；不能盲 shutdown-before-start、不能为可关闭而主动 init、不能反射拆 bossGroup。此类 native 工厂阶段若无法用公开 API 确认安全回收，清理完整 Node 与已取得的请求 executor，但保留原异常和 RPC 资源状态未知，禁止声称全回收。它不自动归入「已自清理」；作为上游公开生命周期限制明确保留。若 Review 要求覆盖此任意工厂异常的完整回收，当前最小范围不足，继续报告而不加框架。
+- **启动尝试中**：明确已调用且首次调用 RPC.init，不能只用 isStarted 标志。占用端口测试应实际进入 Bolt doStart/bind。启动失败若正常经过 Bolt catch→shutdown→doStop→约定包装异常返回，可判为「native 同步清理调用已完成」；这不单独证明异步线程全部退出。可靠识别必须同时依赖本次首次 init 的阶段事实与已核实的特定 Bolt 包装路径／原 bind cause，不接受任意同消息异常或仅 started=false。若无法可靠识别具体适配器／调用路径，则状态为未知并保留风险，不吞异常。
+- **启动失败已自清理**：不再次调用 shutdown，不把预期的 already-closed LifeCycleException 加为 cleanup 失败。原 bind cause 仍为主因，随后清完整初始化的 Node、私有请求 executor及自己登记的 address；真实 fixture 另以精确本实例 bossGroup／Node timer 与目录释放验证实际退出。不能将异步 doStop 返回夸大成全部线程已终止；测试若不成立，必须停下修订，不能凭 wrapper 掩盖。
+- **启动成功**：正常 close 对本实例 RPC 只调用一次 shutdown，随后 Node shutdown/join、私有 executor 与登记释放。若 shutdown 抛错，保留该真实失败；后续 close 只能继续已证明可安全执行的剩余清理，不承诺再次 shutdown 能修复 native 已切换状态但未执行完 doStop 的缺陷。不能将任意 LifeCycleException 当已关闭成功，不能在失败后假称 CLOSED／资源全释放。
+
+close 幂等指已确认完成的资源动作不重复；重入不是「native cleanup 必定恢复」的保证。cleanup 失败与无法确认阶段保持可见，原异常与 suppressed、interrupt、endpoint 所有权及角色／fault latch 规则不变。完整 init 后的真实 bind 失败是本批确定性 RED→GREEN 的目标；created-before-init 的工厂异常与上游 partial-init 资源残留是明确未消除边界，交原 Reviewer 核准，不自行当作全部资源安全。
+
+本次仍仅两文档，未执行测试、隔离重跑或模块。实现须先获独立窄复审 Accept 与 controller 另行授权。原模块 498 项／1 error、focused 88 通过、旧 holder ConnectionClosed 未证同源保持不变。
+
+
+### 完整 Node 初始化后 RPC 失败的局部实施状态（2026-10-30）
+
+收窄设计经原 Reviewer scoped Accept 后获实施授权。Runtime 改为显式持有 Node、地址与私有请求 executor；完整 Node.init 成功后才创建 RPC。首次默认 Bolt bind 失败只在具体适配器、原包装异常栈位置与 BindException cause 同时匹配时认定同步自清理已返回，不重复 shutdown；未知工厂／启动状态保留 suppressed 与地址认领。正常 close 关闭准入、串行释放，保留 RPC cleanup 失败与 interrupt，已释放地址不因重复 close 删除后继 owner 的认领。partial-init 不安全 shutdown/join 的上游限制未消除，宿主仍须替换进程。当前实现未获独立源码 Accept，不代表 T5 完成。
+
+证据目录 `/tmp/im-chat-t5-uDxRui`：`lifecycle-red` 为真实占端口 1 test／1 failure，NodeManager 残留精确自有完整初始化 Node；`lifecycle-green` 仅 production compile 失败（Executor 返回类型），fresh XML=0，不计 GREEN；核实 native 工厂实际构造 ThreadPoolExecutor 后保留 Executor 并按 ExecutorService 关闭，`lifecycle-green-2` 为 1 test／0 failure／0 error，包含 Node/address、timer、applyDisruptor、精确 bossGroup 终止和同目录端口重新提交。原日志、fresh XML、hash 与 drift=[] 均归档，后续修改不冒称沿用该输入验收。
+
+`lifecycle-runtime` 全类为 47 tests／0 failures／1 error，drift=[]。`learnerReceivesCommittedLogsAndCanBeRemoved` 首次 follower.membership() 抛 `Applied configuration unavailable`，cause 为 `No applied configuration`，不是 bind 失败。该 fixture 原本在 Leader addLearner 成功后立即读 follower applied membership，未先证明 follower 已应用首条配置；现有 untilAsserted 不重试 IllegalStateException。日志显示 learner 初始 committedIndex=0、随后连接成功但仍 prevLogIndex=1/local lastLogIndex=0，fixture 失败清理后才出现 lastCommittedIndex=2 的迟到推进。现有证据支持缺少 learner applied-ready 等待前提，但不能证明生产推进始终正常或排除启动时序变化；不得标为已证旧 fixture 或 flake。Node.init→RPC.init 顺序与原 group 相同，仅 RPC 分配时间后移。membership 既定 fail-closed 合同不变，不缓存／回退初始配置，也不吞任意 IllegalStateException。
+
+已停止后续验证，ConfigurationIntegration、module、affected 均未执行；未重跑求绿。下一步先独立源码窄 Review 与失败归因，若批准 fixture 修订，应采用真实 follower 应用提交的可观察前提，或只识别确切临时 unavailable 原因；不可放宽全部异常或删除最终成员断言。原模块 498 项／1 error、Broker 未执行、旧 learner 连接根因未知的历史事实保留。
+
+
+### 生命周期源码 Block 修订与窄验证（2026-10-30）
+
+原源码 Review **Block** 保留：close 未封闭 role publication、请求 executor 未等待 termination、join 中断后 finally 丢失 shutdown 异常。三项新增具名测试在原实现上真实 RED：`lifecycle-review-red` 为 3 tests／3 failures／0 errors。修订采用独立 role publication monitor、先请求全部 executor 停止再等待 termination、统一主异常与 suppressed；不持 publication monitor 等待 Node，不重做已接受 Bolt 识别与 endpoint 协议。
+
+controller 批准调整 learner fixture 前提：原 submit(9) 和结果断言前移，bounded 等 learnerState=10 后再读 membership；原后续成员、ReadIndex、nonleader、remove、immutable 断言保留，无 sleep 或异常忽略。该修订不宣称排除生产回归。
+
+fresh 证据均在 `/tmp/im-chat-t5-uDxRui`，每次 drift=[]：`lifecycle-review-green` 为包含真实 occupied-port 的 4 tests／0 failures／0 errors；`lifecycle-runtime-2` 为 50 tests／0 failures／1 error，membership interrupt fixture 的预置 interrupt 在资源已终止时被新 cleanup 错当实际等待中断。已据此窄修：仅仍未终止的请求 executor 才因跳过等待产生中断失败；保留原 interrupt 标志，不改变 membership 异常断言。随后 `lifecycle-runtime-3` 为 50 tests 全通过，包含全部新回归；`lifecycle-integration` 为 5 tests 全通过。先前 compile 失败、47 项 learner error、源码 Block 和 runtime-2 error 均保留，不冒称首次全绿。
+
+- [x] 原 Runtime/Test 范围内三项真实 RED→GREEN 与 learner 前提修订；fresh XML/hash 归档。
+- [x] Runtime 全类 50 项通过后 ConfigurationIntegration 全类 5 项通过；更新 README、Harness、matrix 最小合同。
+- [ ] 将当前完整 task-only delta/hash 与历史证据交原 Reviewer 源码窄复审；未经 Accept 不标 T5 passing。
+
+本批未执行 module、affected、full，未修改 PROGRESS、依赖、reservation 或其他生产文件，未提交或委派。partial-init／工厂返回前异常的残余风险不变，旧 holder 连接根因未知仍保留。
+
+
+2026-10-30 原生命周期 Reviewer 对补丁 `a9c61044cb81c487f68a76ab5e55d85900a4e42db4d54d33a3195d2d648a6c46` 独立核对源码、hash 与 3 RED／4 GREEN／Runtime 50／ConfigurationIntegration 5 的 fresh 证据，局部源码规格复审结论为 **Accept，findings none**。该结论不覆盖 T5 整体、module、affected 或 full，历史 Block 与失败记录不变。独立局部代码质量 Review `ad80046503a314624` 已启动，当前待审；生产与测试输入冻结，不执行 module／affected。后续仅在质量 Accept 后按 controller 授权恢复 module→affected，若质量提出必修则先修复。PROGRESS 未修改，未提交。
+
+
+2026-10-30 局部质量 Review 结论为 **Revise**，仅规范必修，安全与正确性 findings none：Runtime 新增的 `Executor` 与 `BindException` 无同名冲突，应使用 import 与 simple names。已仅作机械导入修正，保留 Executor／instanceof ExecutorService 及全部行为，未修改测试。精确源码补丁 `/tmp/im-chat-t5-uDxRui/lifecycle-quality-import-only.patch`，SHA256 `7cbd5c2f7d798b76647f96ba2148fdc60a50b6d467d3a83c35eddb4fe3d27535`；before／after hash 与原件已归档。`git diff --check` 通过；`mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-plugin/im-raft -am -DskipTests compile` exit 0，drift=[]，fresh 测试 XML=0，不冒称测试重跑。待原质量 Reviewer 机械复核 Accept，未执行 module／affected，历史 Revise 保留；未修改 PROGRESS，未提交。
+
+
+2026-10-30 原局部质量 Reviewer 对 import-only 修订逐字节核实机械等价，窄复核 **Accept，findings none**。生命周期局部规格与质量双 Accept 已取得，历史 Revise／Block 保留，T5 仍 active。controller 授权以当前累计输入先执行隔离 Maven Broker reactor module，成功且归档后再执行 affected；每段冻结全部 Git-visible 输入并归档 fresh XML／log／hash，段内不改 Git-visible 文件。该授权不包含 full、T6 依赖切换或完成 T5，后续仍需累计规格与独立累计质量 Review。
+
+
+### 累计 module 与 affected 证据（2026-10-30，T5 仍 active）
+
+局部生命周期规格与质量双 Accept 后执行累计门禁。首轮 `cumulative-module` 为 1524 tests／0 failures／1 error，全部 Git-visible 输入 drift=[]；唯一失败是 `BrokerMembershipPermitExecutorTest.runtimeAndExecutorShareFirstFaultAfterPartialRoleAccountingAndNeverReopen` 仍 mock 已不使用的 RaftGroupService 构造，FSM callback 未捕获而为 null。按 controller 预授权，仅将该既有 fixture 改为实际 Node／RPC 工厂入口 mock，原 observable／fault／首因／零 native 断言保留；精确补丁 `cumulative-fixture-task-only.patch` SHA256 `15d8a9238a0fa4d1fd3b6697d21ffc842321e1d6f6b670f22f3b43d220c1a3d9`。修后该测试全类 27 项通过，未修改生产行为，不将首轮失败隐藏为成功。
+
+重新冻结后，`mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-broker/im-broker-server -am test` 成功，`cumulative-module-2` 为 1524 tests／0 failures／0 errors／0 skipped。归档后执行 `MAVEN_OPTS="-Dmaven.repo.local=/tmp/jraft-artifact-m2" ./scripts/verify.sh affected`，成功，2507 tests／0 failures／0 errors／2 skipped；两项 skip 均为 LocalShardingRoutingIntegrationTest 的本地 MySQL opt-in 未设置 `im.test.local.mysql`，不冒称真实 MySQL 集成通过。affected 实际范围为 Broker SDK／Server、E2E、im-raft、Architecture Test；drift checker 通过，Harness status=passed 且 worktreeStable=true。MAVEN_OPTS 使用 Maven launcher 官方支持的 JVM 参数，生效仓库探针和完整命令已归档。
+
+证据均在 `/tmp/im-chat-t5-uDxRui`：每段 start JSON 覆盖全部 2788 个 Git-visible 文件（包括干净 tracked 文件与当前 PROGRESS），module-2 与 affected 输入逐文件相同，各段 drift=[]。`cumulative-input-correspondence.json` 记录输入总 hash 与精确 manifest；各 `*-reports/manifest.json` 保留 fresh XML／log SHA 与实际命令，`cumulative-affected-harness.json` 为 Harness 原记录副本。该输入证据不借用历史 1516／88。本段结束后的设计／plan 状态追加不冒称原 frozen-input 验收。
+
+当前仍待累计原规格复核和独立累计质量 Review，T5 不 passing。历史 CQRS compile／旧 learner 连接失败、模块 bind 失败、生命周期 Review Block／Revise、Runtime 两轮失败与本次旧 fixture error 均保留；旧 holder 连接根因仍未证明，partial-init／工厂返回前异常资源限制仍未消除。未执行 full／T6 依赖切换，未修改 PROGRESS，未提交或委派。
+
+
+2026-10-30 独立累计质量 Review **Revise**：Critical 与行为缺陷 none，仅新增生产 FQCN 规范必修。逐项以最新 29 scope 的准确 before 检查新增生产代码，机械修正 Configuration 中 Micrometer 类型、AppService 中 Transformer／AtomicLong／Stream 及 Adapter 中 Collectors；无同名冲突，不清理历史全树，不改行为或测试。精确补丁 `/tmp/im-chat-t5-uDxRui/cumulative-quality-import-only.patch` SHA256 `46af2ba3b034e0b42f79380f152aa11fa2f9e071c2ee16235086373746789935`，before 原件与 hash manifest 同目录归档。归一化仅移除 import／空行并替换所列类型 token，其余字节（含缩进）逐字节相同。
+
+`mvn -q -Dmaven.repo.local=/tmp/jraft-artifact-m2 -pl im-broker/im-broker-server -am -DskipTests compile` exit 0，全部 Git-visible drift=[]，fresh XML=0，不计测试。待原质量 Reviewer 机械复核 Accept；未重跑 module／affected／full，原 1524／2507 绑定此前输入，不称当前新输入 fresh 通过。PROGRESS 未改，未提交。
+
+同规则重复出现，最窄后续自动化候选是扩展现有 Java style 检查的新增行检查：仅新增生产类型引用 token，排除 import／package、注释、字符串与真实同名冲突；配套 FQCN 新增失败、simple-name 新增通过、字符串与冲突通过、历史未改行不触发的正负 fixture。可靠 token／冲突识别和准确 diff baseline 未建立前维持 Review-only；本批未获 checker 扩展授权，不实现新框架、不放宽规则或添加类名豁免。

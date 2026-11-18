@@ -1,12 +1,16 @@
 package com.co.kc.imchat.management.ops.model.cqrs.command;
 
+import com.co.kc.imchat.management.audit.sdk.annotation.AuditAttribute;
+
 /** im-ops 发起 Broker 集群操作所需的稳定幂等参数。 */
 public record BrokerClusterOperationCommand(
         String brokerId,
         String action,
         String operationId,
         long expectedEpoch,
+        @AuditAttribute(include = false)
         String membershipEndpoint,
+        @AuditAttribute(include = false)
         String reason,
         String scope) {
 

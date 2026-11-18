@@ -1,6 +1,7 @@
 package com.co.kc.imchat.broker.support.raft.statemachine;
 
 import com.co.kc.imchat.broker.support.raft.model.BrokerClusterSnapshot;
+import com.co.kc.imchat.broker.transformer.adapter.BrokerMembershipTransformer;
 import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantRequest;
 import com.co.kc.imchat.broker.domain.authority.model.LeaseGrantResult;
 import com.co.kc.imchat.broker.domain.authority.model.QuorumRead;
@@ -8,6 +9,8 @@ import com.co.kc.imchat.broker.domain.authority.service.RoutingLeaseGrantService
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult;
 import com.co.kc.imchat.broker.adapter.cluster.consensus.BrokerClusterConsensusResult.Status;
 import com.co.kc.imchat.broker.model.cqrs.command.BrokerClusterConsensusCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.RegisterMembershipPermitCommand;
+import com.co.kc.imchat.broker.model.cqrs.command.ConfirmMembershipPermitDrainedCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.AdvanceClusterOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.BeginBrokerClusterOperationCommand;
 import com.co.kc.imchat.broker.model.cqrs.command.CommitBrokerOperationCommand;
@@ -81,6 +84,11 @@ public final class RaftBrokerClusterStateMachine implements RaftStateHandler<Bro
     @Override
     public synchronized BrokerClusterConsensusResult apply(BrokerClusterConsensusCommand command) {
         BrokerClusterDecision result = switch (command) {
+            case RegisterMembershipPermitCommand register -> cluster.registerMembershipPermit(register.operationId(),
+                    register.stepId(), register.permitId(), register.executorBrokerId(), register.executorIncarnation(),
+                    register.expectedRevision());
+            case ConfirmMembershipPermitDrainedCommand confirm -> cluster.confirmMembershipExecution(
+                    BrokerMembershipTransformer.INSTANCE.membershipExecutionConfirmationFrom(confirm));
             case BeginBrokerClusterOperationCommand begin -> cluster.submitOperation(begin.proposal());
             case CommitBrokerOperationCommand commit -> cluster.commitOperation(
                     commit.operationId(), new CommandDigest(commit.commandDigest()), commit.expectedRevision(),

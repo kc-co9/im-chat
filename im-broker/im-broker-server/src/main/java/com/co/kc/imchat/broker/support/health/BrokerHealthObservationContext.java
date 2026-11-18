@@ -8,7 +8,7 @@ import com.co.kc.imchat.common.utils.AssertUtils;
 public record BrokerHealthObservationContext(
         /* 采样绑定的已提交版本。 */
         ClusterRevision revision,
-        /* 采样绑定的业务拓扑与实际成员配置。 */
+        /* 采样绑定的业务拓扑（角色与端点绑定，不含原生成员配置）。 */
         BrokerClusterTopology topology) {
     public BrokerHealthObservationContext {
         AssertUtils.argNotNull("revision is required", revision);

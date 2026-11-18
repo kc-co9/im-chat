@@ -185,13 +185,15 @@ public class IamServiceBeans {
             ApplicationRepository applicationRepository,
             OAuthClientRepository oauthClientRepository,
             ApplicationPermissionRepository permissionRepository,
-            ApplicationPermissionService permissionService
+            ApplicationPermissionService permissionService,
+            OAuthSessionRepository oauthSessionRepository
     ) {
         return new ApplicationPermissionAppService(
                 applicationRepository,
                 oauthClientRepository,
                 permissionRepository,
-                permissionService);
+                permissionService,
+                oauthSessionRepository);
     }
 
     @Bean

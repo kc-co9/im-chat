@@ -5,8 +5,6 @@ import com.co.kc.imchat.management.ops.model.cqrs.command.BrokerClusterOperation
 import com.co.kc.imchat.management.ops.model.cqrs.dto.BrokerOperationDTO;
 import org.junit.jupiter.api.Test;
 
-import java.net.URI;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -24,7 +22,7 @@ class BrokerClusterOperationAppServiceTest {
         when(adapter.operate(command)).thenReturn(
                 new BrokerOperationDTO("operation-1", "NOT_LEADER", 7L,
                         null, "http://broker-2:19020", "not leader"));
-        URI leader = URI.create("http://broker-2:19020");
+        String leader = "http://broker-2:19020";
         when(adapter.operateLeader(leader, command)).thenReturn(
                 new BrokerOperationDTO("operation-1", "APPLIED", 7L,
                         8L, null, null));

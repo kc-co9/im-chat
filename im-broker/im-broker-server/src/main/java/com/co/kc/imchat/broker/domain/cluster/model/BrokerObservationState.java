@@ -37,10 +37,10 @@ public final class BrokerObservationState {
      * 在调用方已读取本机 Leader 任期后更新观察背景，必要时重新计时，并返回是否满足冷却条件。
      *
      * <p>首次观察、任期变化、拓扑变化、冷却失效或单调时间回退时重置冷却起点。
-     * 调用方须先确认成员一致性；成员不一致或本机不再是 Leader 时调用 invalidate，
+     * 调用方须先确认业务观察资格有效；业务观察资格无效或本机不再是 Leader 时调用 invalidate，
      * 恢复资格后的首次更新会重新计时。</p>
      *
-     * @param topology   当前拓扑及实际共识成员配置
+     * @param topology   当前已提交业务拓扑，不含原生成员配置
      * @param leaderTerm 本机可读的 Leader 任期，不代表 quorum 领导权证明
      * @param observedAt 本次观察的本机单调时间
      * @return 达到冷却时长时返回 true

@@ -17,6 +17,7 @@
 - 公共契约、配置项、复杂业务规则、生命周期和非显然失败行为提供简洁 Javadoc。自解释的私有方法、getter 和简单 Controller 不写重复注释。普通说明使用 `/* ... */`；Javadoc 使用多行 `/**`、` *`、` */` 结构，类注释统一采用多行 Javadoc；字段和 record 组件的简短说明优先使用 `/* ... */`，只有需要生成 API 文档时才使用 Javadoc。
 - record 属性较多时每个组件单独换行，并为每个组件提供简短块注释，避免长参数列表降低可读性。
 - 日志使用项目统一 Logger，不输出密码、Access/Refresh Token、指纹、完整消息内容或用户隐私。
+- 独立客户端 `im-management/im-ops-cli/src/main/java/**` 的 stdout／stderr 是命令结果、帮助和安全错误提示的公开交互接口，不是服务诊断日志；该精确生产根目录允许 `System.out/err`，其他生产目录继续禁止。所有生产目录均禁止 `printStackTrace()`。CLI 不为交互输出引入服务端日志依赖，不输出授权码、PKCE verifier 或 Token；浏览器打开失败时仅可展示批准的授权 URL。输出内容的秘密数据流由 Review 与行为测试核对，目录许可不代表内容安全。
 
 ## 模块结构与 DDD 分层
 
@@ -52,7 +53,7 @@ interfaces -> application -> domain
   并委托应用用例。注册表事件到 Gossip observation 的更新由应用服务协调，状态存储留在 infrastructure。
   ApplicationReadyEvent、ContextClosedEvent 等技术组件启停监听按组件所有权归 infrastructure，
   不按 `@EventListener` 注解将所有监听器一律迁移。
-- `adapter` 将外部服务能力转换为当前业务可理解的语义；它不是 inbound Controller/Handler 的替代名称。
+- `adapter` 将外部服务能力转换为当前业务可理解的语义；它不是 inbound Controller/Handler 的替代名称。Broker成员执行适配器在 `adapter.cluster.membership` 具体拥有外部Raft执行机制的本机能力、原子账本和线程生命周期，不要求同形interface/impl配对；领域决定成员资格和已提交许可规则，应用编排Begin/Commit。执行器不依赖应用流程、CQRS、SDK或RaftRuntime，不在入队时报告共识APPLIED；原生入口与同步返回须由同一受控调用链记账，不用额外线程跳转冒充入口返回。
 - Registry 存取契约在其领域能力包内维护，存储实现留在 infrastructure。返回值使用 Server 自有注册观察
   和同步结果，不把 SDK DTO 作为领域契约；跨进程端点与响应在 Transformer 边界转换。
   只读诊断用例可以直接编排 Registry 和技术 Tracker，不为唯一查询实现增加同形 port。
@@ -70,7 +71,7 @@ interfaces -> application -> domain
   原因及已关联操作的接受/目标 epoch，不能把共识接受状态重新解释为业务终态。
 - 运行态监控和诊断属于技术能力，不建模为业务领域聚合。查询编排与输出放 application，HTTP 响应放 interfaces，指标与采样资源装配放 infrastructure；向应用提供技术状态或历史查询的具体能力放 adapter，可以直接维护其有界历史，不为同一能力拆出 port 和转发实现。有界、非权威且可选的跨层诊断记录辅助类型可进入明确批准的 `support.<capability>` 精确能力包；允许有界内存记录和累计计数，不参与业务决策，不拥有网络、运行资源或生命周期，不依赖 application、interfaces、infrastructure、配置、生命周期、Adapter 或具体网络 client。不得扩展为任意子包许可或按类名豁免，领域仍不得依赖 support。Broker 当前仅批准 `support.gossip` 精确包承担此职责；运行态 Gossip store/Adapter 仍归 `adapter.gossip`，不因此移入 support。不得在 `support/<capability>` 下重新建立 `model/service/io/tracker` 小型分层。远端诊断访问使用 Adapter 语义，不伪装成持久化 Repository；只有出现真实替代实现或需要稳定依赖倒置接口时才额外抽象 Gateway，不为唯一 Adapter 创建同形接口。
 
-- Broker 自动健康观察另行批准精确 `support.health`（不允许后代包），当前具体实现为 `BrokerHealthObservationTracker`，允许 Tracker 后缀，不建 Repository、port/实现对或兼容壳。它只维护按当前目标裁剪的有界采样、结构化上下文、freshness 与快照；观察非权威，但属于安全决策输入，不是可选诊断。成员一致性由聚合 `BrokerCluster.findConsistentVoters` 判定，最新事实、多数与稳定窗口由领域服务 `BrokerFailureObservationService.evaluate` 判定，应用层编排。允许依赖领域 model、common 和 JDK 时间/集合；禁止 application、interfaces、infrastructure、config/configuration、lifecycle、Adapter、领域 service/repository、Spring、client/network、plugin 及运行资源拥有，domain 不得反向依赖 support。装配归配置、入口归 Handler/Application；此例外不放宽 Gossip、Monitoring 或其他 support。精确包和稳定依赖由生产/fixture 共用架构规则保护；有界性、无决策及实际完成回调语义由聚焦测试和 Review 保护，待可靠资源/决策数据流分析后自动化。
+- Broker 自动健康观察另行批准精确 `support.health`（不允许后代包），当前具体实现为 `BrokerHealthObservationTracker`，允许 Tracker 后缀，不建 Repository、port/实现对或兼容壳。它只维护按当前目标裁剪的有界采样、结构化上下文、freshness 与快照；观察非权威，但属于安全决策输入，不是可选诊断。观察资格由聚合 `BrokerCluster.findObservers` 按已提交业务状态判定：存在非终态成员操作、`LEARNER_SYNCING` 节点或角色/端点绑定不一致时返回空集，否则返回同一 revision 的完整业务 `VOTER` 集合，不读取原生成员配置。领域服务 `BrokerFailureObservationService.evaluate` 判定最新事实、多数与稳定窗口；多数阈值始终为该完整集合大小的一半向下取整加一，不因失联、缺失响应或排除目标自身报告而缩小分母。该业务观察阈值不替代原生 JRaft quorum；应用层仍以同任期 ReadIndex 和 revision/epoch 前后重验确认权威性。允许依赖领域 model、common 和 JDK 时间/集合；禁止 application、interfaces、infrastructure、config/configuration、lifecycle、Adapter、领域 service/repository、Spring、client/network、plugin 及运行资源拥有，domain 不得反向依赖 support。装配归配置、入口归 Handler/Application；此例外不放宽 Gossip、Monitoring 或其他 support。精确包和稳定依赖由生产/fixture 共用架构规则保护；有界性、无决策及实际完成回调语义由聚焦测试和 Review 保护，待可靠资源/决策数据流分析后自动化。
 
 - Broker 保留 `support.context` 作为请求上下文与入口访问控制的集中目录，包括上下文、线程绑定、权限注解、scope 和拦截器；这是明确的横切职责，不是业务分层的兜底包。拦截器可以读取 typed 管理配置，不调用 application、domain、adapter、interfaces 或 Registry 实现；MVC Bean 注册仍放 infrastructure/config，领域层不得依赖 support。
 
@@ -211,6 +212,7 @@ Servlet MVC 的 Springdoc 运行时依赖由 `im-web` 统一提供。文档路�
 - HTTP 请求响应由 Spring/Jackson 绑定；Bolt、Gossip、缓存载荷和数据库 JSON 字符串等显式 JSON 转换统一使用 `JsonUtils`，生产代码不自行创建 `ObjectMapper`。确需使用 MyBatis-Plus `JacksonTypeHandler` 时，必须由 `im-datasource` 绑定应用统一 `ObjectMapper`，不能使用缺少 Java Time 等模块的内部默认实例。
 - 数据库 JSON 列默认由 Entity 使用 `String` 承接原始 JSON，并由持久化到领域的 Transformer 使用 `JsonUtils` 转换为领域值对象；写回时输出确定性 JSON。只有 Entity 明确把 `Map`、集合等结构作为持久化原生属性使用时才配置 TypeHandler，并通过聚焦测试固定该例外，不能让 TypeHandler 直接产生领域值对象。
 - `JsonUtils.getMapper()` 是进程共享实例，只用于第三方组件接入，调用方不得重新配置。
+- 经批准采用 JDK／Jackson-only、无共享模块运行依赖的独立客户端拥有自身窄 JSON 配置，不为复用 `JsonUtils` 引入服务端或共享运行平台。配置集中且初始化后不变，不修改共享实例；本地操作记录恢复必须拒绝重复字段、必填字段缺失／null、尾随输入、未知字段及隐式类型转换。生产依赖／字节码边界与记录恢复正反例共同约束，不扩大为通用 mapper 自建许可。
 
 ## 校验与防御边界
 

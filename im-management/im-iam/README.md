@@ -253,10 +253,9 @@ IAM 默认 Provider 根据以下事实返回 `active=true`：
 Token 每次使用后轮换，旧 Token 再次提交时返回 `invalid_grant`。IAM 不保留 Refresh Token 历史索引，
 数据库始终不保存可直接使用的 Code 或 Token 原文。
 
-管理员权限在 Access Token 签发和刷新时形成快照。管理员禁用、删除、改密、退出或 Session 撤销会
-主动撤销授权；普通角色权限变更最迟在 15 分钟 Access Token 到期后生效。管理应用仅在 IAM 连接失败、
-请求超时或明确返回 `5xx` 时使用最近一次成功缓存，缓存不得超过五分钟，也不得超过 Access Token 的
-过期时间。
+管理员权限在 Access Token 签发和刷新时形成快照。管理员禁用、删除、改密、退出、Session 撤销及受影响的角色／权限撤回会撤销授权；权威变更和撤销在同一事务提交后，新开始的 IAM Introspection 返回 inactive，不等待原 Token 到期。已在提交前通过授权的请求不追溯取消。
+
+既有管理应用 SDK 仅在 IAM 连接失败、请求超时或明确返回 `5xx` 时使用最近一次成功缓存，缓存不得超过五分钟，也不得超过 Access Token 的过期时间；该缓存不是 IAM 权威状态，不能据此承诺资源端即时失效。批准的 CLI Bearer 无身份缓存要求由后续 SDK／Ops 双链任务实现，本节不宣称该入口已经交付。
 
 `aud` 是 OAuth 标准 audience 元数据，不要求编码在不透明 Token 字符串中。IAM 将其保存在授权元数据，
 并通过 Introspection 返回。`appKey` 是本项目扩展字段，用于表达可信来源应用；它必须由 IAM 根据持久化

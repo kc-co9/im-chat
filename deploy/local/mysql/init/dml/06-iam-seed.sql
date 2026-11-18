@@ -46,3 +46,15 @@ ON DUPLICATE KEY UPDATE
     `post_logout_redirect_uris` = VALUES(`post_logout_redirect_uris`),
     `status` = VALUES(`status`),
     `is_deleted` = 0;
+
+-- 专用 Ops CLI：端口与 CLI 部署输入保持一致，不复用 Web Secret。
+INSERT INTO `db_iam_oauth_client`
+(`oauth_client_id`, `app_id`, `audience_app_id`, `name`, `client_type`, `client_secret_hash`,
+ `grant_types`, `scopes`, `redirect_uris`, `post_logout_redirect_uris`, `status`)
+VALUES ('im-ops-cli', 10004, 10004, 'IM Ops CLI', 'PUBLIC', NULL,
+ 'AUTHORIZATION_CODE', 'ops:broker:read ops:broker:raft:write',
+ JSON_ARRAY('http://127.0.0.1:8765/oauth/callback'), JSON_ARRAY(), 1)
+ON DUPLICATE KEY UPDATE
+ `client_type` = VALUES(`client_type`), `client_secret_hash` = NULL,
+ `grant_types` = VALUES(`grant_types`), `scopes` = VALUES(`scopes`),
+ `redirect_uris` = VALUES(`redirect_uris`), `post_logout_redirect_uris` = VALUES(`post_logout_redirect_uris`);
