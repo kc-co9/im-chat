@@ -76,23 +76,15 @@ After editing:
 1. Assess whether implementation or Review established a reusable engineering convention. If so, update the owning specification and `docs/references/HARNESS_GUIDE.md` in the same task, then add the narrowest reliable checker/test or explicitly mark the rule Review-only with its automation condition.
 2. Do not create one-off class-name exceptions or weaken an existing rule to avoid updating the affected code.
 
-```bash
-./scripts/verify.sh quick
-```
+Use `./scripts/verify.sh quick` for iterative feedback; it is not a mandatory prerequisite to the final `full` on the same frozen input. Before completion or commit, run `./scripts/verify.sh clean` and `./scripts/verify.sh full`.
 
-Before completion or commit:
+The current full gate runs readiness/clean, one parent Harness self-test, one complete Maven reactor, same-run report validation, and one real HA topology. Architecture, startup, behavior, and E2E risk requirements remain mandatory: full validates their actual reactor reports and records provenance instead of repeating Maven. HA reuses the same-run manifest/report/artifact proof, not the real topology execution. Do not repeat independent architecture/startup/behavior/e2e commands after the same successful full; retain those entries for focused development and debugging. Finalize source, dependencies, stable documentation, shared checkers, and design before freezing; any Git-visible change during full, including state edits, invalidates the run. This is not cross-run caching, phase recovery, or a performance guarantee before real acceptance.
 
-```bash
-./scripts/verify.sh clean
-./scripts/verify.sh full
-```
+Use `./scripts/verify.sh affected` while iterating on a mixed worktree. Routing, Gossip, delivery, or acknowledgement changes require behavior coverage; entry point or startup configuration changes require startup coverage; WebSocket handshake, Gateway/Broker wiring, Bolt routing, realtime transport, cleanup, or E2E boundary changes require E2E coverage. Full's validated same-run reports satisfy those requirements, not waive them. Use the independent commands when diagnosing those boundaries.
 
-Use `./scripts/verify.sh affected` while iterating on a mixed worktree and `./scripts/verify.sh behavior` when changing routing, Gossip, delivery, or acknowledgement behavior.
+Use `./scripts/verify.sh cleanup` to scan Harness-owned temporary state; add `--apply` only after reviewing allowlisted targets. Use `./scripts/verify.sh handoff` for the next-session report and `./scripts/verify.sh quality` for independent AI Review; never hand-edit semantic scores, treat `review_required` as passing, or broaden quality scope exclusions. Focused Maven feedback never replaces full acceptance.
 
-Use `./scripts/verify.sh startup` when changing an application entry point or startup configuration. Use `./scripts/verify.sh cleanup` to scan Harness-owned temporary state; add `--apply` only when the allowlisted cleanup targets have been reviewed. Use `./scripts/verify.sh handoff` to produce the next-session report. Use `./scripts/verify.sh quality` to prepare or validate an independent AI Reviewer response; do not hand-edit semantic scores or treat `review_required` as passing.
-Use `./scripts/verify.sh e2e` when changing WebSocket handshake, Gateway/Broker runtime wiring, Bolt routing, realtime frame transport, connection cleanup, or the E2E boundary itself. Treat verification evidence as current only when its HEAD/worktree fingerprint is fresh in the Harness report.
-
-Use a focused Maven command while iterating, but do not replace the full verification gate with a narrower test run.
+State-only closure follows two distinct times: first obtain actual complete acceptance and independent `Accept` on the frozen implementation before marking tasks passing; then move the plan and update only state content in `PROGRESS.md`, active/completed plans and their directory indexes. An independent Reviewer must compare the exact before/after diff and original acceptance/Review records, not merely check allowed paths. An allowed plan path does not authorize changing scope, requirements, commands, or implementation facts. After migration, run cheap drift/clean, quality scope validation, cleanup and handoff; do not repeat expensive full solely for this state transition. Original full timestamps, fingerprints, stale status and failures remain facts, never rewritten or cached as fresh. Non-state changes or invalid acceptance reopen affected tasks and require appropriate revalidation. This is Review-only scope validation, not a new archive command/framework or current environment health proof. Automation requires reliable low-cost state/content diff positive and negative fixtures without reintroducing chains or journals. Follow `docs/PLANS.md` and `docs/references/HARNESS_GUIDE.md`; preserve existing quality scope exclusions.
 
 Only create a Git commit when the user explicitly requests it. Before staging or committing, read and follow `docs/references/GIT_GUIDE.md`; review the staged diff and do not include unrelated user changes.
 

@@ -79,10 +79,10 @@ public class AuditServiceBeans {
     }
 
     @Bean
-    public Consumer<AuditEvent> imMonitorAudit(AuditEventConsumer consumer) {
+    public Consumer<AuditEvent> imOpsAudit(AuditEventConsumer consumer) {
         return event -> {
             AuditIngestEvent ingestEvent = AuditIngestionTransformer.INSTANCE
-                    .auditIngestEventFrom("imMonitor", event);
+                    .auditIngestEventFrom("imOps", event);
             consumer.accept(ingestEvent);
         };
     }

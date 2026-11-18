@@ -12,6 +12,7 @@
 - 私聊与群聊会话的打开、退出、隐藏和列表查询。
 - 私聊与群聊消息的发送、接收、已读、撤回和历史查询。
 - WebSocket 认证、在线路由、跨 Gateway 投递和客户端回执重试。
+- Ops 成员写保留原命令身份，按可信发现映射 Leader 提示且最多跟随一次；地址配对不替代 Broker 的共识与权限校验，合同见 [Ops README](im-management/im-ops/README.md)。
 
 ## 领域上下文
 
@@ -74,6 +75,8 @@ HTTP 请求和 WebSocket 握手都通过 Account Facade 校验 Access Token 和�
 
 认证设计见[集中式会话认证](docs/design-docs/2026-08-14-centralized-session-authentication-design.md)，安全保证见 [SECURITY.md](docs/SECURITY.md)。
 
+管理身份不复用普通 Account Token。运维浏览器通过 IAM BFF 登录，独立 [im-ops-cli](im-management/im-ops/im-ops-cli/README.md) 通过浏览器 Authorization Code + PKCE 登录后，仅在前台内存持有五分钟用户 Token，经 Ops HTTPS 固定用例访问 Broker；不直接连接 JRaft 或持有 Broker 服务凭证。CLI 启动、固定回调配置、请求记录和 UNKNOWN 恢复见模块 README；客户端范围验收不代表真实跨服务旅程或生产部署已验收，当前执行状态由 [PROGRESS.md](PROGRESS.md) 与活跃计划拥有。
+
 ### 消息与通知链路
 
 ```text
@@ -129,7 +132,7 @@ Redis 回执任务提供有界重投，但不是数据库 Outbox，也不承诺�
 | `im-service/im-account` | 用户、凭证和在线会话 |
 | `im-service/im-social` | 好友、群组和成员关系 |
 | `im-service/im-message` | 聊天、消息、收件箱和通知 |
-| `im-management/im-monitor` | Broker 只读业务诊断聚合和独立监控页面 |
+| `im-management/im-ops` | 聚合 `im-ops-server` 运行控制台与 `im-ops-cli` 独立客户端 |
 | `im-management/im-iam` | 统一管理端身份、OAuth2/OIDC、机器客户端、应用级 RBAC 与接入 SDK |
 | `im-management/im-admin` | IAM 接入、普通用户管理和管理 UI |
 | `im-management/im-audit` | 集中业务/安全审计 SDK、接收服务、查询 UI 和受限 Excel 导出 |
@@ -146,27 +149,27 @@ Redis 回执任务提供有界重投，但不是数据库 Outbox，也不承诺�
         |
         | /api（只读）
         v
-    im-monitor ---- Nacos 元数据 ----> Broker 管理地址
+    im-ops ---- Nacos 元数据 ----> Broker 管理地址
         |
         +---- 并发 HTTP ----> Broker A :19020
         +---- 并发 HTTP ----> Broker B :19020
         `---- 并发 HTTP ----> 不可用节点 -> UNREACHABLE
 ```
 
-Broker 的业务 Bolt 端口为 `18020`；只读管理 HTTP 与 Actuator 默认绑定 `127.0.0.1:19020`。Monitor 对单节点失败进行隔离，页面不会直接访问 Broker，也不提供全量用户路由或任何写操作。运行方式和接口见 [im-monitor README](im-management/im-monitor/README.md)。
+Broker 的业务 Bolt 端口为 `18020`；只读管理 HTTP 与 Actuator 默认绑定 `127.0.0.1:19020`。Ops 对单节点失败进行隔离，页面不会直接访问 Broker，也不提供全量用户路由或任何写操作。运行方式和接口见 [im-ops README](im-management/im-ops/README.md)。
 
 ### 业务管理链路
 
 ```text
 运维浏览器 -> IAM SSO -> im-admin -> Account Admin Facade -> im-account
-                 |-------> im-monitor -> Broker diagnostics
+                 |-------> im-ops -> Broker diagnostics
                  `-------> im-audit -> 不可变审计查询/导出
 
-im-admin / im-iam / im-monitor
+im-admin / im-iam / im-ops
         `-> 固定来源 Kafka Topic 或已认证异步 HTTP -> im-audit
 ```
 
-IAM 使用与普通用户完全独立的管理账号、OAuth2/OIDC BFF Session、机器客户端和应用级 RBAC。Admin、Monitor、Audit 均实时查询 IAM 权限，不读取 Account 表也不复用普通用户 Token；普通用户管理命令仍由 Account 执行。Admin 和 IAM 通过 Audit SDK 发布审计事实，不再持有本地审计表。运行方式见 [IAM README](im-management/im-iam/im-iam-server/README.md)、[Admin README](im-management/im-admin/README.md) 与 [Audit README](im-management/im-audit/im-audit-server/README.md)。
+IAM 使用与普通用户完全独立的管理账号、OAuth2/OIDC BFF Session、机器客户端和应用级 RBAC。Admin、Ops、Audit 均实时查询 IAM 权限，不读取 Account 表也不复用普通用户 Token；普通用户管理命令仍由 Account 执行。Admin 和 IAM 通过 Audit SDK 发布审计事实，不再持有本地审计表。运行方式见 [IAM README](im-management/im-iam/im-iam-server/README.md)、[Admin README](im-management/im-admin/README.md) 与 [Audit README](im-management/im-audit/im-audit-server/README.md)。
 
 ## Harness 与质量门禁
 
@@ -212,15 +215,9 @@ Harness 将高确定性规则自动化，同时把需要业务判断的 DDD 语�
 
 Harness 是持续演进的工程能力，不追求一次性把所有约定都变成自动检查。只有形成稳定需求、明确维护者和验证方式时才增加新规则或专题入口，避免出现无人维护的文档和高误报门禁。
 
-开始工作时检查环境，日常修改运行快速验证，收尾检查可交接状态，提交或交付前运行完整验证：
+日常迭代先选择最窄的适用入口：单模块使用聚焦测试，混合 Java 改动使用 `./scripts/verify.sh affected`，Harness 脚本使用对应的 `scripts/test-*-harness.sh`。`./scripts/verify.sh quick` 包含全部 Harness 自测和 architecture，并非每次小修的默认入口，也不是 full 的前置条件。验证范围扩大前须先修复或明确归因窄层失败；聚焦通过不替代最终验收。完整验收入口为 `./scripts/verify.sh full`。后者依次执行 readiness/clean、一次父 Harness 自测、一次完整 Maven reactor、同轮报告校验和一次真实 HA。Architecture、启动映射/Nacos 隔离、behavior 与 E2E 的实际报告经校验后记录来源；HA 复用同轮报告与制品证明，但仍实际运行容器拓扑、故障恢复和清理。独立验证入口继续用于定位，无需在同一成功 full 前后重复执行。
 
-```bash
-./scripts/verify.sh readiness
-./scripts/verify.sh quick
-./scripts/verify.sh e2e
-./scripts/verify.sh clean
-./scripts/verify.sh full
-```
+当前不提供阶段恢复、跨运行缓存或归档审计命令。实现验收与纯状态归档分开处理，旧证据的时间、指纹及 freshness 不改写；边界见 [Harness Guide](docs/references/HARNESS_GUIDE.md#完整验收与状态归档)。去重实现尚待真实 full 验收，不承诺实际耗时收益。
 
 `e2e` 启动真实 Broker HTTP/Bolt 与 Netty WebSocket runtime，验证实时链路的认证连接、路由、私聊发送、ACK、断开和 Gateway 重启恢复。Account 认证与 Message Facade 使用受控测试边界，因此它不替代包含 MySQL、Redis、Nacos 的全栈环境验证。完整输出保存在 `.harness/runtime/e2e.log`。
 
@@ -277,6 +274,33 @@ WebSocket 入口为 `/ws`，使用统一 JSON 帧而不是 STOMP destination。�
 infra 包含 MySQL、Redis、Nacos、Kafka、Prometheus、Grafana、BanyanDB 和 SkyWalking OAP/Horizon UI。保持 infra 运行时，也可以在 IDE 中只启动当前要调试的服务。Prometheus 位于 `http://localhost:9090`，Grafana 位于 `http://localhost:3000`，SkyWalking UI 位于 `http://localhost:18050`，Nacos Console 位于 `http://localhost:18048`。full 使用 bridge 网络和显式 loopback 端口映射，固定镜像、内存要求、SQL 初始化和数据卷说明见[本地运行编排](deploy/local/README.md)。
 
 本机核心链路压测统一从 `./scripts/load_test.sh` 进入；准备、连接、消息、清理和 base 恢复的安全顺序、Remote Write 与 Grafana 看板见[本地压测配置](deploy/local/README.md#本地压测配置)。`./scripts/verify.sh load-test` 只运行确定性工具契约，显式 `load-test-smoke` 才创建 20 用户真实负载；mock k6 fixture 不代表真实服务容量。
+
+### 生产机器配置基线
+
+机器规格必须来自生产候选拓扑的重复容量测量，不能由开发机、单机 Compose 或 smoke 结果外推。当前仓库尚未接入生产候选环境 driver，因此下表只固定测量口径和扩容信号，不给出没有证据支撑的 CPU、内存或磁盘数字。
+
+在真实候选环境不可用期间，只保留以下规划估算，不作为容量承诺：3-voter/2-Gateway；单 Broker 2-4 core/4-8 GiB；单 WebSocket Gateway 2-4 core/4-8 GiB；总连接目标约 1,000-2,000；消息目标先按 5 msg/s；预留至少 30% 余量。该估算来自本机 Docker 基线和 HA 拓扑假设，5-voter 不得直接套用，正式采用前仍需真实候选压测。
+
+| 模块/运行角色 | 拓扑与目标负载 | CPU | 内存/JVM | 磁盘容量与 IOPS | 网络 | 扩容信号 | 证据状态 |
+|---|---|---|---|---|---|---|---|
+| HTTP Gateway | 副本数与 HTTP RPS 待测 | 待测 | 待测 | 待测 | 待测 | RPS/延迟越界或任一资源持续超过 70% | 待生产候选压测 |
+| WebSocket Gateway | 生产 3/5 voter 对应 Gateway 数；连接档待测 | 待测 | heap/direct/RSS 待测 | 待测 | 上下行峰值待测 | 连接、快照 ACK 或资源越界 | 待生产候选压测 |
+| ACTIVE voter Broker | 生产 3/5 voter；连接/消息档待测 | 待测 | heap/direct/RSS 待测 | Raft IOPS/fsync 待测 | ingress/egress 待测 | fsync、Lookup、选举恢复或资源越界 | 待生产候选压测 |
+| ACTIVE learner Broker | 超过 5 Broker 的非 voter 承载节点；目标档待测 | 待测 | heap/direct/RSS 待测 | 日志追赶/快照 IOPS 待测 | 复制与数据面带宽待测 | 追赶落后、快照挤占数据面或资源越界 | 待生产候选压测 |
+| INACTIVE voter Broker | 3/5 voter 纯控制面基线 | 待测 | 待测 | Raft IOPS/fsync 待测 | Raft 流量待测 | 选举/提交延迟或资源越界 | 待生产候选压测 |
+| Account | 用户登录/查询 RPS 待测 | 待测 | 待测 | 待测 | 待测 | 延迟、错误率、线程池或依赖资源越界 | 待生产候选压测 |
+| Social | 好友/群关系 RPS 与群规模待测 | 待测 | 待测 | 待测 | 待测 | 延迟、错误率、缓存/数据库或资源越界 | 待生产候选压测 |
+| Message/Receipt | 70/30 消息档与 Receipt 重投叠加 | 待测 | 待测 | 待测 | 待测 | 成功率/时延越界、队列持续增长或依赖瓶颈 | 待生产候选压测 |
+| IAM/Admin/Audit/im-ops | 管理并发、节点扇出与审计写入待测 | 待测 | 待测 | 待测 | 待测 | 超时/拒绝、队列持续增长或资源越界 | 待生产候选压测 |
+| MySQL | 业务 QPS/TPS、数据量与副本拓扑待测 | 待测 | Buffer Pool 待测 | 容量、IOPS、redo/fsync 待测 | 待测 | 慢查询、连接、I/O 或复制延迟越界 | 待生产候选压测 |
+| Redis | ops/s、key 数与 HA 拓扑待测 | 待测 | 数据集/RSS 待测 | AOF/RDB IOPS 待测 | 待测 | 驱逐/拒绝、事件循环或持久化延迟越界 | 待生产候选压测 |
+| Kafka | 消息/回执吞吐、分区与副本数待测 | 待测 | page cache/heap 待测 | 容量、IOPS、保留周期待测 | 待测 | consumer lag、ISR、请求延迟或磁盘越界 | 待生产候选压测 |
+| Nacos | 注册实例数、配置数与推送速率待测 | 待测 | 待测 | 待测 | 待测 | 注册/推送延迟或资源越界 | 待生产候选压测 |
+| Prometheus/SkyWalking/BanyanDB | series/span 写入率、查询与保留周期待测 | 待测 | 待测 | 容量、增长率、压缩/合并 IOPS 待测 | 待测 | 摄取落后、查询超时或磁盘增长超预算 | 待生产候选压测 |
+
+正式推荐值只取目标档位在五个阶段各重复三次后均为 `stable` 的结果，并在观测峰值上保留至少 30% headroom。`.harness/report.json` 中 `runtimeEvidence.routingCapacity.status=verified` 仅表示证据完整且新鲜；只有 `qualificationStatus=passed` 才表示该拓扑通过容量判据。执行协议与字段契约见[负载测试模块](im-test/im-load-test/README.md)。
+
+表中只列独立部署角色。`im-common`、SDK、Facade、Plugin 和测试模块不独立运行，其资源成本计入宿主应用，不单独给机器规格。
 
 DDL 与数据所有权一起放在各 Server 模块根目录：
 
@@ -340,3 +364,5 @@ mvn clean package
 ## 许可证
 
 本项目基于 GNU General Public License v3.0 only，详情见 [LICENSE](LICENSE)。
+
+官方 JRaft 依赖为 `com.alipay.sofa:jraft-core:1.4.1`，私有 applied-membership 配方已退役。Leader 列表观察非原子且不证明 applied 配置；业务观察资格来自已提交状态，learner 确认仍需身份、epoch/revision、同任期 ReadIndex 与认证目标应用进度证据。原本地数据与 Maven 制品不自动清理，当前验收状态以 active plan 为准。

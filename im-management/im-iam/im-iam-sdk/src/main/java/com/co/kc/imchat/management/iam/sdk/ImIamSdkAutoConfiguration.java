@@ -17,7 +17,7 @@ import com.co.kc.imchat.management.iam.sdk.oauth.IamAuthorizedSessionService;
 import com.co.kc.imchat.management.iam.sdk.oauth.RedisIamAuthorizationRequestRepository;
 import com.co.kc.imchat.management.iam.sdk.properties.IamProperties;
 import com.co.kc.imchat.management.iam.sdk.security.IamCsrfTokenRepository;
-import com.co.kc.imchat.management.iam.sdk.security.IamBffRequestPolicy;
+import com.co.kc.imchat.management.iam.sdk.security.IamBffSecurityConfigurer;
 import com.co.kc.imchat.management.iam.sdk.security.IamSecurityFilter;
 import com.co.kc.imchat.management.iam.sdk.security.IamSecurityExceptionHandler;
 import com.co.kc.imchat.management.iam.sdk.security.IamSessionCookie;
@@ -31,17 +31,15 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.core.annotation.AnnotationTemplateExpressionDefaults;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.web.client.RestClient;
 
 import java.net.http.HttpClient;
@@ -215,6 +213,16 @@ public class ImIamSdkAutoConfiguration {
     }
 
     @Bean
+    public FilterRegistrationBean<IamSecurityFilter> iamSecurityFilterRegistration(
+            IamSecurityFilter securityFilter
+    ) {
+        FilterRegistrationBean<IamSecurityFilter> registration =
+                new FilterRegistrationBean<>(securityFilter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
     @ConditionalOnMissingBean
     public IamSecurityExceptionHandler iamSecurityExceptionHandler() {
         return new IamSecurityExceptionHandler();
@@ -230,30 +238,22 @@ public class ImIamSdkAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(SecurityFilterChain.class)
-    public SecurityFilterChain iamSecurityFilterChain(
-            HttpSecurity http,
+    public IamBffSecurityConfigurer iamBffSecurityConfigurer(
             IamSecurityFilter securityFilter,
             IamCsrfTokenRepository csrfTokenRepository,
             IamSecurityExceptionHandler securityExceptionHandler
+    ) {
+        return new IamBffSecurityConfigurer(
+                securityFilter, csrfTokenRepository, securityExceptionHandler);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(SecurityFilterChain.class)
+    public SecurityFilterChain iamSecurityFilterChain(
+            HttpSecurity http,
+            IamBffSecurityConfigurer configurer
     ) throws Exception {
-        http.sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
-                .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/actuator/**")
-                        .permitAll()
-                        .requestMatchers(IamBffRequestPolicy.publicPathPatterns())
-                        .permitAll()
-                        .requestMatchers(IamBffRequestPolicy.authenticatedPathPatterns())
-                        .authenticated()
-                        .anyRequest().denyAll())
-                .addFilterBefore(securityFilter, AnonymousAuthenticationFilter.class)
-                .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(securityExceptionHandler)
-                        .accessDeniedHandler(securityExceptionHandler))
-                .httpBasic(Customizer.withDefaults());
-        return http.build();
+        return configurer.build(http);
     }
 
     @Bean

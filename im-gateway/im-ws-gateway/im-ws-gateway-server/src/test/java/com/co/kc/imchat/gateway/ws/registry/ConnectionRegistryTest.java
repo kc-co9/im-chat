@@ -21,7 +21,7 @@ class ConnectionRegistryTest {
 
     @Test
     void closesAllActiveConnections() {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         registry.register(1L, "session-1", "conn-1", first);
@@ -36,7 +36,7 @@ class ConnectionRegistryTest {
 
     @Test
     void pushReturnsFailedConnectionsWhenNettyWriteFails() {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         EmbeddedChannel successChannel = new EmbeddedChannel();
         EmbeddedChannel failedChannel = new EmbeddedChannel(new FailingWriteHandler());
         registry.register(1L, "session-1", "conn-1", successChannel);
@@ -57,7 +57,7 @@ class ConnectionRegistryTest {
 
     @Test
     void cleansConnectionWhenSubmittedWriteFailsLater() {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         AsyncFailingWriteHandler failingWriteHandler = new AsyncFailingWriteHandler();
         EmbeddedChannel channel = new EmbeddedChannel(failingWriteHandler);
         registry.register(1L, "session-1", "conn-1", channel);
@@ -78,7 +78,7 @@ class ConnectionRegistryTest {
 
     @Test
     void listsActiveConnectionStateWithoutExposingChannels() {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         registry.register(1L, "session-1", "conn-1", new EmbeddedChannel());
         registry.register(2L, "session-2", "conn-2", new EmbeddedChannel());
 
@@ -89,7 +89,7 @@ class ConnectionRegistryTest {
 
     @Test
     void closesOnlyConnectionsMatchingTheReplacedSessionVersion() {
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new ConnectionRegistry(removal -> {});
         EmbeddedChannel replacedSession = new EmbeddedChannel();
         EmbeddedChannel currentSession = new EmbeddedChannel();
         EmbeddedChannel anotherUser = new EmbeddedChannel();

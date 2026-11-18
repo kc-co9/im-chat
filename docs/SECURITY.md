@@ -7,21 +7,54 @@
 - HTTP 请求和 WebSocket 握手通过 `im-account` 在线认证 Access Token；超时、线程池饱和、结果格式错误或 Provider 失败时，Gateway 必须 fail closed。
 - Gateway 删除外部传入的用户与 Session Header，只根据 Account 认证结果重新构建。
 - Broker、Gateway 和 Service RPC 都是内部接口，不得作为公共客户端 API 暴露。
+- Gateway 的注册、心跳、注销、连接增量、完整路由快照和整轮 ACK 必须绑定 Bolt 传输身份。Broker 只从当前握手成功的 mTLS
+  session 对端叶证书的严格 namespace 唯一 URI SAN 解析 workload identity，不回退 Subject 或首 URI，并要求它与已注册 `gatewayId`、端点和
+  有效租约一致；请求体中的 `gatewayId` 不是身份事实。
+- `trusted-network://` 身份回退只用于本地明文环境。生产必须关闭
+  `im.broker.routing.allow-trusted-network-gateway-identity`，同时启用 Bolt 双向 TLS 和客户端证书校验。
+- Broker peer 的 RouteLookup 与 drain cleanup 只接受已提交成员的 mTLS workload identity，声明的
+  requesterBrokerId 必须与证书身份一致。cleanup 还必须逐项匹配 Raft operation 中的 old/new epoch、目标
+  Broker 和 Gateway ACK 水位。生产必须关闭 `allow-trusted-network-broker-identity`；本地回退不构成生产授权。
+- Gateway 下行 Bolt 只接受 committed Broker 身份。Frame 与关闭 Handler 不信任浏览器或请求体伪造的
+  Broker 身份；稳定 delivery/operation 标识负责防止 timeout、丢响应和跨 epoch 重试重复执行。
 - IAM 保护的 RPC 只通过 `im-dubbo` 保留 Attachment 携带 Access Token。Provider 必须在业务 Adapter 前完成认证与 Scope 检查；认证身份来自 Spring Security，不来自 RPC Params。Filter 每次调用后恢复 Attachment 和安全上下文，不记录 Token 值。
-- Broker management HTTP 只服务运维。默认监听 loopback，只能向 `im-monitor` 所在运维网络开放；浏览器必须通过 `im-monitor` 访问 Broker 诊断。
-- `im-iam-server` 是管理凭证和 RBAC 的唯一权威。Admin 与 Monitor 只接受 IAM 支持的 BFF Session，不接受普通 Account Token。
+- Broker management HTTP 只服务运维。默认监听 loopback，只能向 `im-ops` 所在运维网络开放；浏览器必须通过 `im-ops` 访问。写请求额外校验 Ops 服务凭证、`im-broker-management` audience 和操作 scope，管理员身份与 Audit 由 Ops 边界负责。
+- `im-iam-server` 是管理凭证和 RBAC 的唯一权威。Admin 与 Ops 浏览器入口只接受 IAM 支持的 BFF Session；Ops 独立 CLI 入口接受受信管理员 Bearer，均不接受普通 Account Token。
 - `im-audit-server` 是管理 Audit 持久化的唯一权威。浏览器 API 使用 IAM BFF Session；内部 HTTP 接收仅接受具有 `audit:ingest` 的专用 Client Credentials Token。
 - Service Facade 与 SDK 定义传输契约，敏感领域模型或持久化模型不得通过这些边界泄漏。
+
+## 固定项目角色身份命名空间
+
+本节是固定项目前缀规则的 owning specification。`im-common` 的 `PeerIdentityConstants` 定义以下五个固定值，项目 SDK 目标构造、bootstrap 配对校验与接收方角色授权使用同一约定，不允许部署属性覆盖。
+
+| 角色 | 常量 | 固定 URI 前缀 |
+|---|---|---|
+| Broker | `BROKER_URI_PREFIX` | `spiffe://im-chat/broker/` |
+| Gateway | `GATEWAY_URI_PREFIX` | `spiffe://im-chat/gateway/` |
+| Message | `MESSAGE_URI_PREFIX` | `spiffe://im-chat/message/` |
+| Account | `ACCOUNT_URI_PREFIX` | `spiffe://im-chat/account/` |
+| Ops | `OPS_URI_PREFIX` | `spiffe://im-chat/im-ops/` |
+
+固定 URI 不是凭据，不替代证书信任链、有效期、namespace 内唯一 URI、完整身份精确匹配、成员或业务授权。节点 ID、完整身份、地址、可信 bootstrap 配对和 committed 拓扑仍由原流程管理，不从发现 metadata、首响应或证书自动学习新的角色规则。通用 Plugin 保留任意合法 trust domain 的解析与验证能力，不依赖这些角色常量；`im.bolt.client.allowed-peer-uri-prefixes` 仍可配置，只限制传输目标，不能扩展项目角色授权。
+
+不同环境可以使用相同命名空间，但必须隔离 CA 与信任材料，生产不得信任测试 CA。固定命名空间本身不提供独立多租户隔离。
+
+原五角色共九处前缀配置入口及环境占位符已移除，不保留别名，也不新增旧键拒绝框架。Spring 未知属性可能被忽略；旧覆盖不再生效，不保证残留旧键启动失败。既有默认值部署的 wire 身份不变；自定义前缀部署必须协调二进制、证书身份、Nacos、环境变量及部署配置迁移到固定值，并移除旧覆盖，不能只升级二进制或只替换配置键。发布和回滚均须保持证书、二进制与配置匹配，不支持无前提混合版本；错误角色或自定义命名空间继续在原校验位置拒绝，不回退明文。
+
+固定值、错误命名空间与角色拒绝由 SDK/授权层聚焦契约测试覆盖；配置入口移除、Plugin 无角色耦合和部署迁移完整性由 Review 核对，自动化条件见 [Harness Guide](references/HARNESS_GUIDE.md#固定项目角色身份命名空间)。设计依据见[已批准设计](design-docs/2026-10-28-fixed-peer-identity-prefixes-design.md)。
 
 ## 配置与密钥
 
 - 不得提交生产凭证、Token、私钥和环境专属 Namespace ID。
+- Bolt TLS keystore 由部署环境挂载，不得提交到仓库。当前 SOFA Bolt 配置使用同一 keystore 提供本机私钥
+  证书链与对端信任材料，因此生产文件必须同时包含正确的私钥条目和信任 CA，并限制文件读取权限。
 - `im-account` 是唯一 Token 签发方和 Session 认证权威。启用 JWT 时，任何 Profile 下缺少密钥或密钥少于 64 个 UTF-8 字节都必须启动失败。
 - 仓库配置可包含非生产本地密钥以保证确定性启动；所有部署环境必须通过 Nacos 覆盖，且不得将其复用为生产密钥。
 - 认证与授权日志不得包含密码、Access/Refresh Token、Refresh fingerprint/digest、完整认证 Body、用户 ID 或 Session version。
 - 管理应用 Session ID 使用 `HttpOnly + Secure + SameSite` Cookie；命令还要求与 Session 绑定的 CSRF Cookie/Header。可用 OAuth2 Token 在写入 Redis 前使用 AES-GCM 加密。
 - IAM 管理员暴力破解防护是带原子失败计数与 TTL 的 Redis 临时状态，不是管理员业务状态。Redis 失败时 fail closed；认证成功或管理员安全属性变化时清除临时状态。
 - IAM Access Token 为不透明 Token，有效期 15 分钟；轮换 Refresh Token 有效期 8 小时。本地开发可使用仓库公开的 classpath PKCS12 和 loopback HTTP issuer；生产必须覆盖为 HTTPS issuer、外部挂载 PKCS12 和部署侧密钥，密钥材料无效时 fail closed。
+- OAuth `client_secret_basic` 必须先分别对 Client ID 和 Secret 做 UTF-8 `application/x-www-form-urlencoded` 编码，再构造 HTTP Basic 凭证；不能直接对原始凭证做 Basic 编码，否则 `+` 等字符会在服务端表单解码时改变。Introspection 出站编码由 IAM SDK 的确定性 HTTP 契约测试保护，不通过限制随机 Secret 字符集规避协议错误。
 - IAM OAuth Client 区分所属应用和唯一目标应用。Access Token metadata 用 `appKey` 暴露所属应用，用标准 `aud` 表达目标；资源服务必须拒绝 audience 不包含自身应用 Key 的 Introspection 结果。
 - Spring Authorization Server 负责 Authorization Code 单次使用和 Refresh Token 轮换。复用或未知凭证返回 `invalid_grant`；IAM 不保存历史 Refresh Token 索引，也不额外实现 authorization-family replay 撤销。
 - IAM SSO 到达绝对过期时间时，必须在当前请求加载 SecurityContext 前使 Session 失效。管理员认证对已知和未知邮箱执行等量 BCrypt 校验工作。
@@ -31,10 +64,34 @@
 ## 管理端授权
 
 - 每个管理端点都由应用自有的 Spring Security Authority 和 `@PreAuthorize` 保护；隐藏 UI 控件只改善体验，不构成授权。管理员权限在 Access Token 签发或刷新时固化，高风险账号变化会撤销当前授权。
-- 只有 IAM 管理管理员凭证、浏览器应用、机器 Client 和角色。Admin 拥有普通用户操作，Monitor 拥有只读诊断，Audit 拥有全部管理审计事实。
+- 只有 IAM 管理管理员凭证、浏览器应用、机器 Client 和角色。Admin 拥有普通用户操作；Ops 拥有诊断及分离的 Broker 分流、Raft、强制操作权限；Audit 拥有全部管理审计事实。
 - 内置角色不可修改或删除。角色和管理员变化会撤销受影响的管理员 Session，最后一个活跃超级管理员不可禁用。
 - 管理审计注解和显式认证/协议 Publisher 不序列化参数、Body、返回值、凭证、Cookie、Session/CSRF 标识、Token、SQL 或异常堆栈。Audit 投递失败与原业务结果隔离。
 - Audit 传输 Payload 不声明 `sourceApp`。HTTP 接收根据已认证机器 Client 推导，Kafka 接收由来源专属 Binding 注入；Producer 控制的 Payload 不能覆盖这一可信事实。
+
+## Ops 可信 Leader 提示
+
+Ops 出站管理凭据只能发给可信发现中的受支持管理 origin。具名 `NOT_LEADER` 最多跟随一次，原 operationId／expectedEpoch／payload／scope 不变；旧 HTTP hint 保留精确 origin 匹配，Raft hint 则按完整不透明 PeerId 在原始实例列表中唯一配对，歧义必须在去重前拒绝。不得解析地址、猜管理端口、归一化或以文本别名 fallback；缺失、非法或冲突配对零 follow。CLI 不向终端暴露内部 hint，审计不记录 hint／凭据。
+
+Broker 通过官方注册 customizer 在首次注册前发布已初始化 Node 的实际完整 `raft-peer-id`；同值保留，异值或空白保留键冲突失败关闭，初始化失败不注册。`management-host`／`management-port` 独立显式配置。注册中心及 metadata 写权限必须可信；此配对不是 TLS 身份、committed topology／membership 或管理员授权。多 customizer／热更新中的保留键后续写者仍需 Review，不能从首次注册测试推导永久不可篡改。
+
+Follower 的 H7／H8 事件快照只支持无副作用拒绝，不能授予新 workflow、预算或 native 权限；close、roleFault 与独立 FSM failure 均阻断可见提示，事件延迟仍可能产生过时 hint。实际角色与副作用授权仍由 worker／native 复验。精确合同见[批准设计](design-docs/2026-11-02-ops-trusted-leader-hint-mapping-design.md)。
+
+## Ops PUBLIC Client 安全边界
+
+- PUBLIC Client 仅属 Ops 且 audience 为 `imOps`，使用 `NONE`、授权码与强制 PKCE `S256`，不接受 Secret、机器 grant 或 Refresh Token。单一精确 redirect 为 HTTP `127.0.0.1`、固定部署端口与 `/oauth/callback`，不启用框架 loopback 任意端口例外。
+- 独立 CLI 仅访问显式配置的 IAM／Ops HTTPS origin，拒绝不受信证书、hostname 不匹配及 HTTP 重定向，不提供跳过 TLS 校验或 Cookie／Token 导出。先绑定固定 IPv4 loopback 回调再打开浏览器；state、授权码、verifier、Token 均不得进入日志或请求记录。请求记录只能包含环境、operation 身份及原业务语义，以 owner-only 权限在首次发送前创建，不能作为管理员身份或授权依据。
+- PUBLIC opaque Access Token 有效期五分钟。IAM 生成可信 `principal_type=ADMINISTRATOR/MACHINE`，标准 Introspection 同时提供 `active`、`exp`、`aud`、`client_id`、`sub`、`scope`、`authorities`；调用方自报字段不是身份或权限依据。
+- Ops 以 order1 精确匹配 `/api/cli` 与 `/api/cli/**`，order2 显式装配原 BFF 兜底链；两种 Filter 禁止 Servlet 自动注册，BFF Filter 也跳过 CLI。CLI 只接受 Bearer，拒绝 Session Cookie 及 Cookie／Bearer 混用；仅 CLI 链不使用 CSRF，原 BFF 的 CSRF、Client 绑定及 stale-if-error 不变。
+- CLI 每请求直接 Introspection，不使用正向身份缓存或 stale-if-error。仅接受 ADMINISTRATOR、目标 audience、精确 Client 白名单、有效期及允许的非空 scope；缺少必需字段、错误 JSON 类型和极端无效 exp 均关闭认证。缺 authorities 不可默认为空集后放行。IAM 不可用返回结构化 HTTP 401，权限不足返回 HTTP 403，不回退 BFF、不重定向登录页；可信管理员 ID、Client 和 scope 保留供用例授权与审计，认证不替代 scope／RBAC 交集检查。
+- PUBLIC revoke 按受信 `client_id` 校验 Token ownership，只撤销当前 authorization；未知 Token 幂等，数据库写失败不得返回成功。Access Token invalidated 映射为授权撤销，正常授权码消费不映射为撤销。REVOKED 行不可被迟到 ACTIVE／Token 写入恢复。
+- Client 禁用／访问配置修改、管理员停用、角色／权限撤回与受影响授权失效在同一事务提交；权限目录撤回保守失效该 audience 的管理员授权。提交后新开始的 Introspection 拒绝旧授权，不追溯取消此前已准入请求或 Broker operation。真实 MySQL 锁、回滚、故障注入与 HTTP Introspection 证据由 IAM 专属测试覆盖，不以 H2 或 mock 替代。
+
+### 既有 BFF CSRF 表示限制
+
+T8 保留原 BFF CSRF 策略，不代表真实 UI 写链已经验证正常。当前 Ops UI 将原始 CSRF Cookie 值放入 `X-XSRF-TOKEN`，SDK 默认链仍使用 Spring Security 的 XOR 请求 handler，两者表示不兼容，合法写入或退出可能被拒绝；未发现因此绕过认证或 CSRF。后端 XOR fixture 仅证明旧防护语义保持，不是实际浏览器契约的通过证据。
+
+该问题仍未关闭，由 IAM SDK 的 CSRF 请求处理与 Ops UI 的 Cookie-to-Header 契约共同负责。修复需单独明确窄行为范围并取得真实客户端表示的 RED／GREEN，不静默扩展 T8，也不据此宣称整个浏览器管理流程可交付；最终独立验收必须保留此限制。其他管理 UI 是否存在相同问题须分别验证，不能从 Ops 推断全部已验证。
 
 ## Session 撤销
 
@@ -42,13 +99,33 @@
 - Refresh Token 原子轮换；复用凭证或并发竞争失败的凭证被拒绝，但不使竞争成功的新凭证失效。
 - 登出和 Session 替换先提交 Session 状态，再发布 best-effort WebSocket 关闭控制；控制投递不是认证权威。
 
+## Broker 自动故障观察身份
+
+健康报告只接受当前Raft membership与已提交Broker角色/endpoint绑定一致的voter。观察操作入站必须有成功TLS握手和namespace内唯一Broker URI SAN；无URI、Subject-only、多Broker身份、错误/未受信证书在业务Handler前拒绝。可信网络回退不能生成独立报告票。
+
+出站在实际调用的同一池内连接核验证书身份，载荷不能覆盖来源。报告请求绑定 cluster/revision/epoch/nonce，不复用上轮失败报告；probe/report 不携带绝对期限，接收方允许晚到只读请求，调用方仍以单调预算和报告新鲜度决定结果可接受性。目标自报、非voter或重复reporter不能增加票数。多数仅允许进入原fence/quarantine流程，不直接授权新epoch副作用。人工force-deactivate风险确认不由自动路径伪造。
+
 ## 变更要求
 
 - 新增入口必须明确认证和授权决策。
-- Broker 诊断保持只读，只接受单用户路由查询，不得暴露全量路由、消息 Payload、凭证、完整堆栈或写操作。
+- Broker 诊断保持只读，只接受单用户路由查询，不得暴露全量路由、消息 Payload、凭证或完整堆栈。集群写入只允许通过受认证 operation API，并由 Broker 复核 epoch、状态迁移、quorum 和幂等性。
 - Broker management、Actuator 和 OpenAPI 路径不要求普通用户 Session Header，默认绑定 loopback。远程开放必须通过部署网络策略限制，因为 User Context Header 不是管理认证。
 - 新增跨进程序列化类型必须提供输入校验和兼容性测试。
 - 新依赖和 Plugin 自动配置只能作用于确实需要它们的模块。
 - 安全敏感修复必须包含聚焦回归测试；信任模型变化时同步更新本文。
 
 安全漏洞应私下报告给仓库 Owner，不要创建包含利用细节的公开 Issue。
+
+## Bolt 统一调用与材料边界
+
+出站必须使用不可变 `BoltTarget(address, expectedPeerIdentity)` 与统一 invoke。模式、允许的 URI 前缀和资源策略在受控客户端构造时固定；Spring 核对实际 running client 与 Invoker 同源，不接受任意外部普通 RpcClient/Invoker。前缀要求完整节点边界，叶证书 namespace 内唯一 URI 必须等于完整预期身份；中间 CA/根不要求 workload URI。SDK bootstrap 将 Nacos 候选与部署地址/URI 配对取交集，Gossip seed 与观察 ID 也须可信配对，不能从 metadata/响应/观察学习首次身份。
+
+D10 保持标准原生 JSSE 信任验证，仅在成功握手后，从当前 session 的 local/peer 非空 X.509 全数组计算额外有效区间 `latestNotBefore <= now < earliestNotAfter`。包括呈现的根/锚及未使用成员；不是 CertPath，也不监控配置但未呈现或隐藏路径的证书。新发送和入站新业务准入检查该区间，缺失/不可读/非 X.509/空区间拒绝，不降级仅查叶证书；已准入请求不因到期立即取消。
+
+D11 的发送前保证仅覆盖受控 invoke 与经审计公开 typed-command（包括 Connection/CONNECT），缺逐命令受控上下文拒绝。原生 TLS/encoder/response/control 单独信任并审计；业务禁止任意预编码 ctx.write、自定义 codec/transport、非受控 pipeline 和 unsafe 写入。受控装配、架构 API 规则及启动拒绝不是任意 raw 字节运行期隔离，更不是同 JVM 恶意代码 sandbox；有权限修改进程或容器的操作者仍在可信边界内。
+
+DEVELOPMENT_PLAINTEXT 仅限独立 bolt-dev、合成数据、字面回环或经实际 create/inspect 检查的 internal 容器网络；prod/production 禁止，TLS 失败不回退。开发允许普通路由/投递/清理，不发有效观察票、不自动摘流。D12 Gateway 部署 URI 配对仅用于 DEV 下行 pool/routing descriptor，不覆盖 trusted-network principal、DTO/Gossip 或租约授权；MTLS 不读取此配对替代证书身份。
+
+D14 固定启动路径/选项而非文件字节。旧 Channel 保持 TLS session，新 Channel 可能由原生加载读更新材料；不承诺 watcher、每次 reload 或任意 inplace write 一致。建议完整原子交付并滚动重启，CA 采用旧 → 双信任 → 新叶 → 撤旧，验证双向新连接及撤旧原生 TLS 拒绝；这不是 only-restart 门禁。不实施 D13 私有 secret 副本，不宣称消除原私钥权限、同 UID/root 或残留风险。正式签发、secret 分发/轮换和生产上线另行评审交付，不提供在线吊销或撤销已准入业务；紧急泄露需独立停机/撤信任处置。
+
+安全 Review 应核对创建/握手/身份/有效期/caller 预算/协议失败的原因归属与脱敏，不记录私钥、密码或请求内容；身份只进入受控日志，指标应使用固定 mode/phase/failure 维度，禁止身份高基数标签。该要求不表示已交付完整审计事件流、告警阈值或监控平台。配置初值与资源所有者见 [im-bolt README](../im-plugin/im-bolt/README.md)。

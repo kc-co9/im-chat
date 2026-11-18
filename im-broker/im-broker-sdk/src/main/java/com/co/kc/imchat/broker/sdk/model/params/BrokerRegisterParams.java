@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.sdk.model.params;
 
+import com.co.kc.imchat.broker.sdk.access.BrokerPeerRequest;
 import java.io.Serializable;
 
 /**
@@ -9,5 +10,6 @@ import java.io.Serializable;
  * @param host     Broker Bolt 主机
  * @param port     Broker Bolt 端口
  */
-public record BrokerRegisterParams(String brokerId, String host, int port) implements Serializable {
+public record BrokerRegisterParams(String brokerId, String host, int port)
+        implements Serializable, BrokerPeerRequest {
 }

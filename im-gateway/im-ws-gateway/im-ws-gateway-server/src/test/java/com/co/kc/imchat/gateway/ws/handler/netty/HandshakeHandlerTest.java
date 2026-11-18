@@ -2,7 +2,6 @@ package com.co.kc.imchat.gateway.ws.handler.netty;
 
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionSyncParams;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
 import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
@@ -46,7 +45,8 @@ class HandshakeHandlerTest {
     @Test
     void registersConnectionWithTokenUserIdInsteadOfQueryUserId() {
         CapturingConnectionRegistrationAdapter brokerClient = new CapturingConnectionRegistrationAdapter();
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new com.co.kc.imchat.gateway.ws.config.GatewayBeans().connectionRegistry(
+                brokerClient, new com.co.kc.imchat.gateway.ws.routing.GatewayInstanceIdentity("gw-1"));
         WsAuthenticationManager authenticationManager = authenticationManager("valid-token", 42L);
         EmbeddedChannel channel = new EmbeddedChannel(new HandshakeHandler(
                 "gw-1", "/ws", brokerClient, registry, authenticationManager));
@@ -66,7 +66,8 @@ class HandshakeHandlerTest {
     @Test
     void rejectsConnectionWithUnauthorizedWhenTokenIsInvalid() {
         CapturingConnectionRegistrationAdapter brokerClient = new CapturingConnectionRegistrationAdapter();
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new com.co.kc.imchat.gateway.ws.config.GatewayBeans().connectionRegistry(
+                brokerClient, new com.co.kc.imchat.gateway.ws.routing.GatewayInstanceIdentity("gw-1"));
         WsAuthenticationManager authenticationManager = authenticationManager("valid-token", 42L);
         EmbeddedChannel channel = new EmbeddedChannel(new HandshakeHandler(
                 "gw-1", "/ws", brokerClient, registry, authenticationManager));
@@ -86,7 +87,8 @@ class HandshakeHandlerTest {
     @Test
     void acceptsBearerTokenFromAuthorizationHeader() {
         CapturingConnectionRegistrationAdapter brokerClient = new CapturingConnectionRegistrationAdapter();
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new com.co.kc.imchat.gateway.ws.config.GatewayBeans().connectionRegistry(
+                brokerClient, new com.co.kc.imchat.gateway.ws.routing.GatewayInstanceIdentity("gw-1"));
         WsAuthenticationManager authenticationManager = authenticationManager("valid-token", 42L);
         EmbeddedChannel channel = new EmbeddedChannel(new HandshakeHandler(
                 "gw-1", "/ws", brokerClient, registry, authenticationManager));
@@ -104,7 +106,8 @@ class HandshakeHandlerTest {
     @Test
     void rejectsConnectionWhenPathDoesNotMatchConfiguredWebSocketPath() {
         CapturingConnectionRegistrationAdapter brokerClient = new CapturingConnectionRegistrationAdapter();
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new com.co.kc.imchat.gateway.ws.config.GatewayBeans().connectionRegistry(
+                brokerClient, new com.co.kc.imchat.gateway.ws.routing.GatewayInstanceIdentity("gw-1"));
         WsAuthenticationManager authenticationManager = authenticationManager("valid-token", 42L);
         EmbeddedChannel channel = new EmbeddedChannel(new HandshakeHandler(
                 "gw-1", "/ws", brokerClient, registry, authenticationManager));
@@ -125,7 +128,8 @@ class HandshakeHandlerTest {
     void rejectsConnectionAndCleansRegistryWhenBrokerRegistrationFails() {
         CapturingConnectionRegistrationAdapter brokerClient = new CapturingConnectionRegistrationAdapter();
         brokerClient.failRegisterConnection = true;
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new com.co.kc.imchat.gateway.ws.config.GatewayBeans().connectionRegistry(
+                brokerClient, new com.co.kc.imchat.gateway.ws.routing.GatewayInstanceIdentity("gw-1"));
         WsAuthenticationManager authenticationManager = authenticationManager("valid-token", 42L);
         EmbeddedChannel channel = new EmbeddedChannel(new HandshakeHandler(
                 "gw-1", "/ws", brokerClient, registry, authenticationManager));
@@ -140,13 +144,15 @@ class HandshakeHandlerTest {
         assertEquals(0, request.refCnt());
         assertFalse(channel.isOpen());
         assertEquals(List.of(), registry.activeConnectionIds());
+        assertEquals(1, brokerClient.unregisterAttempts);
     }
 
     @Test
     void cleansLocalConnectionWhenBrokerUnregisterFails() {
         CapturingConnectionRegistrationAdapter brokerClient = new CapturingConnectionRegistrationAdapter();
         brokerClient.failUnregisterConnection = true;
-        ConnectionRegistry registry = new ConnectionRegistry();
+        ConnectionRegistry registry = new com.co.kc.imchat.gateway.ws.config.GatewayBeans().connectionRegistry(
+                brokerClient, new com.co.kc.imchat.gateway.ws.routing.GatewayInstanceIdentity("gw-1"));
         WsAuthenticationManager authenticationManager = authenticationManager("valid-token", 42L);
         EmbeddedChannel channel = new EmbeddedChannel(new HandshakeHandler(
                 "gw-1", "/ws", brokerClient, registry, authenticationManager));
@@ -157,6 +163,7 @@ class HandshakeHandlerTest {
         assertDoesNotThrow(() -> channel.close());
 
         assertEquals(List.of(), registry.activeConnectionIds());
+        assertEquals(1, brokerClient.unregisterAttempts);
     }
 
     @Test
@@ -166,7 +173,7 @@ class HandshakeHandlerTest {
         when(authenticationManager.authenticate("pending-token")).thenReturn(pendingAuthentication);
         EmbeddedChannel channel = new EmbeddedChannel(new HandshakeHandler(
                 "gw-1", "/ws", new CapturingConnectionRegistrationAdapter(),
-                new ConnectionRegistry(), authenticationManager));
+                new ConnectionRegistry(removal -> {}), authenticationManager));
         FullHttpRequest request = new DefaultFullHttpRequest(
                 HttpVersion.HTTP_1_1, HttpMethod.GET, "/ws?token=pending-token");
 
@@ -201,18 +208,15 @@ class HandshakeHandlerTest {
         private ConnectionRegisterParams registerConnectionCommand;
         private boolean failRegisterConnection;
         private boolean failUnregisterConnection;
+        private int unregisterAttempts;
 
         private CapturingConnectionRegistrationAdapter() {
             super(BrokerClientTestSupport.invoker(), BrokerClientTestSupport.discovery(),
-                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000);
+                    ServiceName.IM_BROKER, BrokerLoadBalance.HASH, 3000, BrokerClientTestSupport.identities());
         }
 
         @Override
         public void registerGateway(GatewayRegisterParams command) {
-        }
-
-        @Override
-        public void syncConnections(ConnectionSyncParams command) {
         }
 
         @Override
@@ -225,6 +229,7 @@ class HandshakeHandlerTest {
 
         @Override
         public void unregisterConnection(ConnectionUnregisterParams command) {
+            unregisterAttempts++;
             if (failUnregisterConnection) {
                 throw new IllegalStateException("broker unavailable");
             }

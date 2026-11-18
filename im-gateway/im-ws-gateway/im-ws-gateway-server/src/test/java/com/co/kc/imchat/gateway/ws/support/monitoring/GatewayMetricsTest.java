@@ -13,7 +13,7 @@ class GatewayMetricsTest {
 
     @Test
     void exposesActiveConnectionAndUserCounts() {
-        ConnectionRegistry connections = new ConnectionRegistry();
+        ConnectionRegistry connections = new ConnectionRegistry(removal -> {});
         connections.register(1L, "session-1", "connection-1", new EmbeddedChannel());
         connections.register(1L, "session-1", "connection-2", new EmbeddedChannel());
         SimpleMeterRegistry registry = new SimpleMeterRegistry();

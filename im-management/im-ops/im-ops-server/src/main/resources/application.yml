@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: im-ops
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
+  cloud:
+    stream:
+      bindings:
+        auditOutput:
+          destination: im.audit.im-ops.v1
+
+server:
+  port: 18043
+
+management:
+  server:
+    port: 19043
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  swagger-ui:
+    path: /api/doc.html
+  api-docs:
+    path: /v3/api-docs
+
+im:
+  audit:
+    enabled: true
+    transport: kafka
+    kafka:
+      binding-name: auditOutput
+  iam:
+    enabled: true
+    issuer: http://localhost:18040
+    application:
+      key: imOps
+      clients:
+        web:
+          client-id: im-ops-client
+          client-secret: 297e3fc66f439d21c19e6ba073090dc720d38e6845f54f0b
+          redirect-uri: http://localhost:18043/iam/callback
+          post-logout-redirect-uri: http://localhost:18043/
+        catalog:
+          client-id: im-ops-catalog
+          client-secret: 2fb89170c2434d2793ef84a4777495907cc4c8763f3e45ba
+      session:
+        encryption-key: x46oSuYFHzztEqo1rrq3a+Px45QglH4n78vY4domdTw=
+        cookie-name: IM_OPS_IAM_SESSION
+        secure-cookie: false
+  ops:
+    query:
+      threads: 8
+      queue-capacity: 128
+    broker:
+      service-name: im-broker
+      request-timeout-millis: 3000
+      management-audience: im-broker-management
+      management-token: ${IM_OPS_BROKER_MANAGEMENT_TOKEN:local-ops-management-token}

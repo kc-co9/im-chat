@@ -1,8 +1,8 @@
 package com.co.kc.imchat.broker.support.monitoring;
 
-import com.co.kc.imchat.broker.domain.registry.broker.BrokerRegistry;
-import com.co.kc.imchat.broker.domain.registry.connection.ConnectionRegistry;
-import com.co.kc.imchat.broker.domain.store.BrokerStateStore;
+import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
+import com.co.kc.imchat.broker.domain.connection.repository.ConnectionRegistry;
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.MeterBinder;
@@ -15,14 +15,14 @@ import org.springframework.stereotype.Component;
 public class BrokerMetrics implements MeterBinder {
     private final BrokerRegistry brokerRegistry;
     private final ConnectionRegistry connectionRegistry;
-    private final BrokerStateStore brokerStateStore;
+    private final BrokerGossipAdapter brokerGossipAdapter;
 
     public BrokerMetrics(BrokerRegistry brokerRegistry,
                          ConnectionRegistry connectionRegistry,
-                         BrokerStateStore brokerStateStore) {
+                         BrokerGossipAdapter brokerGossipAdapter) {
         this.brokerRegistry = brokerRegistry;
         this.connectionRegistry = connectionRegistry;
-        this.brokerStateStore = brokerStateStore;
+        this.brokerGossipAdapter = brokerGossipAdapter;
     }
 
     @Override
@@ -33,7 +33,7 @@ public class BrokerMetrics implements MeterBinder {
         Gauge.builder("im.broker.connections", connectionRegistry, value -> value.list().size())
                 .description("User to gateway mappings owned by this Broker")
                 .register(registry);
-        Gauge.builder("im.broker.gossip.entries", brokerStateStore, value -> value.digest().size())
+        Gauge.builder("im.broker.gossip.entries", brokerGossipAdapter, value -> value.digest().size())
                 .description("Gossip state entries currently retained by this Broker")
                 .register(registry);
     }

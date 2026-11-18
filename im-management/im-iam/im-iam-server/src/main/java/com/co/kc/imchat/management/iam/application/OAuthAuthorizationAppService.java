@@ -78,8 +78,11 @@ public class OAuthAuthorizationAppService {
         OAuthAuthorizationStatus status = command.status();
         Instant revokedAt = command.revokedAt();
 
-        OAuthAuthorization authorization = authorizationRepository.find(authorizationId).orElse(null);
+        OAuthAuthorization authorization = authorizationRepository.findForUpdate(authorizationId).orElse(null);
         if (authorization == null) {
+            if (command.expectedRowVersion() != null) {
+                throw new AuthException("OAuth 授权已不存在");
+            }
             OAuthClient client = oauthClientRepository.find(clientId)
                     .filter(OAuthClient::isActive)
                     .orElseThrow(() -> new AuthException("OAuth 客户端无效"));
@@ -100,6 +103,19 @@ public class OAuthAuthorizationAppService {
                     .revokedAt(revokedAt)
                     .build();
         } else {
+            if (authorization.isRevoked()) {
+                if (status == OAuthAuthorizationStatus.REVOKED) {
+                    return;
+                }
+                throw new AuthException("OAuth 授权已撤销");
+            }
+            if (command.expectedRowVersion() == null
+                    || !command.expectedRowVersion().equals(authorization.getRowVersion())) {
+                throw new AuthException("OAuth 授权版本已失效");
+            }
+            if (status == OAuthAuthorizationStatus.REVOKED) {
+                authorization.revoke(revokedAt);
+            }
             authorization.changeRequest(request);
             authorization.changeAuthorizationCode(authorizationCode);
             authorization.changeAccessToken(accessToken);
@@ -112,14 +128,14 @@ public class OAuthAuthorizationAppService {
     }
 
     @Observed(name = "im.iam.authorization.revoke")
+    @Transactional(rollbackFor = Exception.class)
     public void revoke(OAuthAuthorizationRevokeCmd command) {
         OAuthAuthorizationId authorizationId = new OAuthAuthorizationId(command.authorizationId());
-        OAuthAuthorization oAuthAuthorization = authorizationRepository.find(authorizationId).orElse(null);
-        if (oAuthAuthorization == null) {
-            return;
+        OAuthAuthorization oAuthAuthorization = authorizationRepository.findForUpdate(authorizationId).orElse(null);
+        if (oAuthAuthorization != null) {
+            oAuthAuthorization.revoke(Instant.now());
+            authorizationRepository.save(oAuthAuthorization);
         }
-        oAuthAuthorization.revoke(Instant.now());
-        authorizationRepository.save(oAuthAuthorization);
     }
 
 }

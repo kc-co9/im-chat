@@ -4,6 +4,24 @@ Completed plans are retained as implementation history. Move a plan here only af
 
 Completed plans:
 
+- [Ops 模块聚合](2026-11-18-ops-module-aggregation.md)：T1 `passing`，Ops Server 与 CLI 已纳入同一父模块；实现 full、25 个真实 HA 场景与独立 quality Accept 已完成。保留原验收时间、指纹和历史失败，文档状态与链接更新不作为新 full 证据。
+
+- [Broker 成员应用流程可读性](2026-11-09-broker-membership-flow-readability.md)：T1–T3 `passing`，冻结 full、真实 HA 与独立 quality Accept；原验收指纹、时间、历史 Block 和失败记录保留，群聊风险由独立设计草案跟踪。
+
+- [官方 JRaft 治理迁移与自有运维 CLI](2026-10-30-official-jraft-and-ops-cli.md)：T1–T12 `passing`；新冻结 full／真实 HA、独立完整 T11 Review、正式 quality Accept、合同回归与状态迁移 Review 均已完成；原验收时间、指纹、历史失败、旧 Revise 与 stale 保留。
+
+- [Bolt 包职责与 Broker 快照归位](2026-10-25-bolt-package-boundaries.md#attempt6-与复审-r1r52026-10-29)：Bolt 按职责拆包、Broker 快照归位及后续已批准调整完成；冻结 full attempt8 与独立 quality 复审 Accept 后归档。已知偏差与偶发失败见技术债 TD-01–TD-04，D9 延后；原验收时间、指纹、历史失败与 stale 保留。
+
+- [HA 证据时序与维护验收收尾](2026-10-24-ha-evidence-order-closeout.md)：日志采集早于场景映射，既有两文件维护及完整隔离验收通过，最终实现与正式 quality 均 Accept；保留条件 skip、原失败及非生产发布边界。
+
+- [Bolt 连接层认证与统一 invoke](2026-10-22-bolt-unified-invoke.md#t6-状态关闭清单)：实现已验收并已迁移；迁移精确 Review 及第二时点廉价检查已完成；原验收时间、指纹、历史失败、stale 与残余风险保留，不等同生产发布。
+
+- [收尾流程精简](2026-10-22-closeout-simplification.md)：撤下阶段链和复杂归档平台，保留战术修复，完成一次reactor与真实HA去重验收；关闭审计按状态内容Review与廉价治理执行。
+- [Broker Adapter 职责重划](2026-10-11-broker-adapter-boundaries.md)：实施及最终完整验收、独立quality已完成；私有制品发布、未来连接认证与历史稳定性边界保留。
+
+- [Broker 本地路由 HA 模拟](2026-10-10-broker-routing-capacity.md)：本地 Docker 3-voter/2-Gateway 上下线、故障恢复和状态收敛验证完成；正式生产容量不在本次范围内。
+- [Harness 规则导航与 CI 工具修复](2026-10-10-harness-reference-navigation.md)：规则矩阵迁移与本机验证完成；GitHub runner 安装待下一次 Actions run 确认。
+- [Broker 权威路由与 DDD Review 收口](2026-09-20-broker-routing-consensus.md)：代码/集成范围已验收；生产候选容量由独立活跃计划承接。
 - [IM 核心链路容量压测](2026-09-14-im-load-test.md)
 - [可观测性与分片运行接入](2026-09-11-observability-sharding-runtime.md)
 - [Harness 交接、启动与质量评审](2026-09-10-harness-handoff-startup-and-quality.md)

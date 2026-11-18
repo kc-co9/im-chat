@@ -1,5 +1,6 @@
 package com.co.kc.imchat.broker.sdk.model.params;
 
+import com.co.kc.imchat.broker.sdk.access.BrokerPeerRequest;
 import java.io.Serializable;
 
 /**
@@ -7,5 +8,6 @@ import java.io.Serializable;
  *
  * @param brokerId Broker 实例 ID
  */
-public record BrokerUnregisterParams(String brokerId) implements Serializable {
+public record BrokerUnregisterParams(String brokerId)
+        implements Serializable, BrokerPeerRequest {
 }

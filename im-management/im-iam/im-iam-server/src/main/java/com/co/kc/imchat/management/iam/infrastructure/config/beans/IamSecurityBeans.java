@@ -1,5 +1,8 @@
 package com.co.kc.imchat.management.iam.infrastructure.config.beans;
 
+import com.co.kc.imchat.management.iam.infrastructure.security.oauth.authentication.PublicClientTokenRevocationAuthenticationConverter;
+import com.co.kc.imchat.management.iam.infrastructure.security.oauth.authentication.PublicClientTokenRevocationAuthenticationProvider;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import com.co.kc.imchat.management.iam.infrastructure.config.properties.IamAuthorizationProperties;
 import com.co.kc.imchat.management.iam.infrastructure.security.oauth.adapter.OAuthAuthorizationServiceAdapter;
 import com.co.kc.imchat.management.iam.transformer.infrastructure.OAuthAuthorizationTransformer;
@@ -54,6 +57,13 @@ import org.springframework.http.MediaType;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationProvider;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationToken;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationValidator;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
 import java.time.Clock;
 
 /**
@@ -193,18 +203,48 @@ public class IamSecurityBeans {
     @Order(1)
     public SecurityFilterChain oauthSecurityFilterChain(
             HttpSecurity http,
-            IamSsoSessionFilter ssoSessionFilter
+            IamSsoSessionFilter ssoSessionFilter,
+            RegisteredClientRepository clientRepository,
+            AuthorizationServerSettings settings
     ) throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServer = OAuth2AuthorizationServerConfigurer.authorizationServer();
         http.securityMatcher(authorizationServer.getEndpointsMatcher())
                 .with(authorizationServer, server -> server
-                        .oidc(Customizer.withDefaults()))
+                        .oidc(Customizer.withDefaults())
+                        .clientAuthentication(client -> client
+                                .authenticationConverters(converters -> converters.add(0,
+                                        new PublicClientTokenRevocationAuthenticationConverter(
+                                                new AntPathRequestMatcher(settings.getTokenRevocationEndpoint(), "POST"))))
+                                .authenticationProviders(providers -> providers.add(0,
+                                        new PublicClientTokenRevocationAuthenticationProvider(clientRepository))))
+                        .authorizationEndpoint(endpoint -> endpoint.authenticationProviders(providers ->
+                                providers.forEach(provider -> {
+                                    if (provider instanceof OAuth2AuthorizationCodeRequestAuthenticationProvider codeProvider) {
+                                        configureAuthorizationValidation(codeProvider);
+                                    }
+                                }))))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .addFilterBefore(ssoSessionFilter, SecurityContextHolderFilter.class)
                 .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
                         new LoginUrlAuthenticationEntryPoint("/login"),
                         new MediaTypeRequestMatcher(MediaType.TEXT_HTML)));
         return http.build();
+    }
+
+    /** 保留框架 Scope 校验，并对 public Client 禁用原生 loopback 任意端口例外。 */
+    public static void configureAuthorizationValidation(
+            OAuth2AuthorizationCodeRequestAuthenticationProvider provider) {
+        provider.setAuthenticationValidator(context -> {
+            OAuth2AuthorizationCodeRequestAuthenticationToken request = context.getAuthentication();
+            if (context.getRegisteredClient().getClientAuthenticationMethods().contains(ClientAuthenticationMethod.NONE)
+                    && !context.getRegisteredClient().getRedirectUris()
+                    .contains(request.getRedirectUri())) {
+                throw new OAuth2AuthorizationCodeRequestAuthenticationException(
+                        new OAuth2Error(OAuth2ErrorCodes.INVALID_REQUEST), null);
+            }
+            OAuth2AuthorizationCodeRequestAuthenticationValidator.DEFAULT_REDIRECT_URI_VALIDATOR.accept(context);
+            OAuth2AuthorizationCodeRequestAuthenticationValidator.DEFAULT_SCOPE_VALIDATOR.accept(context);
+        });
     }
 
     @Bean

@@ -9,6 +9,8 @@ import com.co.kc.imchat.management.iam.sdk.session.repository.IamApplicationSess
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -57,6 +59,26 @@ class IamSecurityFilterTest {
         verifyNoInteractions(sessions, introspection);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/cli", "/api/cli/cluster-state"})
+    void neverRestoresBffSessionForCliRequests(String path) throws Exception {
+        IamSessionCookie cookie = new IamSessionCookie(
+                "IM_IAM_SESSION", false, "Lax", Duration.ofHours(8));
+        IamApplicationSessionRepository sessions = mock(IamApplicationSessionRepository.class);
+        IamIntrospectionService introspection = mock(IamIntrospectionService.class);
+        IamSecurityFilter filter = new IamSecurityFilter(cookie, sessions, introspection);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+        request.setCookies(new jakarta.servlet.http.Cookie("IM_IAM_SESSION", "session-id"));
+        AtomicInteger invocations = new AtomicInteger();
+
+        filter.doFilter(request, new MockHttpServletResponse(),
+                (servletRequest, servletResponse) -> invocations.incrementAndGet());
+
+        assertThat(invocations).hasValue(1);
+        assertThat(IamSecurityContext.currentPrincipal()).isEmpty();
+        verifyNoInteractions(sessions, introspection);
+    }
+
     @Test
     void authenticatesOneRequestAndAlwaysClearsSecurityContext() throws Exception {
         IamSessionCookie cookie = new IamSessionCookie(
@@ -68,7 +90,7 @@ class IamSecurityFilterTest {
                 new IamIntrospectionResult(
                         true, 1L, "root", "imAdmin", "im-admin-client",
                         Set.of("imAdmin"),
-                        Set.of("admin.user.read"), Instant.now().plusSeconds(900)));
+                        Set.of("admin.user.read"), Instant.now().plusSeconds(900), "ADMINISTRATOR", Set.of()));
         IamSecurityFilter filter = new IamSecurityFilter(cookie, sessions, introspection);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setCookies(new jakarta.servlet.http.Cookie("IM_IAM_SESSION", "session-id"));
@@ -95,7 +117,7 @@ class IamSecurityFilterTest {
         when(introspection.introspect("opaque-access-token")).thenReturn(
                 new IamIntrospectionResult(
                         false, null, null, null, null,
-                        Set.of(), Set.of(), Instant.now().plusSeconds(900)));
+                        Set.of(), Set.of(), Instant.now().plusSeconds(900), "ADMINISTRATOR", Set.of()));
         IamSecurityFilter filter = new IamSecurityFilter(cookie, sessions, introspection);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setCookies(new jakarta.servlet.http.Cookie("IM_IAM_SESSION", "session-id"));

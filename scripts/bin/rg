@@ -1,0 +1,5 @@
+#!/usr/bin/ruby
+# 仅固定v2来源解析；参数原样交给受审工具，不接受环境指定target。
+require_relative '../lib/harness-reactor-evidence'
+root = File.realpath(File.join(__dir__, '../..'))
+exec ReactorEvidence.new(root).approved_local_tool('rg'), *ARGV

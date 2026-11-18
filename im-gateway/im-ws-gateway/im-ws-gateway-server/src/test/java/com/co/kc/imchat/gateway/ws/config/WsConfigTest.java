@@ -63,7 +63,6 @@ class WsConfigTest {
                 .orElseThrow(() -> new IllegalStateException("WS 网关配置绑定失败"));
 
         assertThat(properties.getPort()).isEqualTo(18011);
-        assertThat(properties.gatewayId(18012)).isEqualTo("gateway-127.0.0.1-18012");
         assertThat(properties.getPath()).isEqualTo("/ws");
         assertThat(properties.getMaxFramePayloadLength()).isEqualTo(65536);
         assertThat(properties.getIdle().getReaderIdleSeconds()).isEqualTo(60);

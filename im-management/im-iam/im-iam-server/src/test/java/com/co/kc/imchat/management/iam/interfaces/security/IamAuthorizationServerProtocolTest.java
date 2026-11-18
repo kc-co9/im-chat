@@ -82,8 +82,8 @@ class IamAuthorizationServerProtocolTest {
     private static final String CLIENT_ID = "browser-client";
     private static final String CLIENT_SECRET = "browser-secret";
     private static final String REDIRECT_URI = "https://client.example/callback";
-    private static final String SECOND_CLIENT_ID = "monitor-client";
-    private static final String SECOND_REDIRECT_URI = "https://monitor.example/callback";
+    private static final String SECOND_CLIENT_ID = "ops-client";
+    private static final String SECOND_REDIRECT_URI = "https://ops.example/callback";
     private static final String VERIFIER = "0123456789012345678901234567890123456789012345678901234567890123";
 
     @Autowired

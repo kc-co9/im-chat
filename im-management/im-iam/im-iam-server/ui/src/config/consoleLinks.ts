@@ -1,4 +1,4 @@
-export type ConsoleKey = 'iam' | 'audit' | 'monitor' | 'admin'
+export type ConsoleKey = 'iam' | 'audit' | 'ops' | 'admin'
 
 export interface ConsoleLink {
   key: ConsoleKey
@@ -15,9 +15,9 @@ const consoles: Record<ConsoleKey, Omit<ConsoleLink, 'key'>> = {
     name: '审计中心',
     location: import.meta.env.VITE_AUDIT_CONSOLE_URL || 'http://localhost:18041',
   },
-  monitor: {
+  ops: {
     name: '运行监控',
-    location: import.meta.env.VITE_MONITOR_CONSOLE_URL || 'http://localhost:18043',
+    location: import.meta.env.VITE_OPS_CONSOLE_URL || 'http://localhost:18043',
   },
   admin: {
     name: '用户管理',

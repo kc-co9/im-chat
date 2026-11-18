@@ -2,176 +2,182 @@
 
 ## 模块作用
 
-`im-broker` 是 IM 实时链路的 Broker 聚合模块，负责承接 WS gateway、message service 和 Broker 集群内部的实时调用。
+`im-broker` 是 IM 实时链路的路由协调模块。它接收 WS Gateway、Message、Account 与 Broker 集群内部调用，维护在线投递所需的运行态索引，并把上行 Frame 交给 Message、把下行 Frame 写入目标 Gateway。
 
-注册表、用户归属、迁移、Gossip 和帧路由的一致性边界以 [Broker Architecture](ARCHITECTURE.md) 为准。
+Broker 不处理消息领域业务，不保存历史消息，也不持有 Gateway 的 Netty Channel。跨模块拓扑与一致性边界见 [Broker Architecture](ARCHITECTURE.md)，服务端配置和诊断入口见 [Broker Server README](im-broker-server/README.md)，调用契约见 [Broker SDK README](im-broker-sdk/README.md)。
 
-Broker 不处理消息领域业务，也不保存历史消息。它只维护在线投递所需的运行态索引：Broker 实例、WS gateway 实例、用户到 gateway 的连接映射，并把上行帧转交 message service，把下行帧写入目标用户所在的 WS gateway。
+管理成员写可以先到 Follower；仅健康事件观察有效且准入无硬拒绝时，返回不创建工作流的 `NOT_LEADER`。Ops 按完整 PeerId 与可信管理 origin 配对后最多跟随一次；这不授予 Leader 或成员资格，不改变 worker 和 native 复验。注册顺序、故障失效及锁边界见 [Architecture](ARCHITECTURE.md#管理提示与纯拒绝边界)。
+
+## 阅读路线
+
+首次接触实时链路，先沿下面的三 Broker 示例理解消息去向，再读本页的状态分工与拒绝重试。需要启动或排障时转到 [Server README](im-broker-server/README.md#构建与启动)；接入调用时读 [SDK README](im-broker-sdk/README.md#接入顺序)；修改规则或查找状态所有者时读 [Architecture](ARCHITECTURE.md#ddd-模型与边界)。
+
+设 Broker A、B、C 都是 voter，A 是当前 Leader，某用户由已提交拓扑分配给 B。Gateway 把这个用户的连接路由写入 B；Message 下行也通过 SDK 直达 B，再由 B 找到 Gateway。A 负责协调集群提交，不必经手每条消息。C 参与共识并保存自己的运行观察，不是 B 的业务帧转发站。
+
+B 失联时，A 和 C 各自探测 B，A 拉取报告。三 voter 需要两个独立的合格报告，B 的自报不计票；报告足够也只允许开始故障操作，仍要隔离旧 epoch、提交新拓扑、安装新 Lease，并由 Gateway 重建路由。这样把「看到失败」与「允许其他节点接管」分开，避免网络分区时新旧节点同时执行副作用。
+
+| 阅读中常见的名称 | 含义 |
+|---|---|
+| committed / quorum | 已按共识规则提交 / 多数派证明；三 voter 的多数为两个 |
+| Leader / voter / learner | 日志提交协调者 / 投票成员 / 不投票的同步成员；都不直接等于流量资格 |
+| RouteBroker / ACTIVE | 某用户当前路由的所有者 / 参与路由选择的节点状态 |
+| epoch / revision / leaderTerm | 路由代次 / 权威内容版本 / Raft 领导任期，三者不能互换 |
+| Lease / fence / quarantine | 有限时执行许可 / 阻止旧代次新副作用 / 缺少隔离 ACK 时的完整安全等待 |
+| probe / report / Gossip | 单点主动探测 / voter 本机采样报告 / 最终一致的运行观察传播 |
 
 ## 模块结构
 
 ```text
 im-broker/
-  im-broker-sdk/       # Broker 内部调用 SDK、Params、DTO、RPC service/operation 标识
-  im-broker-server/    # Broker 运行服务，提供 Bolt RPC 入口、连接索引和 Gossip 状态同步
-  pom.xml              # Broker 聚合 POM
+├── im-broker-sdk/       # 跨进程契约、BrokerClient、集群状态缓存与 RouteBroker 选择
+├── im-broker-server/    # Bolt 入口、Raft 控制面、Lease/fence、连接索引与 Gossip
+└── pom.xml
 ```
 
-## 运行架构
+## 状态分工
 
-```text
-                  ┌────────────────────┐
-                  │    im-ws-gateway   │
-                  │ local connections  │
-                  └─────────┬──────────┘
-                            │ register / heartbeat / sync / frame
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│                       im-broker                         │
-│  interfaces.handler                                     │
-│    broker / gossip / gateway / connection / frame        │
-│                                                        │
-│  domain.registry                                        │
-│    BrokerRegistry / GatewayRegistry / ConnectionRegistry │
-│                                                        │
-│  domain.service                                         │
-│    BrokerConnectionService                              │
-│                                                        │
-│  domain.store                                           │
-│    BrokerStateStore                                     │
-└───────────────┬──────────────────────────┬─────────────┘
-                │                          │
-                │ Dubbo                    │ Bolt
-                ▼                          ▼
-        ┌──────────────┐          ┌────────────────┐
-        │ im-message   │          │ peer brokers   │
-        │ business     │          │ gossip sync    │
-        └──────────────┘          └────────────────┘
-```
+Broker 同时存在两类状态，不能互相替代：
 
-## 核心流程导航
+| 状态 | 所有者 | 一致性 | 用途 |
+|---|---|---|---|
+| `BrokerClusterState` | Raft 多数派 | 强一致、低频 | ACTIVE Broker、epoch、算法、成员角色与端点 |
+| 业务 Registry / Gossip observation | 各 Broker 本机，部分观察经 Gossip 传播 | 本机写入、跨节点最终一致 | Broker/Gateway 活性和连接位置观察；远端 Connection 观察不写入本机可投递路由 |
+| 健康采样 / 冷却 / Lease | 各 Broker 本机 | 不随 Gossip 复制 | 故障证据输入、自动处置资格和本机执行许可，不是 committed 拓扑 |
+
+Nacos 只提供首次 bootstrap 地址。Gossip 或健康探针不能直接增删 ACTIVE Broker，也不能推进 epoch；这类变化必须通过显式 Raft operation 提交。
+
+## RouteBroker
+
+`RouteBroker` 是根据同一份 committed `BrokerClusterState` 和 `userId` 计算出的当前路由 Broker。它负责该用户的连接路由写入、下行投递和关闭控制，不表示拥有该用户的全部业务数据。
+
+建群时选择以下一种算法，运行中不可切换：
+
+- `RENDEZVOUS_HASH`：默认；增删节点只迁移必要用户。
+- `MODULO_HASH`：显式可选；节点数量变化会重映射大量用户。
+
+算法只使用 committed ACTIVE Broker 和稳定 `brokerId`。ACTIVE 表示参与 RouteBroker 选择，不等于本机已安装有效 Lease；路由副作用仍须通过 Lease/fence 校验。完整编码与 golden vectors 见 SDK README。
+
+## 正常调用流程
 
 ```mermaid
-flowchart LR
-    Gateway[Gateway 生命周期] --> Registry[注册 / 心跳 / 连接快照]
-    Registry --> BrokerRegistry[Broker Registry]
-    Client[客户端上行帧] --> Any[任意 Broker]
-    Any --> MessageFacade[Message Facade]
-    Message[Message 下行帧] --> Owner[owner Broker]
-    Account[Account 关闭控制] --> Owner
-    Owner --> Route[user 路由]
-    Route --> Target[目标 Gateway / 旧 Session 连接]
-    Change[Registry 变化] --> Store[BrokerStateStore]
-    Store --> Gossip[Gossip digest / delta]
-    Gossip --> Peer[peer Broker]
-    Membership[Broker 成员变化] --> Migration["重算 owner -> 迁移 -> 确认 -> 本地删除"]
+sequenceDiagram
+    participant Caller as Gateway / Message / Account
+    participant SDK as Broker SDK
+    participant Bootstrap as bootstrap Broker
+    participant RouteBroker as RouteBroker
+    participant Guard as Lease/fence 执行保护
+    participant Target as Message / Gateway / Registry
+
+    SDK->>Bootstrap: 首次/周期 GET_CLUSTER_STATE
+    Bootstrap-->>SDK: committed BrokerClusterState
+    Caller->>SDK: 用户路由请求(userId)
+    SDK->>SDK: 计算 RouteBroker
+    SDK->>RouteBroker: request + routingEpoch + operationId + deadline
+    RouteBroker->>RouteBroker: 校验 deadline / epoch / 本机身份
+    RouteBroker->>Guard: 在 routingEpoch 执行保护内请求副作用
+    Guard->>Target: 执行副作用
+    Target-->>Caller: 业务结果
 ```
 
-稳定的状态所有权和一致性模型见 [Broker Architecture](ARCHITECTURE.md)，具体 Handler、Lifecycle、配置和诊断接口见 [Broker Server README](im-broker-server/README.md)。
+正常路径没有「先选一个 Broker，再由 Broker 转发给真正 Broker」的二跳。连接注册/注销、上行 Frame、下行 Frame 和关闭控制都由 SDK 直接访问 RouteBroker。
 
-## RPC 边界
+### 上行与下行
 
-Broker SDK 通过 `BrokerBoltService` 和 `BrokerBoltOperation` 固定内部 RPC 边界。
+方向以客户端为参照：
 
-| Service | Operation | 说明 |
-|---------|-----------|------|
-| `broker.broker` | `registerBroker`、`unregisterBroker`、`heartbeatBroker`、`listBrokers` | Broker 实例管理 |
-| `broker.gossip` | `gossipDigest`、`gossipDelta` | Broker 间状态摘要和增量同步 |
-| `broker.gateway` | `registerGateway`、`unregisterGateway`、`heartbeatGateway` | WS gateway 实例管理 |
-| `broker.connection` | `registerConnection`、`unregisterConnection`、`syncConnections`、`migrateConnections`、`closeConnections` | 用户到 gateway 的连接索引管理及会话关闭控制 |
-| `broker.frame` | `writeFrame` | 上行帧转交 message service，下行帧写入 WS gateway |
+```text
+上行：客户端 -> WS Gateway -> RouteBroker -> Message
+下行：Message -> RouteBroker -> WS Gateway -> 客户端
+路由维护：WS Gateway -> RouteBroker
+关闭控制：Account -> RouteBroker -> WS Gateway
+```
 
-`AbstractBrokerRpcHandler<I, O>` 负责统一反序列化入参、调用 `process(I params)` 并返回结果。具体 handler 只关心自己的 Params 和 Result 类型。
+上行已经从一条认证连接进入系统，不需要查询接收用户位置；它仍按发送者 `userId` 分散到 RouteBroker，再由 Broker 直接调用 Message。下行、连接维护和关闭控制需要本机 `userId -> Set<gatewayId>` 索引。
 
-## 连接索引
+Broker 不保存 Gateway 本机 connectionId。Gateway 负责把一次用户下行写入该用户的全部本地连接，Broker 汇总逐连接结果；Gateway 接受写入不等于客户端已经 ACK。
 
-Broker 当前只保存用户到 gateway 的映射，不保存 gateway 本机的具体 `connectionId` 集合。一个用户可能同时连接多个 gateway，因此连接索引的核心形态是：
+## 明确拒绝与重试
+
+Broker 在产生路由副作用前依次校验 deadline、epoch、本机 RouteBroker 身份和 Lease/fence。deadline 过期直接抛出异常，不属于下面四类拒绝状态。
+
+| 结果 | 含义 | `suggestedEndpoint` 提示 |
+|---|---|---|
+| `ROUTE_MOVED` | 请求 epoch 落后 | 当前 RouteBroker |
+| `BROKER_STATE_STALE` | 请求 epoch 超前，本机状态落后 | 当前 Leader |
+| `ROUTE_MISMATCH` | epoch 相同但请求到达错误 Broker | 当前 RouteBroker |
+| `ROUTING_FENCED` | 比较通过，但本机已失去执行许可 | 当前 Leader |
+
+四类拒绝都保证尚未产生路由副作用。SDK 会刷新完整 committed state，重新计算 RouteBroker，并在原 deadline 内保留同一 `operationId` 最多定向重试一次；`suggestedEndpoint` 仅作提示，不直接作为重试目标。同 epoch 的路由计算漂移会报错，不用连续重定向掩盖问题。
+
+RPC timeout、连接中断等无法判断对端是否执行的异常不会触发自动换 Broker 重放；业务层是否再次尝试由各自幂等协议决定。调用约束见 [SDK 客户端边界](im-broker-sdk/README.md#客户端边界) 和 [SDK 时间字段使用](im-broker-sdk/README.md#时间字段使用)，服务端执行与重试边界见 [帧与控制流](ARCHITECTURE.md#帧与控制流)。
+
+## 连接索引与当前边界
+
+当前 Broker 连接索引为：
 
 ```text
 userId -> Set<gatewayId>
+gatewayId -> Set<userId>
 ```
 
-具体的 WebSocket channel、connectionId 和写入结果由 `im-ws-gateway` 本机维护。Broker 收到下行帧时先根据 `userId` 查到 gateway，再调用对应 gateway 的 frame 写入接口。
+Gateway 按 committed state 将连接路由同步到对应 RouteBroker；完整分片通过校验后原子应用，旧更新不能覆盖新路由。Gateway 每次进程启动使用新的随机 `gatewayId`，并与注册身份和租约绑定；租约过期且经过 grace period 后回收该实例的路由，旧 ID 不允许再次注册。
 
-`ConnectionRegistry` 只暴露注册、注销、查询、列表和同步接口：
+本地路由未命中时，RouteBroker 只向其他 ACTIVE/DRAINING Broker 有界查询只读路由描述，重新校验 Gateway 租约后再定向下行，不广播或转发业务 Frame。下行和关闭控制使用稳定标识支持幂等处理，迟到的旧 session 控制不能关闭新连接。
 
-```text
-register(ConnectionRegisterParams)
-unregister(ConnectionUnregisterParams)
-find(userId)
-list()
-sync(gatewayId, userIds)
-```
+快照字段与接收结果见 [SDK Gateway 路由快照契约](im-broker-sdk/README.md#gateway-路由快照契约)；批次接收、版本与清理规则见 [本机分片接收与清理](ARCHITECTURE.md#本机分片接收与清理) 和 [RouteBroker 与连接路由](ARCHITECTURE.md#routebroker-与连接路由)，查询与投递边界见 [帧与控制流](ARCHITECTURE.md#帧与控制流)。
 
-`sync` 用于处理 gateway 上报的当前活跃用户快照。Broker 会保留快照内的用户映射，并清理该 gateway 下没有继续上报的旧映射。
+## Broker 排空与故障恢复
 
-## Broker 归属
+优雅排空通过专用 `drainBroker` operation 完成，不是普通状态修改。旧 epoch 冻结的 committed ACTIVE Broker 集合必须先完成 fence 或完整 quarantine。fence 提交关闭旧 epoch 的新 Lease grant，不会自动撤销远端 Broker 已安装的 Lease。
 
-用户连接注册和注销可以请求到任意 Broker。Broker 会根据当前 Broker 列表和 `userId` 选择该用户的归属 Broker：
+目标 epoch 的 ACTIVE Broker 完成 Lease prepare/install 后，由 Gateway 重建路由；新 epoch 不表示节点新加入。DRAINING Broker 只清理已确认的旧路由，不承担新下行；只有重建、清理证据和旧事件期限均满足条件后，才完成排空。
 
-```text
-owner = sortedBrokerIds[floorMod(hash(userId), brokerCount)]
-```
+Gateway 确认与恢复证据持久化到 Raft，Leader 切换后可继续。优雅排空确认未齐不执行 cleanup，超时为 `FAILED`；管理员明确接受未确认 Gateway/残留路由风险后才能转为 `FORCED`。突然故障不等待故障 Broker cleanup，目标直接 `INACTIVE`；存活 Gateway 全部确认可 `SUCCEEDED`，确认缺口超时则记录缺失集合并 `DEGRADED`，不等价于成功。
 
-如果当前 Broker 不是该用户的归属 Broker，请求会通过 `BrokerPeerClient` 转发给归属 Broker；如果当前 Broker 就是归属 Broker，则直接写入本地 `ConnectionRegistry`。
+具体流程与恢复所有者见 [优雅排空](ARCHITECTURE.md#优雅排空) 和 [故障摘流与降级恢复](ARCHITECTURE.md#故障摘流与降级恢复)，ACK 与 cleanup 契约见 [SDK Gateway 路由快照契约](im-broker-sdk/README.md#gateway-路由快照契约)。
 
-账号服务发出的会话关闭控制同样可以请求到任意 Broker。非归属 Broker 先转发给归属 Broker，归属 Broker 再根据 `userId -> gatewayId` 路由把控制发给相关 Gateway。Broker 不判断会话是否有效；Gateway 只关闭匹配控制中旧 `sessionVersion` 的本机连接。
+### 自动故障观察
 
-当 Broker 成员发生变化时，用户归属可能变化。`BrokerConnectionService` 会定期检查本地连接索引，把不再归属当前 Broker 的用户映射迁移给新的归属 Broker，并在迁移成功后从本地注销旧映射。
+每个当前 voter 主动探测其他 ACTIVE Broker，Leader 拉取本轮 voter 报告并合并本机采样。默认连续不可达 30 秒、报告仍新鲜且 60 秒冷却结束，才可能发起 `FAIL_BROKER`；目标自报不计票，不可达 reporter 不会缩小多数分母。观察资格只取同一 revision 的完整已提交业务 VOTER 集合；未终态成员操作、LEARNER_SYNCING 或业务角色与端点绑定无效时暂停新发起，实际 Raft 配置漂移只阻止新的成员维护，不阻止自动路由接管；恢复节点不自动 ACTIVE，摘流也不删除 Raft 成员。
 
-## 集群同步
+只有可信身份下可归因于传输的失败计为 UNHEALTHY；本机预算、身份、协议和队列问题是 UNKNOWN。默认明文开发链路可以启动，但不能产生独立故障票。较慢轮次仍须通过报告新鲜度、最终同任期 quorum 和 Context 重验；观察证据不替代 fencing 的独立证明。配置、时间取舍和排障见 [Server 健康观察](im-broker-server/README.md#自动故障观察配置)。
 
-Broker/Gateway/Connection registry 的变化会发布 Broker 内部事件，再由对应 listener 写入 `BrokerStateStore`。`BrokerStateStore` 是 broker 对 `im-gossip` 暴露的业务状态适配层。
+## 时间协议与部署
 
-`im-plugin/im-gossip` 提供通用同步能力：
+Broker 内部用 `Instant` 表达绝对时刻、`Duration` 表达运行时长。SDK 的数字时间以 Unix epoch milliseconds 传递：请求期限为 `expireAtMs`，Gateway 分片/整轮 ACK 的更新期限为 `updateExpireAtMs`，排空 cleanup 的旧事件期限为 `oldEventExpireAtMs`；背压响应 `retryAfterMs` 是毫秒时长，不是绝对时刻。已有 SDK `Instant` 观察契约和 Lease 单调纳秒字段保持各自类型。
 
-| 组件 | 说明 |
-|------|------|
-| `GossipSyncStore` | 业务状态读写接口 |
-| `GossipSynchronizer` | digest/delta 对比与合并逻辑 |
-| `GossipPeerClient` | peer Broker 调用抽象 |
-| `GossipDeltaEntry` | 单条同步增量，包含 key、entityType、operation、payload 和 version |
+管理 HTTP 的绝对时间为 `xxxAtMs`，耗时与运行时长为 `durationMs/uptimeMs`。Java Response 使用 Long，JSON 使用十进制字符串，可空时间为 null。Broker、SDK、Gateway 和 Ops 必须按同一契约部署，不支持旧字段别名或混合版本；Raft 日志和快照仅接受 v3，拒绝 v1、v2 及其他不支持的格式版本，程序不自动迁移、回退或删除数据。配置与数据目录操作见 [Server README](im-broker-server/README.md)，内部转换和重放边界见 [Broker Architecture](ARCHITECTURE.md)。
 
-Broker server 通过 `BrokerSyncDigestHandler` 和 `BrokerSyncDeltaHandler` 暴露 gossip 同步入口。当前 registry 使用内存实现，Broker 之间通过 gossip 做最终一致同步。
+## RPC 边界
 
-## 生命周期
+| Service | Operation | 说明 |
+|---|---|---|
+| `broker.broker` | `getClusterState`、注册、心跳、列表 | committed state bootstrap 与 Broker 运行观察 |
+| `broker.routing` | fence、Lease prepare/install | epoch 切换与本机执行许可 |
+| `broker.gossip` | `gossipDigest`、`gossipDelta` | 运行观察摘要和增量同步 |
+| `broker.gateway` | 注册、注销、心跳 | Gateway 实例管理 |
+| `broker.connection` | 注册、注销、分片快照/整轮 ACK、RouteLookup、drain cleanup、关闭 | 用户连接路由与会话控制 |
+| `broker.frame` | `writeFrame` | 上行业务与下行投递 |
 
-| 类 | 说明 |
-|----|------|
-| `BrokerRegistrationLifecycle` | 启动时注册当前 Broker，运行中发送 Broker 心跳，停止时注销当前 Broker |
-| `BrokerGossipLifecycle` | 定时选择 peer Broker 执行 gossip digest/delta 同步 |
-| `BrokerConnectionLifecycle` | 定时检查连接归属变化并迁移用户 gateway 映射 |
+SDK DTO 是跨进程契约，不作为 Broker 领域模型。服务端先完成身份授权、RouteBroker 比较与执行许可校验，再执行真实副作用。内部入口与责任链职责见 [应用用例与入口](ARCHITECTURE.md#应用用例与入口)。
 
-## 关键技术点
+## Gossip 与生命周期
 
-- Broker 只维护在线路由，不保存消息事实，也不持有远端 Netty Channel。
-- 用户连接按一致的 Broker 选择算法分片，成员变化通过迁移收敛。
-- Broker/Gateway/Connection 状态使用 Gossip 最终一致同步，业务写入和同步传播通过事件分离。
-- 内部 RPC 契约集中在 SDK，Server Handler 通过泛型基类统一 JSON 解析。
+Registry 变化通过内部事件进入 Gossip 观察，Broker 之间用 digest/delta 和 tombstone 最终收敛。Gossip 不参与 RouteBroker 裁决，也不是业务事件总线。单次事件处理异常不会阻断后续 Spring 事件处理。
 
-Broker ID 根据 `im.broker.instance.host` 和 `im.broker.instance.port` 自动生成，格式为 `broker-{host}-{port}`。
+Leader 定时恢复已登记的成员变更、推进排空和故障恢复，并为 committed ACTIVE Broker 启动并周期续签 Lease。本机生命周期负责启动注册、周期心跳和关闭注销；Gateway 租约清理先记录删除观察，再移除本机路由和注册。调用方周期刷新完整 committed `BrokerClusterState`。
 
-## 技术难点与故障边界
+定时入口位于 `interfaces/scheduler`，其中 `BrokerGossipScheduler` 负责与 peer 交换 digest/delta；本机注册入口位于 `interfaces/lifecycle`。`infrastructure/config` 负责 Bean 与调度资源装配，不承担这些用例入口。具体所有者见 [事件、诊断与运行装配](ARCHITECTURE.md#事件诊断与运行装配)，同步规则见 [Gossip 一致性](ARCHITECTURE.md#gossip-一致性)。
 
-- 任意 Broker 都能接收请求，但只有计算出的 owner 修改该用户的权威路由；转发失败不能在非 owner 节点静默写入第二份状态。
-- Connection Registry 需要同时支持按用户投递和按 Gateway 快照清理，因此维护 user/gateway 双向索引；两个方向必须在同一注册表操作中更新。
-- 成员变化会改变 owner。迁移采用远端确认后本地删除，失败时保留旧映射等待重试；这降低丢失风险，但不构成跨节点事务。
-- Gossip 同步与业务写入解耦，删除必须使用带 TTL 的 tombstone，避免离线 peer 重新传播旧状态。
-- 下行可能出现部分 Gateway 或部分连接失败。Broker 返回逐连接结果，Message 决定回执与重投；Broker 不把局部成功压缩成客户端已确认。
-- 诊断 Tracker 与管理 HTTP 必须失败隔离，不能因为记录或页面查询失败影响注册、迁移、Gossip 或帧路由。
+## 验证状态
 
-## 边界说明
-
-- 外部模块依赖 `im-broker-sdk` 调用 Broker，不依赖 `im-broker-server` 运行实现。
-- WS gateway 通过 Bolt 调用 Broker 注册 gateway、发送 gateway 心跳、注册/注销用户连接、同步连接快照和提交上行帧。
-- Message service 通过 Broker SDK 写入下行帧，Broker 根据连接索引调用对应 WS gateway。
-- Account service 通过 Broker SDK 发布会话关闭控制，Broker 只负责按用户路由，不保存 Account Session 状态。
-- Broker 间同步能力由 `im-plugin/im-gossip` 抽象，Broker server 只负责把业务状态适配成 gossip store。
-- Broker 不依赖 gateway 本地连接实现，也不处理消息落库、会话状态、好友关系或群成员校验。
-- Broker 返回逐连接下行结果，但不持有消息通知回执任务；ACK 和有界重投由 Message service 负责。
-
-## 验证命令
+- 当前能力与验证入口：RouteBroker golden vectors、四类拒绝、Lease/fence、单/三 voter、snapshot/restart、Gateway 分片快照与整轮 ACK、routeRevision/tombstone、DRAINING/故障恢复、RouteLookup 有界查询、下行与关闭幂等、身份绑定和 Spring 启动。入口见 [Server README](im-broker-server/README.md#验证入口)；能力覆盖不等于当前工作树已通过全部门禁。
+- 历史证据：[Broker 路由共识收尾计划](../docs/exec-plans/completed/2026-09-20-broker-routing-consensus.md)记录了 3 Broker + 2 Gateway 的 25 类真实故障门禁及同 revision E2E 刷新；[本地容量模拟计划](../docs/exec-plans/completed/2026-10-10-broker-routing-capacity.md)也记录了本地 HA 演练。这些记录不代表当前 WIP 的验收结果。
+- 当前验收与任务状态：通过[执行计划索引](../docs/exec-plans/active/README.md)定位 Adapter 职责重划计划；当前门禁结果及其工作树指纹以 `.harness/verifications/` 的独立记录和 `.harness/report.json` 聚合报告为准，Review 结论见 `.harness/quality/quality-snapshot.json`。历史构建、网络或测试失败保留在计划中，不代表当前工作树仍被同一原因阻塞；单次门禁通过也不证明历史偶发问题的根因已修复。
+- 环境证据缺口：生产候选 3/5 voter 容量验证与部署环境 Raft 原生端口 mTLS/网络策略验证尚未完成。当前单元测试和本地 Compose 不能替代这些环境证据。
 
 ```bash
-mvn -q -pl im-broker/im-broker-server -am test
+mvn -q -pl im-broker/im-broker-sdk,im-broker/im-broker-server -am test
 ```
+
+官方 JRaft 依赖为 `com.alipay.sofa:jraft-core:1.4.1`，私有 applied-membership 配方已退役。Leader 列表观察非原子且不证明 applied 配置；业务观察资格来自已提交状态，learner 确认仍需身份、epoch/revision、同任期 ReadIndex 与认证目标应用进度证据。原本地数据与 Maven 制品不自动清理，当前验收状态以 active plan 为准。

@@ -1,0 +1,131 @@
+package com.co.kc.imchat.broker.interfaces.scheduler;
+
+import com.co.kc.imchat.broker.model.properties.BrokerGossipSettings;
+
+import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
+import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
+import com.co.kc.imchat.broker.domain.cluster.model.BrokerRegistration;
+import com.co.kc.imchat.broker.model.cqrs.dto.GossipRecordDTO;
+import com.co.kc.imchat.broker.model.enums.DiagnosticStatus;
+import com.co.kc.imchat.broker.support.gossip.GossipSyncTracker;
+import com.co.kc.imchat.plugin.gossip.sync.GossipSyncOperations;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
+import com.co.kc.imchat.plugin.bolt.exception.BoltInvocationException;
+import com.co.kc.imchat.plugin.gossip.sync.GossipSynchronizer;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * Broker 集群 Gossip 同步生命周期。
+ * <p>
+ * 定时从配置的种子节点和本地已知 Broker 列表中选择部分 peer，通过 digest/delta 交换注册表变更，
+ * 让 Broker、Gateway、用户路由等最终一致状态在集群内扩散。
+ */
+@Slf4j
+public class BrokerGossipScheduler {
+    private static final long GOSSIP_DELAY_MS = 5000L;
+    private static final GossipSyncOperations SYNC_OPERATIONS = new GossipSyncOperations(
+            BrokerBoltOperation.GOSSIP_DIGEST.service().service(),
+            BrokerBoltOperation.GOSSIP_DIGEST.operation(),
+            BrokerBoltOperation.GOSSIP_DELTA.operation());
+
+    private final BrokerRegistry brokerRegistry;
+    private final GossipSynchronizer gossipSynchronizer;
+    private final BrokerGossipSettings properties;
+    private final GossipSyncTracker gossipSyncTracker;
+
+    public BrokerGossipScheduler(BrokerRegistry brokerRegistry,
+                                 GossipSynchronizer gossipSynchronizer,
+                                 BrokerGossipSettings properties,
+                                 GossipSyncTracker gossipSyncTracker) {
+        this.brokerRegistry = brokerRegistry;
+        this.gossipSynchronizer = gossipSynchronizer;
+        this.properties = properties;
+        this.gossipSyncTracker = gossipSyncTracker;
+    }
+
+    /**
+     * 周期性选择一批 peer 发起 Gossip 同步。
+     */
+    @Scheduled(fixedDelay = GOSSIP_DELAY_MS)
+    public void gossip() {
+        List<BoltTarget> peers = new ArrayList<>(peers());
+        if (peers.isEmpty()) {
+            return;
+        }
+        Collections.shuffle(peers);
+        for (int index = 0; index < Math.min(peers.size(), properties.fanout()); index++) {
+            syncPeer(peers.get(index));
+        }
+    }
+
+    /**
+     * 与单个 peer 交换状态摘要和缺失的增量数据。
+     */
+    private void syncPeer(BoltTarget target) {
+        String address = target.address();
+        Instant startedAt = Instant.now();
+        try {
+            Integer processedCount = gossipSynchronizer.syncPeer(
+                    properties.brokerId(),
+                    target,
+                    SYNC_OPERATIONS,
+                    Math.toIntExact(properties.timeout().toMillis()));
+            trackGossip(address, processedCount, startedAt, DiagnosticStatus.SUCCESS, null);
+        } catch (RuntimeException exception) {
+            trackGossip(address, 0, startedAt, DiagnosticStatus.FAILED, exception.getMessage());
+            if (exception instanceof BoltInvocationException invocation
+                    && invocation.failure() == BoltInvocationException.Failure.AUTHENTICATION) { throw exception; }
+            log.warn("failed to gossip broker state to peer:{}, error:{}", address, exception.toString());
+        }
+    }
+
+    private void trackGossip(
+            String address,
+            Integer processedCount,
+            Instant startedAt,
+            DiagnosticStatus status,
+            String errorSummary
+    ) {
+        try {
+            Instant completedAt = Instant.now();
+            gossipSyncTracker.track(new GossipRecordDTO(
+                    completedAt,
+                    address,
+                    status,
+                    processedCount,
+                    Duration.between(startedAt, completedAt),
+                    errorSummary));
+        } catch (RuntimeException exception) {
+            log.warn("failed to track gossip synchronization, peer:{}, error:{}",
+                    address, exception.toString());
+        }
+    }
+
+    /**
+     * 优先使用已发现的 Broker；尚未发现远端 Broker 时，使用静态种子节点引导 Gossip 发现。
+     */
+    private List<BoltTarget> peers() {
+        String localAddress = properties.localAddress();
+        List<BrokerRegistration> discovered = brokerRegistry.list().stream()
+                .filter(registration -> !localAddress.equals(registration.address())).toList();
+        if (!discovered.isEmpty()) {
+            return discovered.stream().map(registration -> properties.trustedPeers().stream()
+                    .filter(peer -> peer.observationId().equals(registration.brokerId())
+                            && peer.target().address().equals(registration.address()))
+                    .findFirst().orElseThrow(() -> new SecurityException("Unbound Gossip observation identity/address"))
+                    .target()).distinct().toList();
+        }
+        return properties.seedAddresses().stream().distinct().filter(address -> !localAddress.equals(address))
+                .map(address -> properties.trustedPeers().stream().filter(peer -> peer.target().address().equals(address))
+                        .findFirst().orElseThrow(() -> new SecurityException("Gossip seed requires trusted identity pair"))
+                        .target()).toList();
+    }
+
+}

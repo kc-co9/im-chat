@@ -145,10 +145,7 @@ public class PrivateMessageAppService {
                         senderChat.receiveLatestMessage(senderInboxMessage, true);
                         imPrivateChatRepository.save(senderChat);
 
-                        receiverChat.receiveLatestMessage(
-                                receiverInboxMessage,
-                                receiverChatting
-                        );
+                        receiverChat.receiveLatestMessage(receiverInboxMessage, receiverChatting);
                         imPrivateChatRepository.save(receiverChat);
                     });
                     return messageSentEvent;

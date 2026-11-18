@@ -46,8 +46,14 @@ public class IamSecurityExceptionHandler
 
     @ExceptionHandler(AuthorizationDeniedException.class)
     public HttpResult<Map<String, Object>> authorizationDenied(
-            AuthorizationDeniedException exception
+            AuthorizationDeniedException exception,
+            HttpServletRequest request,
+            HttpServletResponse response
     ) {
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        if (path.equals("/api/cli") || path.startsWith("/api/cli/")) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        }
         return HttpResult.error(HttpErrorCode.AUTH_DENY);
     }
 

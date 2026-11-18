@@ -4,6 +4,7 @@ import com.co.kc.imchat.management.audit.sdk.annotation.Audited;
 import com.co.kc.imchat.management.audit.sdk.annotation.AuditAttribute;
 import com.co.kc.imchat.management.audit.sdk.client.AuditClient;
 import com.co.kc.imchat.management.audit.sdk.context.AuditContextCollector;
+import com.co.kc.imchat.management.audit.sdk.context.AuditThreadContextHolder;
 import com.co.kc.imchat.management.audit.sdk.model.AuditContext;
 import com.co.kc.imchat.management.audit.sdk.model.AuditActor;
 import com.co.kc.imchat.management.audit.sdk.model.AuditAttributes;
@@ -142,6 +143,22 @@ class AuditedAspectTest {
         assertThat(events).singleElement()
                 .extracting(AuditEvent::attributes)
                 .isEqualTo(new AuditAttributes(Map.of("userId", "2001")));
+    }
+
+    @Test
+    void recordsThreadAuditContextWithoutAddingBusinessParameter() {
+        Target target = proxy(events::add);
+
+        try (AuditThreadContextHolder.Scope ignored = AuditThreadContextHolder.open(
+                Map.of("clientId", "ops-cli"))) {
+            target.succeed(new Command(2003L));
+        }
+
+        assertThat(events).singleElement()
+                .extracting(AuditEvent::attributes)
+                .satisfies(attributes -> assertThat(attributes.values())
+                        .containsEntry("clientId", "ops-cli"));
+        assertThat(AuditThreadContextHolder.current()).isEmpty();
     }
 
     @Test

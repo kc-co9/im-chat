@@ -56,7 +56,7 @@ class ConnectionRegistryMetricsTest {
 
         @Bean
         ConnectionRegistry connectionRegistry() {
-            return new ConnectionRegistry();
+            return new ConnectionRegistry(removal -> {});
         }
     }
 }

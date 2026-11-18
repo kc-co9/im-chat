@@ -90,10 +90,16 @@ im:
   bolt:
     client:
       enabled: true
+      mode: MTLS
+      tls:
+        enabled: true
+      allowed-peer-uri-prefixes:
+        - spiffe://im-chat/broker/
   message:
     broker:
       bolt:
         timeout-millis: 3000
+        bootstrap-targets: [] # 部署显式配对，不能从发现metadata学习身份
 
 # springdoc-openapi项目配置
 springdoc:

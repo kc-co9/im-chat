@@ -1,6 +1,7 @@
 package com.co.kc.imchat.broker.sdk.lifecycle;
 
 import com.co.kc.imchat.broker.sdk.BrokerClient;
+import com.co.kc.imchat.plugin.bolt.exception.BoltInvocationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -25,8 +26,10 @@ public class BrokerRefresher {
     @Scheduled(fixedDelay = REFRESH_DELAY_MILLIS)
     public void refresh() {
         try {
-            brokerClient.refreshBrokerAddresses();
+            brokerClient.refreshClusterState();
         } catch (RuntimeException exception) {
+            if (exception instanceof BoltInvocationException invocation
+                    && invocation.failure() == BoltInvocationException.Failure.AUTHENTICATION) { throw exception; }
             log.warn("failed to refresh Broker addresses", exception);
         }
     }

@@ -1,5 +1,6 @@
 package com.co.kc.imchat.management.iam.infrastructure.security;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.co.kc.imchat.management.iam.infrastructure.security.oauth.adapter.OAuthAuthorizationServiceAdapter;
 import com.co.kc.imchat.management.iam.transformer.infrastructure.OAuthAuthorizationTransformer;
 import com.co.kc.imchat.management.iam.application.OAuthAuthorizationAppService;
@@ -154,10 +155,13 @@ class IamTokenPersistenceTest {
         OAuthAuthorizationServiceAdapter service = service(authorizationService);
         DbIamOAuthAuthorization stored = storedAuthorization(service, authorizationService);
         reset(authorizationService);
-        when(authorizationService.getByAuthorizationId(stored.getAuthorizationId()))
+        when(authorizationService.getForUpdate(stored.getAuthorizationId()))
                 .thenReturn(Optional.of(stored));
-        when(authorizationService.updateById(any())).thenReturn(true);
-        OAuth2Authorization source = authorization();
+        when(authorizationService.getUpdateWrapper()).thenReturn(new LambdaUpdateWrapper<>());
+        when(authorizationService.update(any(DbIamOAuthAuthorization.class), any())).thenReturn(true);
+        when(authorizationService.getByTokenDigest(anyString(), any()))
+                .thenReturn(Optional.of(stored));
+        OAuth2Authorization source = service.findByToken("raw-code", new OAuth2TokenType("code"));
         OAuth2AuthorizationCode code = source.getToken(OAuth2AuthorizationCode.class).getToken();
         OAuth2Authorization exchanged = OAuth2Authorization.from(source)
                 .token(code, metadata -> metadata.put(
@@ -169,7 +173,7 @@ class IamTokenPersistenceTest {
 
         ArgumentCaptor<DbIamOAuthAuthorization> saved =
                 ArgumentCaptor.forClass(DbIamOAuthAuthorization.class);
-        verify(authorizationService).updateById(saved.capture());
+        verify(authorizationService).update(saved.capture(), any());
         assertThat(saved.getValue().getAuthorizationCodeUsedAt())
                 .isEqualTo(ISSUED_AT.plusSeconds(60));
     }
@@ -190,7 +194,7 @@ class IamTokenPersistenceTest {
         assertThat(authorization).isNotNull();
         assertThat(authorization.getToken(OAuth2AuthorizationCode.class).isActive())
                 .isFalse();
-        verify(authorizationService, never()).updateById(any());
+        verify(authorizationService, never()).update(any(DbIamOAuthAuthorization.class), any());
     }
 
     private OAuthAuthorizationServiceAdapter service(

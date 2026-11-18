@@ -37,7 +37,9 @@ public record OAuthAuthorizationSaveCmd(
         /* 授权状态。 */
         OAuthAuthorizationStatus status,
         /* 授权撤销时间。 */
-        Instant revokedAt
+        Instant revokedAt,
+        /* 框架授权快照原读取版本；仅新授权允许为空。 */
+        Long expectedRowVersion
 ) {
     public OAuthAuthorizationSaveCmd {
         AssertUtils.argNotNull("OAuth grant type must not be null", grantType);

@@ -6,6 +6,7 @@ import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.common.model.io.FrameResponse;
 import com.co.kc.imchat.common.model.enums.FrameType;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.service.message.support.BrokerClientTestSupport;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +25,7 @@ class BrokerMessageNotifierTest {
         FrameResponse frame = new FrameResponse("1", FrameType.PUSH, "message.private.sent", null,
                 "trace", null, null, Map.of("messageId", 1L, "eventId", "event-1", "receiptId", "receipt-1"));
 
-        BrokerFrameWriteResult response = notifier.notify(2L, frame);
+        BrokerFrameWriteResult response = notifier.notify("receipt-1", 2L, frame);
 
         assertEquals(2L, response.userId());
         assertEquals(List.of("conn-1"), response.acceptedConnectionIds());
@@ -33,10 +34,16 @@ class BrokerMessageNotifierTest {
     private record StubBoltInvoker(List<String> acceptedConnectionIds) implements BoltInvoker {
         @Override
         @SuppressWarnings("unchecked")
-        public <T, R> R invoke(String address, String service, String operation, T request,
-                               Class<R> responseType, int timeoutMillis) {
+        public <T, R> R invoke(BoltTarget target, String service, String operation,
+                               T request, Class<R> responseType, int timeoutMillis) {
+            assertEquals(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/broker-test"), target);
+
+            String address = target.address();
+
             BrokerFrameWriteParams params = (BrokerFrameWriteParams) request;
+            assertEquals("receipt-1", params.routeContext().operationId());
             return (R) BrokerFrameWriteResult.writeResult(params.userId(), acceptedConnectionIds, List.of());
         }
+
     }
 }

@@ -2,9 +2,19 @@
 # 用途：验证压测 override、Prometheus、Grafana，并用 fake 命令执行统一 runner 的失败恢复契约。
 # 输入：无位置参数；解析 Compose 并运行隔离 fake fixture，不启动真实容器或产生真实负载。
 # 输出/副作用：契约满足时返回 0；临时验证 doctor/锁/timeout/signal/cleanup/restore/resource，退出时清理。
-# 依赖：bash、docker compose、Ruby、rg。
+# 非预期失败在 stderr 输出原退出码、脚本行号和 fixture 命令；set +e 的预期失败保持原处理。
+# 依赖：bash、固定受审 Compose（仅 config）、Ruby、rg；runner fake Docker 合同不变。
 
 set -euo pipefail
+
+# trap 入口先冻结原状态/行号/命令；仅诊断启用 errexit 的非预期失败，不改变退出或预期负例处理。
+report_harness_failure() {
+  local status=$1 line=$2 command=$3 options=$4
+  if [[ "$options" == *e* ]]; then
+    printf 'load-test Harness failed: exit=%s line=%s command=%s\n' "$status" "$line" "$command" >&2
+  fi
+}
+trap 'report_harness_failure "$?" "$LINENO" "$BASH_COMMAND" "$-"' ERR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export LOAD_TEST_DISCOVERY_SETTLE_SECONDS=0
@@ -14,6 +24,35 @@ DASHBOARD="$ROOT_DIR/deploy/local/grafana/provisioning/dashboards/im-chat-load-t
 RUNNER="$ROOT_DIR/scripts/load_test.sh"
 RESOURCE_SAMPLER="$ROOT_DIR/scripts/load_test_resources.sh"
 EVIDENCE_HELPER="$ROOT_DIR/scripts/lib/load-test-evidence.sh"
+
+# 确定性复现 kill -0 后子进程退出、ps 无匹配的窗口；最终状态必须来自 wait。
+wait_fixture="$(mktemp "${TMPDIR:-/tmp}/im-chat-process-wait.XXXXXX")"
+trap 'rm -f "$wait_fixture"' EXIT
+cat >"$wait_fixture" <<'SH'
+set -euo pipefail
+START_SECONDS=$SECONDS
+TOTAL_TIMEOUT_SECONDS=60
+kill() { return 0; }
+ps() { return 1; }
+wait() { return "$EXPECTED_CHILD_STATUS"; }
+SH
+awk '/^wait_pid_with_timeout\(\) \{/ { capture=1 } /^run_with_timeout\(\)/ { exit } capture { print }' \
+  "$RUNNER" >>"$wait_fixture"
+printf '\nwait_pid_with_timeout 999999 10\n: "child wait completed"\n' >>"$wait_fixture"
+for child_status in 0 23; do
+  if EXPECTED_CHILD_STATUS="$child_status" bash "$wait_fixture"; then
+    actual_status=0
+  else
+    actual_status=$?
+  fi
+  [[ "$actual_status" == "$child_status" ]] || {
+    printf 'exited process inspection must preserve child status %s, got %s\n' \
+      "$child_status" "$actual_status" >&2
+    exit 1
+  }
+done
+rm -f "$wait_fixture"
+trap - EXIT
 
 for file in "$LOAD_COMPOSE" "$DASHBOARD" "$RUNNER" "$RESOURCE_SAMPLER" "$EVIDENCE_HELPER"; do
   [[ -f "$file" ]] || {
@@ -160,7 +199,7 @@ LOAD_TEST_FIXTURE_ROOT="$evidence_root" \
   DOCKER_BIN="$evidence_root/bin/docker" K6_BIN="$evidence_root/bin/k6" \
   PATH="$evidence_root/bin:$PATH" "$evidence_root/scripts/verify.sh" load-test-smoke >/dev/null
 smoke_evidence="$evidence_root/.harness/verifications/load-test-smoke.json"
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   evidence=JSON.parse(File.read(ARGV.fetch(0)))
   abort "batch missing" unless evidence["batchId"] == "smk001"
   abort "config digest missing" unless evidence["configDigest"]&.match?(/\A[0-9a-f]{64}\z/)
@@ -180,7 +219,7 @@ FAKE_SMOKE_MESSAGE_DECISION=service_failed \
   LOAD_TEST_CONFIG_DIGEST_VALUE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
   DOCKER_BIN="$evidence_root/bin/docker" K6_BIN="$evidence_root/bin/k6" \
   PATH="$evidence_root/bin:$PATH" "$evidence_root/scripts/verify.sh" load-test-smoke >/dev/null
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   evidence=JSON.parse(File.read(ARGV.fetch(0)))
   abort "service failure smoke must retain passing workflow evidence" unless evidence["status"] == "passed"
   abort "message service failure was lost" unless
@@ -200,7 +239,7 @@ set -e
   printf 'unstable worktree/data/cleanup smoke fixture must fail\n' >&2
   exit 1
 }
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   evidence=JSON.parse(File.read(ARGV.fetch(0)))
   abort unless evidence["status"] == "failed"
   abort unless evidence["worktreeStable"] == false
@@ -218,12 +257,12 @@ rg -q -- '--web.enable-remote-write-receiver' "$BASE_COMPOSE" || {
   exit 1
 }
 
-compose_json="$(docker compose -f "$BASE_COMPOSE" -f "$LOAD_COMPOSE" --profile full config --format json)"
+compose_json="$(/usr/bin/ruby "$ROOT_DIR/scripts/lib/harness-reactor-evidence.rb" compose-config "$ROOT_DIR" load)"
 ruby -rjson -e '
   config = JSON.parse(STDIN.read)
   services = config.fetch("services")
   apps = %w[im-http-gateway im-ws-gateway-server im-broker-server im-account-server
-            im-social-server im-message-server im-iam-server im-audit-server im-admin im-monitor]
+            im-social-server im-message-server im-iam-server im-audit-server im-admin im-ops]
   apps.each do |name|
     environment = services.fetch(name).fetch("environment")
     abort "#{name}: SQL logging must be disabled" unless
@@ -252,7 +291,7 @@ ruby -rjson -e '
     command.include?("--web.enable-remote-write-receiver")
 ' <<<"$compose_json"
 
-ruby -rjson -e '
+ruby -E UTF-8 -rjson -e '
   dashboard = JSON.parse(File.read(ARGV.fetch(0)))
   abort "dashboard title missing" unless dashboard.fetch("title").include?("Load Test")
   text = JSON.generate(dashboard)
@@ -322,6 +361,17 @@ if [[ "${1:-}" == inspect ]]; then
     [[ " $* " != *'.State.Health.FailingStreak'* ]] || suffix=":0"
     if [[ "${FAKE_DOCKER_DYNAMIC_HEALTH:-0}" == 1 ]]; then
       current_health="$(cat "$FAKE_DOCKER_HEALTH_STATE")"
+      if [[ -n "${FAKE_DOCKER_HEALTH_SEQUENCE_LOG:-}" && "$suffix" == :0 \
+          && -f "${FAKE_DOCKER_RESTART_MARKER:-}" ]]; then
+        read -r health_check <"$FAKE_DOCKER_RESTART_MARKER"
+        health_check=$((health_check + 1))
+        printf '%s\n' "$health_check" >"$FAKE_DOCKER_RESTART_MARKER"
+        current_health=unhealthy
+        if (( health_check >= 2 )) && [[ "${FAKE_DOCKER_ALWAYS_UNHEALTHY:-0}" != 1 ]]; then
+          current_health=healthy
+        fi
+        printf '%s %s %s\n' "${!#}" "$health_check" "$current_health" >>"$FAKE_DOCKER_HEALTH_SEQUENCE_LOG"
+      fi
       printf '%s%s\n' "$current_health" "$suffix"
       if [[ "${FAKE_DOCKER_RESTART_TRANSIENT_UNHEALTHY:-0}" == 1 \
           && "$current_health" == unhealthy \
@@ -357,26 +407,30 @@ if [[ "${1:-}" == compose ]]; then
   fi
   if [[ "${FAKE_DOCKER_DYNAMIC_HEALTH:-0}" == 1 && "$args" == *" restart "* ]]; then
     printf 'unhealthy\n' >"$FAKE_DOCKER_HEALTH_STATE"
-    [[ -z "${FAKE_DOCKER_RESTART_MARKER:-}" ]] || : >"$FAKE_DOCKER_RESTART_MARKER"
+    [[ -z "${FAKE_DOCKER_RESTART_MARKER:-}" ]] || printf '0\n' >"$FAKE_DOCKER_RESTART_MARKER"
   fi
   if [[ "${FAKE_DOCKER_DYNAMIC:-0}" == 1 && "$args" == *" up "* ]]; then
     if [[ "$args" == *'compose.load-test.yml'* ]]; then printf 'load' >"$FAKE_DOCKER_STATE"; else printf 'base' >"$FAKE_DOCKER_STATE"; fi
   fi
   if [[ "$args" == *" config --format json "* ]]; then
-    node -e 'const apps=["im-http-gateway","im-ws-gateway-server","im-broker-server","im-account-server","im-social-server","im-message-server","im-iam-server","im-audit-server","im-admin","im-monitor"]; const services=Object.fromEntries(apps.map(name=>[name,{environment:{IM_DATASOURCE_SHARDING_SQL_SHOW:"false",LOGGING_LEVEL_ROOT:"INFO",SW_AGENT_COLLECTOR_BACKEND_SERVICES:"skywalking-oap:11800",MANAGEMENT_SERVER_PORT:"1"}}])); process.stdout.write(JSON.stringify({services}));'
+    node -e 'const apps=["im-http-gateway","im-ws-gateway-server","im-broker-server","im-account-server","im-social-server","im-message-server","im-iam-server","im-audit-server","im-admin","im-ops"]; const services=Object.fromEntries(apps.map(name=>[name,{environment:{IM_DATASOURCE_SHARDING_SQL_SHOW:"false",LOGGING_LEVEL_ROOT:"INFO",SW_AGENT_COLLECTOR_BACKEND_SERVICES:"skywalking-oap:11800",MANAGEMENT_SERVER_PORT:"1"}}])); process.stdout.write(JSON.stringify({services}));'
   elif [[ "$args" == *" ps --services --status running "* ]]; then
     printf '%s\n' mysql redis nacos kafka prometheus-full grafana skywalking-banyandb skywalking-oap skywalking-ui \
       im-http-gateway im-ws-gateway-server im-broker-server im-account-server im-social-server im-message-server
     if [[ "$args" != *'compose.load-test.yml'* ]]; then
-      printf '%s\n' im-iam-server im-audit-server im-admin im-monitor
+      printf '%s\n' im-iam-server im-audit-server im-admin im-ops
     fi
   elif [[ "$args" == *" ps -q "* ]]; then
     service="${!#}"
     if [[ "$args" == *'compose.load-test.yml'* \
-        && " im-iam-server im-audit-server im-admin im-monitor " == *" $service "* ]]; then
+        && " im-iam-server im-audit-server im-admin im-ops " == *" $service "* ]]; then
       exit 0
     fi
-    printf 'fixture-container\n'
+    if [[ -n "${FAKE_DOCKER_HEALTH_SEQUENCE_LOG:-}" ]]; then
+      printf '%s\n' "$service"
+    else
+      printf 'fixture-container\n'
+    fi
   fi
   exit 0
 fi
@@ -502,27 +556,93 @@ fi
   exit 1
 }
 
-sleep 5.5 &
-sample_pid=$!
+# 算法断言直接执行采样器的剩余等待表达式，不把宿主调度误差当作算法结果。
+RESOURCE_SAMPLER_SOURCE="$RESOURCE_SAMPLER" node <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync(process.env.RESOURCE_SAMPLER_SOURCE, 'utf8');
+const expressions = [...source.matchAll(/remaining_seconds="\$\(node -e '([\s\S]*?)' "\$sample_started_ms" "\$SAMPLE_SECONDS"\)"/g)];
+assert.equal(expressions.length, 1, 'sampler must expose exactly one remaining-wait expression');
+const expression = expressions[0][1];
+const cases = [[0, '1.000'], [100, '0.900'], [600, '0.400'], [1000, ''], [1500, '']];
+function remaining(script, elapsed) {
+  let output = '';
+  vm.runInNewContext(script, {
+    Date: { now: () => 10000 + elapsed },
+    process: { argv: ['node', '10000', '1'], stdout: { write: value => { output += value; } } }
+  });
+  return output;
+}
+for (const [elapsed, expected] of cases) {
+  assert.equal(remaining(expression, elapsed), expected, `elapsed=${elapsed}ms`);
+}
+const mutation = expression.replace('Number(process.argv[2]) - elapsed', 'Number(process.argv[2]) - 0');
+assert.notEqual(mutation, expression, 'full-interval sleep mutation must match the source');
+assert(cases.some(([elapsed, expected]) => remaining(mutation, elapsed) !== expected),
+  'the same vectors must detect failure to subtract collection time');
+JS
+
+# 目标进程由第五次 stats 调用终止：此前四次采样已经返回，不以宿主速度推断样本数。
+# Ruby 父进程负责 wait/reap；30s 仅防挂，缺行/schema 等仍由下方原断言拒绝。
 sample_file="$temp_dir/resources.jsonl"
-FAKE_DOCKER_STATS_DELAY=0.1 LOAD_TEST_RESOURCE_INTERVAL_SECONDS=1 \
-  DOCKER_BIN="$temp_dir/bin/docker" \
-  "$RESOURCE_SAMPLER" "$sample_pid" "$sample_file"
-wait "$sample_pid" 2>/dev/null || true
-ruby -rjson -e '
+cat >"$temp_dir/bin/sample-docker" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+count=0
+[[ ! -f "$SAMPLE_COUNTER" ]] || read -r count <"$SAMPLE_COUNTER"
+count=$((count + 1))
+printf '%s\n' "$count" >"$SAMPLE_COUNTER"
+if (( count == 5 )); then kill -TERM "$SAMPLE_TARGET_PID"; fi
+printf '{"Name":"fixture","CPUPerc":"1%%","MemUsage":"1MiB / 1GiB"}\n'
+SH
+chmod +x "$temp_dir/bin/sample-docker"
+ruby -rtimeout -e '
+  sampler, docker, output, counter = ARGV
+  reader, writer = IO.pipe
+  target = Process.spawn(RbConfig.ruby, "-e", "STDIN.read", in: reader)
+  reader.close
+  owned = [target]
+  begin
+    collector = Process.spawn({"DOCKER_BIN" => docker, "SAMPLE_COUNTER" => counter,
+      "SAMPLE_TARGET_PID" => target.to_s, "LOAD_TEST_RESOURCE_INTERVAL_SECONDS" => "0"},
+      sampler, target.to_s, output)
+    owned << collector
+    Timeout.timeout(30) do
+      Process.wait(target)
+      owned.delete(target)
+      Process.wait(collector)
+      owned.delete(collector)
+      abort "resource sampler failed: #{$?.exitstatus}" unless $?.success?
+    end
+  ensure
+    writer.close
+    owned.each do |pid|
+      begin
+        Process.kill("KILL", pid)
+      rescue Errno::ESRCH
+      end
+      begin
+        Process.wait(pid)
+      rescue Errno::ECHILD
+      end
+    end
+  end
+' "$RESOURCE_SAMPLER" "$temp_dir/bin/sample-docker" "$sample_file" "$temp_dir/sample-counter"
+ruby -E UTF-8 -rjson -e '
   path=ARGV.fetch(0)
   abort "resource sample mode must be 0600" unless (File.stat(path).mode & 0777) == 0600
   lines=File.readlines(path)
   abort "resource sampler did not emit enough data" if lines.length < 4
   samples=lines.map { |line| JSON.parse(line) }
   intervals=samples.each_cons(2).map { |left,right| right.fetch("timestamp")-left.fetch("timestamp") }
-  sorted=intervals.sort
-  middle=sorted.length / 2
-  median=sorted.length.odd? ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2.0
-  valid_intervals=intervals.all? { |interval| interval > 0.5 && interval <= 1.5 }
-  valid_median=median > 0.75 && median <= 1.25
-  abort "resource sampler cadence includes collection time: #{intervals.inspect}" unless
-    valid_intervals && valid_median
+  abort "resource sample timestamps must increase: #{intervals.inspect}" unless
+    intervals.all? { |interval| interval > 0 }
+  samples.each do |sample|
+    abort "resource sample schema is incomplete" unless
+      %w[timestamp status k6CpuPercent k6RssBytes logicalCpu availableMemoryBytes docker].all? { |key| sample.key?(key) }
+    abort "resource sample docker field must be an array" unless sample["docker"].is_a?(Array)
+  end
 ' "$sample_file"
 
 batch=abc123
@@ -758,13 +878,18 @@ health_recovered_state="$(tail -1 "$temp_dir/runtime/runtime-state.jsonl" | ruby
   exit 1
 }
 
+# 重启后按服务记录第一次 unhealthy、第二次 healthy；60s 仅防挂，不证明宿主性能。
 printf '{"version":1,"state":"RESTORING","batchId":null}\n' \
   >"$temp_dir/runtime/runtime-state.jsonl"
 printf 'unhealthy\n' >"$temp_dir/docker-health-state"
 rm -f "$temp_dir/docker-restart-marker"
+: >"$temp_dir/health-sequence.log"
 FAKE_DOCKER_DYNAMIC_HEALTH=1 FAKE_DOCKER_HEALTH_STATE="$temp_dir/docker-health-state" \
   FAKE_DOCKER_RESTART_TRANSIENT_UNHEALTHY=1 \
   FAKE_DOCKER_RESTART_MARKER="$temp_dir/docker-restart-marker" \
+  FAKE_DOCKER_HEALTH_SEQUENCE_LOG="$temp_dir/health-sequence.log" \
+  LOAD_TEST_MANAGEMENT_HEALTH_TIMEOUT_SECONDS=60 \
+  LOAD_TEST_MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS=60 \
   LOAD_TEST_DISCOVERY_SETTLE_SECONDS=0 LOAD_TEST_RUNTIME_ROOT="$temp_dir/runtime" \
   DOCKER_BIN="$temp_dir/bin/docker" LOCAL_UP_BIN="$temp_dir/bin/local_up" \
   HTTP_BIN="$temp_dir/bin/curl" K6_BIN="$temp_dir/bin/k6" "$RUNNER" restore >/dev/null
@@ -773,6 +898,46 @@ transient_health_state="$(tail -1 "$temp_dir/runtime/runtime-state.jsonl" | ruby
   printf 'post-restart transient unhealthy fixture must wait until BASE_READY\n' >&2
   exit 1
 }
+
+ruby -E UTF-8 -e '
+  rows=File.readlines(ARGV.fetch(0)).map(&:split)
+  expected=%w[im-audit-server im-admin im-ops]
+  abort "health sequence must cover restored management services" unless rows.map(&:first).uniq.sort == expected.sort
+  expected.each do |service|
+    actual=rows.select { |row| row.first == service }.map { |row| row.drop(1) }
+    abort "#{service} must inspect unhealthy then healthy: #{actual.inspect}" unless actual == [["1", "unhealthy"], ["2", "healthy"]]
+  end
+' "$temp_dir/health-sequence.log"
+
+# 永久 unhealthy 走同一真实 restore，必须有界失败且保持 RESTORING；不以扩预算代替负例。
+printf '{"version":1,"state":"RESTORING","batchId":null}\n' >"$temp_dir/runtime/runtime-state.jsonl"
+rm -f "$temp_dir/docker-restart-marker"
+: >"$temp_dir/health-negative-sequence.log"
+printf 'unhealthy\n' >"$temp_dir/docker-health-state"
+if FAKE_DOCKER_DYNAMIC_HEALTH=1 FAKE_DOCKER_HEALTH_STATE="$temp_dir/docker-health-state" \
+    FAKE_DOCKER_RESTART_TRANSIENT_UNHEALTHY=1 FAKE_DOCKER_ALWAYS_UNHEALTHY=1 \
+    FAKE_DOCKER_RESTART_MARKER="$temp_dir/docker-restart-marker" \
+    FAKE_DOCKER_HEALTH_SEQUENCE_LOG="$temp_dir/health-negative-sequence.log" \
+    LOAD_TEST_MANAGEMENT_HEALTH_TIMEOUT_SECONDS=60 \
+    LOAD_TEST_MANAGEMENT_RESTART_HEALTH_TIMEOUT_SECONDS=3 \
+    LOAD_TEST_DISCOVERY_SETTLE_SECONDS=0 LOAD_TEST_RUNTIME_ROOT="$temp_dir/runtime" \
+    DOCKER_BIN="$temp_dir/bin/docker" LOCAL_UP_BIN="$temp_dir/bin/local_up" \
+    HTTP_BIN="$temp_dir/bin/curl" K6_BIN="$temp_dir/bin/k6" \
+    "$RUNNER" restore >"$temp_dir/health-negative.log" 2>&1; then
+  printf 'permanently unhealthy restore must fail\n' >&2
+  exit 1
+else
+  health_negative_status=$?
+fi
+[[ "$health_negative_status" == 124 ]] || { printf 'unhealthy restore must exit124, got %s\n' "$health_negative_status" >&2; exit 1; }
+grep -Fxq 'im-audit-server did not become healthy within 3s' "$temp_dir/health-negative.log"
+ruby -E UTF-8 -rjson -e '
+  state=JSON.parse(File.readlines(ARGV.fetch(0)).last).fetch("state")
+  abort "failed health restore must retain RESTORING" unless state == "RESTORING"
+  rows=File.readlines(ARGV.fetch(1)).map(&:split)
+  abort "unhealthy failure must inspect restarted service and never see healthy" unless
+    !rows.empty? && rows.all? { |row| row.first == "im-audit-server" && row.last == "unhealthy" }
+' "$temp_dir/runtime/runtime-state.jsonl" "$temp_dir/health-negative-sequence.log"
 
 printf '{"version":1,"state":"BASE_READY","batchId":null}\n' \
   >"$temp_dir/runtime/runtime-state.jsonl"
@@ -790,7 +955,7 @@ FAKE_DOCKER_DYNAMIC=1 FAKE_DOCKER_STATE="$temp_dir/docker-state" \
 all_status=$?
 set -e
 [[ "$all_status" == 23 ]] || { printf 'all must preserve prepare failure 23, got %s\n' "$all_status" >&2; exit 1; }
-rg -q 'compose.load-test.yml.* stop im-iam-server im-audit-server im-admin im-monitor' \
+rg -q 'compose.load-test.yml.* stop im-iam-server im-audit-server im-admin im-ops' \
   "$temp_dir/docker-command.log" || {
   printf 'load profile must stop non-core management services\n' >&2
   exit 1

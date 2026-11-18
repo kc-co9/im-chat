@@ -15,7 +15,7 @@ ruby -rjson -rdigest -ropen3 -e '
   units = {
     "im-common" => ["im-common"], "im-plugin" => ["im-plugin"], "im-gateway" => ["im-gateway"], "im-broker" => ["im-broker"],
     "im-account" => ["im-service/im-account"], "im-social" => ["im-service/im-social"], "im-message" => ["im-service/im-message"],
-    "im-iam" => ["im-management/im-iam"], "im-admin" => ["im-management/im-admin"], "im-monitor" => ["im-management/im-monitor"],
+    "im-iam" => ["im-management/im-iam"], "im-admin" => ["im-management/im-admin"], "im-ops" => ["im-management/im-ops"],
     "im-audit" => ["im-management/im-audit"], "im-test" => ["im-test"]
   }
   shared_review_paths = %w[AGENTS.md ARCHITECTURE.md README.md pom.xml scripts deploy docs]
@@ -47,7 +47,7 @@ ruby -rjson -rdigest -ropen3 -e '
       digest.update(File.binread(File.join(root, file)))
     end
     {"unit" => name, "paths" => paths, "unitFingerprint" => digest.hexdigest,
-     "evidence" => paths.map { |path| "#{path}/README.md" }}
+     "evidence" => files}
   end
   review_scope_fingerprint = Digest::SHA256.hexdigest(entries.to_json)
   request = {"requestId" => "quality-#{head}-#{review_scope_fingerprint[0, 12]}", "headRevision" => head,
@@ -63,7 +63,7 @@ if [[ ! -f "$RESPONSE" ]]; then
   exit 3
 fi
 
-ruby -rjson -rtime -e '
+ruby -E UTF-8 -rjson -rtime -e '# encoding: UTF-8
   root, request_path, response_path, snapshot, snapshot_md = ARGV
   request = JSON.parse(File.read(request_path)); response = JSON.parse(File.read(response_path))
   unless response["requestId"] == request["requestId"] &&
@@ -71,7 +71,9 @@ ruby -rjson -rtime -e '
     warn "Quality review required: reviewer response does not match the current request/scope."
     exit 3
   end
-  units = response.fetch("units"); expected = request.fetch("units").map { |u| [u["unit"], u["unitFingerprint"]] }.to_h
+  units = response.fetch("units"); request_units = request.fetch("units")
+  expected = request_units.map { |u| [u["unit"], u["unitFingerprint"]] }.to_h
+  allowed_evidence = request_units.flat_map { |u| u.fetch("evidence") }.uniq.to_h { |path| [path, true] }
   abort "reviewer response unit set mismatch" unless units.map { |u| u["unit"] }.sort == expected.keys.sort
   semantic = %w[correctness scopeDiscipline maintainability]
   units.each do |unit|
@@ -81,7 +83,11 @@ ruby -rjson -rtime -e '
       score = score_entry.is_a?(Hash) ? score_entry["score"] : score_entry
       evidence = score_entry.is_a?(Hash) ? score_entry["evidence"] : unit.dig("evidence", dimension)
       abort "invalid score" unless score.is_a?(Integer) && score.between?(0, 2)
-      abort "missing evidence" unless Array(evidence).any? { |path| File.file?(File.join(root, path)) }
+      abort "missing evidence" unless evidence.is_a?(Array) && !evidence.empty?
+      abort "evidence path must be relative" unless evidence.all? do |path|
+        path.is_a?(String) && !path.empty? && !path.start_with?("/") && path.split("/").none? { |part| part == ".." }
+      end
+      abort "evidence path is not in request allowlist" unless evidence.all? { |path| allowed_evidence[path] && File.file?(File.join(root, path)) }
     end
   end
   auto = {"verification" => 0, "reliability" => 0, "handoffReadiness" => 0}

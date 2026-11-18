@@ -14,7 +14,7 @@
     <modules>
         <module>im-iam</module>
         <module>im-admin</module>
-        <module>im-monitor</module>
+        <module>im-ops</module>
         <module>im-audit</module>
     </modules>
 </project>

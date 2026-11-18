@@ -4,6 +4,7 @@ import com.co.kc.imchat.common.model.page.Paging;
 import com.co.kc.imchat.common.model.page.PagingResult;
 import com.co.kc.imchat.management.iam.domain.administrator.model.AdministratorId;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientId;
+import com.co.kc.imchat.management.iam.domain.application.model.AppId;
 import com.co.kc.imchat.management.iam.domain.session.model.OAuthSession;
 import com.co.kc.imchat.management.iam.domain.session.model.OAuthAuthorizationId;
 
@@ -18,4 +19,6 @@ public interface OAuthSessionRepository {
     void revoke(AdministratorId administratorId, Instant revokedAt);
 
     void revoke(OAuthClientId clientId, Instant revokedAt);
+
+    void revokeAudience(AppId appId, Instant revokedAt);
 }

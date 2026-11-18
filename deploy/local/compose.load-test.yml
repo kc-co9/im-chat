@@ -24,5 +24,5 @@ services:
     environment: *load-test-app-environment
   im-admin:
     environment: *load-test-app-environment
-  im-monitor:
+  im-ops:
     environment: *load-test-app-environment

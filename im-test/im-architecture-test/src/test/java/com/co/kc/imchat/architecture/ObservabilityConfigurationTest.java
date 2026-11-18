@@ -30,9 +30,9 @@ class ObservabilityConfigurationTest {
             application("im-management/im-iam/im-iam-server", "server.port", 18040, 19040),
             application("im-management/im-audit/im-audit-server", "server.port", 18041, 19041),
             application("im-management/im-admin", "server.port", 18042, 19042),
-            application("im-management/im-monitor", "server.port", 18043, 19043));
+            application("im-management/im-ops/im-ops-server", "server.port", 18043, 19043));
     private static final List<String> SERVLET_SECURITY_OWNERS = List.of(
-            "im-management/im-iam/im-iam-sdk/src/main/java/com/co/kc/imchat/management/iam/sdk/ImIamSdkAutoConfiguration.java",
+            "im-management/im-iam/im-iam-sdk/src/main/java/com/co/kc/imchat/management/iam/sdk/security/IamBffSecurityConfigurer.java",
             "im-management/im-admin/src/main/java/com/co/kc/imchat/management/admin/infrastructure/config/beans/AdminSecurityBeans.java",
             "im-management/im-audit/im-audit-server/src/main/java/com/co/kc/imchat/management/audit/infrastructure/config/beans/AuditSecurityBeans.java",
             "im-management/im-iam/im-iam-server/src/main/java/com/co/kc/imchat/management/iam/infrastructure/config/beans/IamSecurityBeans.java");
@@ -97,7 +97,7 @@ class ObservabilityConfigurationTest {
         assertThat(dml)
                 .contains("'im-admin-client'", "http://localhost:18042/iam/callback")
                 .contains("'im-audit-client'", "http://localhost:18041/iam/callback")
-                .contains("'im-monitor-client'", "http://localhost:18043/iam/callback");
+                .contains("'im-ops-client'", "http://localhost:18043/iam/callback");
     }
 
     @Test
@@ -107,6 +107,14 @@ class ObservabilityConfigurationTest {
                     .as(sourcePath)
                     .containsPattern("\\.requestMatchers\\(\\s*\"/actuator/\\*\\*\"\\s*\\)"
                             + "\\s*\\.permitAll\\(\\)");
+        }
+        for (String sourcePath : List.of(
+                "im-management/im-iam/im-iam-sdk/src/main/java/com/co/kc/imchat/management/iam/sdk/ImIamSdkAutoConfiguration.java",
+                "im-management/im-ops/im-ops-server/src/main/java/com/co/kc/imchat/management/ops/infrastructure/config/beans/OpsSecurityBeans.java")) {
+            assertThat(Files.readString(REPO_ROOT.resolve(sourcePath)))
+                    .as(sourcePath)
+                    .containsPattern("IamBffSecurityConfigurer\\s+configurer")
+                    .contains("return configurer.build(http);");
         }
         String autoConfigurationImports = Files.readString(REPO_ROOT.resolve(
                 "im-plugin/im-metrics/src/main/resources/META-INF/spring/"

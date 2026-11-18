@@ -8,6 +8,7 @@
 - `model.page`：框架无关的不可变页码分页边界与分页结果。
 - `domain.shared`：通用领域事件、标识和值校验约定。
 - `domain.time`：跨限界上下文复用的绝对时间范围值对象。
+- `domain.cluster`：通用成员通信端点 `MembershipEndpoint`，供领域成员配置及边界转换复用；保留原始非空白字符串，不包含成员资格或协议实现。Raft 技术快照仍为字符串列表，不依赖此值对象。
 - `domain.user`、`domain.group`：跨限界上下文共享的少量稳定值对象。
 - `exception`：统一异常层次。
 - `serializer`、`utils`、`state`：序列化、反射、集合和状态机工具。

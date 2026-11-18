@@ -4,23 +4,55 @@
 
 - 业务数据库是持久化 Account、Social、Conversation 和 Message 状态的事实源。
 - Broker 路由与发现状态通过 Gossip 最终一致；临时分歧不得改变持久消息事实。
+- Broker 的 `BrokerClusterState`、routing epoch、Raft membership 和关键管理 operation 由 SOFAJRaft
+  多数派提交；Gossip 只提供运行观察，不能直接改变权威路由状态。
 - WebSocket Gateway 拥有本机 Session。Gateway 故障后客户端可能需要重连并重建 Broker 路由。
 - 需要客户端确认的通知使用持久化待确认任务和延迟重试；Handler 必须保持幂等。
 - Account Session 状态是认证和撤销权威。Session 替换和登出只在 Account 事务提交后发布 best-effort WebSocket 关闭控制。
 - Nacos 是配置覆盖层。Service 保留本地默认值，并显式报告远端配置缺失。
-- Broker SDK Consumer 启动时至少需要发现一个 Broker。周期性 Broker 快照刷新只有在新结果非空时才替换本地地址；刷新失败保留最后可用快照，不停止 Consumer。
+- Broker SDK Consumer 启动时至少需要一个 Nacos 候选与部署地址/完整 URI 配对交集。周期刷新仅原子安装合法且更新的完整 committed state；刷新失败保留最后有效快照，不停止 Consumer。
 - `ImChatView` 是带过期时间的 Message 领域 Redis 状态，只参与未读判断。缺失或过期按“未查看”处理，不影响持久消息事实。
 - Broker 诊断历史是有界内存观测，重启后有意丢失，不参与路由、Gossip、迁移或持久消息决策。
 - IAM MySQL 是管理身份、浏览器应用、机器 Client、应用级角色、授权和元数据的权威。Audit MySQL 是不可变管理审计事实的唯一权威。普通用户管理仅在 Account Admin Facade 可达时提供，不得回退为直接访问 Account 数据库。
 
+## 管理 Leader 提示的可用性边界
+
+Broker 首次注册发布实际初始化 Node 的完整 PeerId，Ops 从同一可信原始发现记录取得显式管理 origin；完整文本不一致、发现滞后、缺失／非法 metadata 或歧义均拒绝 PeerId 跟随，即使目标实际可达也不降级猜测。普通诊断、首次接收者选择与旧 HTTP 精确可信提示路径不因此改义。仅具名 `NOT_LEADER` 至多一次原命令跟随，首次异常／超时不换普通节点，解析失败的 `UNKNOWN` 不能作为未执行证明。
+
+H7／H8 following 是已消费事件的本机观察，不证明实时健康、当前领导权或 quorum。generation 0 与非 OK `ENEWLEADER` START 合法；STOP、角色发布、close、FSM error／apply failure 使观察失效，roleFault 与 stateMachineFailed 独立且永久封闭迟到 START。Node 状态变化到 FSM 消费的延迟不可消除，generation 也不是跨 Node 的原子 CAS。锁序保持 `rolePublication → listener → executor mutex`，caller getter 原子无锁且无 Node；仅纯拒绝可用，冲突／共享及 closed／fault／满额优先，worker 首检、永久预算和全部 native 门禁不变。
+
+正式三 voter CLI 成功与缺失／冲突零 follow 已有局部集成证据，官方首次注册测试使用受控 NamingService；均不证明真实 Nacos 网络健康、生产部署可信写权限或整体 T11 验收。稳定合同由[批准设计](design-docs/2026-11-02-ops-trusted-leader-hint-mapping-design.md)拥有，当前证据由活跃计划拥有。
+
 ## 运行要求
 
 - 启动失败必须指出缺失依赖或非法配置，不能静默降级关键路径。
+- Broker 必须复用稳定 `clusterId/nodeId` 和独立 Raft 数据目录；配置身份与目录 marker 不一致时拒绝启动。
+- Raft 少数派不能提交集群状态或成员变更。多数派丢失时 Broker 进程和上行业务可继续运行，但新的权威
+  路由写、membership 变更及依赖新 epoch 的下行准入必须失败或保持 fenced，不能降级为 Gossip 决策。
+- Raft operation 以 `operationId + requestDigest` 幂等，并有界保留；容量不足时不能淘汰未完成 operation。
+- 改变 ACTIVE Broker 集合前必须完成全旧 epoch barrier。新 epoch 只能在全部冻结 holder 已持久化 fence
+  并 ACK，或当前 Leader 等待完整 quarantine 后提交；Gossip 失联和 Leader 当选不能缩短该窗口。
+- holder 使用申请开始时的本机单调时间计算 Lease deadline。迟到响应、未知/重复 nonce、回退 term/sequence、
+  已持久 fence 的 epoch 和 JVM 暂停后已经过期的 Lease 必须拒绝。
+- 新 epoch operation 在全部 ACTIVE holder 接受 Lease 前保持 `AUTHORIZING_NEW_EPOCH`；重试恢复阶段但不
+  重复执行旧 epoch barrier。已准入且远端结果未知的调用仍按 at-least-once 与稳定幂等标识收口。
+- 优雅 drain 在 Raft 中冻结切换时 Gateway 集合和旧事件 deadline。Gateway 只有在目标 epoch 全部分片
+  应用后才提交整轮 revision/count/checksum ACK；ACK 未齐不得 cleanup。旧 Broker cleanup 只按 committed
+  水位删除并写 tombstone，重复调用幂等且不能创建路由或投递 Frame。
+- 优雅 drain 的证据超时为 `FAILED`；管理员明确接受缺失 ACK、残留路由和实时投递风险后才可原子提交
+  `FORCED`。突然故障直接提交目标 `INACTIVE`，存活 Gateway 重建缺口超时必须为 `DEGRADED`。
+- 本地路由未命中时，RouteLookup 只查询路由描述：对当前拓扑中所有其他 ACTIVE/DRAINING Broker 并发查询一轮，各 peer IO 使用 Broker 配置的固定超时。
+  当前 RouteBroker 重验 Gateway 租约后才定向下行，禁止广播业务 Frame或让 DRAINING Broker 代为投递。
+- Gateway 以 `deliveryId + connectionId` 去重 Frame，以 `operationId + userId + sessionVersion` 去重关闭控制。
+  最低保留窗口内不得因容量压力提前淘汰；容量耗尽必须背压。该机制提供可恢复 at-least-once，不声称
+  exactly-once，Gateway 接受 Channel 写入也不等于客户端 ACK。
+- Raft 数据备份使用一致性卷快照并验证 snapshot/log 恢复。禁止在线复制部分数据文件、自动 `resetPeers`
+  或在多数派丢失后用单副本静默重建同一集群身份。
 - 定时注册、心跳、迁移和 Gossip 任务必须幂等，并隔离单个 Peer 故障。
 - Timeout、重试上限、Tombstone/Removed Entry 保留时间和 Gossip fanout 归入类型化配置属性。
 - Dubbo Consumer 默认 `retries=0`，禁止框架在超时后自动重放业务 RPC。需要重试时由调用方基于明确的幂等键、响应语义和有界策略实现；调整全局 retries 前必须证明所有受影响调用可安全重放。
 - 业务监控必须暴露连接、投递、重试和同步健康状态，但监控数据不得进入投递正确性路径。
-- `im-monitor` 使用有界 Executor 和单节点 Timeout 并发查询 Broker management endpoint。部分失败返回 `UNREACHABLE`，健康节点数据仍可用；全部失败时不得伪造健康汇总。
+- `im-ops` 使用有界 Executor 和单节点 Timeout 并发查询 Broker management endpoint。部分失败返回 `UNREACHABLE`，健康节点数据仍可用；全部失败时不得伪造健康汇总。
 - Session 关闭控制发布暴露有限基数的 `success`/`failure` Counter 与 Duration Timer，不包含用户、Session、Connection 或 Token Label。
 - Account 状态变化只在数据库事务提交后安排 Session 踢出。Post-commit Callback 获取 Session 写锁、更新 Redis Session 状态，然后立即发布 best-effort 连接关闭控制；不能为了再注册一个 Post-commit Callback 单独开启数据库事务。
 - 待确认通知由 Redis Receipt Task 是否存在表示。客户端 ACK 删除 Task、延迟标识和重试计数；不存在单独持久化的 `CONFIRMED` 状态。
@@ -29,7 +61,8 @@
 - Management Producer 提交已完成 Audit 事实，不改变原业务结果或异常。事务成功只在 Commit 后提交；Rollback 不发成功事实，失败时保留并重新抛出原异常。
 - Kafka 至少投递一次，Audit 按 `auditId` 幂等写入。Source Consumer 持久化失败最多重试三次，再进入独立 DLQ。HTTP 只重试 Timeout 和 `5xx`，`4xx` 为最终结果。Kafka 与 HTTP 独立选择，不静默互相回退。
 - Audit 导出要求不超过 31 天的有界时间范围，以每页 100 行流式写入 Workbook。
-- IAM 健康时，Admin 和 Monitor 对每个受保护请求实时执行 IAM Introspection。只有连接失败、Timeout 和 IAM `5xx` 可以使用最后一次 `active=true` 结果，最多保留五分钟且不得超过 Access Token 过期时间；显式拒绝永不回退。
+- IAM 健康时，Admin 和 Ops 浏览器 BFF 对每个受保护请求实时执行 IAM Introspection。仅 BFF 在连接失败、Timeout 和 IAM `5xx` 时可以使用最后一次 `active=true` 结果，最多保留五分钟且不得超过 Access Token 过期时间；显式拒绝永不回退。Ops `/api/cli/**` 每次直接 Introspection，不使用正向身份缓存或 stale-if-error；IAM 不可用即拒绝，不登记业务操作。
+- 独立 CLI 登录预算为 120 秒，Access Token 最长五分钟且仅驻留前台内存，无 Refresh Token。HTTP 最多一个在途请求，单请求预算十秒；超时、断连或查询失败只表示 UNKNOWN，不证明请求未提交。首次写入必须先完成 owner-only 非敏感请求记录，恢复需显式使用同一 operationId、expectedEpoch 和原语义；重新登录不自动重放写操作，具有当前权限的另一管理员可显式接续，审计记录本次实际调用者。退出尝试撤销，失败须报告远端结果未确认，不能声称 Token 已失效。
 - IAM SSO 使用 8 小时 Idle Limit 和 24 小时 Absolute Limit。应用登出只移除对应 BFF Session；平台或全设备撤销使相关 IAM Authorization 失效。
 
 ## 已知可靠性债务
@@ -39,6 +72,16 @@
 - Message 通知重试由 Redis 支持且有界，但未与 MySQL 消息事务原子提交，也不是 Outbox。删除当前重试任务之后、安排下次延迟之前若进程故障，可能丢失剩余重投；持久 Message 与 Inbox 事实仍可用于恢复。
 - Audit Producer 不使用本地 Outbox。业务 Commit 后、异步 Transport 接受前若进程故障，可能丢失事件；已被 Kafka 接受的事件因持久化幂等而可以安全重投。
 
+## Broker 自动故障观察
+
+每个当前voter独立探测，Leader按本轮报告形成多数资格，默认30秒稳定窗口；实际membership与Broker绑定不一致或成员操作进行中时不发起新摘流。采样以本机单调时间计算，HEALTHY/UNKNOWN/断档重置连续失败，最新事实先去重后判断，冲突不计票。恢复节点不自动承载流量。
+
+probe/report 的请求与响应不携带 expireAt/expireAtMs，接收方不按墙钟拒绝晚到只读请求；接受调用方已放弃后仍可能处理一次请求的资源成本。本机报告入口为 getHealthReport，远端拉取入口为 fetchHealthReport，RPC operation fetchBrokerHealthReport 不变。单次观察调用仍采用 monotonic acceptance budget 而非同步硬返回期限；应用不再附加整轮耗时上限，较慢轮次只有在最终报告仍新鲜且领导权/Context有效时才允许继续。长DNS/共享连接等待可使专用有界执行器饱和，自动处置此时安全暂停。LOCAL/认证/协议/拒绝不算目标不可达；只有可归因的传输失败计票。报告独立过期，但每目标、轮次和恢复闸门保持至实际底层完成；上下文重置或外层期限不能释放它们制造重复调用。
+
+观察起始仅读取本机 Leader 任期作为冷却与轮次标记，任期不可用则跳过；汇合后取得同任期 quorum 证明并重验 Context，未通过不得进入自动 Begin。本机标记不是 quorum 证据，读取间角色可变；advanceEpoch 的 fencing 确认仍独立执行，最终证明与 Begin 之间不宣称原子绑定任期。
+
+初次人工/自动FAIL_BROKER与恢复调度共用在途保护，早期fencing和授权阶段按已登记operation接续，不要求resultEpoch已成为当前epoch。冷却由 BrokerObservationState.advance 在拉报告前唯一判断，启动/换届/拓扑或实际 membership 变化后重新等待完整窗口，但不延迟既有恢复。报告服务 evaluate 只判断证据资格，不重复注入或判断冷却；汇合后任期/角色/Context变化仍作废该轮次，完整处置还需聚合及共识接受。原quarantine完整等待和Gateway缺证DEGRADED边界不变。
+
 ## 验证
 
 - Unit Test 覆盖状态转换和幂等。
@@ -46,7 +89,32 @@
 - `./scripts/verify.sh e2e` 启动真实 Broker HTTP/Bolt 和 Netty WebSocket runtime，验证认证路由、上行 Message 与 ACK、断开清理及 Gateway 重启恢复。Account 认证和 Message 持久化是受控边界，因此该结果不证明 MySQL、Redis、Nacos 或远端 Dubbo 可用。
 - `./scripts/verify.sh full` 是仓库完成门禁。
 - E2E 输出保存在 `.harness/runtime/e2e.log`；verification JSON 将结果绑定到当前 HEAD 和 worktree fingerprint。
-- Broker JMX Metrics 暴露 `im.broker.instances`、`im.broker.connections` 和 `im.broker.gossip.entries`。
+- Broker JMX Metrics 暴露 `im.broker.instances`、`im.broker.connections`、`im.broker.gossip.entries`、
+  `im.broker.routing.epoch`、`im.broker.routing.authorized` 和
+  `im.broker.routing.fenced.through.epoch`。
+- ACTIVE Broker 的 `im.broker.routing.authorized` 持续为 `0` 应告警；同一集群各节点
+  `im.broker.routing.epoch` 长时间不一致应告警。`fenced.through.epoch >= routing.epoch` 表示当前 epoch
+  明确 fenced，不得通过重启清除，应结合 Raft quorum 与未完成 operation 诊断。
 - WebSocket Gateway JMX Metrics 暴露 `im.gateway.connections` 和 `im.gateway.users`。
 
 故障处理、状态权威、重试策略或运行保证变化时必须同步更新本文。
+
+## Learner 确认与后台恢复
+
+learner 确认与恢复的同身份在途重复立即返回 `IN_PROGRESS`，不共享最终响应、不再次取证或消耗预算；内容冲突仍拒绝。该状态只证明本地占用，不证明 Begin 已提交，acceptedEpoch/targetEpoch 为空；保留原记录和 ID，稍后查询或原语义重发，取证期间查询可能找不到 operation。取消调用方 Future 不移除占用或取消执行，fault/close 既有 pending 边界不变。Broker/Ops/CLI 需同版本部署，旧 Ops 的 primitive epoch 不保证接纳 null，旧 CLI 将未知新状态保守视为 UNKNOWN。
+
+`confirmLearner` 只为新操作读取追赶证据并提交；相同身份的已登记请求返回 `DUPLICATE`，包括尚未完成的操作。该状态只证明登记，不代表 READY 或终态，调用方保留原 ID 并查询。未完成操作由既有 Leader Scheduler 调用 `resume`，按最新已提交阶段恢复，不依赖重发确认主动推进，也不新增恢复 HTTP 接口。原记录重发不刷新 epoch 或端点，不生成替代 ID；查询投影不是线性一致的未提交证明。恢复继续受共享永久预算、worker、generation 和任期约束，预算耗尽或持续重发下不承诺有界完成。
+
+## Bolt 预算与生命周期
+
+全部 SDK/Peer/Gossip 调用采用不可变 typed 目标；连接层认证失败不回退地址池、其他身份或明文。共享创建预算与单 caller 单调结果接受预算分离，短 caller 超时不 cancel 共享 future。序列化前计时，池等待、gate 和解码后重验；迟到不发送新请求、不接受迟到成功。同步 DNS/原生调用可能仍未结束，不能承诺硬返回期限。
+
+初始限制为创建线程 2、队列 16、目标池 64、每目标连接 1、等待 caller 64、在途 RPC 64，创建预算 3s；精确键见 [im-bolt](../im-plugin/im-bolt/README.md#预算失败与资源)。饱和为 LOCAL，不自动淘汰其他活跃目标为新目标腾容量，不作为不可达证据，不据此承诺 TPS 或生产机器规格。后台 reconnect/monitor/heal/warmup 当前禁用，配置开启拒绝；失效后按需重新认证创建。
+
+认证、LOCAL 预算/队列、协议错误不能形成自动故障票，只有明确可归因传输失败才可作为 UNHEALTHY 输入。DEV 许可从实际受控客户端固定，在 probe/report/自动恢复入口拒绝，采样 options 重绑定不能改变授权。
+
+创建执行器和池归 manager/client，未交付候选归失败工厂，Spring 默认装配负责初始化/关闭；外部受控 Bean 归提供方。到期 Channel 持续拒绝新发送，在途直到原生响应、原 RPC 超时或原生失败 terminal 后排空关闭，caller 放弃等待不能提前释放共享资源。关闭与最后完成并发时，拒绝状态保持至物理 closeFuture 完成；不把 native future 已登记误当业务已准入。
+
+D14 沿原生 TLS 读文件：旧 Channel 不随替换换 session，新 Channel 可能读取新材料，不保证 watcher/每次 reload。建议到期前完整原子交付、按旧 → 双信任 → 新叶 → 撤旧 CA 验证并滚动重启；不是 only-restart 门禁或无中断保证。无效材料失败关闭，不复制私钥补固定字节保证；正式证书运维、在线吊销和生产容量不属于本次交付。
+
+官方 JRaft 依赖为 `com.alipay.sofa:jraft-core:1.4.1`，私有 applied-membership 配方已退役。Leader 列表观察非原子且不证明 applied 配置；业务观察资格来自已提交状态，learner 确认仍需身份、epoch/revision、同任期 ReadIndex 与认证目标应用进度证据。原本地数据与 Maven 制品不自动清理，当前验收状态以 active plan 为准。

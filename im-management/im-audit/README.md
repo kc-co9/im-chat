@@ -1,7 +1,7 @@
 # IM Audit
 
 `im-audit` 是集中管理审计的 Maven 聚合模块，也是管理端 BUSINESS/SECURITY 审计事实的唯一权威。
-Admin、IAM、Monitor 只生产已完成事实，不拥有本地审计表、查询 API 或审计页面。
+Admin、IAM、Ops 只生产已完成事实，不拥有本地审计表、查询 API 或审计页面。
 
 ## 领域位置
 
@@ -33,7 +33,7 @@ SDK 与 Server 都使用 `AuditEvent` 这个名称：前者是跨进程不可变
 
 ## 协作与状态所有权
 
-- Audit Server 独占 MySQL Schema `im_chat_audit` 和 `db_audit_event`，并通过唯一 `audit_id` 保存追加事实；Admin、IAM、Monitor 不直接访问该表。
+- Audit Server 独占 MySQL Schema `im_chat_audit` 和 `db_audit_event`，并通过唯一 `audit_id` 保存追加事实；Admin、IAM、Ops 不直接访问该表。
 - `sourceApp` 不接受生产者载荷覆盖。HTTP 接收边界从已认证的 IAM 机器身份 `appKey` 注入来源；Kafka 接收边界从来源专属 Binding 注入固定来源。
 - 查询、详情和 Excel 导出属于 Audit Server 的只读应用边界。它们按 `AuditQueryCondition` 读取，导出必须有明确时间范围并分批执行；生产者 SDK 不提供查询能力。
 - `im-audit-sdk` 拥有 `AuditClient`、`AuditTemplate`、`AuditContextCollector`、`@Audited`、事件工厂和 Kafka/异步 HTTP Transport，负责安全收集上下文、构造不可变契约并隔离投递故障。

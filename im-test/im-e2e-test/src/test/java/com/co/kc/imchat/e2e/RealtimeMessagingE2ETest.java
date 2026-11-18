@@ -1,13 +1,34 @@
 package com.co.kc.imchat.e2e;
 
+import com.co.kc.imchat.plugin.bolt.model.enums.BoltTransportMode;
 import com.co.kc.imchat.broker.ImBrokerApplication;
+import com.co.kc.imchat.gateway.ws.config.GatewayBeans;
+import com.co.kc.imchat.gateway.ws.config.properties.GatewayProperties;
+import com.co.kc.imchat.gateway.ws.lifecycle.RegistrationLifecycle;
+import com.co.kc.imchat.gateway.ws.lifecycle.NettyServerLifecycle;
+import com.co.kc.imchat.gateway.ws.routing.GatewayInstanceIdentity;
+import com.co.kc.imchat.plugin.bolt.client.BoltControlledClient;
+import com.co.kc.imchat.common.model.io.FrameResponse;
+import com.co.kc.imchat.common.model.enums.FrameType;
+import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
+import com.co.kc.imchat.broker.sdk.model.params.ConnectionCloseParams;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.annotation.DirtiesContext;
+import java.util.Map;
 import com.co.kc.imchat.broker.sdk.BrokerClient;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.broker.sdk.enums.BrokerLoadBalance;
-import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
 import com.co.kc.imchat.gateway.ws.security.authentication.WsAuthenticationManager;
-import com.co.kc.imchat.gateway.ws.server.NettyWebSocketServer;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import com.co.kc.imchat.service.account.facade.AccountService;
 import com.co.kc.imchat.service.account.facade.dto.SessionAuthDTO;
@@ -34,13 +55,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -51,9 +75,20 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 @Tag("e2e")
+@ActiveProfiles("bolt-dev")
+@Import(RealtimeMessagingE2ETest.BrokerTransport.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = ImBrokerApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
+                "IM_BOLT_SYNTHETIC_DATA=true",
+                "im.iam.enabled=false",
+                "im.audit.enabled=false",
+                "im.datasource.sharding.enabled=false",
+                "im.identity.snowflake.mode=STATIC",
+                "im.identity.snowflake.data-center-id=0",
+                "im.identity.snowflake.machine-id=1",
+                "im.bolt.server.host=127.0.0.1",
                 "im.dubbo.enabled=false",
                 "dubbo.enabled=false",
                 "im.dubbo.registry.address=N/A",
@@ -61,20 +96,42 @@ import static org.mockito.Mockito.when;
                 "jetcache.remote.default.type=mock",
                 "spring.autoconfigure.exclude=org.redisson.spring.starter.RedissonAutoConfigurationV2,"
                         + "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,"
-                        + "org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration",
+                        + "org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
+                        + "com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,"
+                        + "org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration",
                 "spring.cloud.nacos.discovery.enabled=false",
                 "spring.cloud.nacos.config.enabled=false",
                 "spring.cloud.discovery.enabled=false"
         })
 class RealtimeMessagingE2ETest {
-    private static final int BROKER_BOLT_PORT = availablePort();
-    private static final String GATEWAY_ID = "e2e-gateway";
+    private static final com.co.kc.imchat.plugin.bolt.server.BoltControlledServer[] BOLT_SERVERS = ownedBoltServers();
+    private static final int BROKER_BOLT_PORT = BOLT_SERVERS[0].port();
+    private static final Path BROKER_RAFT_DATA_DIRECTORY = Path.of(
+            System.getProperty("java.io.tmpdir"), "im-chat-e2e-raft-" + UUID.randomUUID());
+    private static final com.co.kc.imchat.plugin.bolt.server.BoltControlledServer[] GATEWAY_BOLT_SERVERS = {BOLT_SERVERS[1], BOLT_SERVERS[2]};
+    private int gatewayIndex;
     private static final long AUTHENTICATED_USER_ID = 42L;
 
     @DynamicPropertySource
     static void brokerProperties(DynamicPropertyRegistry registry) {
+        for (int index = 0; index < GATEWAY_BOLT_SERVERS.length; index++) {
+            int fixedIndex = index;
+            registry.add("im.broker.gateway-push.bolt.development-targets[" + index + "].address",
+                    () -> "127.0.0.1:" + GATEWAY_BOLT_SERVERS[fixedIndex].port());
+            registry.add("im.broker.gateway-push.bolt.development-targets[" + index + "].expected-peer-identity",
+                    () -> "spiffe://im-chat/gateway/e2e-" + fixedIndex);
+        }
         registry.add("im.bolt.server.port", () -> BROKER_BOLT_PORT);
         registry.add("im.broker.instance.port", () -> BROKER_BOLT_PORT);
+        registry.add("im.broker.raft.data-directory", BROKER_RAFT_DATA_DIRECTORY::toString);
+        registry.add("im.broker.raft.bootstrap-brokers[0].broker-id", () -> "broker-local-1");
+        registry.add("im.broker.raft.bootstrap-brokers[0].route-endpoint",
+                () -> "127.0.0.1:" + BROKER_BOLT_PORT);
+        registry.add("im.broker.raft.bootstrap-brokers[0].membership-role", () -> "VOTER");
+        registry.add("im.broker.raft.bootstrap-brokers[0].membership-endpoint", () -> "127.0.0.1:18120");
+        registry.add("im.broker.raft.bootstrap-brokers[0].routing-state", () -> "ACTIVE");
     }
 
     @LocalServerPort
@@ -86,7 +143,8 @@ class RealtimeMessagingE2ETest {
     @MockitoBean
     private MessageService messageService;
 
-    private NettyWebSocketServer gatewayServer;
+    private ConfigurableApplicationContext gatewayContext;
+    private String currentGatewayId;
     private WebSocket webSocket;
     private CollectingWebSocketListener listener;
 
@@ -95,8 +153,9 @@ class RealtimeMessagingE2ETest {
         if (webSocket != null) {
             webSocket.abort();
         }
-        if (gatewayServer != null) {
-            gatewayServer.stop();
+        if (gatewayContext != null) {
+            gatewayContext.close();
+            gatewayContext = null;
         }
     }
 
@@ -111,9 +170,10 @@ class RealtimeMessagingE2ETest {
                 .when(messageService).ackNotification(any());
 
         BrokerClient brokerClient = brokerClient();
-        startGatewayAndConnect(brokerClient);
+        startGatewayAndConnect();
+        String firstGatewayId = currentGatewayId;
 
-        assertThat(queryRoutes()).contains(GATEWAY_ID);
+        assertThat(queryRoutes()).contains(firstGatewayId);
         sendAndAwaitResponse("send-1", """
                 {"version":"1","cmd":"message.private.send","seq":"send-1","traceId":"trace-send",\
                 "body":{"userId":999,"chatId":1001,"messageToken":"token-1",\
@@ -128,30 +188,73 @@ class RealtimeMessagingE2ETest {
         assertThat(acknowledgedNotification.get(5, TimeUnit.SECONDS).userId())
                 .isEqualTo(AUTHENTICATED_USER_ID);
 
-        webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "e2e disconnect").get(5, TimeUnit.SECONDS);
+        FrameResponse pushed = new FrameResponse("1", FrameType.PUSH, "message.private", "push-1", "trace-push",
+                0, "OK", Map.of("messageId", 2001));
+        assertThat(brokerClient.writeFrame(BrokerFrameWriteParams.outbound(AUTHENTICATED_USER_ID, pushed)).acceptedConnectionIds()).hasSize(1);
+        assertThat(listener.responses.poll(5, TimeUnit.SECONDS)).contains("push-1");
+        brokerClient.closeConnections(new ConnectionCloseParams(AUTHENTICATED_USER_ID, "e2e-session"));
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(gatewayContext.getBean(ConnectionRegistry.class).activeConnectionIds()).isEmpty());
         await().atMost(Duration.ofSeconds(5))
-                .untilAsserted(() -> assertThat(queryRoutes()).doesNotContain(GATEWAY_ID));
+                .untilAsserted(() -> assertThat(queryRoutes()).doesNotContain(firstGatewayId));
 
-        gatewayServer.stop();
-        gatewayServer = null;
-        startGatewayAndConnect(brokerClient);
+        gatewayContext.close();
+        gatewayContext = null;
+        startGatewayAndConnect();
+        String secondGatewayId = currentGatewayId;
 
         await().atMost(Duration.ofSeconds(5))
-                .untilAsserted(() -> assertThat(queryRoutes()).contains(GATEWAY_ID));
+                .untilAsserted(() -> assertThat(queryRoutes()).contains(secondGatewayId)
+                        .doesNotContain(firstGatewayId));
     }
 
-    private void startGatewayAndConnect(BrokerClient brokerClient) throws Exception {
+    private void startGatewayAndConnect() throws Exception {
         int webSocketPort = availablePort();
-        brokerClient.registerGateway(new GatewayRegisterParams(GATEWAY_ID, "127.0.0.1", availablePort()));
-        gatewayServer = new NettyWebSocketServer(
-                "127.0.0.1", webSocketPort, GATEWAY_ID, "/ws", brokerClient, new ConnectionRegistry(),
-                authenticationManager(), 30, 65_536);
-        gatewayServer.start();
-        listener = new CollectingWebSocketListener();
-        webSocket = HttpClient.newHttpClient().newWebSocketBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
-                .buildAsync(URI.create("ws://127.0.0.1:" + webSocketPort + "/ws?token=valid-token"), listener)
-                .get(5, TimeUnit.SECONDS);
+        com.co.kc.imchat.plugin.bolt.server.BoltControlledServer gatewayBoltServer = GATEWAY_BOLT_SERVERS[gatewayIndex++];
+        int gatewayBoltPort = gatewayBoltServer.port();
+        gatewayContext = new SpringApplicationBuilder(GatewayRuntime.class)
+                .web(WebApplicationType.NONE).profiles("bolt-dev")
+                .initializers(context -> ((org.springframework.context.support.GenericApplicationContext) context).registerBean("e2eOwnedGatewayBoltServer", com.alipay.remoting.rpc.RpcServer.class,
+                        () -> gatewayBoltServer, definition -> definition.setDestroyMethodName("")))
+                .run("--IM_BOLT_SYNTHETIC_DATA=true", "--jetcache.remote.default.type=mock", "--im.bolt.server.host=127.0.0.1",
+                        "--im.iam.enabled=false", "--im.audit.enabled=false", "--im.datasource.sharding.enabled=false",
+                        "--im.identity.snowflake.mode=STATIC", "--im.identity.snowflake.data-center-id=0",
+                        "--im.identity.snowflake.machine-id=2",
+                        "--im.bolt.server.port=" + gatewayBoltPort, "--im.gateway.ws.port=" + webSocketPort,
+                        "--im.gateway.ws.bind-host=127.0.0.1", "--im.gateway.ws.bolt.host=127.0.0.1",
+                        "--im.gateway.ws.broker.allow-trusted-network-identity=true",
+                        "--im.gateway.ws.broker.bootstrap-targets[0].address=127.0.0.1:" + BROKER_BOLT_PORT,
+                        "--im.gateway.ws.broker.bootstrap-targets[0].expected-peer-identity=spiffe://im-chat/broker/broker-local-1",
+                        "--spring.cloud.nacos.discovery.enabled=false", "--spring.cloud.nacos.config.enabled=false",
+                        "--spring.cloud.discovery.enabled=false", "--spring.cloud.discovery.client.composite-indicator.enabled=false",
+                        "--spring.cloud.discovery.client.composite.enabled=false", "--im.dubbo.enabled=false", "--dubbo.enabled=false",
+                        "--spring.autoconfigure.exclude=org.redisson.spring.starter.RedissonAutoConfigurationV2,"
+                                + "org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,"
+                                + "org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration,"
+                                + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
+                                + "com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration");
+        currentGatewayId = gatewayContext.getBean(GatewayInstanceIdentity.class).gatewayId();
+        assertThat(gatewayContext.getBean(com.alipay.remoting.rpc.RpcClient.class))
+                .isInstanceOf(BoltControlledClient.class);
+        assertThat(gatewayContext.getBean(BoltControlledClient.class).configuredMode())
+                .isEqualTo(BoltTransportMode.DEVELOPMENT_PLAINTEXT);
+        AtomicReference<WebSocket> connected = new AtomicReference<>();
+        AtomicReference<CollectingWebSocketListener> connectedListener = new AtomicReference<>();
+        await().atMost(Duration.ofSeconds(10))
+                .pollInterval(Duration.ofMillis(100))
+                .ignoreExceptions()
+                .untilAsserted(() -> {
+                    CollectingWebSocketListener candidate = new CollectingWebSocketListener();
+                    WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder()
+                            .connectTimeout(Duration.ofSeconds(2))
+                            .buildAsync(URI.create("ws://127.0.0.1:" + webSocketPort
+                                    + "/ws?token=valid-token"), candidate)
+                            .get(3, TimeUnit.SECONDS);
+                    connectedListener.set(candidate);
+                    connected.set(socket);
+                });
+        listener = connectedListener.get();
+        webSocket = connected.get();
     }
 
     private BrokerClient brokerClient() {
@@ -160,10 +263,11 @@ class RealtimeMessagingE2ETest {
                 new DefaultServiceInstance("e2e-broker", ServiceName.IM_BROKER.value(),
                         "127.0.0.1", BROKER_BOLT_PORT, false)));
         return new BrokerClient(boltInvoker, discoveryClient, ServiceName.IM_BROKER,
-                BrokerLoadBalance.HASH, 3_000);
+                BrokerLoadBalance.HASH, 3_000,
+                List.of(new BoltTarget("127.0.0.1:" + BROKER_BOLT_PORT, "spiffe://im-chat/broker/broker-local-1")));
     }
 
-    private WsAuthenticationManager authenticationManager() {
+    private static WsAuthenticationManager authenticationManager() {
         AccountService accountService = mock(AccountService.class);
         when(accountService.authenticate(new AccessTokenParams("valid-token")))
                 .thenReturn(new SessionAuthDTO(AUTHENTICATED_USER_ID, "e2e-session",
@@ -192,11 +296,66 @@ class RealtimeMessagingE2ETest {
         assertThat(response).contains("\"seq\":\"" + expectedSequence + "\"");
     }
 
+    private static com.co.kc.imchat.plugin.bolt.server.BoltControlledServer[] ownedBoltServers() {
+        java.util.ArrayList<com.co.kc.imchat.plugin.bolt.server.BoltControlledServer> servers = new java.util.ArrayList<>();
+        try {
+            for (int index = 0; index < 3; index++) {
+                com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties.Server options = new com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties.Server();
+                options.setHost("127.0.0.1"); options.setPort(0);
+                options.setMode(BoltTransportMode.DEVELOPMENT_PLAINTEXT);
+                options.getDevelopment().setSyntheticData(true);
+                com.co.kc.imchat.plugin.bolt.server.BoltControlledServer server = new com.co.kc.imchat.plugin.bolt.server.BoltControlledServer(options);
+                servers.add(server);
+                if (!server.start()) { throw new IllegalStateException("Gateway fixture bind failed"); }
+            }
+            return servers.toArray(com.co.kc.imchat.plugin.bolt.server.BoltControlledServer[]::new);
+        } catch (RuntimeException failure) {
+            for (com.co.kc.imchat.plugin.bolt.server.BoltControlledServer server : servers) {
+                try { server.stop(); } catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+            }
+            throw failure;
+        }
+    }
+
+    @org.junit.jupiter.api.AfterAll
+    static void stopOwnedBoltServers() {
+        for (com.co.kc.imchat.plugin.bolt.server.BoltControlledServer server : BOLT_SERVERS) {
+            server.stop();
+            assertThat(server.isStarted()).isFalse();
+        }
+    }
+
     private static int availablePort() {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
         } catch (IOException exception) {
             throw new IllegalStateException("failed to allocate E2E port", exception);
+        }
+    }
+
+    @org.springframework.boot.test.context.TestConfiguration
+    static class BrokerTransport {
+        @Bean(destroyMethod = "")
+        com.alipay.remoting.rpc.RpcServer brokerOwnedServer() { return BOLT_SERVERS[0]; }
+    }
+
+    /**
+     * 正式 Gateway 装配；仅替换外部 Account Facade 和 Nacos 发现，不替换 Bolt/授权/注册/Netty生命周期。
+     */
+    @SpringBootConfiguration
+    @EnableAutoConfiguration(exclude = org.springframework.cloud.client.discovery.composite.CompositeDiscoveryClientAutoConfiguration.class)
+    @Import({GatewayBeans.class, GatewayProperties.class, NettyServerLifecycle.class, RegistrationLifecycle.class})
+    static class GatewayRuntime {
+        @Bean
+        WsAuthenticationManager wsAuthenticationManager() { return authenticationManager(); }
+
+        @Bean
+        @Primary
+        DiscoveryClient discoveryClient() {
+            DiscoveryClient discovery = mock(DiscoveryClient.class);
+            when(discovery.getInstances(ServiceName.IM_BROKER.value())).thenReturn(List.of(
+                    new DefaultServiceInstance("broker-local-1", ServiceName.IM_BROKER.value(), "127.0.0.1", BROKER_BOLT_PORT, false)));
+            return discovery;
         }
     }
 

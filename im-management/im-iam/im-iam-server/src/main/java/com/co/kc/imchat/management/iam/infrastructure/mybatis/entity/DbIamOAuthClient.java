@@ -12,6 +12,8 @@ import lombok.ToString;
 @TableName("db_iam_oauth_client")
 @EqualsAndHashCode(callSuper = true)
 public class DbIamOAuthClient extends BaseEntity {
+    /** OAuth 客户端类型的数据库编码。 */
+    private String clientType;
     private String oauthClientId;
     private Long appId;
     private Long audienceAppId;

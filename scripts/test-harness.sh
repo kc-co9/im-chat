@@ -13,6 +13,13 @@ if ! rg -Fxq '/.harness/' "$ROOT_DIR/.gitignore"; then
   printf 'Root .gitignore must ignore the local Harness state directory.\n' >&2
   exit 1
 fi
+if ! rg -Fq '[Harness Rule Matrix](HARNESS_RULE_MATRIX.md)' "$ROOT_DIR/docs/references/index.md" \
+    || ! rg -Fq '[规则矩阵](HARNESS_RULE_MATRIX.md)' "$ROOT_DIR/docs/references/HARNESS_GUIDE.md" \
+    || ! rg -Fq '| 规则 | 规范所有者 | 自动检查 | Review |' "$ROOT_DIR/docs/references/HARNESS_RULE_MATRIX.md" \
+    || rg -Fq '| 规则 | 规范所有者 | 自动检查 | Review |' "$ROOT_DIR/docs/references/HARNESS_GUIDE.md"; then
+  printf 'Harness rule registry must have one owner and task-directed links.\n' >&2
+  exit 1
+fi
 
 # worktree fingerprint 只描述文件树内容，不能因相同内容从 untracked 变为 staged 而变化。
 fingerprint_root="$(mktemp -d)"
@@ -41,6 +48,7 @@ fi
 rm -rf "$fingerprint_root"
 trap - EXIT
 
+
 # 先验证独立 handoff 契约，再继续聚合 checker 与生命周期 fixture。
 "$ROOT_DIR/scripts/test-handoff-harness.sh"
 "$ROOT_DIR/scripts/test-startup-harness.sh"
@@ -54,6 +62,11 @@ bash "$ROOT_DIR/scripts/test-management-ui-harness.sh"
 bash "$ROOT_DIR/scripts/check-management-ui.sh"
 bash "$ROOT_DIR/scripts/test-local-compose-harness.sh"
 bash "$ROOT_DIR/scripts/test-load-test-harness.sh"
+bash "$ROOT_DIR/scripts/test-routing-ha-harness.sh"
+bash "$ROOT_DIR/scripts/test-routing-ha-tls.sh"
+bash "$ROOT_DIR/scripts/test-routing-ha-process.sh"
+bash "$ROOT_DIR/scripts/test-reactor-evidence.sh"
+bash "$ROOT_DIR/scripts/test-routing-capacity-harness.sh"
 
 space_fixture="$(mktemp -d)/repository with spaces"
 ln -s "$ROOT_DIR" "$space_fixture"
@@ -226,6 +239,40 @@ if ! markdown_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
     "$markdown_output" >&2
   exit 1
 fi
+
+# 独立 CLI 的标准流是交互协议；其他模块仍禁止控制台诊断，所有生产源禁止堆栈直出。
+cli_console_dir="$fixture_root/im-management/im-ops/im-ops-cli/src/main/java/example"
+mkdir -p "$cli_console_dir"
+for stream in out err; do
+  printf 'class ConsoleProbe { void run() { System.%s.println("safe result"); } }\n' "$stream" > "$cli_console_dir/ConsoleProbe.java"
+  if ! console_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
+    printf 'Approved CLI standard stream should pass.\n%s\n' "$console_output" >&2
+    exit 1
+  fi
+done
+rm "$cli_console_dir/ConsoleProbe.java"
+for console_case in cli-stack service-out service-err service-stack lookalike-out old-cli-out ops-server-out; do
+  case "$console_case" in
+    cli-stack) console_dir="$cli_console_dir"; statement='new Exception().printStackTrace();' ;;
+    service-out) console_dir="$fixture_root/module/src/main/java/example"; statement='System.out.println("unsafe");' ;;
+    service-err) console_dir="$fixture_root/module/src/main/java/example"; statement='System.err.println("unsafe");' ;;
+    service-stack) console_dir="$fixture_root/module/src/main/java/example"; statement='new Exception().printStackTrace();' ;;
+    lookalike-out) console_dir="$fixture_root/other/im-ops-cli/src/main/java/example"; statement='System.out.println("unsafe");' ;;
+    old-cli-out) console_dir="$fixture_root/im-management/im-ops-cli/src/main/java/example"; statement='System.out.println("unsafe");' ;;
+    ops-server-out) console_dir="$fixture_root/im-management/im-ops/im-ops-server/src/main/java/example"; statement='System.out.println("unsafe");' ;;
+  esac
+  mkdir -p "$console_dir"
+  printf 'class ConsoleProbe { void run() { %s } }\n' "$statement" > "$console_dir/ConsoleProbe.java"
+  if console_output="$("$fixture_root/scripts/check-drift.sh" 2>&1)"; then
+    printf 'Console boundary negative case should fail: %s\n' "$console_case" >&2
+    exit 1
+  fi
+  if ! rg -Fq 'ConsoleProbe.java' <<<"$console_output"; then
+    printf 'Console boundary did not identify fixture: %s\n%s\n' "$console_case" "$console_output" >&2
+    exit 1
+  fi
+  rm "$console_dir/ConsoleProbe.java"
+done
 
 sed -i.bak 's/IdType.AUTO/IdType.ASSIGN_ID/' \
   "$fixture_root/im-plugin/im-datasource/src/main/java/com/co/kc/imchat/plugin/datasource/dao/BaseEntity.java"
@@ -546,141 +593,51 @@ assert_impact "im-gateway/im-ws-gateway/im-ws-gateway-server,im-test/im-e2e-test
   "im-gateway/im-ws-gateway/im-ws-gateway-server/src/main/java/example.java"
 assert_impact "im-gateway/im-ws-gateway/im-ws-gateway-sdk,im-gateway/im-ws-gateway/im-ws-gateway-server,im-broker/im-broker-server,im-test/im-e2e-test,im-test/im-architecture-test" \
   "im-gateway/im-ws-gateway/im-ws-gateway-sdk/src/main/java/example.java"
-assert_impact "im-plugin/im-bolt,im-test/im-e2e-test,im-test/im-architecture-test" \
+assert_impact "im-plugin/im-bolt,im-broker/im-broker-server,im-gateway/im-ws-gateway/im-ws-gateway-server,im-service/im-account/im-account-server,im-service/im-message/im-message-server,im-test/im-e2e-test,im-test/im-architecture-test" \
   "im-plugin/im-bolt/src/main/java/example.java"
-assert_impact "im-plugin/im-gossip,im-test/im-architecture-test" \
+assert_impact "im-plugin/im-gossip,im-broker/im-broker-server,im-test/im-e2e-test,im-test/im-architecture-test" \
   "im-plugin/im-gossip/src/main/java/example.java"
 assert_impact "im-plugin/im-mq-kafka,im-test/im-architecture-test" \
   "im-plugin/im-mq/src/main/java/example.java"
-assert_impact "im-management/im-monitor,im-test/im-architecture-test" \
-  "im-management/im-monitor/src/main/java/example.java"
+assert_impact "im-management/im-ops/im-ops-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-management/im-ops/im-ops-server/src/main/java/example.java"
+# CLI 授权旅程的每个拥有方单独映射，防止混合工作树掩盖 E2E 漏选。
+assert_impact "im-management/im-iam/im-iam-sdk,im-management/im-iam/im-iam-server,im-management/im-admin,im-management/im-ops/im-ops-server,im-management/im-audit/im-audit-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-management/im-iam/im-iam-sdk/src/main/java/example.java"
+assert_impact "im-management/im-iam/im-iam-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-management/im-iam/im-iam-server/src/main/java/example.java"
+assert_impact "im-management/im-ops/im-ops-cli,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-management/im-ops/im-ops-cli/src/main/java/example.java"
+
+assert_impact "im-management/im-ops/im-ops-server,im-management/im-ops/im-ops-cli,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-management/im-ops/pom.xml"
 assert_impact "im-management/im-admin,im-test/im-architecture-test" \
   "im-management/im-admin/README.md"
 assert_impact "im-service/im-account/im-account-admin-facade,im-service/im-account/im-account-server,im-management/im-admin,im-test/im-architecture-test" \
   "im-service/im-account/im-account-admin-facade/src/main/java/example.java"
-assert_impact "im-management/im-iam/im-iam-server,im-management/im-admin,im-management/im-monitor,im-management/im-audit/im-audit-server,im-test/im-architecture-test" \
+assert_impact "im-management/im-iam/im-iam-server,im-management/im-admin,im-management/im-ops/im-ops-server,im-management/im-ops/im-ops-cli,im-management/im-audit/im-audit-server,im-test/im-architecture-test" \
   "im-management/pom.xml"
 assert_impact "im-test/im-load-test,im-test/im-architecture-test" \
   "im-test/im-load-test/src/test/java/example.java"
 assert_impact all "im-common/src/main/java/example.java"
 
-# full 必须自行包含环境、清洁状态、Harness fixture 和 Maven verify，不能依赖调用者记住前置命令。
-full_root="$(mktemp -d)"
-mkdir -p "$full_root/scripts/lib" "$full_root/bin" \
-  "$full_root/docs/exec-plans/active" "$full_root/.harness"
-cp "$ROOT_DIR/scripts/verify.sh" "$full_root/scripts/verify.sh"
-cp "$ROOT_DIR/scripts/lib/harness-evidence.sh" "$full_root/scripts/lib/harness-evidence.sh"
-cp "$ROOT_DIR/scripts/lib/load-test-evidence.sh" "$full_root/scripts/lib/load-test-evidence.sh"
-cat > "$full_root/scripts/check-drift.sh" <<'EOF'
-#!/usr/bin/env bash
-printf 'drift\n' >> "$FULL_FIXTURE_TRACE"
-EOF
-cat > "$full_root/scripts/test-harness.sh" <<'EOF'
-#!/usr/bin/env bash
-printf 'harness-tests\n' >> "$FULL_FIXTURE_TRACE"
-EOF
-cat > "$full_root/scripts/harness-report.sh" <<'EOF'
-#!/usr/bin/env bash
-printf 'report\n' >> "$FULL_FIXTURE_TRACE"
-exit "${FULL_REPORT_EXIT:-0}"
-EOF
-cat > "$full_root/scripts/harness-handoff.sh" <<'EOF'
-#!/usr/bin/env bash
-printf 'handoff\n' >> "$FULL_FIXTURE_TRACE"
-exit "${FULL_HANDOFF_EXIT:-0}"
-EOF
-chmod +x "$full_root/scripts/check-drift.sh" "$full_root/scripts/test-harness.sh"
-chmod +x "$full_root/scripts/harness-report.sh" "$full_root/scripts/harness-handoff.sh"
-write_full_tool() {
-  local tool="$1"
-  local body="$2"
-  printf '#!/usr/bin/env bash\n%s\n' "$body" > "$full_root/bin/$tool"
-  chmod +x "$full_root/bin/$tool"
-}
-write_full_tool java 'printf '\''openjdk version "21.0.10"\n'\'''
-write_full_tool mvn 'printf '\''maven %s\n'\'' "$*" >> "$FULL_FIXTURE_TRACE"; if [[ "$*" == "-q verify" ]]; then mkdir -p "$FULL_FIXTURE_ROOT/module/target/surefire-reports"; printf '\''<testsuite tests="3" failures="0" errors="0" skipped="1"/>\n'\'' > "$FULL_FIXTURE_ROOT/module/target/surefire-reports/TEST-full.xml"; fi; printf '\''Apache Maven 3.8.4\n'\'''
-write_full_tool node 'printf '\''v20.19.5\n'\'''
-write_full_tool npm 'printf '\''10.8.2\n'\'''
-write_full_tool rg 'exec /usr/bin/grep "$@"'
-write_full_tool git 'case "$1" in rev-parse) printf '\''fixture-head\n'\'';; diff|ls-files) :;; *) :;; esac'
-full_trace="$full_root/.harness/full-trace.log"
-if ! FULL_FIXTURE_ROOT="$full_root" FULL_FIXTURE_TRACE="$full_trace" PATH="$full_root/bin:/usr/bin:/bin" \
-    "$full_root/scripts/verify.sh" full >"$full_root/full.out" 2>&1; then
-  printf 'Full lifecycle fixture should pass.\n' >&2
-  cat "$full_root/full.out" >&2
-  exit 1
-fi
-if ! ruby -rjson -e '
-  summary = JSON.parse(File.read(ARGV.fetch(0)))["testSummary"]
-  exit(summary == {"tests" => 3, "failures" => 0, "errors" => 0, "skipped" => 1} ? 0 : 1)
-' "$full_root/.harness/verifications/full.json"; then
-  printf 'Full verification must persist its test summary outside Maven target directories.\n' >&2
-  exit 1
-fi
-for expected in 'readiness java=21' 'Readiness checks passed.' 'Checking clean state'; do
-  if ! /usr/bin/grep -Fq "$expected" "$full_root/full.out"; then
-    printf 'Full lifecycle output is missing %s\n' "$expected" >&2
-    exit 1
-  fi
-done
-if [[ "$(<"$full_trace")" != $'maven --version\ndrift\nharness-tests\nmaven -q verify\nreport\nhandoff' ]]; then
-  printf 'Full lifecycle order is incorrect:\n%s\n' "$(<"$full_trace")" >&2
-  exit 1
-fi
+# Bolt 认证、Gossip 及消费方配置必须带入既有 startup/behavior/E2E 所属模块。
+# 每个路径单独注入，防止混合工作树的其他路径掩盖漏映射；不启动 Maven/Docker。
+assert_impact "im-plugin/im-bolt,im-broker/im-broker-server,im-gateway/im-ws-gateway/im-ws-gateway-server,im-service/im-account/im-account-server,im-service/im-message/im-message-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-plugin/im-bolt/src/main/java/com/co/kc/imchat/plugin/bolt/client/BoltControlledClient.java"
+assert_impact "im-plugin/im-gossip,im-broker/im-broker-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-plugin/im-gossip/src/main/java/com/co/kc/imchat/plugin/gossip/client/GossipPeerClient.java"
+assert_impact "im-service/im-account/im-account-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-service/im-account/im-account-server/src/main/resources/application-bolt-dev.yml"
+assert_impact "im-service/im-message/im-message-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-service/im-message/im-message-server/src/main/resources/application.yml"
 
-# full 提前失败时仍生成派生证据，并保留最初的 Maven 退出码。
-cat > "$full_root/bin/mvn" <<'EOF'
-#!/usr/bin/env bash
-printf 'maven %s\n' "$*" >> "$FULL_FIXTURE_TRACE"
-if [[ "$*" == "--version" ]]; then
-  printf 'Apache Maven 3.8.4\n'
-elif [[ "$*" == "-q verify" ]]; then
-  exit 7
-fi
-EOF
-chmod +x "$full_root/bin/mvn"
-: > "$full_trace"
-set +e
-FULL_FIXTURE_TRACE="$full_trace" PATH="$full_root/bin:/usr/bin:/bin" \
-  "$full_root/scripts/verify.sh" full >/dev/null 2>&1
-full_failure_status=$?
-set -e
-if (( full_failure_status != 7 )); then
-  printf 'Full lifecycle must preserve the original gate exit code, got %d.\n' \
-    "$full_failure_status" >&2
-  exit 1
-fi
-if [[ "$(<"$full_trace")" != $'maven --version\ndrift\nharness-tests\nmaven -q verify\nreport\nhandoff' ]]; then
-  printf 'Failed full lifecycle did not run both evidence post-processors:\n%s\n' \
-    "$(<"$full_trace")" >&2
-  exit 1
-fi
+assert_impact "im-broker/im-broker-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-broker/im-broker-server/src/main/resources/application.yml"
+assert_impact "im-gateway/im-ws-gateway/im-ws-gateway-server,im-test/im-e2e-test,im-test/im-architecture-test" \
+  "im-gateway/im-ws-gateway/im-ws-gateway-server/src/main/resources/application-bolt-dev.yml"
 
-# full 原本通过但 report 失败时必须整体失败，并继续尝试生成 handoff。
-cat > "$full_root/bin/mvn" <<'EOF'
-#!/usr/bin/env bash
-printf 'maven %s\n' "$*" >> "$FULL_FIXTURE_TRACE"
-if [[ "$*" == "--version" ]]; then
-  printf 'Apache Maven 3.8.4\n'
-fi
-EOF
-chmod +x "$full_root/bin/mvn"
-: > "$full_trace"
-set +e
-FULL_REPORT_EXIT=9 FULL_FIXTURE_TRACE="$full_trace" PATH="$full_root/bin:/usr/bin:/bin" \
-  "$full_root/scripts/verify.sh" full >/dev/null 2>&1
-postprocess_failure_status=$?
-set -e
-if (( postprocess_failure_status != 9 )); then
-  printf 'Successful full with failed report must fail with report status, got %d.\n' \
-    "$postprocess_failure_status" >&2
-  exit 1
-fi
-if [[ "$(<"$full_trace")" != $'maven --version\ndrift\nharness-tests\nmaven -q verify\nreport\nhandoff' ]]; then
-  printf 'Report failure prevented handoff post-processing:\n%s\n' "$(<"$full_trace")" >&2
-  exit 1
-fi
-rm -rf "$full_root"
+/bin/bash "$ROOT_DIR/scripts/test-full-orchestration-harness.sh"
 
 # CI 必须用仓库版本 pin，并在验证前执行 readiness 与 clean。
 if (( $(rg -c --fixed-strings -- 'uses: actions/setup-node@v4' \
@@ -696,6 +653,25 @@ for ci_contract in 'node-version-file: .nvmrc' \
     exit 1
   fi
 done
+ruby -ryaml -e '
+  verify = YAML.load_file(ARGV.fetch(0))
+  gc = YAML.load_file(ARGV.fetch(1))
+  valid = lambda do |workflow|
+    workflow.fetch("jobs").values.all? do |job|
+      steps = job.fetch("steps")
+      install = steps.index { |step| step.fetch("run", "").include?("sudo apt-get install -y ripgrep") }
+      first_call = steps.index { |step| step.fetch("run", "").match?(/\.\/scripts\/(?:verify\.sh|harness-gc\.sh)/) }
+      install && first_call && install < first_call
+    end
+  end
+  abort "Each CI Harness job must install ripgrep before invoking rg-dependent scripts" unless
+    valid.call(verify) && valid.call(gc)
+  reordered = Marshal.load(Marshal.dump(verify))
+  steps = reordered.fetch("jobs").fetch("affected").fetch("steps")
+  install = steps.delete_at(steps.index { |step| step.fetch("run", "").include?("sudo apt-get install -y ripgrep") })
+  steps << install
+  abort "CI tool ordering fixture failed" if valid.call(reordered)
+' "$ROOT_DIR/.github/workflows/verify.yml" "$ROOT_DIR/.github/workflows/harness-gc.yml"
 e2e_ci_count="$(rg -c '^[[:space:]]+run: \./scripts/verify\.sh e2e$' \
   "$ROOT_DIR/.github/workflows/verify.yml" || true)"
 if (( ${e2e_ci_count:-0} != 1 )); then
@@ -732,8 +708,12 @@ write_fake_tool java 'openjdk version "21.0.10"'
 write_fake_tool mvn 'Apache Maven 3.8.4'
 write_fake_tool node 'v20.19.5'
 write_fake_tool npm '10.8.2'
-write_fake_tool ruby 'ruby 3.3.0'
-write_fake_tool git 'git version 2.50.0'
+# Ruby/Git 执行真实元数据路径；工具版本不再冒充解释器。
+printf ".harness/\n" > "$readiness_root/.gitignore"
+git -C "$readiness_root" init -q
+git -C "$readiness_root" add .
+git -C "$readiness_root" -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm init
+
 write_fake_tool rg 'ripgrep 14.1.0'
 
 if ! readiness_output="$(PATH="$readiness_root/bin:/usr/bin:/bin" \
@@ -792,7 +772,9 @@ EOF
 chmod +x "$clean_root/scripts/verify.sh" "$clean_root/scripts/check-drift.sh"
 touch "$clean_root/docs/exec-plans/active/README.md"
 git -C "$clean_root" init --quiet
-git -C "$clean_root" add scripts docs
+printf '.harness/\n' > "$clean_root/.gitignore"
+git -C "$clean_root" add scripts docs .gitignore
+git -C "$clean_root" -c user.name=Harness -c user.email=harness@example.invalid commit -qm 'Initialize clean fixture'
 cat > "$clean_root/src/NewSource.java" <<'EOF'
 final class NewSource {
 }
@@ -867,11 +849,10 @@ if [[ ! -f "$clean_root/.tmp-debug.log" ]]; then
   printf 'Clean mode must not delete temporary files automatically.\n' >&2
   exit 1
 fi
-rm -rf "$clean_root"
-
+# 复用隔离根的真实 public verify 入口，失败证据不得写入或删除调用仓库状态。
 # 即使验证模式失败，也必须留下 machine-readable evidence，供报告暴露失败状态。
-failure_output="$ROOT_DIR/.harness/verifications/unsupported.json"
-if "$ROOT_DIR/scripts/verify.sh" unsupported >/dev/null 2>&1; then
+failure_output="$clean_root/.harness/verifications/unsupported.json"
+if "$clean_root/scripts/verify.sh" unsupported >/dev/null 2>&1; then
   printf 'Unsupported verification mode should fail.\n' >&2
   exit 1
 fi
@@ -887,7 +868,7 @@ for evidence_field in '"command":"./scripts/verify.sh unsupported"' \
     exit 1
   fi
 done
-rm -f "$failure_output"
+rm -rf "$clean_root"
 
 # 用 fake Maven 验证 e2e 模式保留可查询日志、测试数和固定 workload 标识。
 e2e_root="$(mktemp -d)"
@@ -906,6 +887,10 @@ XML
 fi
 EOF
 chmod +x "$e2e_root/bin/mvn"
+printf '.harness/\n**/target/\n' > "$e2e_root/.gitignore"
+git -C "$e2e_root" init --quiet
+git -C "$e2e_root" add scripts bin .gitignore
+git -C "$e2e_root" -c user.name=Harness -c user.email=harness@example.invalid commit -qm 'Initialize E2E fixture'
 if ! E2E_FIXTURE_ROOT="$e2e_root" PATH="$e2e_root/bin:$PATH" \
     "$e2e_root/scripts/verify.sh" e2e >/dev/null 2>&1; then
   printf 'E2E verification fixture should pass with one generated test report.\n' >&2
@@ -953,7 +938,8 @@ touch "$fixture_root/AGENTS.md" \
   "$fixture_root/docs/PLANS.md" \
   "$fixture_root/docs/exec-plans/active/README.md" \
   "$fixture_root/docs/exec-plans/completed/README.md" \
-  "$fixture_root/docs/references/HARNESS_GUIDE.md"
+  "$fixture_root/docs/references/HARNESS_GUIDE.md" \
+  "$fixture_root/docs/references/HARNESS_RULE_MATRIX.md"
 cat > "$fixture_root/scripts/check-drift.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
@@ -991,6 +977,17 @@ EOF
 cat > "$fixture_root/.harness/verifications/load-test-capacity.json" <<'EOF'
 {"mode":"load-test-capacity","command":"fixture","status":"passed","headRevision":"fixture-head","worktreeFingerprint":"fixture-fingerprint","worktreeStable":true,"batchId":"cap001","configDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","loadTestScopeFingerprint":"fixture-load-scope","loadTestScopeStable":true,"cleanupStatus":"passed","ordinaryDataUnchanged":true,"resolvedConfig":{},"perRoundDecisions":[{"kind":"connection","decision":{"status":"stable","reasons":[]}},{"kind":"message","decision":{"status":"skipped","reasons":["no_stable_message_tier"]}}]}
 EOF
+cat > "$fixture_root/.harness/verifications/routing-capacity.json" <<'EOF'
+{"mode":"routing-capacity","command":"fixture","status":"passed","headRevision":"fixture-head","worktreeFingerprint":"fixture-fingerprint","worktreeStable":true,"evidenceKind":"routing-capacity","topologyId":"three-voter","configDigest":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","loadTestScopeFingerprint":"fixture-load-scope","loadTestScopeStable":true,"cleanupStatus":"passed","ordinaryDataUnchanged":true,"phaseCount":5,"repetitionCount":3,"workloadCount":30,"qualificationStatus":"failed","statusCounts":{"stable":29,"service_failed":1,"uncertain":0},"resultsPath":".harness/routing-capacity/runs.jsonl"}
+EOF
+mkdir -p "$fixture_root/.harness/routing-capacity/evidence/three-voter"
+cat > "$fixture_root/.harness/routing-capacity/evidence/three-voter/evidence.json" <<'EOF'
+{"worktreeStable":true,"topologyId":"three-voter","configDigest":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","loadTestScopeFingerprint":"fixture-load-scope","loadTestScopeStable":true,"cleanupStatus":"passed","ordinaryDataUnchanged":true,"phaseCount":5,"repetitionCount":3,"workloadCount":30,"qualificationStatus":"failed","statusCounts":{"stable":29,"service_failed":1,"uncertain":0},"resultsPath":".harness/routing-capacity/evidence/three-voter/runs.jsonl"}
+EOF
+mkdir -p "$fixture_root/.harness/routing-capacity/evidence/five-voter"
+cat > "$fixture_root/.harness/routing-capacity/evidence/five-voter/evidence.json" <<'EOF'
+{"worktreeStable":true,"topologyId":"five-voter","configDigest":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","loadTestScopeFingerprint":"fixture-load-scope","loadTestScopeStable":true,"cleanupStatus":"passed","ordinaryDataUnchanged":true,"phaseCount":5,"repetitionCount":3,"workloadCount":30,"qualificationStatus":"passed","statusCounts":{"stable":30,"service_failed":0,"uncertain":0},"resultsPath":".harness/routing-capacity/evidence/five-voter/runs.jsonl"}
+EOF
 printf 'e2e fixture log\n' > "$fixture_root/.harness/runtime/e2e.log"
 cat > "$fixture_root/module/target/surefire-reports/TEST-current.xml" <<'EOF'
 <testsuite tests="4" failures="0" errors="0" skipped="1"/>
@@ -1006,6 +1003,7 @@ HARNESS_ROOT_DIR="$fixture_root" \
 HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
 HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
   HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+  HARNESS_CURRENT_ROUTING_CAPACITY_CONFIG_DIGEST="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/report.json" >/dev/null
 report="$fixture_root/.harness/report.json"
@@ -1015,20 +1013,49 @@ rg -q '"tests": \{"status": "current", "total": 4, "failures": 0, "errors": 0, "
 rg -q '"openTechnicalDebt": 1' "$report"
 rg -q '"falsePositives": 1' "$report"
 rg -q '"flakyTests": 0' "$report"
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   report = JSON.parse(File.read(ARGV.fetch(0)))
   exit(report.key?("sensorCoverage") && report["sensorCoverage"] == report["score"] ? 0 : 1)
 ' "$report"; then
   printf 'Harness report must expose sensorCoverage without changing the compatibility score.\n' >&2
   exit 1
 fi
-if ! ruby -rjson -e '
+if ! rg -Fq '"docs/references/HARNESS_RULE_MATRIX.md"' "$report"; then
+  printf 'Harness report must include the rule registry in Instruction evidence.\n' >&2
+  exit 1
+fi
+rm "$fixture_root/docs/references/HARNESS_RULE_MATRIX.md"
+HARNESS_ROOT_DIR="$fixture_root" \
+  HARNESS_CURRENT_HEAD="fixture-head" \
+  HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+  HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
+  HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+  HARNESS_CURRENT_ROUTING_CAPACITY_CONFIG_DIGEST="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" \
+  "$fixture_root/scripts/harness-report.sh" \
+  "$fixture_root/.harness/missing-rules-report.json" >/dev/null
+if ! ruby -E UTF-8 -rjson -e '
+  report = JSON.parse(File.read(ARGV.fetch(0)))
+  exit(report.dig("subsystems", "instruction", "status") == "missing" &&
+    report["availableSensors"] < report["totalSensors"] ? 0 : 1)
+' "$fixture_root/.harness/missing-rules-report.json"; then
+  printf 'Missing rule registry must reduce Instruction coverage.\n' >&2
+  exit 1
+fi
+touch "$fixture_root/docs/references/HARNESS_RULE_MATRIX.md"
+if ! ruby -E UTF-8 -rjson -e '
   load_test = JSON.parse(File.read(ARGV.fetch(0))).dig("runtimeEvidence", "loadTest")
+  routing_capacity = JSON.parse(File.read(ARGV.fetch(0))).dig("runtimeEvidence", "routingCapacity")
   smoke = load_test&.fetch("smoke")
   capacity = load_test&.fetch("capacity")
   exit(smoke&.dig("status") == "verified" && smoke["batchId"] == "smk001" &&
     smoke["cleanupStatus"] == "passed" && smoke["ordinaryDataUnchanged"] == true &&
-    smoke.fetch("perRoundDecisions").size == 2 && capacity&.dig("status") == "verified" ? 0 : 1)
+    smoke.fetch("perRoundDecisions").size == 2 && capacity&.dig("status") == "verified" &&
+    routing_capacity&.dig("status") == "verified" && routing_capacity["workloadCount"] == 30 &&
+    routing_capacity["qualificationStatus"] == "failed" &&
+    routing_capacity.dig("statusCounts", "service_failed") == 1 &&
+    routing_capacity.fetch("candidates").map { |candidate| candidate["topologyId"] }.sort ==
+      %w[five-voter three-voter] &&
+    routing_capacity.fetch("candidates").all? { |candidate| candidate["status"] == "verified" } ? 0 : 1)
 ' "$report"; then
   printf 'Harness report must validate smoke and formal capacity evidence separately.\n' >&2
   exit 1
@@ -1041,7 +1068,7 @@ HARNESS_ROOT_DIR="$fixture_root" \
   HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/config-stale-report.json" >/dev/null
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   smoke = JSON.parse(File.read(ARGV.fetch(0))).dig("runtimeEvidence", "loadTest", "smoke")
   exit(smoke["status"] == "stale" && smoke["freshness"] == "stale" &&
     smoke["configFresh"] == false ? 0 : 1)
@@ -1059,7 +1086,7 @@ rg -Fq '"externalHarnessAdaptation": {' "$report"
 rg -Fq '"status": "equivalent", "capability": "task runner"' "$report"
 rg -Fq '"status": "implemented", "capability": "root PROGRESS.md"' "$report"
 rg -Fq '"status": "deferred", "capability": "automatic agent loop"' "$report"
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   e2e = JSON.parse(File.read(ARGV.fetch(0))).dig("runtimeEvidence", "e2e")
   expected = {"status" => "verified", "freshness" => "fresh",
     "logPath" => ".harness/runtime/e2e.log", "logAvailable" => true, "testCount" => 1,
@@ -1079,7 +1106,7 @@ HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
   HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/missing-log-report.json" >/dev/null
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   e2e = JSON.parse(File.read(ARGV.fetch(0))).dig("runtimeEvidence", "e2e")
   exit(e2e["status"] == "degraded" && e2e["logAvailable"] == false ? 0 : 1)
 ' "$fixture_root/.harness/missing-log-report.json"; then
@@ -1099,7 +1126,7 @@ HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="changed-load-scope" \
   HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/stale-report.json" >/dev/null
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   exit(JSON.parse(File.read(ARGV.fetch(0)))["status"] == "stale" ? 0 : 1)
 ' "$fixture_root/.harness/stale-report.json"; then
   printf 'Harness report must become stale when the worktree fingerprint changes.\n' >&2
@@ -1114,6 +1141,31 @@ if ! rg -Fq '"environment": {"status": "stale"' "$fixture_root/.harness/stale-re
   exit 1
 fi
 
+# 其他证据全部有效时，fresh full 未完成或未知状态仍不能聚合为 passed。
+for full_status in passed incomplete partial unknown; do
+  ruby -E UTF-8 -rjson -e '
+    path, status = ARGV
+    record = JSON.parse(File.read(path)); record["status"] = status
+    File.write(path, JSON.generate(record))
+  ' "$fixture_root/.harness/verifications/full.json" "$full_status"
+  HARNESS_ROOT_DIR="$fixture_root" \
+    HARNESS_CURRENT_HEAD="fixture-head" \
+    HARNESS_CURRENT_WORKTREE_FINGERPRINT="fixture-fingerprint" \
+    HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
+    HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+    HARNESS_CURRENT_ROUTING_CAPACITY_CONFIG_DIGEST="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" \
+    "$fixture_root/scripts/harness-report.sh" "$fixture_root/.harness/full-status-report.json" >/dev/null
+  ruby -E UTF-8 -rjson -e '
+    report = JSON.parse(File.read(ARGV[0]))
+    expected = ARGV[1] == "passed" ? "passed" : "incomplete"
+    abort "fresh full #{ARGV[1]} aggregated as #{report["status"]}, expected #{expected}" unless report["status"] == expected
+    %w[smoke capacity].each do |kind|
+      abort "load evidence must remain valid" unless report.dig("runtimeEvidence", "loadTest", kind, "status") == "verified"
+    end
+    abort "routing capacity must remain valid" unless report.dig("runtimeEvidence", "routingCapacity", "status") == "verified"
+  ' "$fixture_root/.harness/full-status-report.json" "$full_status"
+done
+
 # 升级前没有 fingerprint 的旧证据同样不能支撑当前 worktree 为 passed。
 cat > "$fixture_root/.harness/verifications/full.json" <<EOF
 {"mode":"full","status":"passed","durationSeconds":12,"startedAtEpoch":$full_started_at,"finishedAt":"2026-01-01T00:02:00Z"}
@@ -1125,7 +1177,7 @@ HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
   HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/unavailable-report.json" >/dev/null
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   exit(JSON.parse(File.read(ARGV.fetch(0)))["status"] == "stale" ? 0 : 1)
 ' "$fixture_root/.harness/unavailable-report.json"; then
   printf 'Harness report must be stale when full evidence has no fingerprint.\n' >&2
@@ -1141,7 +1193,7 @@ HARNESS_CURRENT_LOAD_TEST_SCOPE_FINGERPRINT="fixture-load-scope" \
   HARNESS_CURRENT_LOAD_TEST_CONFIG_DIGEST="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
   "$fixture_root/scripts/harness-report.sh" \
   "$fixture_root/.harness/incomplete-report.json" >/dev/null
-if ! ruby -rjson -e '
+if ! ruby -E UTF-8 -rjson -e '
   report = JSON.parse(File.read(ARGV.fetch(0)))
   exit(report["status"] == "incomplete" && report.dig("tests", "status") == "unknown" ? 0 : 1)
 ' "$fixture_root/.harness/incomplete-report.json"; then

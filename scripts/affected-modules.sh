@@ -40,11 +40,23 @@ add_module() {
   [[ " ${modules[*]-} " == *" $module "* ]] || modules+=("$module")
 }
 
+# 按路径保守并集，不解析配置内容；认证工厂变化同时带入四个真实消费方 startup、
+# Broker/Gateway behavior 与 E2E 所属模块，Gossip 同理带入 Broker；IAM/CLI/Ops 变化带入管理旅程 E2E。
+# 已有 affected -am test 执行这些模块的测试，不创建新 mode，也不代表独立风险入口或 full 已经通过。
 while IFS= read -r file; do
   case "$file" in
     im-plugin/im-mq/*) add_module "im-plugin/im-mq-kafka" ;;
     im-plugin/im-bolt/*)
       add_module "im-plugin/im-bolt"
+      add_module "im-broker/im-broker-server"
+      add_module "im-gateway/im-ws-gateway/im-ws-gateway-server"
+      add_module "im-service/im-account/im-account-server"
+      add_module "im-service/im-message/im-message-server"
+      add_module "im-test/im-e2e-test"
+      ;;
+    im-plugin/im-gossip/*)
+      add_module "im-plugin/im-gossip"
+      add_module "im-broker/im-broker-server"
       add_module "im-test/im-e2e-test"
       ;;
     im-plugin/*/*) add_module "$(cut -d/ -f1-2 <<< "$file")" ;;
@@ -69,15 +81,31 @@ while IFS= read -r file; do
       add_module "im-test/im-e2e-test"
       ;;
     im-management/im-admin/*) add_module "im-management/im-admin" ;;
-    im-management/im-monitor/*) add_module "im-management/im-monitor" ;;
+    im-management/im-ops/im-ops-server/*)
+      add_module "im-management/im-ops/im-ops-server"
+      add_module "im-test/im-e2e-test"
+      ;;
+    im-management/im-ops/im-ops-cli/*)
+      add_module "im-management/im-ops/im-ops-cli"
+      add_module "im-test/im-e2e-test"
+      ;;
+    im-management/im-ops/*)
+      add_module "im-management/im-ops/im-ops-server"
+      add_module "im-management/im-ops/im-ops-cli"
+      add_module "im-test/im-e2e-test"
+      ;;
     im-management/im-iam/im-iam-sdk/*)
       add_module "im-management/im-iam/im-iam-sdk"
       add_module "im-management/im-iam/im-iam-server"
       add_module "im-management/im-admin"
-      add_module "im-management/im-monitor"
+      add_module "im-management/im-ops/im-ops-server"
       add_module "im-management/im-audit/im-audit-server"
+      add_module "im-test/im-e2e-test"
       ;;
-    im-management/im-iam/im-iam-server/*) add_module "im-management/im-iam/im-iam-server" ;;
+    im-management/im-iam/im-iam-server/*)
+      add_module "im-management/im-iam/im-iam-server"
+      add_module "im-test/im-e2e-test"
+      ;;
     im-management/im-audit/im-audit-sdk/*)
       add_module "im-management/im-audit/im-audit-sdk"
       add_module "im-management/im-audit/im-audit-server"
@@ -90,7 +118,8 @@ while IFS= read -r file; do
     im-management/*)
       add_module "im-management/im-iam/im-iam-server"
       add_module "im-management/im-admin"
-      add_module "im-management/im-monitor"
+      add_module "im-management/im-ops/im-ops-server"
+      add_module "im-management/im-ops/im-ops-cli"
       add_module "im-management/im-audit/im-audit-server"
       ;;
     im-service/im-account/im-account-admin-facade/*)
@@ -103,9 +132,14 @@ while IFS= read -r file; do
       add_module "$service/$(basename "$service")-facade"
       add_module "$service/$(basename "$service")-server"
       ;;
+    im-service/im-account/im-account-server/*|im-service/im-message/im-message-server/*)
+      add_module "$(cut -d/ -f1-3 <<< "$file")"
+      add_module "im-test/im-e2e-test"
+      ;;
     im-service/*/*-server/*) add_module "$(cut -d/ -f1-3 <<< "$file")" ;;
     im-test/im-architecture-test/*) add_module "im-test/im-architecture-test" ;;
     im-test/im-e2e-test/*) add_module "im-test/im-e2e-test" ;;
+    im-test/im-routing-ha/*) add_module "im-test/im-routing-ha" ;;
     im-test/im-load-test/*) add_module "im-test/im-load-test" ;;
   esac
 done <<< "$changed_files"

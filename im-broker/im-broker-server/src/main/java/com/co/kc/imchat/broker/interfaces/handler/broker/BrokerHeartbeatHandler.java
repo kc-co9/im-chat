@@ -1,11 +1,11 @@
 package com.co.kc.imchat.broker.interfaces.handler.broker;
 
+import com.co.kc.imchat.broker.model.cqrs.event.BrokerHeartbeatEvent;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
-import com.co.kc.imchat.broker.domain.registry.broker.BrokerRegistry;
+import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerHeartbeatParams;
-import com.co.kc.imchat.broker.support.event.model.BrokerHeartbeatEvent;
-import com.co.kc.imchat.broker.support.event.publisher.BrokerEventPublisher;
+import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import org.springframework.stereotype.Component;
 
 /**
@@ -16,10 +16,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class BrokerHeartbeatHandler extends AbstractBrokerRpcHandler<BrokerHeartbeatParams, Void> {
     private final BrokerRegistry brokerRegistry;
-    private final BrokerEventPublisher brokerEventPublisher;
+    private final DomainEventPublisher brokerEventPublisher;
 
     public BrokerHeartbeatHandler(BrokerRegistry brokerRegistry,
-                                  BrokerEventPublisher brokerEventPublisher) {
+                                  DomainEventPublisher brokerEventPublisher) {
         super(BrokerBoltOperation.HEARTBEAT_BROKER);
         this.brokerRegistry = brokerRegistry;
         this.brokerEventPublisher = brokerEventPublisher;

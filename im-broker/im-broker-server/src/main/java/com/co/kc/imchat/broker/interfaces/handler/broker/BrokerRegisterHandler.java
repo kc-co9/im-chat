@@ -1,11 +1,11 @@
 package com.co.kc.imchat.broker.interfaces.handler.broker;
 
+import com.co.kc.imchat.broker.model.cqrs.event.BrokerRegisteredEvent;
 import com.co.kc.imchat.broker.interfaces.handler.AbstractBrokerRpcHandler;
-import com.co.kc.imchat.broker.domain.registry.broker.BrokerRegistry;
+import com.co.kc.imchat.broker.domain.cluster.repository.BrokerRegistry;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerRegisterParams;
-import com.co.kc.imchat.broker.support.event.model.BrokerRegisteredEvent;
-import com.co.kc.imchat.broker.support.event.publisher.BrokerEventPublisher;
+import com.co.kc.imchat.common.domain.shared.event.DomainEventPublisher;
 import org.springframework.stereotype.Component;
 
 /**
@@ -16,10 +16,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class BrokerRegisterHandler extends AbstractBrokerRpcHandler<BrokerRegisterParams, Void> {
     private final BrokerRegistry brokerRegistry;
-    private final BrokerEventPublisher brokerEventPublisher;
+    private final DomainEventPublisher brokerEventPublisher;
 
     public BrokerRegisterHandler(BrokerRegistry brokerRegistry,
-                                 BrokerEventPublisher brokerEventPublisher) {
+                                 DomainEventPublisher brokerEventPublisher) {
         super(BrokerBoltOperation.REGISTER_BROKER);
         this.brokerRegistry = brokerRegistry;
         this.brokerEventPublisher = brokerEventPublisher;
@@ -28,7 +28,8 @@ public class BrokerRegisterHandler extends AbstractBrokerRpcHandler<BrokerRegist
     @Override
     protected Void process(BrokerRegisterParams params) {
         brokerRegistry.register(params.brokerId(), params.host(), params.port());
-        brokerEventPublisher.publish(new BrokerRegisteredEvent(params.brokerId(), params.host(), params.port()));
+        brokerEventPublisher.publish(
+                new BrokerRegisteredEvent(params.brokerId(), params.host(), params.port()));
         return null;
     }
 }

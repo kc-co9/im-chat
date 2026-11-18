@@ -1,11 +1,19 @@
 package com.co.kc.imchat.broker.support.monitoring;
 
-import com.co.kc.imchat.broker.config.properties.BrokerProperties;
-import com.co.kc.imchat.broker.config.properties.ClusterProperties;
-import com.co.kc.imchat.broker.domain.registry.broker.memory.InMemoryBrokerRegistry;
-import com.co.kc.imchat.broker.domain.registry.connection.memory.InMemoryConnectionRegistry;
-import com.co.kc.imchat.broker.domain.registry.gateway.memory.InMemoryGatewayRegistry;
-import com.co.kc.imchat.broker.domain.store.BrokerStateStore;
+import com.co.kc.imchat.broker.domain.connection.model.ConnectionRegistration;
+import com.co.kc.imchat.broker.domain.connection.model.ConnectionRouteId;
+import com.co.kc.imchat.broker.domain.connection.model.RouteRevision;
+import java.time.Instant;
+
+import com.co.kc.imchat.common.domain.user.model.UserId;
+import com.co.kc.imchat.broker.domain.connection.model.GatewayId;
+
+import com.co.kc.imchat.broker.infrastructure.config.properties.BrokerProperties;
+import com.co.kc.imchat.broker.infrastructure.config.properties.ClusterProperties;
+import com.co.kc.imchat.broker.infrastructure.domain.cluster.InMemoryBrokerRegistry;
+import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryConnectionRegistry;
+import com.co.kc.imchat.broker.infrastructure.domain.connection.InMemoryGatewayRegistry;
+import com.co.kc.imchat.broker.adapter.gossip.BrokerGossipAdapter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -19,10 +27,10 @@ class BrokerMetricsTest {
     void exposesBrokerConnectionAndGossipState() {
         InMemoryBrokerRegistry brokers = new InMemoryBrokerRegistry();
         InMemoryConnectionRegistry connections = new InMemoryConnectionRegistry();
-        BrokerStateStore stateStore = new BrokerStateStore(brokers, new InMemoryGatewayRegistry(), connections,
+        BrokerGossipAdapter stateStore = new BrokerGossipAdapter(brokers, new InMemoryGatewayRegistry(), connections,
                 new BrokerProperties(), new ClusterProperties());
         brokers.register("broker-1", "127.0.0.1", 12200);
-        connections.register(1L, "gateway-1");
+        connections.register(ConnectionRegistration.active(new ConnectionRouteId(new UserId(1L), new GatewayId("gateway-1")), new RouteRevision(0L), Instant.MAX));
         stateStore.putConnectionState(1L, "gateway-1");
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
 

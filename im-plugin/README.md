@@ -10,6 +10,7 @@
 | `im-dubbo` | Dubbo + Nacos Registry 自动配置和 Provider 异常隔离 |
 | `im-excel` | 基于 Apache Fesod 的通用流式 Excel 导出能力 |
 | `im-gossip` | digest/delta 最终一致性同步算法 |
+| `im-raft` | SOFAJRaft 节点生命周期、日志提交、ReadIndex、成员配置与快照机制 |
 | `im-identity` | Redis 租约驱动的 Snowflake 机器 ID 动态分配 |
 | `im-lock` | Redisson 分布式锁和注解切面 |
 | `im-metrics` | 声明式方法指标、Actuator 和 Prometheus registry |

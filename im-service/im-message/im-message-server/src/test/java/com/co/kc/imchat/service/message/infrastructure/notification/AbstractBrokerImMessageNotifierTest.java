@@ -74,7 +74,7 @@ class AbstractBrokerImMessageNotifierTest {
         }
 
         @Override
-        public BrokerFrameWriteResult notify(Long receiverId, FrameResponse frame) {
+        public BrokerFrameWriteResult notify(String deliveryId, Long receiverId, FrameResponse frame) {
             return result;
         }
     }

@@ -13,6 +13,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class IamSchemaTest {
 
     @Test
+    void persistsExplicitClientTypeAndNullableSecretWithoutChangingExistingDefault() throws IOException {
+        assertThat(ddl())
+                .containsPattern("`client_type`\\s+VARCHAR\\(32\\)\\s+NOT NULL DEFAULT 'CONFIDENTIAL'")
+                .containsPattern("`client_secret_hash`\\s+VARCHAR\\(255\\)\\s+NULL");
+    }
+
+    @Test
     void declaresEveryIamOwnedTableWithoutDestructiveStatements() throws IOException {
         String ddl = ddl();
 

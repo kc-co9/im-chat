@@ -1,5 +1,10 @@
 package com.co.kc.imchat.broker.sdk.model.params;
 
+import com.co.kc.imchat.broker.sdk.access.GatewayRouteRequest;
+
+import com.co.kc.imchat.broker.sdk.routing.RoutableBrokerRequest;
+import com.co.kc.imchat.broker.sdk.routing.RouteRequestContext;
+
 import java.io.Serializable;
 
 /**
@@ -7,6 +12,20 @@ import java.io.Serializable;
  *
  * @param userId    连接归属用户 ID
  * @param gatewayId 用户所在 WS 网关实例 ID
+ * @param routeRevision 当前 Gateway 进程内的连接路由修订号
  */
-public record ConnectionRegisterParams(Long userId, String gatewayId) implements Serializable {
+public record ConnectionRegisterParams(Long userId,
+                                       String gatewayId,
+                                       long routeRevision,
+                                       RouteRequestContext routeContext)
+        implements Serializable, RoutableBrokerRequest<ConnectionRegisterParams>, GatewayRouteRequest {
+
+    public ConnectionRegisterParams(Long userId, String gatewayId, long routeRevision) {
+        this(userId, gatewayId, routeRevision, null);
+    }
+
+    @Override
+    public ConnectionRegisterParams withRouteContext(RouteRequestContext context) {
+        return new ConnectionRegisterParams(userId, gatewayId, routeRevision, context);
+    }
 }

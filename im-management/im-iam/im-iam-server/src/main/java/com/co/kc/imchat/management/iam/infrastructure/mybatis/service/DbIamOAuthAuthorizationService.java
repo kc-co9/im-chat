@@ -20,6 +20,12 @@ public class DbIamOAuthAuthorizationService
         extends BaseMybatisService<DbIamOAuthAuthorizationMapper, DbIamOAuthAuthorization> {
     private static final String ID_TOKEN = "id_token";
 
+    /** 调用方事务持有行锁直至提交；缺行时由唯一索引与插入事务裁决竞争。 */
+    public Optional<DbIamOAuthAuthorization> getForUpdate(String authorizationId) {
+        return Optional.ofNullable(baseMapper.selectOne(getQueryWrapper()
+                .eq(DbIamOAuthAuthorization::getAuthorizationId, authorizationId).last("FOR UPDATE")));
+    }
+
     public Optional<DbIamOAuthAuthorization> getByAuthorizationId(String authorizationId) {
         return getFirst(getQueryWrapper().eq(DbIamOAuthAuthorization::getAuthorizationId, authorizationId));
     }
@@ -56,6 +62,7 @@ public class DbIamOAuthAuthorizationService
         authorization.setStatus(DbIamOAuthAuthorizationStatus.REVOKED);
         authorization.setRevokedAt(revokedAt);
         update(authorization, getUpdateWrapper()
+                .setIncrBy(DbIamOAuthAuthorization::getVersion, 1)
                 .eq(DbIamOAuthAuthorization::getAuthorizationId, authorizationId)
                 .eq(DbIamOAuthAuthorization::getStatus, DbIamOAuthAuthorizationStatus.ACTIVE));
     }

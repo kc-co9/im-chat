@@ -31,6 +31,6 @@ class SessionConnectionAdapterTest {
         ConnectionCloseParams params = new ConnectionCloseParams(42L, "session-old");
         adapter.closeConnections(new UserId(42L), new SessionVersion("session-old"));
 
-        verify(brokerClient).closeConnections(params);
+        verify(brokerClient).closeConnections("session-close:42:session-old", params);
     }
 }

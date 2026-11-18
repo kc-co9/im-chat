@@ -25,7 +25,7 @@ Admin 权限目录仅包括普通用户查询、更新、密码重置、封禁/�
 
 四个管理端使用一致的 Element Plus 高密度运维控制台：页面只展示本应用拥有的功能。
 “其他控制台”链接由各 UI 的 `src/config/consoleLinks.ts` 管理，本地默认地址可分别通过
-`VITE_IAM_CONSOLE_URL`、`VITE_AUDIT_CONSOLE_URL`、`VITE_MONITOR_CONSOLE_URL` 和
+`VITE_IAM_CONSOLE_URL`、`VITE_AUDIT_CONSOLE_URL`、`VITE_OPS_CONSOLE_URL` 和
 `VITE_ADMIN_CONSOLE_URL` 在构建时覆盖。创建、编辑和详情使用右侧抽屉，危险操作必须显式确认，
 刷新失败时保留最近一次成功数据。
 Admin 本地服务默认运行在 `http://localhost:18042`，Actuator 使用 `19042`。

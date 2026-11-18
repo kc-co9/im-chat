@@ -1,5 +1,7 @@
 package com.co.kc.imchat.management.iam.model.cqrs.command;
 
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientType;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthGrantType;
 
@@ -11,6 +13,7 @@ public record OAuthClientRegisterCmd(
         Long audienceAppId,
         String name,
         String clientId,
+        OAuthClientType clientType,
         String clientSecret,
         Set<OAuthGrantType> grantTypes,
         Set<String> scopes,
@@ -18,11 +21,16 @@ public record OAuthClientRegisterCmd(
         Set<String> postLogoutRedirectUris
 ) {
     public OAuthClientRegisterCmd {
+        clientType = clientType == null ? OAuthClientType.CONFIDENTIAL : clientType;
         AssertUtils.argNotBlank("appKey must not be blank", appKey);
         AssertUtils.argNotNull("audienceAppId must not be null", audienceAppId);
         AssertUtils.argNotBlank("oauth client name must not be blank", name);
         AssertUtils.argNotBlank("clientId must not be blank", clientId);
-        AssertUtils.argNotBlank("client secret must not be blank", clientSecret);
+        if (clientType == OAuthClientType.CONFIDENTIAL) {
+            AssertUtils.argNotBlank("client secret must not be blank", clientSecret);
+        } else {
+            AssertUtils.argTrue("public client must not have secret", clientSecret == null);
+        }
         AssertUtils.argNotEmpty("oauth client grant types must not be empty", grantTypes);
         AssertUtils.argNotEmpty("oauth client scopes must not be empty", scopes);
         AssertUtils.allArgNotNull(

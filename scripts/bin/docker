@@ -1,0 +1,5 @@
+#!/usr/bin/ruby
+# 仅固定v2来源解析；不观察插件，不改变HA/deploy参数或Docker语义。
+require_relative '../lib/harness-reactor-evidence'
+root = File.realpath(File.join(__dir__, '../..'))
+exec ReactorEvidence.new(root).approved_local_tool('docker'), *ARGV

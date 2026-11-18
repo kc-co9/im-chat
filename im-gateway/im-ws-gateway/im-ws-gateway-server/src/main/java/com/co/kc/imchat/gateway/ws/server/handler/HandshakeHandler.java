@@ -1,7 +1,6 @@
 package com.co.kc.imchat.gateway.ws.server.handler;
 
 import com.co.kc.imchat.broker.sdk.model.params.ConnectionRegisterParams;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionUnregisterParams;
 import com.co.kc.imchat.common.constant.HttpHeaderConstants;
 import com.co.kc.imchat.broker.sdk.BrokerClient;
 import com.co.kc.imchat.gateway.ws.server.context.ContextAttributes;
@@ -103,18 +102,22 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
             WsPrincipal principal
     ) {
         String connectionId = UUID.randomUUID().toString();
+        long routeRevision = connectionRegistry.register(
+                principal.userId(), principal.sessionVersion(), connectionId, context.channel());
         try {
-            brokerClient.registerConnection(new ConnectionRegisterParams(principal.userId(), gatewayId));
+            brokerClient.registerConnection(new ConnectionRegisterParams(
+                    principal.userId(), gatewayId, routeRevision));
         } catch (RuntimeException ex) {
+            rollbackConnectionRegistration(connectionId);
             reject(context, request, HttpResponseStatus.SERVICE_UNAVAILABLE);
             return;
         }
-        bindConnection(context, principal, connectionId);
+        bindConnectionIdentity(context, principal, connectionId);
         request.setUri(path);
         context.fireChannelRead(request);
     }
 
-    private void bindConnection(
+    private void bindConnectionIdentity(
             ChannelHandlerContext context,
             WsPrincipal principal,
             String connectionId
@@ -122,31 +125,19 @@ public class HandshakeHandler extends ChannelInboundHandlerAdapter {
         context.channel().attr(ContextAttributes.PRINCIPAL).set(principal);
         context.channel().attr(ContextAttributes.SESSION_VERSION).set(principal.sessionVersion());
         context.channel().attr(ContextAttributes.CONNECTION_ID).set(connectionId);
-        connectionRegistry.register(
-                principal.userId(), principal.sessionVersion(), connectionId, context.channel());
+    }
+
+    private void rollbackConnectionRegistration(String connectionId) {
+        connectionRegistry.unregister(connectionId);
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext context) throws Exception {
-        WsPrincipal principal = context.channel().attr(ContextAttributes.PRINCIPAL).get();
         String connectionId = context.channel().attr(ContextAttributes.CONNECTION_ID).get();
-        if (principal != null && connectionId != null) {
-            unregisterConnection(principal, connectionId);
+        if (connectionId != null) {
+            connectionRegistry.unregister(connectionId);
         }
         super.channelInactive(context);
-    }
-
-    private void unregisterConnection(WsPrincipal principal, String connectionId) {
-        if (!connectionRegistry.unregister(connectionId)) {
-            return;
-        }
-        try {
-            brokerClient.unregisterConnection(
-                    new ConnectionUnregisterParams(principal.userId(), gatewayId));
-        } catch (RuntimeException exception) {
-            log.warn("failed to unregister ws connection from broker, gatewayId:{}, connectionId:{}, error:{}",
-                    gatewayId, connectionId, exception.toString());
-        }
     }
 
     /**

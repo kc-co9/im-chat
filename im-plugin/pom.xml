@@ -24,6 +24,7 @@
         <module>im-bolt</module>
         <module>im-mq-kafka</module>
         <module>im-gossip</module>
+        <module>im-raft</module>
         <module>im-nacos</module>
     </modules>
 </project>

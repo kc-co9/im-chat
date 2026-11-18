@@ -41,6 +41,7 @@
 !im-management/im-admin/
 !im-management/im-admin/target/
 !im-management/im-admin/target/*-exec.jar
-!im-management/im-monitor/
-!im-management/im-monitor/target/
-!im-management/im-monitor/target/*-exec.jar
+!im-management/im-ops/
+!im-management/im-ops/im-ops-server/
+!im-management/im-ops/im-ops-server/target/
+!im-management/im-ops/im-ops-server/target/*-exec.jar

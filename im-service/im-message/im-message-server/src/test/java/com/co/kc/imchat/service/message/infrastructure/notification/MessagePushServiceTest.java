@@ -6,6 +6,7 @@ import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
 import com.co.kc.imchat.common.model.io.FrameResponse;
 import com.co.kc.imchat.common.model.enums.FrameType;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.service.message.support.BrokerClientTestSupport;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +22,7 @@ class MessagePushServiceTest {
         MessagePushService service = new MessagePushService(BrokerClientTestSupport.client(
                 new StubBoltInvoker(BrokerFrameWriteResult.writeResult(1L, List.of("conn-1"), List.of()))));
 
-        BrokerFrameWriteResult response = service.push(1L,
+        BrokerFrameWriteResult response = service.push("receipt-1", 1L,
                 new FrameResponse("1", FrameType.PUSH, "message.private.sent", null, "trace",
                         null, null, Map.of("eventId", "event-1", "receiptId", "receipt-1")));
 
@@ -32,11 +33,17 @@ class MessagePushServiceTest {
     private record StubBoltInvoker(BrokerFrameWriteResult response) implements BoltInvoker {
         @Override
         @SuppressWarnings("unchecked")
-        public <T, R> R invoke(String address, String service, String operation, T request,
-                               Class<R> responseType, int timeoutMillis) {
+        public <T, R> R invoke(BoltTarget target, String service, String operation,
+                               T request, Class<R> responseType, int timeoutMillis) {
+            assertEquals(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/broker-test"), target);
+
+            String address = target.address();
+
             BrokerFrameWriteParams params = (BrokerFrameWriteParams) request;
+            assertEquals("receipt-1", params.routeContext().operationId());
             return (R) BrokerFrameWriteResult.writeResult(params.userId(), response.acceptedConnectionIds(),
                     response.failedConnectionIds());
         }
+
     }
 }

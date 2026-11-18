@@ -8,7 +8,7 @@
 # 指纹覆盖全部 Git-visible 文件，但排除只记录执行状态的进度与 active/completed plan。
 load_test_scope_fingerprint() {
   local root_dir="$1"
-  ruby -rdigest -ropen3 -e '
+  ruby -E UTF-8 -rdigest -ropen3 -e '
     root = File.expand_path(ARGV.fetch(0))
     output, error, status = Open3.capture3(
       "git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z",
@@ -87,7 +87,7 @@ load_test_config_digest() {
     --profile full config | ruby -rdigest -e 'puts Digest::SHA256.hexdigest(STDIN.read)')" || return $?
   k6_version="$("$k6_bin" version | sed -nE '1s/^k6 v([^ ]+).*/\1/p')" || return $?
   [[ -n "$k6_version" ]] || return 1
-  ruby -rjson -rdigest -e '
+  ruby -E UTF-8 -rjson -rdigest -e '
     root, compose_digest, k6_version, resolved_config_json = ARGV
     canonical = lambda do |value|
       case value
@@ -108,6 +108,29 @@ load_test_config_digest() {
     digest.update("\0compose\0#{compose_digest}\0k6\0#{k6_version}")
     puts digest.hexdigest
   ' "$root_dir" "$compose_digest" "$k6_version" "$resolved_config"
+}
+
+# routing capacity 使用独立配置摘要，避免历史单机 load-test capacity 证据被误认作共识路由容量。
+routing_capacity_config_digest() {
+  local root_dir="$1"
+  local config_path="${2:-$root_dir/im-test/im-load-test/config/routing-capacity.json}"
+  if [[ -n "${ROUTING_CAPACITY_CONFIG_DIGEST_VALUE:-}" ]]; then
+    printf '%s\n' "$ROUTING_CAPACITY_CONFIG_DIGEST_VALUE"
+    return 0
+  fi
+  [[ -f "$config_path" ]] || return 1
+  ruby -rdigest -e '
+    root, config = ARGV
+    digest = Digest::SHA256.new
+    [config, File.join(root, "scripts/routing_capacity.sh"),
+      File.join(root, "scripts/run-routing-capacity-scenarios.sh"),
+      File.join(root, "deploy/local/compose.routing-ha.yml")].each do |path|
+      next unless File.file?(path)
+      digest.update("\0#{path.delete_prefix(root + "/")}\0")
+      digest.update(File.binread(path))
+    end
+    puts digest.hexdigest
+  ' "$root_dir" "$config_path"
 }
 
 # 导出三业务 Schema 的有序纯数据，不包含 DDL、AUTO_INCREMENT 或 dump 时间戳。

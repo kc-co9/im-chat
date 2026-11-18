@@ -5,7 +5,7 @@ Introspection、Revocation、应用权限目录、角色授权、在线会话和
 
 仓库提供 localhost issuer 和 classpath PKCS12 开发密钥，便于本地联调。生产必须通过 Nacos
 覆盖为 HTTPS issuer、外部 PKCS12 签名密钥及正式客户端密钥，并配置数据库/Redis。Access Token
-有效期 15 分钟，Refresh Token 旋转且有效期 8 小时；数据库只保存 Token 摘要。
+默认有效期 15 分钟，Refresh Token 旋转且有效期 8 小时；Ops PUBLIC Client 例外见下节。数据库只保存 Token 摘要。
 
 本地开发默认配置如下：
 
@@ -40,6 +40,20 @@ IAM 生成业务标识时使用 `im-identity` 提供的 Redis Snowflake 机器�
 `im.identity.snowflake.data-center-id` 取值为 `0..31`，机器 ID 由 Redis 动态分配；
 namespace 未配置时使用 `spring.application.name`。Nacos 可以覆盖租约和心跳参数，详见
 `im-plugin/im-identity/README.md`。
+
+## Ops PUBLIC Client 与授权撤销
+
+OAuth Client 显式区分 `CONFIDENTIAL` 与 `PUBLIC`；省略类型时仍为 `CONFIDENTIAL`，既有浏览器和机器 Client 的 Secret、认证方式与默认有效期不变。PUBLIC 只用于交互式 Ops CLI，所属应用和目标应用均为 `imOps`，仅允许 `AUTHORIZATION_CODE`、`NONE` 认证及 `ops:broker:read`、`ops:broker:raft:write` Scope，不接受 Secret 或 Refresh Token。
+
+PUBLIC 必须使用 PKCE `S256`。每个 Client 只能登记一个 HTTP loopback redirect，固定为 `127.0.0.1`、显式部署端口和 `/oauth/callback`；不接受 DNS `localhost`、任意端口匹配、查询串、fragment 或 userinfo。Seed 中 `im-ops-cli` 使用 `http://127.0.0.1:8765/oauth/callback`，部署时须使登记值与 CLI 一致。PUBLIC Access Token 为五分钟 opaque Token，无自动续期；注册使用既有 HTTP API 或 seed，不新增 UI。
+
+IAM 写入可信 `principal_type=ADMINISTRATOR/MACHINE`。标准 Introspection 提供 `active`、`exp`、`aud`、`client_id`、`principal_type`、`sub`、`scope`、`authorities`；资源服务不能通过 `sub` 的形状推断主体类型，也不能把 Client Scope 当作管理员权限。inactive 响应不携带有效身份保证。
+
+PUBLIC 退出可向标准 `/oauth2/revoke` 提交本 Client 的 `client_id` 与 Token。服务器校验 Token 所属 Client，未知 Token 幂等成功，其他 Client 的授权拒绝；数据库失败不会报告成功。撤销对象是当前 Token 的整个 authorization，不影响同一管理员的其他独立登录。正常授权码消费不会撤销 authorization。
+
+授权保存与撤销以 MySQL authorization 行为一致性边界，已有行通过 `FOR UPDATE` 串行化，更新同时限定 `ACTIVE` 与版本。`REVOKED` 不可逆，迟到的 ACTIVE 或 Token 保存不能复活已撤销授权。Client 停用／访问配置修改、管理员停用、角色或权限撤回与受影响授权失效在同一事务提交。权限目录本轮发生 `ACTIVE → INACTIVE` 撤回时，保守失效该 audience 的管理员授权；重复同步同一目录不因历史停用记录再次撤销；角色修改失效其已分配管理员的授权。提交后新开始的 Introspection 以已提交授权状态为准；不追溯取消已准入请求，也不撤销已接受的 Broker operation。
+
+真实 MySQL 验证使用 `-Dim.test.local.mysql=true -Dim.test.mysql.url=...` 指向专属测试数据库，执行 `OAuthAuthorizationRevocationConcurrencyTest`、`IamAuthorizationInvalidationTransactionTest`、`IamPublicClientRevocationProtocolTest`。测试会写入 fixture 并短暂创建故障注入 trigger，不能连接共享或生产数据库；H2/mock 不替代这些事务、锁等待和 HTTP 提交后证据。
 
 ## 安全架构
 
@@ -114,7 +128,7 @@ UI 变更执行 `npm run lint`、`npm run format:check`、`npm run test:unit`、
 
 四个管理端使用一致的 Element Plus 高密度运维控制台：页面只展示本应用拥有的功能。
 “其他控制台”链接由各 UI 的 `src/config/consoleLinks.ts` 管理，本地默认地址可分别通过
-`VITE_IAM_CONSOLE_URL`、`VITE_AUDIT_CONSOLE_URL`、`VITE_MONITOR_CONSOLE_URL` 和
+`VITE_IAM_CONSOLE_URL`、`VITE_AUDIT_CONSOLE_URL`、`VITE_OPS_CONSOLE_URL` 和
 `VITE_ADMIN_CONSOLE_URL` 在构建时覆盖。创建、编辑和详情使用右侧抽屉，危险操作必须显式确认，
 刷新失败时保留最近一次成功数据。
 IAM 本地服务默认运行在 `http://localhost:18040`，Actuator 使用 `19040`。
@@ -123,7 +137,7 @@ IAM 本地服务默认运行在 `http://localhost:18040`，Actuator 使用 `1904
 避免混淆两类安全边界或产生 Bean 名冲突。
 
 SDK 的 `IamBffController` 统一提供接入应用所需的 `/iam/login`、`/iam/callback`、`/iam/me` 和退出端点，
-由 SDK AutoConfiguration 在 Admin、Monitor、Audit 等客户端应用中注册。IAM Server 是授权服务器，不使用
+由 SDK AutoConfiguration 在 Admin、Ops、Audit 等客户端应用中注册。IAM Server 是授权服务器，不使用
 这些 BFF 端点，也不直接或传递依赖 `im-iam-sdk`。`im-audit-sdk` 将 IAM 安全上下文集成声明为 optional：
 接入应用显式依赖 IAM SDK 时采集管理员主体，IAM Server 未引入时使用通用 Spring Security 审计主体，
 因此不需要在启动类维护 SDK 扫描排除规则。
@@ -205,13 +219,9 @@ ProviderManager
 目标应用，`scope` 表示协议授权范围。上述 Claims 在签发时由 IAM 根据持久化关系生成，不接受请求体
 覆盖。资源服务负责校验自己的 `appKey` 是否包含在 `aud` 中。
 
-管理员权限在 Access Token 签发和刷新时生成快照，并由默认 Introspection Provider原样返回。权限
-变更最迟在当前 15 分钟 Access Token 过期后生效；管理员禁用、删除、改密和主动退出仍通过撤销授权
-立即失效。
+管理员权限在 Access Token 签发和刷新时生成快照，并由默认 Introspection Provider 返回。管理员禁用、删除、改密、退出以及受影响的角色／权限撤回通过撤销 authorization 失效；权威变更与撤销在同一事务提交后，新开始的 Introspection 返回 inactive，不等待原 Access Token 到期。已在提交前通过授权的请求不追溯取消；资源服务本地缓存的行为不属于 IAM 权威读取保证。
 
-OAuth 授权主体由 `principal_type` 与 `principal_name` 组成。管理员使用 `ADMINISTRATOR + 管理员业务 ID`，机器客户端使用
-`CLIENT + OAuth Client ID`；主体类型只属于 IAM 内部模型，不作为 OAuth 标准 Claim 暴露。管理员认证成功后，Spring
-Security Principal 和管理员 Token 的 `sub` 都使用管理员业务 ID，用户名仅作为登录结果和展示 Claim 保留；机器客户端授权不存在管理员主体属性。
+OAuth 授权内部主体由 `principal_type` 与 `principal_name` 组成：管理员使用 `ADMINISTRATOR + 管理员业务 ID`，机器客户端使用 `CLIENT + OAuth Client ID`。协议扩展 Claim `principal_type` 由 IAM 可信生成，分别为 `ADMINISTRATOR` 与 `MACHINE`；内部 `CLIENT` 不直接作为协议主体类型。管理员认证成功后，Spring Security Principal 和管理员 Token 的 `sub` 都使用管理员业务 ID，用户名仅作为登录结果和展示 Claim 保留；机器客户端授权不具有管理员主体身份。
 
 ### 授权状态与 Token 安全
 
@@ -295,26 +305,21 @@ sequenceDiagram
     participant Repository as OAuthAuthorizationRepository
 
     Caller->>App: revoke(command)
-    App->>Repository: find(authorizationId)
+    App->>Repository: findForUpdate(authorizationId)
     Repository-->>App: OAuthAuthorization
     App->>Authorization: revoke(now)
     App->>Repository: save(authorization)
     Repository->>Repository: UPDATE status=REVOKED, revokedAt=now
 ```
 
-`save` 不处理撤销，原因是 Spring 只在完成当前协议步骤后把最终授权快照交给它。这个回调可能来自首次
-创建授权、授权码兑换、Access Token 签发或 Refresh Token 刷新，本身不表示失败，也无法可靠说明本次
-状态变化的触发原因。在 `save` 中根据字段差异猜测失败并撤销，可能把正常刷新或重复持久化误判为攻击。
+Spring 在完成当前协议步骤后，将最终授权快照交给 `save`；该入口统一持久化创建、授权码兑换、Token 签发、刷新或明确的撤销状态，不执行第二遍协议兑换／刷新。Access Token 的 invalidated 信号映射为 authorization 撤销；正常授权码消费只记录授权码已使用，authorization 仍为 ACTIVE。不能依据无关字段差异猜测攻击并撤销。
 
-协议校验失败时 Spring 通常不会产生需要保存的新状态；凭据不存在时 IAM 也没有可靠的授权目标可以撤销。
-Spring 默认 Provider 负责授权码单次消费和 Refresh Token 轮换；调用方明确发起退出、禁用和删除时，
-应用用例执行撤销。数据库异常属于技术失败，保持事务回滚并上抛，不改变授权业务状态。
+协议校验失败时 Spring 通常不会产生需要保存的新状态；凭据不存在时 IAM 也没有可靠的授权目标可以撤销。默认 Provider 负责协议校验与轮换，持久化边界还必须拒绝基于过期原读版本的快照，不能仅因第二次写入已取得行锁就返回成功。明确退出、禁用和删除由应用用例执行撤销。数据库异常保持事务回滚并上抛，不伪装成幂等成功。
 
 `OAuthAuthorizationStatus.EXPIRED` 当前不主动写入。Code 和 Token 是否过期由各自的 `expiresAt` 以及
 Spring Security 判断；如果管理查询后续需要持久化的过期状态，再单独设计清理或状态归档流程。
 
-并发兑换与刷新将在授权聚合增加统一乐观锁版本后，由 Repository `save` 的版本校验保证只有一个请求
-成功，不再为每种协议动作增加专用条件更新方法。
+Repository 已使用 ACTIVE 条件与统一版本校验，应用保存／撤销使用授权行锁；但保存时重新加载出的最新版本不能代表框架快照的原读版本。框架读取通过 DTO → 不可变 framework attribute → 保存命令传递原始 `rowVersion`，在锁内先核对再修改，禁止 rebase 或自动重试；仅明确 REVOKED 请求遇到已 REVOKED 记录时只读返回。新授权仅允许空预期版本，已有授权缺版本、版本失效或带版本的记录已不存在均拒绝，沿用 `invalid_grant` 映射。成功保存不回写不可变框架对象的版本，后续非终态保存须重新读取。该增量的验收状态由活跃计划 T7 拥有，不将已有 Repository CAS 等同于并发单赢家验收。
 
 当前使用 MySQL 作为授权事实源，以保证 Token 当前状态和撤销处于同一事务边界。若未来迁移到 Redis，
 应整体迁移授权记录与 Token 索引，并使用 Lua 保证原子状态迁移，不能形成 MySQL 与 Redis 双事实源。
@@ -341,7 +346,7 @@ OAuth 客户端，也可以拥有多个客户端；浏览器客户端必须声�
 
 项目尚未上线，不保留旧管理账号和 RBAC 数据的兼容迁移。首次部署执行模块根目录
 [`sql/ddl.sql`](sql/ddl.sql) 创建 `im_chat_iam` 结构。交付 DDL 只使用 `CREATE ... IF NOT EXISTS`，不会先删除已有表。
-本地 Compose 随后执行 [`sql/dml.sql`](sql/dml.sql)，预置 IAM、Admin、Audit、Monitor 四个本地应用及其 web/catalog OAuth 客户端；该 DML 只使用本地开发密钥，不用于生产。最后由 `IamBootstrap` 创建首个管理员和 IAM 超级管理员角色。
+本地 Compose 随后执行 [`sql/dml.sql`](sql/dml.sql)，预置 IAM、Admin、Audit、Ops 四个本地应用及其 web/catalog OAuth 客户端；该 DML 只使用本地开发密钥，不用于生产。最后由 `IamBootstrap` 创建首个管理员和 IAM 超级管理员角色。
 初始化成功后立即移除初始化密码并关闭 `im.iam.bootstrap.enabled`。
 
 分片入口为 `im.datasource.sharding`，规则文件默认为 classpath 下的 `im-sharding.yml`。生产必须通过 Nacos 覆盖 `jdbc-url`、`username`、`password`，或将 `config-location` 指向部署系统提供的外部规则文件；仓库内 `root/root` 仅用于本地。

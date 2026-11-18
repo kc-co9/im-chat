@@ -4,6 +4,8 @@ import com.alicp.jetcache.Cache;
 import com.alicp.jetcache.CacheManager;
 import com.alicp.jetcache.anno.CacheType;
 import com.alicp.jetcache.template.QuickConfig;
+import com.alicp.jetcache.embedded.CaffeineCacheBuilder;
+import java.util.concurrent.TimeUnit;
 import com.co.kc.imchat.plugin.cache.core.JetCacheFactory;
 import com.co.kc.imchat.plugin.cache.model.CacheSpec;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,23 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class JetCacheFactoryTest {
+    @Test
+    void boundedLocalCacheUsesExplicitCapacityAndRawKeys() {
+        CacheManager manager = mock(CacheManager.class);
+        Cache<Object, Object> cache = CaffeineCacheBuilder.createCaffeineCacheBuilder()
+                .limit(3).expireAfterWrite(30, TimeUnit.SECONDS).buildCache();
+        when(manager.getOrCreateCache(any(QuickConfig.class))).thenReturn(cache);
+        JetCacheFactory factory = new JetCacheFactory(manager);
+        factory.local("bounded", Duration.ofSeconds(30), 3);
+        ArgumentCaptor<QuickConfig> config = ArgumentCaptor.forClass(QuickConfig.class);
+        verify(manager).getOrCreateCache(config.capture());
+        assertThat(config.getValue().getLocalLimit()).isEqualTo(3);
+        assertThat(config.getValue().getCacheType()).isEqualTo(CacheType.LOCAL);
+        assertThat(config.getValue().getExpire()).isEqualTo(Duration.ofSeconds(30));
+        Object key = new Object();
+        assertThat(config.getValue().getKeyConvertor().apply(key)).isSameAs(key);
+        cache.close();
+    }
 
     @Test
     void remoteCacheUsesDefaultAreaAndExpire() {

@@ -26,6 +26,7 @@ public interface OAuthAuthorizationAppTransformer {
     OAuthAuthorizationAppTransformer INSTANCE =
             Mappers.getMapper(OAuthAuthorizationAppTransformer.class);
 
+    @Mapping(target = "rowVersion", source = "rowVersion")
     @Mapping(target = "authorizationId", source = "id.value")
     @Mapping(target = "appId", source = "appId.value")
     @Mapping(target = "oauthClientId", source = "clientId.value")

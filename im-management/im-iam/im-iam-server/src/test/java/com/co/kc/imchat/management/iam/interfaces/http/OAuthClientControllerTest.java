@@ -95,7 +95,7 @@ class OAuthClientControllerTest {
         contextRunner.run(context -> {
             String json = context.getBean(ObjectMapper.class).writeValueAsString(response);
             String expected = """
-                    {"paging":{"pageNo":2,"pageSize":10},"records":[{"clientId":"im-admin-web","appId":"9007199254740993","audienceAppId":"9007199254740994","audienceAppKey":"imAdmin","name":"IM Admin Browser","grantTypes":["AUTHORIZATION_CODE"],"scopes":["openid"],"redirectUris":["https://admin.example.com/login/callback"],"postLogoutRedirectUris":["https://admin.example.com/"],"status":"ACTIVE"}],"total":"1"}
+                    {"paging":{"pageNo":2,"pageSize":10},"records":[{"clientId":"im-admin-web","clientType":"CONFIDENTIAL","appId":"9007199254740993","audienceAppId":"9007199254740994","audienceAppKey":"imAdmin","name":"IM Admin Browser","grantTypes":["AUTHORIZATION_CODE"],"scopes":["openid"],"redirectUris":["https://admin.example.com/login/callback"],"postLogoutRedirectUris":["https://admin.example.com/"],"status":"ACTIVE"}],"total":"1"}
                     """.strip();
             assertThat(json).isEqualTo(expected);
             assertThat(json).doesNotContain("sentinel-encoded-secret-never-expose");

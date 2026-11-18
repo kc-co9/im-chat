@@ -1,0 +1,16 @@
+{
+  "environmentKind": "production-candidate",
+  "topologyId": "three-voter",
+  "k6": "/absolute/path/to/k6",
+  "websocketUrl": "wss://candidate.example.invalid/ws",
+  "messageConnections": 100,
+  "targetLevels": { "connection": 800, "message": 800 },
+  "hooks": {
+    "prepare": ["/absolute/path/to/environment-driver", "prepare"],
+    "fault": ["/absolute/path/to/environment-driver", "fault"],
+    "metrics": ["/absolute/path/to/environment-driver", "metrics"],
+    "restore": ["/absolute/path/to/environment-driver", "restore"],
+    "cleanup": ["/absolute/path/to/environment-driver", "cleanup"],
+    "inspect": ["/absolute/path/to/environment-driver", "inspect"]
+  }
+}

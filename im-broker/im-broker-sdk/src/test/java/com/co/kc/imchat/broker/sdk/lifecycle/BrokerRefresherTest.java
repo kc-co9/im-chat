@@ -14,10 +14,10 @@ class BrokerRefresherTest {
         BrokerRefresher refresher = new BrokerRefresher(brokerClient);
 
         refresher.refresh();
-        verify(brokerClient).refreshBrokerAddresses();
+        verify(brokerClient).refreshClusterState();
 
         doThrow(new IllegalStateException("broker unavailable"))
-                .when(brokerClient).refreshBrokerAddresses();
+                .when(brokerClient).refreshClusterState();
         refresher.refresh();
     }
 }

@@ -26,7 +26,7 @@ spring:
       - optional:nacos:${spring.application.name}.yml?group=${im.nacos.config.infra-group:INFRA_GROUP}
   cloud:
     function:
-      definition: imAdminAudit;imIamAudit;imMonitorAudit;imAuditAudit
+      definition: imAdminAudit;imIamAudit;imOpsAudit;imAuditAudit
     stream:
       bindings:
         auditOutput:
@@ -41,8 +41,8 @@ spring:
           group: im-audit
           consumer:
             max-attempts: 3
-        imMonitorAudit-in-0:
-          destination: im.audit.im-monitor.v1
+        imOpsAudit-in-0:
+          destination: im.audit.im-ops.v1
           group: im-audit
           consumer:
             max-attempts: 3
@@ -61,10 +61,10 @@ spring:
             consumer:
               enable-dlq: true
               dlq-name: im.audit.im-iam.v1.dlq
-          imMonitorAudit-in-0:
+          imOpsAudit-in-0:
             consumer:
               enable-dlq: true
-              dlq-name: im.audit.im-monitor.v1.dlq
+              dlq-name: im.audit.im-ops.v1.dlq
           imAuditAudit-in-0:
             consumer:
               enable-dlq: true

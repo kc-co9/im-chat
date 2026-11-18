@@ -1,5 +1,7 @@
 package com.co.kc.imchat.management.iam.model.cqrs.dto;
 
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientType;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthGrantType;
 
@@ -9,6 +11,7 @@ import java.util.Set;
 public record OAuthClientRegistrationDTO(
         /* OAuth Client 标识。 */
         String clientId,
+        OAuthClientType clientType,
         /* 已编码的 OAuth Client Secret。 */
         String encodedSecret,
         /* OAuth Client 名称。 */
@@ -23,8 +26,13 @@ public record OAuthClientRegistrationDTO(
         Set<String> postLogoutRedirectUris
 ) {
     public OAuthClientRegistrationDTO {
+        clientType = clientType == null ? OAuthClientType.CONFIDENTIAL : clientType;
         AssertUtils.argNotBlank("oauth client id must not be blank", clientId);
-        AssertUtils.argNotBlank("encoded oauth client secret must not be blank", encodedSecret);
+        if (clientType == OAuthClientType.CONFIDENTIAL) {
+            AssertUtils.argNotBlank("encoded oauth client secret must not be blank", encodedSecret);
+        } else {
+            AssertUtils.argTrue("public client must not have secret", encodedSecret == null);
+        }
         AssertUtils.argNotBlank("oauth client name must not be blank", name);
         AssertUtils.allArgNotNull(
                 "oauth client registration collections must not be null",

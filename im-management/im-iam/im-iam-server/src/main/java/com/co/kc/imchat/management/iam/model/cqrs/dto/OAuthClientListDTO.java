@@ -1,5 +1,7 @@
 package com.co.kc.imchat.management.iam.model.cqrs.dto;
 
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientType;
+
 import com.co.kc.imchat.common.utils.AssertUtils;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientStatus;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthGrantType;
@@ -9,6 +11,7 @@ import java.util.Set;
 /** IAM OAuth 客户端列表项，不包含客户端密钥或授权数据。 */
 public record OAuthClientListDTO(
         String clientId,
+        OAuthClientType clientType,
         Long appId,
         Long audienceAppId,
         String audienceAppKey,
@@ -20,6 +23,7 @@ public record OAuthClientListDTO(
         OAuthClientStatus status
 ) {
     public OAuthClientListDTO {
+        clientType = clientType == null ? OAuthClientType.CONFIDENTIAL : clientType;
         AssertUtils.allArgNotNull(
                 "oauth client list DTO must not contain null values",
                 clientId,

@@ -2,7 +2,7 @@
 
 本模型沿用课程 evaluator rubric 的六个维度，每项 0-2 分。`verification`、`reliability`、`handoff readiness` 由当前 revision 的机器证据计算；`correctness`、`scope discipline`、`maintainability` 必须由独立上下文 AI Reviewer 填写。
 
-AI Reviewer 不修改源码、计划或稳定文档，只返回结构化 JSON。响应必须包含 request 的 `reviewScopeFingerprint`、每个质量单元的 unit fingerprint、三项语义分数、证据路径、findings 和 `Accept`/`Revise`/`Block` 结论。脚本校验 Schema、分值范围和证据路径后才会生成快照。
+AI Reviewer 不修改源码、计划或稳定文档，只返回结构化 JSON。每个质量单元的 request `evidence` 是该单元 fingerprint 实际覆盖的完整 Git 可见文件闭包；Reviewer 每项语义分数必须引用其中一个或多个已列路径。脚本拒绝空证据、绝对路径、父目录回溯和未列路径，再校验 request 的 `reviewScopeFingerprint`、unit fingerprint、分值范围与 `Accept`/`Revise`/`Block` 结论后才会生成快照。忽略运行产物和执行状态不进入语义 evidence；机器验证维度仍由当前 revision 的自动证据计算。
 
 质量指纹只枚举 Git tracked 与非忽略 untracked 文件，排除 `target`、运行日志等 ignored 输出。根构建、Harness、deploy 和稳定规范属于共享审查范围，其内容加入全部现有质量单元的 fingerprint；共享范围变化必须触发十二个单元共同复评。
 

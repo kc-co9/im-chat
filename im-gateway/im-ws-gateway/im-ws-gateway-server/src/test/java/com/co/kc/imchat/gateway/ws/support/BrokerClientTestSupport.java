@@ -1,6 +1,7 @@
 package com.co.kc.imchat.gateway.ws.support;
 
 import com.co.kc.imchat.broker.sdk.enums.BrokerLoadBalance;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.common.model.enums.ServiceName;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
 import org.springframework.cloud.client.ServiceInstance;
@@ -11,6 +12,10 @@ import java.util.List;
 
 public final class BrokerClientTestSupport {
     private BrokerClientTestSupport() {
+    }
+
+    public static List<BoltTarget> identities() {
+        return List.of(new BoltTarget("127.0.0.1:12200", "spiffe://im-chat/broker/broker-test"));
     }
 
     public static DiscoveryClient discovery() {
@@ -36,11 +41,18 @@ public final class BrokerClientTestSupport {
 
     public static BoltInvoker invoker() {
         return new BoltInvoker() {
-            @Override
-            public <T, R> R invoke(String address, String service, String operation,
-                                    T request, Class<R> responseType, int timeoutMillis) {
+        private BoltTarget typedTarget;
+
+        @Override
+        public <T, R> R invoke(BoltTarget target, String service, String operation,
+                               T request, Class<R> responseType, int timeoutMillis) {
+            this.typedTarget = target;
+
+            String address = target.address();
+
                 return null;
             }
+
         };
     }
 

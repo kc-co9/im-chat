@@ -12,6 +12,7 @@ import com.co.kc.imchat.management.iam.domain.application.model.AppId;
 import com.co.kc.imchat.management.iam.domain.application.model.AppStatus;
 import com.co.kc.imchat.management.iam.domain.application.model.Application;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientId;
+import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientType;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthGrantType;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthScope;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthRawClientSecret;
@@ -100,7 +101,8 @@ public class OAuthClientAppService {
                 .filter(client -> applicationRepository.find(client.getAudienceAppId()).filter(Application::isActive).isPresent())
                 .map(client -> new OAuthClientRegistrationDTO(
                         client.getClientId().value(),
-                        client.getClientSecret().value(),
+                        client.getClientType(),
+                        client.getClientSecret() == null ? null : client.getClientSecret().value(),
                         client.getName().value(),
                         client.getGrantTypes(),
                         FunctionUtils.mappingSet(client.getScopes(), OAuthScope::value),
@@ -171,7 +173,8 @@ public class OAuthClientAppService {
         AppId audienceAppId = new AppId(command.audienceAppId());
         OAuthClientId clientId = new OAuthClientId(command.clientId());
         OAuthClientName clientName = new OAuthClientName(command.name());
-        OAuthRawClientSecret rawClientSecret = new OAuthRawClientSecret(command.clientSecret());
+        OAuthRawClientSecret rawClientSecret = command.clientType() == OAuthClientType.PUBLIC
+                ? null : new OAuthRawClientSecret(command.clientSecret());
         Set<OAuthScope> oAuthScopes = FunctionUtils.mappingSet(command.scopes(), OAuthScope::new);
         Set<OAuthGrantType> grantTypes = command.grantTypes();
 
@@ -187,14 +190,20 @@ public class OAuthClientAppService {
             throw new NotFoundException("所属应用或目标应用未启用");
         }
 
+        if (command.clientType() == OAuthClientType.PUBLIC
+                && (!"imOps".equals(ownerApplication.getAppKey().value())
+                || !"imOps".equals(audienceApplication.getAppKey().value()))) {
+            throw new IllegalArgumentException("public client is restricted to Ops");
+        }
         OAuthClient oauthClient = OAuthClient.builder()
+                .clientType(command.clientType())
                 .clientId(clientId)
                 .appId(ownerApplication.getAppId())
                 .audienceAppId(audienceApplication.getAppId())
                 .name(clientName)
                 .grantTypes(grantTypes)
                 .scopes(oAuthScopes)
-                .clientSecret(oAuthClientSecretService.encode(rawClientSecret))
+                .clientSecret(rawClientSecret == null ? null : oAuthClientSecretService.encode(rawClientSecret))
                 .redirectUris(OAuthClientAppTransformer.INSTANCE.redirectUrisFrom(command.redirectUris()))
                 .postLogoutRedirectUris(OAuthClientAppTransformer.INSTANCE.redirectUrisFrom(command.postLogoutRedirectUris()))
                 .status(OAuthClientStatus.ACTIVE)
@@ -237,6 +246,7 @@ public class OAuthClientAppService {
     /**
      * 停用 OAuth 客户端。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void disable(OAuthClientDisableCmd command) {
         OAuthClientId oAuthClientId = new OAuthClientId(command.clientId());
 
@@ -244,5 +254,6 @@ public class OAuthClientAppService {
                 .orElseThrow(() -> new NotFoundException("OAuth 客户端不存在"));
         oauthClient.disable();
         oauthClientRepository.save(oauthClient);
+        oauthSessionRepository.revoke(oAuthClientId, Instant.now());
     }
 }

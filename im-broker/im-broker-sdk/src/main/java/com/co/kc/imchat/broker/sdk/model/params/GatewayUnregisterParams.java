@@ -1,5 +1,7 @@
 package com.co.kc.imchat.broker.sdk.model.params;
 
+import com.co.kc.imchat.broker.sdk.access.GatewayRouteRequest;
+
 import java.io.Serializable;
 
 /**
@@ -7,5 +9,6 @@ import java.io.Serializable;
  *
  * @param gatewayId 网关实例 ID
  */
-public record GatewayUnregisterParams(String gatewayId) implements Serializable {
+public record GatewayUnregisterParams(String gatewayId)
+        implements Serializable, GatewayRouteRequest {
 }

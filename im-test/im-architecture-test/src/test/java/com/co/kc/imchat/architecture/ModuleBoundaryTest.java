@@ -7,10 +7,24 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 
 class ModuleBoundaryTest {
     private static final JavaClasses CLASSES = new ClassFileImporter()
             .importPackages("com.co.kc.imchat");
+
+    @Test
+    void brokerClusterExecutionMustNotDependOnApplicationWorkflows() {
+        JavaClasses executionClasses = new ClassFileImporter().importPath(repoRoot().resolve(
+                "im-broker/im-broker-server/target/classes/com/co/kc/imchat/broker/adapter/cluster/membership"));
+        noClasses().should().dependOnClassesThat().resideInAnyPackage(
+                        "com.co.kc.imchat.broker.application..",
+                        "com.co.kc.imchat.broker.model.cqrs..",
+                        "com.co.kc.imchat.broker.sdk..",
+                        "com.co.kc.imchat.plugin.raft.core..",
+                        "com.co.kc.imchat.plugin.raft.model..")
+                .check(executionClasses);
+    }
 
     @Test
     void commonMustNotDependOnRuntimeModules() {
@@ -45,24 +59,53 @@ class ModuleBoundaryTest {
                         "com.co.kc.imchat.plugin.session..",
                         "com.co.kc.imchat.management.iam..",
                         "com.co.kc.imchat.management.admin..",
-                        "com.co.kc.imchat.management.monitor..")
+                        "com.co.kc.imchat.management.ops..")
                 .check(CLASSES);
     }
 
     @Test
-    void monitorMustNotDependOnBrokerServerImplementations() {
-        JavaClasses monitorClasses = new ClassFileImporter().importPath(repoRoot().resolve(
-                "im-management/im-monitor/target/classes"));
-        noClasses()
-                .that().resideInAPackage("com.co.kc.imchat.management.monitor..")
+    void raftPluginContractsMustNotExposeJRaftOrBrokerTypes() {
+        JavaClasses raftClasses = new ClassFileImporter().importPath(repoRoot().resolve(
+                "im-plugin/im-raft/target/classes"));
+        noClasses().that().resideInAnyPackage(
+                        "com.co.kc.imchat.plugin.raft.model..",
+                        "com.co.kc.imchat.plugin.raft.spi..")
                 .should().dependOnClassesThat().resideInAnyPackage(
-                        "com.co.kc.imchat.broker.config..",
+                        "com.alipay.sofa.jraft..",
+                        "com.co.kc.imchat.broker..",
+                        "com.co.kc.imchat.gateway..",
+                        "com.co.kc.imchat.service..")
+                .check(raftClasses);
+    }
+
+    @Test
+    void opsCliDependsOnlyOnJdkJacksonAndCommonJsonContracts() {
+        JavaClasses cliClasses = new ClassFileImporter().importPath(repoRoot().resolve(
+                "im-management/im-ops/im-ops-cli/target/classes"));
+        classes()
+                .that().resideInAPackage("com.co.kc.imchat.management.ops.cli..")
+                .should().onlyDependOnClassesThat().resideInAnyPackage(
+                        "com.co.kc.imchat.management.ops.cli..",
+                        "com.co.kc.imchat.common.utils..",
+                        "java..", "javax..", "com.fasterxml.jackson..")
+                .check(cliClasses);
+    }
+
+    @Test
+    void opsMustNotDependOnBrokerServerImplementations() {
+        JavaClasses opsClasses = new ClassFileImporter().importPath(repoRoot().resolve(
+                "im-management/im-ops/im-ops-server/target/classes"));
+        noClasses()
+                .that().resideInAPackage("com.co.kc.imchat.management.ops..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "com.co.kc.imchat.broker.application..",
                         "com.co.kc.imchat.broker.diagnostic..",
                         "com.co.kc.imchat.broker.domain..",
+                        "com.co.kc.imchat.broker.infrastructure..",
                         "com.co.kc.imchat.broker.interfaces..",
-                        "com.co.kc.imchat.broker.lifecycle..",
+                        "com.co.kc.imchat.broker.model..",
                         "com.co.kc.imchat.broker.support..")
-                .check(monitorClasses);
+                .check(opsClasses);
     }
 
     @Test
@@ -97,7 +140,7 @@ class ModuleBoundaryTest {
                 .and().resideOutsideOfPackage("com.co.kc.imchat.management.audit.sdk..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "com.co.kc.imchat.management.admin..",
-                        "com.co.kc.imchat.management.monitor..",
+                        "com.co.kc.imchat.management.ops..",
                         "com.co.kc.imchat.management.iam.application..",
                         "com.co.kc.imchat.management.iam.domain..",
                         "com.co.kc.imchat.management.iam.infrastructure..",
@@ -131,7 +174,7 @@ class ModuleBoundaryTest {
                         "com.co.kc.imchat.management.iam.interfaces..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "com.co.kc.imchat.management.admin..",
-                        "com.co.kc.imchat.management.monitor..")
+                        "com.co.kc.imchat.management.ops..")
                 .check(iamServerClasses);
     }
 

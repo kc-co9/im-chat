@@ -13,6 +13,8 @@ import java.util.Optional;
 public interface OAuthAuthorizationRepository {
     Optional<OAuthAuthorization> find(OAuthAuthorizationId authorizationId);
 
+    Optional<OAuthAuthorization> findForUpdate(OAuthAuthorizationId authorizationId);
+
     Optional<OAuthAuthorization> find(OAuthCredentialDigest digest);
 
     Optional<OAuthAuthorization> find(OAuthCredentialDigest digest, OAuthCredentialType credentialType);

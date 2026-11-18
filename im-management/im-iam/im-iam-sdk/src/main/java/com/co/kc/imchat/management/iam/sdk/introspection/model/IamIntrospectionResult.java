@@ -15,12 +15,17 @@ public record IamIntrospectionResult(
         String clientId,
         Set<String> audiences,
         Set<String> authorities,
-        Instant expiresAt
+        Instant expiresAt,
+        /* IAM 生成的可信主体类型，不从 subject 推断。 */
+        String principalType,
+        /* 按 OAuth scope 语义解析的授权范围。 */
+        Set<String> scopes
 ) {
     public IamIntrospectionResult {
         AssertUtils.argNotNull("IAM introspection active flag must not be null", active);
         audiences = audiences == null ? Set.of() : Set.copyOf(audiences);
         authorities = authorities == null ? Set.of() : Set.copyOf(authorities);
+        scopes = scopes == null ? Set.of() : Set.copyOf(scopes);
         if (active) {
             AssertUtils.allArgNotNull(
                     "Active IAM introspection identity must not be null",
@@ -34,7 +39,7 @@ public record IamIntrospectionResult(
 
     public static IamIntrospectionResult inactive() {
         return new IamIntrospectionResult(
-                false, null, null, null, null, Set.of(), Set.of(), null);
+                false, null, null, null, null, Set.of(), Set.of(), null, null, Set.of());
     }
 
     public IamPrincipal principal() {

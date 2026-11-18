@@ -8,18 +8,18 @@
 # 返回当前 HEAD；仓库没有可解析 HEAD 时返回 unavailable。
 harness_head_revision() {
   local root_dir="$1"
-  git -C "$root_dir" rev-parse --verify HEAD 2>/dev/null || printf 'unavailable\n'
+  /usr/bin/git -C "$root_dir" rev-parse --verify HEAD 2>/dev/null || printf 'unavailable\n'
 }
 
 # 指纹覆盖 HEAD 与当前文件树内容，不编码 staged/untracked 状态；相同内容暂存前后得到相同结果。
 harness_worktree_fingerprint() {
   local root_dir="$1"
   local fingerprint
-  if fingerprint="$(ruby -rdigest -ropen3 -e '
+  if fingerprint="$(/usr/bin/ruby -E UTF-8 -rdigest -ropen3 -e '
     root = File.expand_path(ARGV.fetch(0))
 
     def git_output(root, *arguments)
-      output, error, status = Open3.capture3("git", "-C", root, *arguments, binmode: true)
+      output, error, status = Open3.capture3("/usr/bin/git", "-C", root, *arguments, binmode: true)
       raise "git #{arguments.join(" ")} failed: #{error}" unless status.success?
       output
     end
@@ -45,5 +45,30 @@ harness_worktree_fingerprint() {
     printf '%s\n' "$fingerprint"
   else
     printf 'unavailable\n'
+  fi
+}
+
+# mkdir 是唯一抢锁操作；仅本进程持有的目录可在 EXIT 时释放，陈旧锁需人工核对。
+harness_execution_lock() {
+  local directory="$ROOT_DIR" part
+  for part in .harness verifications; do
+    directory="$directory/$part"
+    [[ ! -L "$directory" ]] || return 2
+    /bin/mkdir -p "$directory" || return $?
+  done
+  EXECUTION_LOCK="$ROOT_DIR/.harness/verifications/execution.lock"
+  if ! /bin/mkdir "$EXECUTION_LOCK" 2>/dev/null; then
+    printf 'Harness repository execution lock exists (possibly interrupted); inspect owner before manual removal: %s\n' "$EXECUTION_LOCK" >&2
+    return 2
+  fi
+  printf '%s\n' "$$" > "$EXECUTION_LOCK/owner-pid"
+  trap 'harness_release_locks' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
+harness_release_locks() {
+  if [[ -n "${EXECUTION_LOCK:-}" && -f "$EXECUTION_LOCK/owner-pid" && "$(/bin/cat "$EXECUTION_LOCK/owner-pid")" == "$$" ]]; then
+    /bin/rm -f "$EXECUTION_LOCK/owner-pid"; /bin/rmdir "$EXECUTION_LOCK"
   fi
 }

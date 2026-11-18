@@ -31,7 +31,9 @@ public class IamSecurityFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return IamBffRequestPolicy.isPublic(request);
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        return path.equals("/api/cli") || path.startsWith("/api/cli/")
+                || IamBffRequestPolicy.isPublic(request);
     }
 
     @Override

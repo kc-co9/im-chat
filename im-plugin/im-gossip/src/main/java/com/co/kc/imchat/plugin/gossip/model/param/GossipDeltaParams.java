@@ -10,7 +10,8 @@ import java.util.List;
  * @param nodeId  增量推送方的节点 ID
  * @param entries 推送给远端节点的状态增量
  */
-public record GossipDeltaParams(String nodeId, List<GossipDeltaEntry> entries) {
+public record GossipDeltaParams(String nodeId, List<GossipDeltaEntry> entries)
+        implements GossipPeerRequest {
 
     public GossipDeltaParams {
         entries = entries == null ? List.of() : List.copyOf(entries);

@@ -10,7 +10,8 @@ import java.util.List;
  * @param nodeId  摘要请求方的节点 ID
  * @param entries 请求方当前持有的状态摘要
  */
-public record GossipDigestParams(String nodeId, List<GossipDigestEntry> entries) {
+public record GossipDigestParams(String nodeId, List<GossipDigestEntry> entries)
+        implements GossipPeerRequest {
 
     public GossipDigestParams {
         entries = entries == null ? List.of() : List.copyOf(entries);

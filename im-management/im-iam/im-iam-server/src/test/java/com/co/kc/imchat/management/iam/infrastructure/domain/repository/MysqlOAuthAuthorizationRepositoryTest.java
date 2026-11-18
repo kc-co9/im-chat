@@ -1,5 +1,6 @@
 package com.co.kc.imchat.management.iam.infrastructure.domain.repository;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.co.kc.imchat.management.iam.domain.application.model.AppId;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthClientId;
 import com.co.kc.imchat.management.iam.domain.application.model.OAuthGrantType;
@@ -62,11 +63,12 @@ class MysqlOAuthAuthorizationRepositoryTest {
         MysqlOAuthAuthorizationRepository repository =
                 new MysqlOAuthAuthorizationRepository(authorizationService);
         OAuthAuthorization authorization = authorization("refresh-digest");
-        when(authorizationService.updateById(any())).thenReturn(true);
+        when(authorizationService.getUpdateWrapper()).thenReturn(new LambdaUpdateWrapper<>());
+        when(authorizationService.update(any(DbIamOAuthAuthorization.class), any())).thenReturn(true);
 
         repository.save(authorization);
 
-        verify(authorizationService).updateById(any());
+        verify(authorizationService).update(any(DbIamOAuthAuthorization.class), any());
     }
 
     private OAuthAuthorization authorization(String refreshDigest) {

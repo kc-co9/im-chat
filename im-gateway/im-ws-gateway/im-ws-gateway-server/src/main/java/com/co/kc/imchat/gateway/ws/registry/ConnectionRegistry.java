@@ -1,5 +1,9 @@
 package com.co.kc.imchat.gateway.ws.registry;
 
+import java.util.Comparator;
+import java.util.Objects;
+import java.util.function.Consumer;
+
 import com.co.kc.imchat.common.model.io.FrameResponse;
 import com.co.kc.imchat.gateway.ws.sdk.model.dto.GatewayFrameWriteDTO;
 import com.co.kc.imchat.gateway.ws.protocol.JsonFrameCodec;
@@ -13,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 当前 WS 网关进程内的连接注册表。
@@ -23,14 +28,23 @@ public class ConnectionRegistry {
     private final Map<String, Channel> channels = new ConcurrentHashMap<>();
     private final Map<String, ConnectionState> connectionStates = new ConcurrentHashMap<>();
     private final Map<Long, Set<String>> userConnections = new ConcurrentHashMap<>();
+    private final AtomicLong routeRevision = new AtomicLong();
+
+    private final Consumer<Removal> removalConsumer;
+
+    public ConnectionRegistry(Consumer<Removal> removalConsumer) {
+        this.removalConsumer = Objects.requireNonNull(removalConsumer);
+    }
 
     /**
      * 注册当前进程持有的连接。
      */
-    public void register(Long userId, String sessionVersion, String connectionId, Channel channel) {
+    public synchronized long register(Long userId, String sessionVersion,
+                                      String connectionId, Channel channel) {
         channels.put(connectionId, channel);
         connectionStates.put(connectionId, new ConnectionState(userId, sessionVersion, connectionId));
         userConnections.computeIfAbsent(userId, ignored -> ConcurrentHashMap.newKeySet()).add(connectionId);
+        return routeRevision.incrementAndGet();
     }
 
     /**
@@ -38,23 +52,29 @@ public class ConnectionRegistry {
      *
      * @return 当前连接所属用户是否已经没有本机活跃连接
      */
-    public boolean unregister(String connectionId) {
-        channels.remove(connectionId);
-        ConnectionState connectionState = connectionStates.remove(connectionId);
-        if (connectionState == null) {
-            return false;
+    public RouteMutation unregister(String connectionId) {
+        Removal removal;
+        synchronized (this) {
+            channels.remove(connectionId);
+            ConnectionState state = connectionStates.remove(connectionId);
+            if (state == null) {
+                return new RouteMutation(routeRevision.get(), false);
+            }
+            long revision = routeRevision.incrementAndGet();
+            Set<String> ids = userConnections.get(state.userId());
+            if (ids != null) {
+                ids.remove(connectionId);
+                if (ids.isEmpty()) {
+                    userConnections.remove(state.userId(), ids);
+                }
+            }
+            removal = new Removal(state.userId(), new RouteMutation(revision, ids == null || ids.isEmpty()));
         }
-        Long userId = connectionState.userId();
-        Set<String> connectionIds = userConnections.get(userId);
-        if (connectionIds == null) {
-            return true;
-        }
-        connectionIds.remove(connectionId);
-        if (!connectionIds.isEmpty()) {
-            return false;
-        }
-        userConnections.remove(userId, connectionIds);
-        return true;
+        removalConsumer.accept(removal);
+        return removal.mutation();
+    }
+
+    public record Removal(Long userId, RouteMutation mutation) {
     }
 
     /**
@@ -71,12 +91,36 @@ public class ConnectionRegistry {
     }
 
     /**
+     * 在同一临界区读取 routeRevision 水位和完整活跃用户集合。
+     */
+    public synchronized RouteSnapshot routeSnapshot() {
+        return new RouteSnapshot(routeRevision.get(), activeUserIds());
+    }
+
+    /**
      * 查询当前进程仍处于活跃状态的连接 ID。
      */
     public List<String> activeConnectionIds() {
         return channels.entrySet().stream()
                 .filter(entry -> entry.getValue().isActive())
                 .map(Map.Entry::getKey)
+                .sorted()
+                .toList();
+    }
+
+    /**
+     * 查询指定用户当前活跃的本机连接 ID。
+     */
+    public List<String> activeConnectionIds(Long userId) {
+        Set<String> connectionIds = userConnections.get(userId);
+        if (connectionIds == null) {
+            return List.of();
+        }
+        return connectionIds.stream()
+                .filter(connectionId -> {
+                    Channel channel = channels.get(connectionId);
+                    return channel != null && channel.isActive();
+                })
                 .sorted()
                 .toList();
     }
@@ -90,7 +134,7 @@ public class ConnectionRegistry {
                     Channel channel = channels.get(state.connectionId());
                     return channel != null && channel.isActive();
                 })
-                .sorted(java.util.Comparator.comparing(ConnectionState::connectionId))
+                .sorted(Comparator.comparing(ConnectionState::connectionId))
                 .toList();
     }
 
@@ -106,9 +150,12 @@ public class ConnectionRegistry {
                 .toList();
         for (String connectionId : connectionIds) {
             Channel channel = channels.get(connectionId);
-            unregister(connectionId);
-            if (channel != null) {
-                channel.close();
+            try {
+                unregister(connectionId);
+            } finally {
+                if (channel != null) {
+                    channel.close();
+                }
             }
         }
         return connectionIds;
@@ -131,44 +178,59 @@ public class ConnectionRegistry {
      */
     @Observed(name = "im.gateway.frame.write")
     public List<GatewayFrameWriteDTO> writeFrame(Long userId, FrameResponse frame) {
-        Set<String> connectionIds = userConnections.get(userId);
-        if (connectionIds == null || connectionIds.isEmpty()) {
-            return List.of();
+        return activeConnectionIds(userId).stream()
+                .map(connectionId -> writeFrame(userId, connectionId, frame))
+                .toList();
+    }
+
+    /**
+     * 向指定用户的一条本机连接写入实时帧。
+     */
+    public GatewayFrameWriteDTO writeFrame(
+            Long userId, String connectionId, FrameResponse frame) {
+        ConnectionState state = connectionStates.get(connectionId);
+        Channel channel = channels.get(connectionId);
+        if (state == null || !state.userId().equals(userId)
+                || channel == null || !channel.isActive()) {
+            return GatewayFrameWriteDTO.failed(connectionId);
         }
-        List<GatewayFrameWriteDTO> results = new ArrayList<>();
-        for (String connectionId : connectionIds) {
-            Channel channel = channels.get(connectionId);
-            if (channel == null || !channel.isActive()) {
-                results.add(GatewayFrameWriteDTO.failed(connectionId));
-                continue;
+        ChannelFuture future = channel.writeAndFlush(
+                new TextWebSocketFrame(JsonFrameCodec.encodeResponse(frame)));
+        future.addListener(result -> {
+            if (!result.isSuccess()) {
+                closeFailedConnection(connectionId, channel);
             }
-            ChannelFuture future = channel.writeAndFlush(new TextWebSocketFrame(JsonFrameCodec.encodeResponse(frame)));
-            future.addListener(result -> {
-                if (!result.isSuccess()) {
-                    closeFailedConnection(connectionId, channel);
-                }
-            });
-            if (!channel.eventLoop().inEventLoop()) {
-                future.awaitUninterruptibly();
-            }
-            if (!future.isDone() || future.isSuccess()) {
-                results.add(GatewayFrameWriteDTO.accepted(connectionId));
-                continue;
-            }
-            results.add(GatewayFrameWriteDTO.failed(connectionId));
-            closeFailedConnection(connectionId, channel);
+        });
+        if (!channel.eventLoop().inEventLoop()) {
+            future.awaitUninterruptibly();
         }
-        return results;
+        if (!future.isDone() || future.isSuccess()) {
+            return GatewayFrameWriteDTO.accepted(connectionId);
+        }
+        closeFailedConnection(connectionId, channel);
+        return GatewayFrameWriteDTO.failed(connectionId);
     }
 
     private void closeFailedConnection(String connectionId, Channel channel) {
-        unregister(connectionId);
-        channel.close();
+        try {
+            unregister(connectionId);
+        } finally {
+            channel.close();
+        }
+    }
+
+    public record RouteMutation(long routeRevision, boolean routeAbsent) {
+    }
+
+    public record RouteSnapshot(long routeRevision, List<Long> userIds) {
+        public RouteSnapshot {
+            userIds = List.copyOf(userIds);
+        }
     }
 
     public record ConnectionState(Long userId, String sessionVersion, String connectionId) {
         public ConnectionState {
-            java.util.Objects.requireNonNull(userId, "userId");
+            Objects.requireNonNull(userId, "userId");
             if (sessionVersion == null || sessionVersion.isBlank()) {
                 throw new IllegalArgumentException("sessionVersion must not be blank");
             }

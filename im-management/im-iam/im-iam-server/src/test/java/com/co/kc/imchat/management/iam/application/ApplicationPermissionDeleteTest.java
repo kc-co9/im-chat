@@ -1,5 +1,6 @@
 package com.co.kc.imchat.management.iam.application;
 
+import com.co.kc.imchat.management.iam.domain.session.repository.OAuthSessionRepository;
 import com.co.kc.imchat.common.exception.TransitionException;
 import com.co.kc.imchat.management.iam.domain.authorization.service.ApplicationPermissionService;
 import com.co.kc.imchat.management.iam.domain.authorization.model.ApplicationPermission;
@@ -34,7 +35,7 @@ class ApplicationPermissionDeleteTest {
         when(permissions.hasRoleAssignments(new ApplicationPermissionId(10L))).thenReturn(true);
         ApplicationPermissionAppService service = new ApplicationPermissionAppService(
                 mock(ApplicationRepository.class), mock(OAuthClientRepository.class),
-                permissions, new ApplicationPermissionService(permissions, mock(SnowflakeId.class)));
+                permissions, new ApplicationPermissionService(permissions, mock(SnowflakeId.class)), mock(OAuthSessionRepository.class));
 
         assertThatThrownBy(() -> service.delete(new ApplicationPermissionDeleteCmd(10L)))
                 .isInstanceOf(TransitionException.class)

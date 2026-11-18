@@ -19,6 +19,11 @@ import com.co.kc.imchat.management.iam.model.cqrs.command.ApplicationPermissionD
 import com.co.kc.imchat.management.iam.model.cqrs.dto.ApplicationPermissionDTO;
 import com.co.kc.imchat.management.iam.model.cqrs.query.ApplicationPermissionPageQuery;
 import com.co.kc.imchat.management.iam.transformer.application.ApplicationPermissionAppTransformer;
+import com.co.kc.imchat.management.iam.domain.session.repository.OAuthSessionRepository;
+import com.co.kc.imchat.management.iam.domain.authorization.service.ApplicationPermissionService.Synchronization;
+
+import java.time.Instant;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +39,7 @@ public class ApplicationPermissionAppService {
     private final OAuthClientRepository oauthClientRepository;
     private final ApplicationPermissionRepository permissionRepository;
     private final ApplicationPermissionService permissionService;
+    private final OAuthSessionRepository oauthSessionRepository;
 
     public PagingResult<ApplicationPermissionDTO> page(ApplicationPermissionPageQuery query) {
         AppId appId = new AppId(query.appId());
@@ -56,8 +62,11 @@ public class ApplicationPermissionAppService {
 
         List<ApplicationPermissionDefinition> definitions =
                 ApplicationPermissionAppTransformer.INSTANCE.permissionDefinitionsFrom(command.permissions());
-        List<ApplicationPermission> synchronizedPermissions = permissionService.synchronize(application, definitions);
-        permissionRepository.saveAll(synchronizedPermissions);
+        Synchronization synchronization = permissionService.synchronize(application, definitions);
+        permissionRepository.saveAll(synchronization.permissions());
+        if (synchronization.permissionsWithdrawn()) {
+            oauthSessionRepository.revokeAudience(application.getAppId(), Instant.now());
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)

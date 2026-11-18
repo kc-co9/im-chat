@@ -11,8 +11,8 @@ import com.co.kc.imchat.broker.sdk.model.result.BrokerFrameWriteResult;
 import com.co.kc.imchat.broker.sdk.BrokerClient;
 import com.co.kc.imchat.broker.sdk.enums.BrokerBoltOperation;
 import com.co.kc.imchat.broker.sdk.model.params.BrokerFrameWriteParams;
-import com.co.kc.imchat.broker.sdk.model.result.BrokerListResult;
 import com.co.kc.imchat.plugin.bolt.spi.BoltInvoker;
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
 import com.co.kc.imchat.service.message.domain.social.model.FriendDisplay;
 import com.co.kc.imchat.service.message.domain.social.model.GroupMessageRecipient;
 import com.co.kc.imchat.service.message.domain.social.model.GroupSummary;
@@ -55,17 +55,19 @@ public class TestCacheConfiguration {
     private record EmptyPushBoltInvoker() implements BoltInvoker {
         @Override
         @SuppressWarnings("unchecked")
-        public <T, R> R invoke(String address, String service, String operation, T request,
-                               Class<R> responseType, int timeoutMillis) {
-            if (BrokerBoltOperation.LIST_BROKERS.operation().equals(operation)) {
-                return (R) new BrokerListResult(List.of());
-            }
+        public <T, R> R invoke(BoltTarget target, String service, String operation,
+                               T request, Class<R> responseType, int timeoutMillis) {
+            org.junit.jupiter.api.Assertions.assertNotNull(target.expectedPeerIdentity());
+
+            String address = target.address();
+
             if (!BrokerBoltOperation.WRITE_FRAME.operation().equals(operation)) {
                 return null;
             }
             BrokerFrameWriteParams params = (BrokerFrameWriteParams) request;
             return (R) BrokerFrameWriteResult.writeResult(params.userId(), List.of(), List.of());
         }
+
     }
 
     @Bean

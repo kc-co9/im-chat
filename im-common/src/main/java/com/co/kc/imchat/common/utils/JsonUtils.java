@@ -7,11 +7,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
 import com.co.kc.imchat.common.exception.SerializationException;
 
 import java.io.IOException;
@@ -26,9 +28,11 @@ import java.time.ZoneId;
  */
 public class JsonUtils {
     private static final ObjectMapper OBJECT_MAPPER;
+    private static final ObjectMapper STRICT_OBJECT_MAPPER;
 
     static {
         OBJECT_MAPPER = new ObjectMapper();
+        OBJECT_MAPPER.registerModule(new ParameterNamesModule());
         OBJECT_MAPPER.registerModule(getJavaTimeModule());
         // 忽略未知字段，避免反序列化失败
         OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -36,6 +40,14 @@ public class JsonUtils {
         OBJECT_MAPPER.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         OBJECT_MAPPER.disable(SerializationFeature.WRITE_DATE_TIMESTAMPS_AS_NANOSECONDS);
         OBJECT_MAPPER.disable(DeserializationFeature.READ_DATE_TIMESTAMPS_AS_NANOSECONDS);
+
+        STRICT_OBJECT_MAPPER = OBJECT_MAPPER.copy()
+                .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+                .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS);
     }
 
     private JsonUtils() {
@@ -61,6 +73,13 @@ public class JsonUtils {
         } catch (IOException e) {
             throw new SerializationException("JSON 反序列化失败: " + json, e);
         }
+    }
+
+    /**
+     * 使用严格规则将字节 JSON 反序列化为对象，拒绝未知字段、重复字段、尾随输入和隐式类型转换。
+     */
+    public static <T> T fromStrictJson(byte[] json, Class<T> clazz) throws IOException {
+        return STRICT_OBJECT_MAPPER.readValue(json, clazz);
     }
 
     /**

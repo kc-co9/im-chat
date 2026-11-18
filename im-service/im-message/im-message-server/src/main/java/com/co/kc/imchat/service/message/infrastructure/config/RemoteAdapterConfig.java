@@ -30,7 +30,8 @@ public class RemoteAdapterConfig {
                 discoveryClient,
                 ServiceName.IM_BROKER,
                 BrokerLoadBalance.HASH,
-                properties.getTimeoutMillis());
+                properties.getTimeoutMillis(),
+                properties.getBootstrapTargets());
     }
 
     @Bean

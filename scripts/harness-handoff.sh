@@ -18,7 +18,7 @@ current_fingerprint="${HARNESS_CURRENT_WORKTREE_FINGERPRINT:-$(harness_worktree_
 mkdir -p "$(dirname "$OUTPUT_MD")" "$(dirname "$OUTPUT_JSON")"
 
 # Ruby 负责结构化解析 Markdown/JSON 和 JSON 编码，避免 Shell 对引号与多行文本的脆弱拼接。
-ruby -rjson -ropen3 -rtime -e '
+ruby -E UTF-8 -rjson -ropen3 -rtime -e '# encoding: UTF-8
   root, report_path, output_json, output_md, current_head, current_fingerprint = ARGV
 
   def section(markdown, heading)

@@ -1,10 +1,10 @@
 package com.co.kc.imchat.gateway.ws.lifecycle;
 
 import com.co.kc.imchat.broker.sdk.BrokerClient;
-import com.co.kc.imchat.broker.sdk.model.params.ConnectionSyncParams;
 import com.co.kc.imchat.broker.sdk.model.params.GatewayRegisterParams;
 import com.co.kc.imchat.gateway.ws.config.properties.GatewayProperties;
-import com.co.kc.imchat.gateway.ws.registry.ConnectionRegistry;
+import com.co.kc.imchat.gateway.ws.routing.GatewayInstanceIdentity;
+import com.co.kc.imchat.gateway.ws.routing.GatewayRouteSnapshotSync;
 import com.co.kc.imchat.plugin.bolt.properties.ImBoltProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,33 +27,35 @@ public class RegistrationLifecycle {
     private final String host;
     private final int boltPort;
     private final BrokerClient brokerClient;
-    private final ConnectionRegistry connectionRegistry;
+    private final GatewayRouteSnapshotSync snapshotCoordinator;
     @Autowired
     public RegistrationLifecycle(GatewayProperties properties,
                                  ImBoltProperties boltProperties,
                                  BrokerClient brokerClient,
-                                 ConnectionRegistry connectionRegistry) {
-        this.gatewayId = properties.gatewayId(boltProperties.getServer().getPort());
+                                 GatewayInstanceIdentity identity,
+                                 GatewayRouteSnapshotSync snapshotCoordinator) {
+        this.gatewayId = identity.gatewayId();
         this.host = properties.getBolt().getHost();
         this.boltPort = boltProperties.getServer().getPort();
         this.brokerClient = brokerClient;
-        this.connectionRegistry = connectionRegistry;
+        this.snapshotCoordinator = snapshotCoordinator;
     }
 
     public RegistrationLifecycle(String gatewayId, String host, int boltPort,
-                                 BrokerClient brokerClient, ConnectionRegistry connectionRegistry) {
+                                 BrokerClient brokerClient,
+                                 GatewayRouteSnapshotSync snapshotCoordinator) {
         this.gatewayId = gatewayId;
         this.host = host;
         this.boltPort = boltPort;
         this.brokerClient = brokerClient;
-        this.connectionRegistry = connectionRegistry;
+        this.snapshotCoordinator = snapshotCoordinator;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void onReady() {
         try {
             register();
-            syncConnections();
+            snapshotCoordinator.synchronize();
         } catch (RuntimeException ex) {
             log.warn("failed to register ws gateway, will retry later", ex);
         }
@@ -63,7 +65,7 @@ public class RegistrationLifecycle {
     public void refresh() {
         try {
             register();
-            syncConnections();
+            snapshotCoordinator.synchronize();
         } catch (RuntimeException ex) {
             log.warn("failed to refresh ws gateway registration, will retry later", ex);
         }
@@ -71,10 +73,5 @@ public class RegistrationLifecycle {
 
     private void register() {
         brokerClient.registerGateway(new GatewayRegisterParams(gatewayId, host, boltPort));
-    }
-
-    private void syncConnections() {
-        brokerClient.syncConnections(
-                new ConnectionSyncParams(gatewayId, connectionRegistry.activeUserIds()));
     }
 }

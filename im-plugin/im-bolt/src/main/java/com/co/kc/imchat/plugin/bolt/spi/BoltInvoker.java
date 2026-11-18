@@ -1,5 +1,7 @@
 package com.co.kc.imchat.plugin.bolt.spi;
 
+import com.co.kc.imchat.plugin.bolt.model.BoltTarget;
+
 /**
  * Bolt 远程调用入口。
  * <p>
@@ -8,19 +10,12 @@ package com.co.kc.imchat.plugin.bolt.spi;
 public interface BoltInvoker {
 
     /**
-     * 调用远端 Bolt 服务。
-     *
-     * @param address       远端地址，格式通常为 host:port
-     * @param service       服务名
-     * @param operation     操作名
-     * @param request       请求对象
-     * @param responseType  响应类型
-     * @param timeoutMillis 调用超时时间，单位毫秒
-     * @param <T>           请求类型
-     * @param <R>           响应类型
-     * @return 响应对象
+     * 以地址和完整预期身份调用；目标不携带URI前缀或信任开关。
+     * 前缀、模式及预算资源策略由客户端启动配置拥有，不由业务请求覆盖。
+     * 运行期失败保留cause并通过BoltInvocationException的四分类表达，本机目标/策略错误为LOCAL。
+     * 连接由受控装配认证；调用只在所选身份绑定连接上发送，不提供地址绕过入口。
      */
-    <T, R> R invoke(String address, String service, String operation, T request,
-                    Class<R> responseType, int timeoutMillis);
+    <T, R> R invoke(BoltTarget target, String service, String operation,
+                    T request, Class<R> responseType, int timeoutMillis);
 
 }

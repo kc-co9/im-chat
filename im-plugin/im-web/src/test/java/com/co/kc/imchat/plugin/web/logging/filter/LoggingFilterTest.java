@@ -12,6 +12,10 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.resource.ResourceHttpRequestHandler;
 
+import jakarta.servlet.AsyncContext;
+import jakarta.servlet.http.HttpServletResponse;
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class LoggingFilterTest {
@@ -77,6 +81,25 @@ class LoggingFilterTest {
             logger.detachAppender(appender);
             appender.stop();
         }
+    }
+
+    @Test
+    void preservesBodyWrittenAfterAsyncRequestStarts() throws Exception {
+        TestLoggingFilter filter = new TestLoggingFilter();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/operation");
+        request.setAsyncSupported(true);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<AsyncContext> asyncContext = new AtomicReference<>();
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) ->
+                asyncContext.set(servletRequest.startAsync(servletRequest, servletResponse)));
+
+        HttpServletResponse asyncResponse =
+                (HttpServletResponse) asyncContext.get().getResponse();
+        asyncResponse.getWriter().write("async-result");
+        asyncContext.get().complete();
+
+        assertThat(response.getContentAsString()).isEqualTo("async-result");
     }
 
     private static final class TestLoggingFilter extends LoggingFilter {
